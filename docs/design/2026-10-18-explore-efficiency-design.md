@@ -21,7 +21,7 @@
 
 ## 背景与目标
 
-用户在 `suag-7ih4` 记录：同模型同档位下 suga 探索阶段 9–19 步、omp 4–5 步。本批用真实模型在 suga 仓库上做了 4 个有标准答案的只读探索任务（10 次运行，A/B/C/D 四档配置），答案全部正确，但步数与 token 明显偏高，且浪费位置可复现：
+用户在 `suag-7ih4` 记录：同模型同档位下 suga 探索阶段 9–19 步、omp 4–5 步。本批用真实模型在 suga 仓库上做了 4 个有标准答案的只读探索任务（11 次运行，A/B/C/D 四档配置），答案全部正确，但步数与 token 明显偏高，且浪费位置可复现：
 
 1. **大文件反复读**：T4 档 A 的 24 次 `file_read` 里 12 次是重复读（模块缓存 `cflag/util.go` ×4、`cflag.go` ×3、`internal/wiring/runtime.go` ×3、`internal/cli/run.go` ×2），档 B 36 步/1.85M 输入 token 同样如此；T1 档 A 读 `runtime.go` 3 次。
 2. **“列清单/找定义”要靠猜正则**：T2（列出 `internal/config` 全部 `Read*` 函数）用 `file_grep` 试 2–5 次才凑出正则；T4 追调用链同样反复 grep。
@@ -62,8 +62,8 @@
 | 事实 | 数据 |
 |---|---|
 | 任务 | T1 `suga_manifest` 注册与 `section` 语义、T2 `internal/config` 的 `Read*` 函数清单、T3 `session_search` CJK 短词、T4 `--read-only` 到写工具过滤调用链 |
-| 运行 | 10 次（T1×4 档、T2×2、T3×3、T4×2），只读、隔离 `SUGA_HOME`、真实模型 `opencode-go/deepseek-v4.1-flash`/`openai-codex/gpt-6-luna` |
-| 答案正确率 | 10/10 正确（含文件:行） |
+| 运行 | 11 次（T1×4 档、T2×2、T3×3、T4×2），只读、隔离 `SUGA_HOME`、真实模型 `opencode-go/deepseek-v4.1-flash`/`openai-codex/gpt-6-luna` |
+| 答案正确率 | 11/11 正确（含文件:行） |
 | 步数范围 | 最小 4 步（T2），最大 36 步（T4 档 B）；T4 输入 token 1.49M–1.85M |
 | 重复读 | T4 档 A 12/24 次 `file_read` 是重复读；T1 档 A `runtime.go` ×3 |
 | 失败调用 | `file_read` 失败 4 次（T1 档 C）、`file_grep` 失败 3 次（T4 档 A/B、T1 档 D 各 1）、幻觉工具 `read` 1 次 |
@@ -109,7 +109,7 @@
 ### 为什么不选其余手段（对照报告第 4 节）
 
 - 仓库概览缓存、语义检索、grep 相关度排序、只读工具并发：本轮无收益证据或已有能力，暂不做，落地本设计后按同一指标复测。
-- 辅助小模型（输出整理/命令检查）：10 次运行里 0 次 shell 调用、0 次噪声型大输出，现有 spill/折叠机制已兜住唯一一次大输出（T3 档 A `spills 1`），没有触发样本；见 D6。
+- 辅助小模型（输出整理/命令检查）：11 次运行里 0 次 shell 调用、0 次噪声型大输出，现有 spill/折叠机制已兜住唯一一次大输出（T3 档 A `spills 1`），没有触发样本；见 D6。
 
 ## 架构
 

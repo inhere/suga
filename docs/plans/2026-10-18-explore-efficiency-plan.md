@@ -49,7 +49,7 @@
 | CAP-02 | 一次列出文件/目录的 Go 声明（func/type/const/var + 行号），默认排除测试文件 | `lang_go.go:11-13`；`grep.go`/`find.go` 的遍历与 ignore；标准库 `go/parser`、`go/token` | 现有语言声明风格、native 只读工具 `ToolMeta`、目录遍历与 ignore 逻辑 | 新增 `file_symbols.go`，并在 `lang_go.go` 增加 Go 声明清单入口 | MINIMAL_NEW_MODULE | 当前无任何符号级检索：T2 只能用 `file_grep` 猜正则（2–5 次），T4 追调用链同样反复 grep | owner 是 native 只读工具集；不引入 gopls/索引/缓存；非 Go 明确拒绝 |
 | CAP-03 | 新只读工具在 run/chat/ACP 各模式注册、只读分类、schema `properties` 非空 | `internal/wiring/runtime.go:456,503-529`；`internal/wiring/native_tools_test.go:35-51`；`internal/wiring/approval_table_test.go`；`internal/acpserver/policy_table_test.go` | 现有 native 工具注册表、只读 `ToolMeta`、审批与 ACP 分类表测试 | 在既有注册处增加一行，并在三个分类表测试中增加一行 | DIRECT_REUSE | 现有注册与分类表没有 `file_symbols` 条目 | 不得为它另建注册路径或放宽审批 |
 | CAP-04 | 用真实模型与 trace 指标回归（steps/re-reads/tokens） | `internal/personal/analyze.go` 的 `--analyze` 输出；本批实测脚本思路；`scripts/ptysmoke` + `fakellm.py` | 现有 `suga trace --analyze`、伪终端冒烟框架 | 不新增指标，只把 4 个任务与配置档固化成验收清单 | DIRECT_REUSE | 目前没有“探索类任务”的固定回归用例 | 不新建评测框架；报告必须同时给方差，避免把噪声当收益 |
-| CAP-05 | 辅助小模型：工具调用后整理输出、执行前检查命令 | `suag-5qb4` 里的 omp/pi-go/goose 参考；现有 spill/`out:` ref 与输出折叠；现有 approval 与危险删除规则 | 已有输出折叠与 spill、approval 规则 | 无（本版不实现） | NOT_NEEDED | 实测 10 次运行 0 条 shell 命令、0 次噪声型大输出，没有触发样本；确定性规则已覆盖可确定场景 | 强做会引入额外模型调用延迟与不稳定判断，且与现有输出治理重复 |
+| CAP-05 | 辅助小模型：工具调用后整理输出、执行前检查命令 | `suag-5qb4` 里的 omp/pi-go/goose 参考；现有 spill/`out:` ref 与输出折叠；现有 approval 与危险删除规则 | 已有输出折叠与 spill、approval 规则 | 无（本版不实现） | NOT_NEEDED | 实测 11 次运行 0 条 shell 命令、0 次噪声型大输出，没有触发样本；确定性规则已覆盖可确定场景 | 强做会引入额外模型调用延迟与不稳定判断，且与现有输出治理重复 |
 
 ### New module candidates
 
