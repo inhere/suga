@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.35.0] - 2026-10-18
+
+支持 PHP（`file_symbols`、`file_refs`、`phpunit`/`pest`）；`file_refs` 对没有提取器的文本文件（Rust、模板、TOML 等）退化为词边界文本匹配而不再拒绝，`file_symbols` 改为给出可执行的 `file_grep` 用法；限定名查询不再漏掉定义包内的裸调用。
+
 ### 新增
 
 - 支持 PHP：`file_symbols` 与 `file_read outline` 按声明行识别 `.php` 的 namespace、class/interface/trait/enum（含 `abstract`/`final`/`readonly` 修饰）、`function`、方法（任意可见性/修饰符组合）与类常量 `const`，结果标 approx；`file_refs` 支持 `.php`，先遮蔽 `//`、`#`（`#[Attr]` 是 attribute，不算注释）、`/* */`、单双引号字符串与 heredoc/nowdoc（含缩进结束标记），`$foo` 不会被当成 `foo`，而 `$this->foo()`、`Foo::bar()`、`new Foo` 都会命中；限定名除 `Q.name`、`Q::name` 外支持 PHP 的 `Q->name`（`$this` 可作限定符）。语言注册新增 PHP：`composer.json`/`composer.lock` 为标记文件，测试命令识别 `phpunit`、`vendor/bin/phpunit`、`pest`（识别结果与之前一致），`--filter` 视为只跑部分测试。PHP 不新增依赖 API 提示词子句：Composer 依赖在工作区的 `vendor/` 下，用 `file_symbols` 加 `no_ignore: true` 即可列出其 API。
@@ -795,7 +799,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.34.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/inhere/suga/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/inhere/suga/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/inhere/suga/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/inhere/suga/compare/v0.31.1...v0.32.0
