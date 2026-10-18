@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 新增全局出网代理 `network.proxy.url` / `network.proxy.sites`：配置后模型请求、`web_fetch`、`web_search` 共用一份按站点白名单的代理选择（精确 host、`.suffix` 子域、`host:port`、`*`），未命中的请求直连；未配置时三者保持原有行为（`web_fetch` 忽略环境代理并按目标 IP 检查，模型/搜索跟随 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`）。`url` 支持 `${VAR}`（凭据放 `.env`），标记为 sensitive，非法值或未解析的引用在启动时报错而不是静默直连。
+
 ## [0.31.0] - 2026-10-18
 
 记忆检索按相关度排序（FTS5 派生索引）、交接摘要固定小节并可检索、记忆条目可标注 `applies_when`；前台长命令超时转后台任务；写工具参数按 schema 校验；`trace --web` 只读与自动刷新；run 收尾行显示上下文用量；修复只接受流式请求的网关上压缩与交接失败；新增可在 Windows 跑的 Go 版终端冒烟。
