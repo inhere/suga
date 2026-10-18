@@ -217,16 +217,14 @@ func TestFileRefsToolErrors(t *testing.T) {
 		assert.StrContains(t, err.Error(), "file_refs")
 	})
 
-	t.Run("a file of an unsupported type is refused with the supported list", func(t *testing.T) {
+	t.Run("a file of documentation is not searched", func(t *testing.T) {
 		err := runFileRefsErr(t, tool, map[string]any{"name": "ReadOnly", "path": "docs/notes.md"})
-		assert.StrContains(t, err.Error(), "unsupported file type")
-		assert.StrContains(t, err.Error(), "Go (.go)")
+		assert.StrContains(t, err.Error(), "no searchable source files")
 	})
 
 	t.Run("a directory without supported files reports the supported languages", func(t *testing.T) {
 		err := runFileRefsErr(t, tool, map[string]any{"name": "ReadOnly", "path": "docs"})
-		assert.StrContains(t, err.Error(), "no supported source files under docs")
-		assert.StrContains(t, err.Error(), "Go (.go)")
+		assert.StrContains(t, err.Error(), "no searchable source files under docs")
 	})
 
 	t.Run("a directory of test files only suggests include_tests", func(t *testing.T) {
@@ -245,8 +243,45 @@ func TestFileRefsToolErrors(t *testing.T) {
 	})
 }
 
-// TestFileRefsToolReadRoot searches an absolute path under a read-only root,
-// which is how a dependency's sources are reachable.
+// TestFileRefsBareFallback covers unsupported but readable source-like text. It
+// also pins the deliberate exclusions for documentation and binary files.
+func TestFileRefsBareFallback(t *testing.T) {
+	ws := t.TempDir()
+	files := map[string][]byte{
+		"src/lib.rs":          []byte("pub fn run() {\n    Config::load();\n}\n"),
+		"templates/page.html": []byte("{% component target_attribute() %}\n"),
+		"config.toml":         []byte("[extra]\nname = \"target_attribute\"\n"),
+		"notes.md":            []byte("target_attribute\n"),
+		"image.bin":           {0, 1, 2, 0, 3},
+		"mixed.go":            []byte("package mixed\n\nfunc target_attribute() {}\n"),
+	}
+	for name, content := range files {
+		path := filepath.Join(ws, filepath.FromSlash(name))
+		assert.Require(t, assert.NoErr(t, os.MkdirAll(filepath.Dir(path), 0o755)))
+		assert.Require(t, assert.NoErr(t, os.WriteFile(path, content, 0o644)))
+	}
+	tool := &FileRefsTool{workspace: ws}
+
+	t.Run("Rust, Tera html and toml use ref fallback", func(t *testing.T) {
+		got := runFileRefs(t, tool, map[string]any{"name": "target_attribute", "path": "."})
+		assert.StrContains(t, got, "templates/page.html:1 ref")
+		assert.StrContains(t, got, "config.toml:2 ref")
+		assert.StrContains(t, got, "[approx: other text files have no parser")
+		assert.StrContains(t, got, "[skipped 1 documentation file(s)")
+		assert.StrContains(t, got, "[skipped 1 binary file(s)]")
+	})
+
+	t.Run("qualified fallback accepts Rust separators", func(t *testing.T) {
+		got := runFileRefs(t, tool, map[string]any{"name": "Config.load", "path": "src/lib.rs"})
+		assert.StrContains(t, got, "src/lib.rs:2 ref")
+	})
+
+	t.Run("mixed directory keeps supported and fallback files", func(t *testing.T) {
+		got := runFileRefs(t, tool, map[string]any{"name": "target_attribute", "path": "."})
+		assert.StrContains(t, got, "mixed.go:3 def")
+		assert.StrContains(t, got, "templates/page.html:1 ref")
+	})
+} // which is how a dependency's sources are reachable.
 func TestFileRefsToolReadRoot(t *testing.T) {
 	root := t.TempDir()
 	dep := filepath.Join(root, "dep")

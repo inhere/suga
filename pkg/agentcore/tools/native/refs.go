@@ -49,7 +49,7 @@ func (t *FileRefsTool) Description() string {
 		"imported package) but without type checking, so a match may be another local, field or another package's " +
 		"symbol - the shown line decides. JavaScript/TypeScript, Python, Java and PHP match word-bounded text with " +
 		"comments and strings masked and are marked approx; universal-ctags offers declarations, not references, so " +
-		"it is not used here. Any other file type is refused with the supported list. " +
+		"it is not used here. Other text files use word-boundary text matching (approx, comments and strings are not masked). Markdown/text documentation (.md, .txt, .rst) is not searched. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d matches.", defaultRefLimit)
 }
 
@@ -119,24 +119,27 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	re := refWordRe(name)
 
 	out := &refOut{name: name, qual: qual, dropped: newRefDrops()}
-	// A file argument is searched as that file: a type no extractor covers is
-	// refused with the supported list, not answered with an empty result.
+	// A file argument is searched as that file. Text files without an extractor
+	// use the bare word-boundary fallback; documentation and binary files are
+	// deliberately left out instead of being treated as source.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
-		refs, approx, dropped, err := t.oneFile(target, name, qual, re)
+		set, err := t.oneFile(target, name, qual, re)
 		if err != nil {
 			return nil, fmt.Errorf("file_refs: %w", err)
 		}
-		out.files, out.approx, out.refs, out.dropped = 1, approx, refs, dropped
-		out.goRefs = !approx && len(refs) > 0
+		out.files, out.approx, out.bareApprox, out.refs, out.dropped = 0, set.approx, set.bare, set.refs, set.dropped
+		if set.searchable {
+			out.files = 1
+		}
+		out.goRefs = !set.approx && !set.bare && len(set.refs) > 0
 	} else if err := t.walkDir(ctx, target, name, qual, re, limit, includeTests, noIgnore, out); err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
 	}
 	if out.files == 0 {
-		if out.tests > 0 && out.unsupported == 0 {
+		if out.tests > 0 && out.docs == 0 && out.binary == 0 && out.tooLarge == 0 {
 			return nil, fmt.Errorf("file_refs: only test files under %s; pass include_tests: true to search them", pathArg)
 		}
-		return nil, fmt.Errorf("file_refs: no supported source files under %s; supported: %s",
-			pathArg, SupportedSymbolLanguages())
+		return nil, fmt.Errorf("file_refs: no searchable source files under %s", pathArg)
 	}
 	return &api.ToolResult{
 		CallID:  call.CallID,
@@ -145,24 +148,45 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	}, nil
 }
 
+// refScan is the result of scanning one regular file. bare marks a text file
+// with no extractor: it is intentionally less precise than the registered
+// language match and leaves comments and strings visible.
+type refScan struct {
+	refs       []Ref
+	approx     bool
+	bare       bool
+	searchable bool
+	dropped    *refDrops
+}
+
 // oneFile searches one file through os.Root, the way file_symbols reads one.
-func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) ([]Ref, bool, *refDrops, error) {
-	if !SupportsSymbols(target.abs) {
-		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
-			filepath.Ext(target.abs), SupportedSymbolLanguages())
-	}
+func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) (refScan, error) {
 	file, err := withRoot(target.base, target.abs, func(root *os.Root, rel string) (symbolFile, error) {
 		return readSymbolFile(root, target, rel)
 	})
 	if err != nil {
-		return nil, false, nil, err
+		return refScan{}, err
 	}
-	return scanRefs(file.name, file.data, name, qual, re)
+	return scanRefFile(file, name, qual, re)
 }
 
-// walkDir searches every supported source file under the directory target,
-// stopping one match past limit (the result then says more matched instead of
-// walking a whole module cache).
+// scanRefFile chooses a parser-backed language, a masked approximate matcher,
+// or the bare text fallback. Documentation and binary files are not sources.
+func scanRefFile(file symbolFile, name, qual string, re *regexp.Regexp) (refScan, error) {
+	if isRefDocumentation(file.name) || isBinaryHead(file.data[:min(len(file.data), binarySniffBytes)]) {
+		return refScan{}, nil
+	}
+	if _, ok := symbolLanguageFor(file.name); !ok {
+		refs, dropped := scanBareLineRefs(file.name, file.data, name, qual, re)
+		return refScan{refs: refs, bare: true, searchable: true, dropped: dropped}, nil
+	}
+	refs, approx, dropped, err := scanRefs(file.name, file.data, name, qual, re)
+	if err != nil {
+		return refScan{}, err
+	}
+	return refScan{refs: refs, approx: approx, searchable: true, dropped: dropped}, nil
+}
+
 func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qual string, re *regexp.Regexp, limit int, includeTests bool, noIgnore bool, out *refOut) error {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
@@ -171,10 +195,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 			out.tests++
 			return nil
 		}
-		if !SupportsSymbols(d.Name()) {
-			out.unsupported++
-			return nil
-		}
+
 		// The size is checked before reading: a huge file must not be read only
 		// to be skipped afterwards.
 		if info, err := d.Info(); err != nil || info.Size() > maxSearchFileBytes {
@@ -186,19 +207,32 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 			out.noteError(fmt.Sprintf("%s: %v", target.show(rel), err))
 			return nil
 		}
+		if isRefDocumentation(file.name) {
+			out.docs++
+			return nil
+		}
+		if isBinaryHead(file.data[:min(len(file.data), binarySniffBytes)]) {
+			out.binary++
+			return nil
+		}
 		out.files++
+		if !SupportsSymbols(d.Name()) {
+			out.bareApprox = true
+		}
 		// Byte prefilter: a file whose text has no word-bounded occurrence of
 		// the name is never parsed nor matched. It cannot hide one either: a Go
 		// identifier is exactly the delimited text the filter looks for.
 		if !re.Match(file.data) {
 			return nil
 		}
-		refs, approx, dropped, err := scanRefs(file.name, file.data, name, qual, re)
+		scan, err := scanRefFile(file, name, qual, re)
 		if err != nil {
 			// A parser error names the file and the line itself.
 			out.noteError(err.Error())
 			return nil
 		}
+		refs, approx, dropped := scan.refs, scan.approx, scan.dropped
+		out.bareApprox = out.bareApprox || scan.bare
 		out.approx = out.approx || approx
 		out.goRefs = out.goRefs || (!approx && len(refs) > 0)
 		out.dropped.merge(dropped)
@@ -214,6 +248,35 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 	}
 	out.ignoreNote, out.timedOut = walk.ignoreNote, walk.timedOut
 	return nil
+}
+
+// scanBareLineRefs is the fallback for readable text with no extractor. Unlike
+// the registered approximate languages, it deliberately does not mask anything.
+func scanBareLineRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, *refDrops) {
+	original := newSourceLines(src)
+	dropped := newRefDrops()
+	var refs []Ref
+	for i, line := range original.lines {
+		if !re.MatchString(line) {
+			continue
+		}
+		if !approxQualifierMatches(line, qual, name) {
+			dropped.addText()
+			continue
+		}
+		refs = append(refs, Ref{File: file, Line: i + 1, Class: RefRef, Text: refLineText(line)})
+	}
+	return refs, dropped
+}
+
+// isRefDocumentation keeps prose files out of reference results.
+func isRefDocumentation(file string) bool {
+	switch strings.ToLower(filepath.Ext(file)) {
+	case ".md", ".txt", ".rst":
+		return true
+	default:
+		return false
+	}
 }
 
 // scanRefs extracts the references of one file: Go by parser (exact), the other
@@ -262,20 +325,22 @@ func splitRefName(raw string) (name, qual string) {
 // about what was left out.
 type refOut struct {
 	refs    []Ref
-	files   int       // supported source files that were read
+	files   int       // searchable source files that were read
 	name    string    // the searched identifier, without its qualifier
 	qual    string    // the Q of a qualified query; empty when the name had no dot
 	dropped *refDrops // occurrences of the name that qualify another object, by qualifier
 	tests   int       // test files left out
+	docs    int       // documentation files deliberately left out
+	binary  int       // binary files deliberately left out
 
-	unsupported int // files of a type no extractor covers
-	tooLarge    int // files over maxSearchFileBytes
-	approx      bool
-	goRefs      bool // at least one shown match came from the Go parser
-	more        bool // the walk stopped one match past the limit
-	errors      []string
-	ignoreNote  string
-	timedOut    bool
+	tooLarge   int // files over maxSearchFileBytes
+	approx     bool
+	bareApprox bool // at least one unsupported text file used the bare matcher
+	goRefs     bool // at least one shown match came from the Go parser
+	more       bool // the walk stopped one match past the limit
+	errors     []string
+	ignoreNote string
+	timedOut   bool
 }
 
 // noteError records an unreadable or unparsable file; the result names the
@@ -391,6 +456,9 @@ func (o *refOut) notes(limit int) []string {
 		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java and PHP matches come from word-boundary "+
 			"text matching with comments and strings masked, not a parser; confirm with file_grep]")
 	}
+	if o.bareApprox {
+		notes = append(notes, "[approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]")
+	}
 	if o.more {
 		notes = append(notes, fmt.Sprintf("[showing %d matches; more matched - narrow path, or use file_grep "+
 			"with a word-boundary pattern for the full list]", limit))
@@ -398,9 +466,12 @@ func (o *refOut) notes(limit int) []string {
 	if o.tests > 0 {
 		notes = append(notes, fmt.Sprintf("[skipped %d test file(s); pass include_tests: true to search them]", o.tests))
 	}
-	if o.unsupported > 0 {
-		notes = append(notes, fmt.Sprintf("[skipped %d file(s) of a type no extractor covers; supported: %s]",
-			o.unsupported, SupportedSymbolLanguages()))
+
+	if o.docs > 0 {
+		notes = append(notes, fmt.Sprintf("[skipped %d documentation file(s) (.md, .txt, .rst)]", o.docs))
+	}
+	if o.binary > 0 {
+		notes = append(notes, fmt.Sprintf("[skipped %d binary file(s)]", o.binary))
 	}
 	if o.tooLarge > 0 {
 		notes = append(notes, fmt.Sprintf("[skipped %d file(s) over %d bytes]", o.tooLarge, maxSearchFileBytes))
