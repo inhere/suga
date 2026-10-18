@@ -99,10 +99,10 @@ var javaNonDeclNames = map[string]bool{
 // by line. The brace depth tells the file's own declarations and the members of
 // a type body apart from the statements of a function body, where a local const
 // or a bare call looks like a declaration. Braces inside '...', "..." and
-// `...` strings and after // are ignored; /* */ comments and multi-line
-// template strings are not, which is part of why the result is approx.
+// `...` strings and after // are ignored, and /* */ comments, multi-line
+// template strings and """ text blocks are blanked first (maskSpans).
 func braceSymbols(file string, src []byte, decls []braceDecl) ([]Symbol, error) {
-	lines := newSourceLines(src)
+	lines := newSourceLines(maskSpans(src, maskBraces))
 	var out []Symbol
 	// braces is the brace depth, bodyStack the brace depths of the type bodies
 	// currently open: a member rule matches only directly inside one of them, so
@@ -212,7 +212,8 @@ var (
 // and def lines themselves are looked at, so a call inside a function body is
 // never mistaken for a declaration.
 func pythonSymbols(file string, src []byte) ([]Symbol, error) {
-	lines := newSourceLines(src)
+	// Docstrings are blanked first: an example "def x():" in one is no def.
+	lines := newSourceLines(maskSpans(src, maskPython))
 	// frames are the open blocks: a def or a class, by their indentation.
 	type frame struct {
 		indent int

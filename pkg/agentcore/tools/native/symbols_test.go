@@ -380,3 +380,34 @@ func TestParseCtagsTags(t *testing.T) {
 		assert.Err(t, err)
 	})
 }
+
+// TestLineRecognisersSkipCommentsAndMultiLineStrings: declarations written in a
+// block comment, a template string or a docstring are not declarations, and
+// their braces do not shift the depth of what follows.
+func TestLineRecognisersSkipCommentsAndMultiLineStrings(t *testing.T) {
+	names := func(set SymbolSet) []string {
+		var out []string
+		for _, s := range set.Symbols {
+			out = append(out, s.Name)
+		}
+		return out
+	}
+	t.Run("typescript", func(t *testing.T) {
+		src := "/*\nclass Ghost {\n}\n*/\nconst tpl = `\nfunction ghost() {\n`\nexport class Real {\n  run() {}\n}\n"
+		set, err := ExtractSymbols("a.ts", []byte(src))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, []string{"tpl", "Real", "run"}, names(set))
+	})
+	t.Run("python", func(t *testing.T) {
+		src := "def real():\n    \"\"\"Example:\n\ndef ghost():\n    pass\n\"\"\"\n    return 1\n\nclass Kept:\n    pass\n"
+		set, err := ExtractSymbols("a.py", []byte(src))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, []string{"real", "Kept"}, names(set))
+	})
+	t.Run("java text block", func(t *testing.T) {
+		src := "class Real {\n  String s = \"\"\"\nclass Ghost {\n\"\"\";\n  void run() {}\n}\n"
+		set, err := ExtractSymbols("A.java", []byte(src))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, []string{"Real", "run"}, names(set))
+	})
+}
