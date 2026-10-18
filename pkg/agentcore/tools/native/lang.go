@@ -52,19 +52,23 @@ type Language struct {
 
 // languages is the registry, in the order the dependency roots appear in the
 // environment prompt and the prompt clauses are read: Go, Rust, Java, JS,
-// Python. That order is the historical one (the roots were detected in it
+// Python, PHP. That order is the historical one (the roots were detected in it
 // before the split, suga-xt0o), so both the read root list and the prompt stay
-// byte-identical; a new language is appended at the end.
-var languages = []Language{goLanguage, rustLanguage, javaLanguage, jsLanguage, pythonLanguage}
+// byte-identical; a new language is appended at the end and the existing ones
+// stay where they are (the prompt itself does not change: PHP declares no
+// DependencyAPI clause, so the sentence reads as before).
+var languages = []Language{goLanguage, rustLanguage, javaLanguage, jsLanguage, pythonLanguage, phpLanguage}
 
 // Languages returns the language registry in its fixed order.
 func Languages() []Language { return languages }
 
 // otherTestCommands are the test commands of tools that are no language of
-// their own here: GNU make's test target, CMake's ctest, PHPUnit, RSpec and
-// dotnet test. They are recognised exactly as before the split, kept together
-// instead of inventing a language entry for each.
-const otherTestCommands = `\b(make test|phpunit|rspec|ctest|dotnet test)\b`
+// their own here: GNU make's test target, CMake's ctest, RSpec and dotnet
+// test. They are recognised exactly as before the split, kept together instead
+// of inventing a language entry for each. PHPUnit left the list when PHP became
+// a language (lang_php.go); the aggregate pattern matches the same commands as
+// before.
+const otherTestCommands = `\b(make test|rspec|ctest|dotnet test)\b`
 
 // langEnv is what the dependency root probes read: the user home directory and
 // the Go environment (the process environment over the go env file).

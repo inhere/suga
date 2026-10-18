@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 支持 PHP：`file_symbols` 与 `file_read outline` 按声明行识别 `.php` 的 namespace、class/interface/trait/enum（含 `abstract`/`final`/`readonly` 修饰）、`function`、方法（任意可见性/修饰符组合）与类常量 `const`，结果标 approx；`file_refs` 支持 `.php`，先遮蔽 `//`、`#`（`#[Attr]` 是 attribute，不算注释）、`/* */`、单双引号字符串与 heredoc/nowdoc（含缩进结束标记），`$foo` 不会被当成 `foo`，而 `$this->foo()`、`Foo::bar()`、`new Foo` 都会命中；限定名除 `Q.name`、`Q::name` 外支持 PHP 的 `Q->name`（`$this` 可作限定符）。语言注册新增 PHP：`composer.json`/`composer.lock` 为标记文件，测试命令识别 `phpunit`、`vendor/bin/phpunit`、`pest`（识别结果与之前一致），`--filter` 视为只跑部分测试。PHP 不新增依赖 API 提示词子句：Composer 依赖在工作区的 `vendor/` 下，用 `file_symbols` 加 `no_ignore: true` 即可列出其 API。
+
 ## [0.34.0] - 2026-10-18
 
 `file_refs` 支持限定名（`Runner.Run`），少见的接收者变量直接显示该行；稳定提示词把 `file_refs` 定为“谁调用了 X”的第一步、只回答被问的范围（测试只给数量）；`file_read` 描述把多段读写为首选。

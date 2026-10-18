@@ -41,7 +41,7 @@ func (t *FileSymbolsTool) Description() string {
 	return "List the declarations of a source file, or of every source file under a directory (recursive): " +
 		"one `path:line kind name signature` line each, sorted by path and line. Use it instead of guessing " +
 		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
-		"JavaScript/TypeScript, Python and Java are recognised from their declaration lines and marked approx " +
+		"JavaScript/TypeScript, Python, Java and PHP are recognised from their declaration lines and marked approx " +
 		"(confirm a name with file_grep); universal-ctags is used first when it is installed and covers more " +
 		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
 		"Any other file type is refused with the supported list. Paths under a read-only dependency " +
@@ -77,7 +77,7 @@ func (t *FileSymbolsTool) Schema() api.ToolSchema {
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
-					"description": "Also list *_test.go, *.test.ts, test_*.py and *Test.java (default false)",
+					"description": "Also list *_test.go, *.test.ts, test_*.py, *Test.java and *Test.php (default false)",
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
@@ -287,7 +287,7 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, note+"]")
 	}
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python and Java declarations come from declaration-line "+
+		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java and PHP declarations come from declaration-line "+
 			"detection, not a parser; confirm a name with file_grep]")
 	}
 	if o.more {
@@ -396,6 +396,8 @@ var testFilePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?:\.|-)(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$`),
 	regexp.MustCompile(`^(?:test_.*|.*_test)\.pyi?$`),
 	regexp.MustCompile(`(?:Test|Tests|IT)\.java$`),
+	// PHPUnit and Pest name the test classes FooTest.php.
+	regexp.MustCompile(`Test\.php$`),
 }
 
 // isTestFileName reports whether name looks like a test file of one of the

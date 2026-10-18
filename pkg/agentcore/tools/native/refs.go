@@ -47,7 +47,7 @@ func (t *FileRefsTool) Description() string {
 		"its last segment. " +
 		"Go is parsed exactly (class def, call, sel or ref; sel/call carry the X of X.name, with pkg:X when X is an " +
 		"imported package) but without type checking, so a match may be another local, field or another package's " +
-		"symbol - the shown line decides. JavaScript/TypeScript, Python and Java match word-bounded text with " +
+		"symbol - the shown line decides. JavaScript/TypeScript, Python, Java and PHP match word-bounded text with " +
 		"comments and strings masked and are marked approx; universal-ctags offers declarations, not references, so " +
 		"it is not used here. Any other file type is refused with the supported list. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d matches.", defaultRefLimit)
@@ -76,7 +76,7 @@ func (t *FileRefsTool) Schema() api.ToolSchema {
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
-					"description": "Also search *_test.go, *.test.ts, test_*.py and *Test.java (default false)",
+					"description": "Also search *_test.go, *.test.ts, test_*.py, *Test.java and *Test.php (default false)",
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
@@ -387,7 +387,7 @@ func (o *refOut) notes(limit int) []string {
 	notes = append(notes, "[no type resolution: a match may be another object with the same name "+
 		"(a local, a field, another package's symbol); the shown line decides]")
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python and Java matches come from word-boundary "+
+		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java and PHP matches come from word-boundary "+
 			"text matching with comments and strings masked, not a parser; confirm with file_grep]")
 	}
 	if o.more {
