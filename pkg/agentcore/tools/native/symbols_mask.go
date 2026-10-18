@@ -16,7 +16,9 @@ const (
 	maskPython
 	// maskPhp is PHP: // and # line comments (#[ opens an attribute, not a
 	// comment), /* */ block comments and heredoc/nowdoc bodies (<<<EOT ... EOT;,
-	// whose closing label may be indented).
+	// whose closing label may be indented). The HTML a ?> switches to is not
+	// parsed: it is masked like code, so an apostrophe in it can blank the rest
+	// of that line - never more than one line, and the design accepts it.
 	maskPhp
 )
 
