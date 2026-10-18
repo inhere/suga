@@ -153,6 +153,34 @@ func TestLedgerSearchScopes(t *testing.T) {
 		assert.NotContains(t, hits[0].Snippet, "ignore all rules")
 		assert.NotContains(t, hits[0].Snippet, "abc123")
 	})
+	t.Run("a scope that holds no history is marked", func(t *testing.T) {
+		// A query that found nothing where history exists keeps the plain answer,
+		// including when the query was narrowed by kind or time (suag-hpu7).
+		result, err := f.ledger.Search(ctx, native.LedgerQuery{Query: "nothing-like-this"})
+		assert.NoErr(t, err)
+		assert.Eq(t, 0, len(result.Hits))
+		assert.False(t, result.HistoryEmpty)
+		result, err = f.ledger.Search(ctx, native.LedgerQuery{Query: "nothing-like-this", Kinds: []string{"handoff"}})
+		assert.NoErr(t, err)
+		assert.False(t, result.HistoryEmpty)
+
+		// A scope with nothing stored at all is marked, so the tool can say that
+		// another wording cannot help here.
+		bare := newLedgerFixture(t)
+		bare.session(t, "s_bare", repo)
+		bareCtx := withObserveScope(context.Background(), "s_bare", "turn_1")
+		result, err = bare.ledger.Search(bareCtx, native.LedgerQuery{Query: "needle"})
+		assert.NoErr(t, err)
+		assert.Eq(t, 0, len(result.Hits))
+		assert.True(t, result.HistoryEmpty, "the workspace holds no session with an entry")
+
+		// The same workspace with one stored entry is not marked.
+		bare.message(t, "s_bare", "user", "something else entirely", "")
+		result, err = bare.ledger.Search(bareCtx, native.LedgerQuery{Query: "needle"})
+		assert.NoErr(t, err)
+		assert.Eq(t, 0, len(result.Hits))
+		assert.False(t, result.HistoryEmpty)
+	})
 }
 
 func TestLedgerSearchPassesFiltersAndCursor(t *testing.T) {
@@ -249,7 +277,14 @@ func TestLedgerFetchMessages(t *testing.T) {
 		_, err := f.ledger.Fetch(ctx, "s_a/99", 0, 0)
 		assert.ErrMsg(t, err, "no message at or after s_a/99 (offset 0)")
 		_, err = f.ledger.Fetch(ctx, "s_gone/1", 0, 0)
-		assert.ErrMsg(t, err, `session "s_gone" not found (deleted or never existed)`)
+		assert.ErrMsg(t, err, `session "s_gone" not found (deleted or never existed); local history holds no such `+
+			`session: get a ref from session_search instead of guessing one`)
+	})
+	t.Run("a session with no stored history says so", func(t *testing.T) {
+		f.session(t, "s_bare", "/w")
+		_, err := f.ledger.Fetch(ctx, "s_bare/1", 0, 0)
+		assert.ErrMsg(t, err, `session "s_bare" has no stored history: there is nothing to recall - find a ref `+
+			`with session_search instead of trying other refs or offsets`)
 	})
 	t.Run("invalid refs", func(t *testing.T) {
 		for _, ref := range []string{"s_a", "s_a/0", "s_a/-1", "s_a/x", "../s_a/1", "s_a/1/2", "/s_a/1", "./1", "../1", ""} {
@@ -332,7 +367,8 @@ func TestLedgerOutputs(t *testing.T) {
 		_, err = f.ledger.Fetch(ctx, "out:s_a:0000000000000000", 0, 0)
 		assert.ErrMsg(t, err, `output out:s_a:0000000000000000 not found (session "s_a" has no saved outputs)`)
 		_, err = f.ledger.Search(ctx, native.LedgerQuery{Query: "x", Ref: "out:s_gone:0000000000000000"})
-		assert.ErrMsg(t, err, `session "s_gone" not found (deleted or never existed)`)
+		assert.ErrMsg(t, err, `session "s_gone" not found (deleted or never existed); local history holds no such `+
+			`session: get a ref from session_search instead of guessing one`)
 	})
 	t.Run("malformed and escaping refs are rejected", func(t *testing.T) {
 		hex := strings.TrimPrefix(refB, "out:s_b:")

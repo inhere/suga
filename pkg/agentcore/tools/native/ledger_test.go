@@ -17,6 +17,7 @@ type fakeLedger struct {
 	q                    LedgerQuery
 	hits                 []LedgerHit
 	nextCursor, notice   string
+	historyEmpty         bool
 	ref                  string
 	offset, limit        int
 	text                 string
@@ -26,7 +27,8 @@ type fakeLedger struct {
 
 func (f *fakeLedger) Search(_ context.Context, q LedgerQuery) (LedgerSearchResult, error) {
 	f.q, f.searched = q, f.searched+1
-	return LedgerSearchResult{Hits: f.hits, NextCursor: f.nextCursor, Notice: f.notice}, f.err
+	return LedgerSearchResult{Hits: f.hits, NextCursor: f.nextCursor, Notice: f.notice,
+		HistoryEmpty: f.historyEmpty}, f.err
 }
 
 func (f *fakeLedger) Fetch(_ context.Context, ref string, offset, limit int) (string, error) {
@@ -193,6 +195,25 @@ func TestSessionSearchTool(t *testing.T) {
 		res, err = run(f, map[string]any{"query": "nothing"})
 		assert.NoErr(t, err)
 		assert.StrContains(t, res.Content, `No message matched "nothing" in scope workspace`)
+		assert.StrContains(t, res.Content, "before trying other words")
+	})
+
+	t.Run("a scope with no history says so instead of the no-match hint", func(t *testing.T) {
+		f := &fakeLedger{historyEmpty: true}
+		res, err := run(f, map[string]any{"query": "nothing"})
+		assert.NoErr(t, err)
+		assert.StrContains(t, res.Content, "No local history in scope workspace")
+		assert.StrContains(t, res.Content, "stop searching this scope")
+		assert.NotContains(t, res.Content, "No message matched")
+		assert.NotContains(t, res.Content, "before trying other words")
+	})
+
+	t.Run("an empty line search of an output keeps its own wording", func(t *testing.T) {
+		f := &fakeLedger{historyEmpty: true}
+		res, err := run(f, map[string]any{"query": "nothing", "ref": "out:s:0123456789abcdef"})
+		assert.NoErr(t, err)
+		assert.StrContains(t, res.Content, "No line of out:s:0123456789abcdef matched")
+		assert.NotContains(t, res.Content, "No local history")
 	})
 
 	t.Run("searcher error is wrapped", func(t *testing.T) {

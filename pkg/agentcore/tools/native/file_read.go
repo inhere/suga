@@ -165,12 +165,27 @@ func (t *FileReadTool) readOne(arg string, offset, limit int) (string, error) {
 			return "", err
 		}
 		defer f.Close()
-		return readLineWindow(f, offset, limit, t.pageBytes())
+		return readLineWindow(f, offset, limit, t.pageBytes(), readHintFor(target, rel))
 	})
 	if err != nil {
 		return "", fmt.Errorf("file_read: %w", err)
 	}
 	return content, nil
+}
+
+// readHint is what a truncated read needs to point at the rest of the file: the
+// name the model used for it (the guidance spells a line span with that name)
+// and the same file as an absolute path (the extraction layer reads it again). A
+// nil hint turns the guidance off, so a window read without a file name behind
+// it answers exactly as before.
+type readHint struct {
+	name   string
+	onDisk string
+}
+
+// readHintFor names one file the way a truncated read's guidance has to name it.
+func readHintFor(target readTarget, rel string) *readHint {
+	return &readHint{name: target.show(rel), onDisk: filepath.Join(target.base, filepath.FromSlash(rel))}
 }
 
 // readItem returns what file_read answers for one path entry: the entry's own
@@ -202,7 +217,7 @@ func (t *FileReadTool) readRanges(item readItem) (string, error) {
 			return rangeWindow{}, err
 		}
 		defer f.Close()
-		return readLineRanges(f, item.ranges, t.pageBytes())
+		return readLineRanges(f, item.ranges, t.pageBytes(), readHintFor(target, rel))
 	})
 	if err != nil {
 		return "", fmt.Errorf("file_read: %w", err)
@@ -225,7 +240,7 @@ type rangeWindow struct {
 // place of a span that holds no line. Spans are read through the window reader,
 // so the numbering, the byte cap and the notices for a binary or empty file are
 // the same as a plain read's.
-func readLineRanges(f *os.File, ranges []readRange, maxBytes int) (rangeWindow, error) {
+func readLineRanges(f *os.File, ranges []readRange, maxBytes int, hint *readHint) (rangeWindow, error) {
 	var out rangeWindow
 	var blocks []string
 	size, prevEnd := 0, 0 // bytes gathered, last line of the last span that held lines
@@ -238,7 +253,7 @@ func readLineRanges(f *os.File, ranges []readRange, maxBytes int) (rangeWindow, 
 		if _, err := f.Seek(0, io.SeekStart); err != nil { // every span starts at the file's start
 			return rangeWindow{}, err
 		}
-		text, err := readLineWindowAt(f, r.start, r.end-r.start+1, maxBytes, true)
+		text, err := readLineWindowAt(f, r.start, r.end-r.start+1, maxBytes, true, hint)
 		if err != nil {
 			return rangeWindow{}, err
 		}
@@ -306,7 +321,7 @@ func (t *FileReadTool) readOutline(arg string, offset, limit int) (string, error
 			if _, err := f.Seek(0, io.SeekStart); err != nil {
 				return "", err
 			}
-			text, err := readLineWindow(f, offset, limit, t.pageBytes())
+			text, err := readLineWindow(f, offset, limit, t.pageBytes(), readHintFor(target, rel))
 			if err != nil {
 				return "", err
 			}
@@ -577,16 +592,17 @@ func readPathArgs(args map[string]any) ([]string, error) {
 
 // readLineWindow returns lines [offset, offset+limit) of f with line numbers,
 // stopping early on a line boundary when maxBytes would be exceeded. When more
-// lines follow it says which offset continues the read.
-func readLineWindow(f *os.File, offset, limit, maxBytes int) (string, error) {
-	return readLineWindowAt(f, offset, limit, maxBytes, false)
+// lines follow it says which offset continues the read, and hint (when set)
+// tells how long the file is and how to read on without paging.
+func readLineWindow(f *os.File, offset, limit, maxBytes int, hint *readHint) (string, error) {
+	return readLineWindowAt(f, offset, limit, maxBytes, false, hint)
 }
 
 // readLineWindowAt is readLineWindow with the continuation note under control:
 // span marks a window that is a line span the model asked for by its own numbers
 // (a "path:start-end" entry), where reaching the limit is the end of the span and
 // not a reason to read on. A window cut short by the byte cap still says so.
-func readLineWindowAt(f *os.File, offset, limit, maxBytes int, span bool) (string, error) {
+func readLineWindowAt(f *os.File, offset, limit, maxBytes int, span bool, hint *readHint) (string, error) {
 	info, err := f.Stat()
 	if err != nil {
 		return "", err
@@ -603,6 +619,10 @@ func readLineWindowAt(f *os.File, offset, limit, maxBytes int, span bool) (strin
 	if info.Size() == 0 {
 		return "[empty file]", nil
 	}
+	// The text budget: the page cap. The note that ends a cut window (and the
+	// guidance on the file in it, truncationDetail) is added on top of it and
+	// stays within truncationNoteBytes.
+	bodyCap := maxBytes
 
 	var sb strings.Builder
 	lineNo, shown := 0, 0
@@ -624,9 +644,9 @@ func readLineWindowAt(f *os.File, offset, limit, maxBytes int, span bool) (strin
 			break
 		}
 		entry := fmt.Sprintf("%d\t%s", lineNo, strings.TrimRight(line, "\r\n")) + "\n"
-		if sb.Len()+len(entry) > maxBytes {
+		if sb.Len()+len(entry) > bodyCap {
 			if shown == 0 { // a single huge line: return part of it
-				entry = entry[:utf8Cut(entry, maxBytes)] + "\n"
+				entry = entry[:utf8Cut(entry, bodyCap)] + "\n"
 				sb.WriteString(entry)
 				shown = 1
 			}
@@ -648,7 +668,74 @@ func readLineWindowAt(f *os.File, offset, limit, maxBytes int, span bool) (strin
 		if cutBySize {
 			reason = fmt.Sprintf("output cap %d bytes", maxBytes)
 		}
-		fmt.Fprintf(&sb, "[truncated at %s; continue with offset=%d]", reason, next)
+		// The guidance on the file sits inside the note, in front of the offset
+		// the model already continues with, so a truncated read stays one line.
+		detail := truncationDetail(f, hint)
+		if detail != "" {
+			detail = "; " + detail
+		}
+		fmt.Fprintf(&sb, "[truncated at %s%s; continue with offset=%d]", reason, detail, next)
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
+}
+
+// truncationNoteBytes is the room the note at the end of a cut window takes: the
+// continuation, the file's length, its declaration count and the two ways to read
+// on (truncationDetail). A page is therefore at most read_page_bytes plus this;
+// file_read declares itself Rereadable, so the output layer passes its pages
+// through whatever their size (see output_wrap_test.go).
+const truncationNoteBytes = 512
+
+// truncationDetail is what a truncated read tells the model about the file besides
+// the offset to continue with: how long the file is, how many declarations it has
+// when the extraction layer covers it and succeeds, and how to read on without
+// paging (research 2026-10-18-explore-efficiency section 7.4, suggestion 2 - the
+// model never used outline=true because a read before the first truncation gives
+// it no reason to). It is empty when hint is nil or the file cannot be looked at
+// again within the outline cap: counting a huge file would read it whole, so
+// paging one stays as cheap as it was.
+func truncationDetail(f *os.File, hint *readHint) string {
+	if hint == nil || hint.name == "" {
+		return ""
+	}
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxOutlineBytes {
+		return ""
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return ""
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxOutlineBytes+1))
+	if err != nil || len(data) > maxOutlineBytes {
+		return ""
+	}
+	lines := fileLineCount(newSourceLines(data))
+	switch count, hasCount := declarationCount(hint, data); {
+	// The outline is worth naming only when the file would really get one:
+	// outline=true answers a file under the outline threshold with the window
+	// and says why.
+	case hasCount && lines > outlineLines:
+		return fmt.Sprintf("the file has %d lines and %d declarations; read a span as %s:start-end or ask "+
+			"for the declaration outline with outline=true", lines, count, hint.name)
+	case hasCount:
+		return fmt.Sprintf("the file has %d lines and %d declarations; read a span as %s:start-end",
+			lines, count, hint.name)
+	default:
+		return fmt.Sprintf("the file has %d lines; read a span as %s:start-end", lines, hint.name)
+	}
+}
+
+// declarationCount counts the declarations of the file the hint names, through
+// the same extraction layer file_symbols and outline=true use. A file type no
+// extractor covers and an extraction that failed both leave ok false: the count
+// is a convenience, never an error (suag-nxwg).
+func declarationCount(hint *readHint, data []byte) (count int, ok bool) {
+	if !SupportsSymbols(hint.name) {
+		return 0, false
+	}
+	set, err := ExtractSymbolsAt(hint.name, hint.onDisk, data)
+	if err != nil {
+		return 0, false
+	}
+	return len(set.Symbols), true
 }

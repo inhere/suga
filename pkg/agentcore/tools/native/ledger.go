@@ -68,6 +68,12 @@ type LedgerSearchResult struct {
 	Hits       []LedgerHit
 	NextCursor string
 	Notice     string
+	// HistoryEmpty is set by the searcher when the query's scope holds no
+	// searchable entry at all: the search found nothing because there is nothing
+	// there, so another wording cannot match either. It is never set for a
+	// narrowed query (cursor, kind or a time bound) or for a ref search, where a
+	// scope with no hit still holds history (suag-hpu7).
+	HistoryEmpty bool
 }
 
 // LedgerSearcher reads the session ledger and externalised tool outputs. The
@@ -102,7 +108,8 @@ func (t *SessionSearchTool) Description() string {
 		"(7d/36h, date or RFC3339). When results include next_cursor, pass it back verbatim as cursor; a stale " +
 		"cursor restarts from the beginning. For Chinese, prefer terms of two or more characters. With " +
 		"ref=out:<session>:<hex> it searches saved output lines (case-insensitive); ref cannot combine with " +
-		"cursor, kind or time filters."
+		"cursor, kind or time filters. When the result says the scope holds no stored history, stop searching " +
+		"rather than trying other words."
 }
 
 // ToolMeta: read-only search; results are external content (taint).
@@ -287,7 +294,9 @@ func parseLedgerTime(raw, name string, now time.Time) (time.Time, error) {
 
 // renderLedgerHits formats hits one per line; snippets are flattened to a
 // single line so a hit can never look like several. Notices explain a stale
-// cursor or bounded snapshot without changing the otherwise valid result.
+// cursor or bounded snapshot without changing the otherwise valid result. An
+// empty result says what it means: a scope with no stored history cannot be
+// searched into a hit by another wording (suag-hpu7).
 func renderLedgerHits(q LedgerQuery, result LedgerSearchResult) string {
 	var b strings.Builder
 	if result.Notice != "" {
@@ -295,10 +304,16 @@ func renderLedgerHits(q LedgerQuery, result LedgerSearchResult) string {
 		b.WriteByte('\n')
 	}
 	if len(result.Hits) == 0 {
-		if q.Ref != "" {
+		switch {
+		case q.Ref != "":
 			fmt.Fprintf(&b, "No line of %s matched %q.", q.Ref, q.Query)
-		} else {
+		case result.HistoryEmpty:
+			fmt.Fprintf(&b, "No local history in scope %s: nothing is stored here to search, so another wording "+
+				"cannot match either - stop searching this scope (long-term memory is a different tool).", q.Scope)
+		default:
 			fmt.Fprintf(&b, "No message matched %q in scope %s.", q.Query, q.Scope)
+			b.WriteString("\n[the search is literal and every word must occur: before trying other words, " +
+				"confirm that the stored history really holds them]")
 		}
 	} else {
 		if q.Ref != "" {
@@ -342,7 +357,8 @@ func (t *RecallTool) Description() string {
 		"An output ref out:<session>:<hex> (a saved large tool output) returns numbered lines: offset is " +
 		"the 1-based start line, limit the line count (default 200, at most 2000). For a long output, first " +
 		"locate lines with session_search(query, ref) and then recall a small window around them; do not page " +
-		"through the whole output."
+		"through the whole output. Refs come from session_search, never from guessing: a ref whose session " +
+		"holds no stored history has nothing to read."
 }
 
 // ToolMeta: read-only, pages on its own, results are external content.
