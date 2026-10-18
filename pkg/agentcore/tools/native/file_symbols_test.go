@@ -153,6 +153,28 @@ func TestFileSymbolsToolDirectory(t *testing.T) {
 	})
 }
 
+// TestFileSymbolsToolReadRoot covers Q3 of the design: an absolute path under a
+// read-only root (the Go module cache, the standard library sources) is listed
+// too, and the results name the files absolutely so the model can pass them
+// straight back to another tool.
+func TestFileSymbolsToolReadRoot(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "lib.go")
+	assert.Require(t, assert.NoErr(t, os.WriteFile(path, []byte("package lib\n\nfunc Listed() {}\n"), 0o644)))
+	tool := &FileSymbolsTool{workspace: t.TempDir(), readRoots: []string{root}}
+	got := runFileSymbols(t, tool, map[string]any{"path": path})
+	assert.StrContains(t, got, path+":3 func Listed")
+
+	t.Run("a read root is walked like the workspace", func(t *testing.T) {
+		inner := filepath.Join(root, "pkg")
+		assert.Require(t, assert.NoErr(t, os.MkdirAll(inner, 0o755)))
+		assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(inner, "deep.go"),
+			[]byte("package pkg\n\nfunc DeepListing() {}\n"), 0o644)))
+		got := runFileSymbols(t, tool, map[string]any{"path": root, "name": "DeepListing"})
+		assert.StrContains(t, got, filepath.Join(inner, "deep.go")+":3 func DeepListing")
+	})
+}
+
 // TestFileSymbolsToolErrors: every way of asking for something the extractor
 // cannot answer is an error the model can act on, never an empty result.
 func TestFileSymbolsToolErrors(t *testing.T) {
