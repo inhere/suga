@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `docs/research/2026-10-18-explore-efficiency.md` §7 复测（T4 31→33.5 步未降、`file_symbols` 在追调用链任务 0/2 使用）与 issue `suga-gxkw`，设计一个独立只读工具 `file_refs`：按标识符列出引用位置（Go 用 go/parser + go/ast 分类，其他语言用词边界近似），不做类型检查、不做跨语言调用图、不引 cgo/tree-sitter/LSP。 |
 | 0.2 | 2026-10-18 | 监督（Claude） | 用户批准实施（2026-10-18“批准”）：Q1–Q6 按当前倾向；A/B 实验（docs/research/2026-10-18-explore-compare.md）支持内置 file_refs 而非常驻图工具。 |
+| 0.3 | 2026-10-18 | suga（gofer job） | `file_refs` 对非二进制、非文档文本文件退化为未遮蔽词边界匹配并标注 approx；`file_symbols` 对不支持语言改为给出可执行的 `file_grep` 下一步。 |
 
 ### 思考模式与范围冻结
 

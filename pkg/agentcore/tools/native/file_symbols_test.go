@@ -95,7 +95,7 @@ func TestFileSymbolsToolDirectory(t *testing.T) {
 		// The declarations come out by path and line, the skipped files are counted.
 		assert.True(t, strings.Index(got, "config.go:4") < strings.Index(got, "loader.py:1"), got)
 		assert.StrContains(t, got, "[skipped 1 test file(s); pass include_tests: true to include them]")
-		assert.StrContains(t, got, "[skipped 1 file(s) of a type no extractor covers")
+		assert.StrContains(t, got, "[skipped 1 file(s) with no declaration extractor")
 		assert.StrContains(t, got, "[approx:")
 	})
 
@@ -180,9 +180,11 @@ func TestFileSymbolsToolReadRoot(t *testing.T) {
 func TestFileSymbolsToolErrors(t *testing.T) {
 	_, tool := symbolsWorkspace(t)
 
-	t.Run("an unsupported file type is refused with the supported list", func(t *testing.T) {
-		err := runFileSymbolsErr(t, tool, map[string]any{"path": "internal/config/notes.md"})
-		assert.StrContains(t, err.Error(), `unsupported file type ".md"; supported: Go (.go)`)
+	t.Run("an unsupported file type gives an executable grep fallback", func(t *testing.T) {
+		err := runFileSymbolsErr(t, tool, map[string]any{"path": "internal/config/notes.md", "name": "Loader"})
+		assert.StrContains(t, err.Error(), "no declaration extractor")
+		assert.StrContains(t, err.Error(), `file_grep with pattern: "\\bLoader\\b"`)
+		assert.StrContains(t, err.Error(), "file_read outline=true is unavailable")
 	})
 
 	t.Run("a path that does not exist", func(t *testing.T) {
@@ -192,7 +194,8 @@ func TestFileSymbolsToolErrors(t *testing.T) {
 
 	t.Run("a directory of other file types", func(t *testing.T) {
 		err := runFileSymbolsErr(t, tool, map[string]any{"path": "docs"})
-		assert.StrContains(t, err.Error(), "no supported source files under docs")
+		assert.StrContains(t, err.Error(), "no declaration extractor under docs")
+		assert.StrContains(t, err.Error(), "file_grep with pattern")
 	})
 
 	t.Run("a directory of test files only", func(t *testing.T) {
