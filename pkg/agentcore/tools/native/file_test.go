@@ -39,6 +39,18 @@ func TestFileWriteEncodingAndLineEndings(t *testing.T) {
 	assert.StrContains(t, desc, "line endings")
 }
 
+// TestFileReadDescription pins the two usage hints of file_read's description:
+// paths as the first choice when several places are wanted (with a cross-file
+// example) and the concrete trigger of outline (research
+// 2026-10-18-explore-efficiency section 9.7 candidate 3: only 3 of 10 runs used
+// line-span reads and outline was used once).
+func TestFileReadDescription(t *testing.T) {
+	desc := (&FileReadTool{}).Description()
+	assert.StrContains(t, desc, "To look at several places at once, prefer paths (up to 10) over path")
+	assert.StrContains(t, desc, `paths: ["a.go:10-30", "b.go:40-60,90-110"]`)
+	assert.StrContains(t, desc, "Use outline=true only to see which declarations a source file over 300 lines holds")
+}
+
 func TestFileTools_ReturnToolResultsWithStableMetadata(t *testing.T) {
 	workspace := t.TempDir()
 	filePath := filepath.Join(workspace, "note.txt")

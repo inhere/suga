@@ -53,11 +53,12 @@ func (t *FileReadTool) Name() string { return "file_read" }
 func (t *FileReadTool) Description() string {
 	return fmt.Sprintf("Read a text file in the workspace. Lines are prefixed with their number and a tab "+
 		"(the prefix is not part of the file). Returns at most %d lines per call; for large files pass "+
-		"offset (1-based start line) and limit to read further. To read several files in one call pass "+
-		"paths (up to %d) instead of path; offset and limit then apply to each file, and an entry may ask "+
-		"for line spans of its own as path:start-end[,start-end]. outline=true answers with the declaration "+
-		"outline (line numbers and declaration lines) of a source file over %d lines instead of the text. "+
-		"Binary files are reported, not dumped.", defaultReadLines, maxReadPaths, outlineLines)
+		"offset (1-based start line) and limit to read further. To look at several places at once, prefer "+
+		"paths (up to %d) over path: offset and limit then apply to each file, and an entry may ask for "+
+		"line spans of its own as path:start-end[,start-end], e.g. paths: [\"a.go:10-30\", "+
+		"\"b.go:40-60,90-110\"]. Use outline=true only to see which declarations a source file over %d "+
+		"lines holds: it answers with the declaration outline (line numbers and declaration lines) instead "+
+		"of the text. Binary files are reported, not dumped.", defaultReadLines, maxReadPaths, outlineLines)
 }
 
 // ToolMeta marks the tool as a read-only read.
