@@ -475,3 +475,72 @@ gpt 网关恢复后用 codex（gpt-6-sol，reasoning high，有 shell）跑同�
 | T6 | 20 / 43 | 157k / 98k | 2/2 列出 5 处（含 `subagent.go:94`） |
 
 模型不同（gpt vs deepseek-v4.1-flash），不与 §10.3 直接比较步数；可以看出的是：codex 同样以“rg 搜 + 分段读”为主，T6 的方差同样大（20–43 次），T5 的 4 次调用（§10）已少于 codex 的 10–11 次。下一步用 suga 默认的 gpt 模型跑同一组任务，才能和 codex 同模型对比。
+
+## 11. GPT 复测（v0.34.0）
+
+本节是 v0.34.0 的 GPT 复测，直接复核 `tmp/gpt-remeasure/` 中已有的 trace/export；没有重跑已完成的样本。目的不是把一次超时的 job 强行补成完整样本，而是记录 GPT 在 §10 提示词调整后的实际行为，并与 §10 的 DeepSeek 复测及 §10.6 的 Codex 参照对比。
+
+### 11.1 方法、模型与有效样本
+
+| 项 | 取值 |
+|---|---|
+| suga | 本 worktree 的 v0.34.0 二进制 `tmp/gpt-remeasure/suga.exe`；trace 的 `turn_context.version` 为 `dev` |
+| 模型 | `openai-codex/gpt-6-sol` |
+| thinking | `thinking: high`（配置文件中的模型档；§10.6 Codex 参照也记录为 reasoning high） |
+| provider | `openai-responses`，`openai-codex` provider；上下文窗口 500,000 |
+| 档位 | `--read-only`，`tools.allow_write: false`，无 shell；工具数 15 |
+| 任务 | T5 `appconfig.ReadModelSettings` 调用方；T6 `personal.Runner.Run` 直接调用方；提问与 explore-compare §1.3 相同 |
+| 指标 | model 事件数=步数；tool 事件数=工具调用；输入 token 另列 cache read；墙钟取完整 turn 的 `duration_ms`；工具参数由 `suga export` 交叉核对 |
+
+T5 的三个会话（`gpt-t5-1`、`gpt-t5-2`、`gpt-t5-3`）都有 completed turn，因此 T5 有 3 个有效样本。T6 中只有 `gpt-t6-1b` 和 `gpt-t6-3` 有完整的最终回答，故 T6 **只有 2 个有效样本，不能伪造三次均值**：
+
+- `gpt-t6-2` 做了 7 个 model、10 个 tool 事件后停在工具调用上，没有 final turn/最终答案；其中有 4 次 `file_read` 参数错误。因此不计入 T6 正确率或均值。
+- `gpt-t6-2b` 是为补足 T6 有效样本而尝试的重跑。第一次请求被记录为 provider `401`（`deepseek` 报 “Authentication Fails”）；同一会话的第二次请求进入 `openai-codex`，但仍没有完整 final turn，故两次都不计入。也就是说，b 版本**没有取任何一次**作为有效样本。
+- 由于 T6 仍少于 3 个有效样本，又尝试了 `gpt-t6-4`；它在 2 个 model、5 个 tool 事件后长时间没有结束，未产生 final turn，也不计入。该尝试不是对已完成样本的重复测量，而是对“有效运行不足 3 次”的补足尝试；没有把它的部分指标混入结果。
+
+### 11.2 GPT 原始指标与行为明细
+
+| 运行 | 步数 | 工具调用 | 输入 / cache read / 输出 token | 墙钟 | `file_refs` 首次步 | 限定名 | `file_refs` 后 grep / read | `paths` 多段读 | 工具错误 | 答案 |
+|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---|
+| T5-1 | 3 | 5 | 25,565 / 6,144 / 616 | 16.0s | 1 | 是 | 0 / 4 | 0 | 0 | ✘ 漏 2 个生产调用方 |
+| T5-2 | 6 | 10 | 68,074 / 12,928 / 1,057 | 45.1s | 1 | 否（`path=.`） | 0 / 7 | 1 | 2 | ✘ 漏 2 个生产调用方 |
+| T5-3 | 4 | 9 | 37,110 / 25,088 / 1,247 | 29.9s | 1 | 是 | 0 / 2 | 1 | 1 | ✘ 漏 2 个生产调用方 |
+| T6-1b | 14 | 21 | 313,409 / 184,320 / 4,396 | 155.4s | 1 | 2 次限定名查询 | 4 / 8 | 1 | 3 | ✔ 5 处 |
+| T6-3 | 15 | 24 | 370,834 / 199,040 / 5,962 | 187.7s | 1 | 1 次限定名查询 | 1 / 10 | 3 | 1 | ✔ 5 处 |
+
+T5 有效样本均值为 **4.3 步、8.0 次工具调用、43.6k 输入 token（14.7k cache read）、30.3s**；T5 的工具分布分别为 `file_refs×1/file_read×4`、`file_refs×1/file_read×7/file_symbols×2`、`file_refs×1/file_read×2/file_symbols×6`。T6 的两个有效样本均值为 **14.5 步、22.5 次工具调用、342.1k 输入 token（191.7k cache read）、171.5s**；工具分布分别为 `file_refs×4/file_read×8/file_symbols×1/file_grep×4/recall×4` 与 `file_refs×4/file_read×10/file_symbols×3/session_search×4/recall×2/file_grep×1`。
+
+`file_read` 的多段 `paths` 在 T5 的 2/3 个运行中出现，在 T6 有效运行中也出现（分别 1 次和 3 次）；`outline` 在 5 个有效运行中为 0 次。T5 的 3 次运行一共出现 3 个 `file_read` 错误，T6 的两个有效运行一共出现 4 个工具错误（3 个 `file_read`、1 个 `session_search`）。这些失败调用没有从“工具调用”分母中删除。
+
+### 11.3 正确性与回答范围
+
+标准答案要求 T5 列出 **5 个生产调用点**：`internal/cli/models.go:27`、`internal/wiring/manifest.go:480`、`internal/wiring/runtime.go:760`、`internal/config/settings_registry.go:523`、`:649`。GPT 的三个 T5 回答都只列出了前三处，并把 5 个测试调用点列出来或逐一说明，漏掉 `settings_registry.go` 的两个生产调用点；因此 T5 正确率为 **0/3**，不能沿用 DeepSeek §10 的 3/3 结论。它虽然找到了测试调用数量/清单，但这不能抵消生产调用方漏报。
+
+T6 的两个有效回答都列出 5 个生产调用方，包括 `internal/personal/subagent.go:94` 的 `child.Run`，并排除了 `internal/chat/local_cmd.go:94` 的同名 `local.Run`；因此 T6 在有效样本上的正确率为 **2/2**。两个回答都没有把测试调用点逐项列出，而是给了测试范围的概括，符合“只列生产代码、测试只给数量”的期望；T5 则仍然展开了测试调用，且漏报生产调用点。
+
+### 11.4 与 §10 DeepSeek 及 §10.6 Codex 对比
+
+| 任务 | GPT（本节，有效样本） | §10 DeepSeek | §10.6 Codex 参照 |
+|---|---|---|---|
+| T5 步数 / 工具调用 | 4.3 / 8.0 | 4.0 / 4.0 | 只记录命令数：11、10 |
+| T5 输入 token / 墙钟 | 43.6k（cache 14.7k）/ 30.3s | 37.4k / 15.8s | 总 token：90k、70k；口径不同 |
+| T5 正确率 | **0/3** | **3/3** | 2/2 列出生产调用点 |
+| T6 步数 / 工具调用 | 14.5 / 22.5（仅 2 次） | 14.7 / 26.7 | 只记录命令数：20、43 |
+| T6 输入 token / 墙钟 | 342.1k（cache 191.7k）/ 171.5s | 362.2k / 95.5s | 总 token：157k、98k；口径不同 |
+| T6 正确率 | **2/2**（有效样本） | **3/3** | 2/2 列出 5 处 |
+
+不能把 GPT 的输入 token 直接与 Codex 的“总 token”比较：Codex 统计包含缓存且来源于 gofer，GPT 这里是 suga trace 的 `input_tokens`，另外列 cache read。Codex 有 shell，GPT 是只读档且没有 shell；Codex 的命令数也不是 suga 的 tool call 的严格同义物。可比的结论只取行为方向：GPT 与 DeepSeek 一样会在这组调用方问题的第 1 步使用 `file_refs`，也会用 `paths` 合并读取；但 GPT 的 T5 没有按提示只保留生产代码，且没有发现同包未限定的两个调用点。
+
+与 §10 相同的地方：`file_refs` 对 T6 的直接调用方检索确实能拿到 5 个生产调用方；GPT 的两个有效 T6 运行都在第 1 步调用了它，说明“先用引用检索”的系统提示对 GPT 也生效。与 §10 不同的地方：GPT 的 T5 三次都漏报 `settings_registry.go` 两处生产调用，T5 工具调用和墙钟也分别约为 DeepSeek 的 2 倍；GPT 的 T6 步数与 DeepSeek 接近，但墙钟约高 80%，且仍有工具参数错误。GPT 没有把 `outline` 用起来（5/5），这一点与 §10 的 0/6 一致。
+
+Codex 参照显示，GPT 的 T5 工具调用（5、10、9）与 Codex 命令数（11、10）大致同量级，T5-1 的 5 次甚至更少；T6 GPT 有效样本为 21、24 次调用，与 Codex 的 20、43 次命令处于同一数量级，但 GPT 的墙钟很高。由于模型接入、shell 能力和 token 统计都不同，这些只能作为量级参照，不能宣称 GPT 优于 Codex。
+
+### 11.5 结论、负面结果与超时记录
+
+1. **提示词的“第一步用 `file_refs`”对 GPT 也部分生效。** 5 个有效运行均在第 1 步调用了 `file_refs`；T6 的两个有效运行都直接找到 5 个生产调用方。
+2. **正确性没有整体复现 DeepSeek 的结果。** T5 为 0/3，原因是稳定的同包未限定调用点漏报；T6 为 2/2，但样本数不足 3，不能写成完整三次复测。
+3. **GPT 没有稳定遵守“只列生产代码”。** T5 三次都展开了测试调用或测试清单，同时漏掉生产调用；T6 两次只给生产调用的结果较好。这说明“回答范围”提示的效果依赖任务和模型，不应只看工具是否被使用。
+4. **失败调用和时延是明确的负面结果。** 5 个有效运行共 7 次工具错误；T5 平均墙钟 30.3s，T6 有效样本平均 171.5s。GPT T6 的步数并不比 DeepSeek §10 高，但单次墙钟明显更长，不能仅用“步数相近”判断效率相同。
+5. **上次 job 超时及重跑处理：** 原始 job 没有给 T6 留下三次完整有效运行。`t6-2` 停在工具调用，`t6-2b` 的第一次请求是 401、第二次没有 final；在确认有效样本不足后又尝试 `t6-4`，仍因请求长时间不结束而停止。报告只使用 `t5-1/2/3`、`t6-1b`、`t6-3` 的 completed turn；没有把 b 版本或 t6-4 的部分 trace 当成有效成绩，也没有隐藏这些失败。
+
+因此，本节支持的结论是：**v0.34.0 的 suga 提示词和 `file_refs` 工具对 GPT 的“尽早检索调用方”行为有效，但 GPT 的 T5 正确性和工具可靠性明显不如 §10 的 DeepSeek；T6 只能作两次有效样本的方向性对比，不能宣称完成了三次 GPT 复测。**
