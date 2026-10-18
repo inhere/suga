@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 网络与接入设计
 
-> 状态：Draft 0.2 / 待用户审批
+> 状态：Draft 0.3 / 已批准实施
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `suga-gtr6`、`suga-8pvi`、`suga-48zd` 核对 v0.31.0 代码，设计全局代理、模型能力声明与 MCP Streamable HTTP 接入；三件事保持独立，待用户审批。 |
 | 0.2 | 2026-10-18 | 监督（Claude） | 审核简化 8pvi：不新增嵌套 capabilities，只在现有 providers.*（及 models.*）层补 thinking_style 与 stream_required（见“0.2 审核修订”）；Q1–Q5 按建议。 |
+| 0.3 | 2026-10-18 | 监督（Claude） | 用户批准实施（2026-10-18“批准第十五批两份设计”），按 0.2 审核修订执行。 |
 
 ### 思考模式与范围冻结
 

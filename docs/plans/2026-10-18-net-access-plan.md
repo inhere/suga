@@ -1,13 +1,14 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # 网络与接入实施计划
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.3 / 已批准实施
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `docs/design/2026-10-18-net-access-design.md` Draft 0.1 与 `suga-gtr6`、`suga-8pvi`、`suga-48zd`，拆成代理、模型能力、MCP HTTP 三组独立实施任务和外部验证 Gate；待用户审批。 |
+| 0.3 | 2026-10-18 | 监督（Claude） | 用户批准实施（2026-10-18“批准第十五批两份设计”），按 0.2 审核修订执行。 |
 
 ## 目标与完成定义
 
