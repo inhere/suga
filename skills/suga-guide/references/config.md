@@ -233,6 +233,10 @@ suga config path             # home/config/.env/source
 
 - `get` 遵守默认值、配置文件和环境变量的现有优先级；`SUGA_MODEL` 覆盖 `model` 时会显示 `env:SUGA_MODEL` 来源。
 - `set`/`unset` 只接受 registry 中的可写键，使用现有 typed reader 做类型与语义校验；拒绝 `api_key`、token、password、secret 等密钥键写入 YAML。请改 `.env`，不要把密钥放命令行或配置文件。
+- 字符串列表键（如 `tools.auto_allow`、`fallback_models`、`tools.read_roots`）的值有两种写法，写进文件的结果相同（块式 YAML 列表）：
+  - 逗号分隔：`suga config set tools.auto_allow 'a/b, c/*'`（每项两边空格会被去掉，空项报错）；
+  - YAML 行内列表：`suga config set tools.auto_allow '["a/b", "c/*"]'`，适合直接从 `config.yaml` 复制列表；每项必须是字符串（`[1]`、`[[a/b]]`、`[""]` 都报错），带空格的项要加引号。
+  值以 `[` 开头时按 YAML 列表解析，解析失败或含非字符串项会报错退出 2，不写文件。
 - YAML AST 写回只改目标节点，保留注释、键顺序、行内注释和原有换行；每次 `set`/`unset` 只保留最近的 `<config>.bak`，失败时原文件保持不变。
 - `SUGA_CONFIG` 存在时 `get`/`set`/`unset`/`list` 使用显式文件；`path` 总是显示 home、实际 config、`.env` 与 `source`。配置输入/类型/策略错误退出 2，读取或写盘错误退出 1。
 

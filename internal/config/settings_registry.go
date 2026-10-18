@@ -346,6 +346,12 @@ func parseConfigValue(descriptor ConfigKey, raw, key string) (any, error) {
 		if key == "tools.interpreters" && (strings.EqualFold(raw, "off") || strings.EqualFold(raw, "false")) {
 			return false, nil
 		}
+		// The value may also be written as a YAML flow list, the way it appears
+		// in config.yaml. A value that starts with "[" is parsed as that list and
+		// must be a valid list of strings; anything else stays comma separated.
+		if strings.HasPrefix(raw, "[") {
+			return parseYAMLStringList(raw)
+		}
 		if raw == "" {
 			return []string{}, nil
 		}
