@@ -601,3 +601,52 @@ func TestFTSHandoffMigrationStaysFastOnALargeLedger(t *testing.T) {
 	assert.True(t, time.Since(start) < 5*time.Second, "backfill took "+time.Since(start).String())
 	assert.Eq(t, []string{"big/20001"}, hitKeys(search(t, s, EntrySearch{Query: "大库回填"})))
 }
+
+// TestFTSHasSearchableEntries covers the scope check a search that matched nothing
+// asks: it tells "this scope holds no history at all" (where another wording cannot
+// help) from "the words did not match" (suag-hpu7).
+func TestFTSHasSearchableEntries(t *testing.T) {
+	ctx := context.Background()
+	has := func(t *testing.T, s *Store, q EntrySearch) bool {
+		t.Helper()
+		ok, err := s.HasSearchableEntries(ctx, q)
+		assert.Require(t, assert.NoErr(t, err))
+		return ok
+	}
+	empty := openTemp(t)
+	assert.False(t, has(t, empty, EntrySearch{}), "a store with no session has no history")
+
+	s := openTemp(t)
+	// Platform-built paths: workspaceScopeCondition cleans what the caller passes,
+	// so a literal "/work/proj" would not match a stored cwd on Windows.
+	proj := filepath.Join(string(filepath.Separator), "work", "proj")
+	other := filepath.Join(string(filepath.Separator), "work", "other")
+	createSession(t, s, "a", proj)
+	createSession(t, s, "b", other)
+	createSession(t, s, "c", proj) // no entry of its own
+	appendAll(t, s, "a", user(t, "the needle phrase"))
+	appendAll(t, s, "c", NewEntry{Type: EntryPlan, JSON: json.RawMessage(`{"Items":[]}`)})
+
+	t.Run("a session with an entry has history", func(t *testing.T) {
+		assert.True(t, has(t, s, EntrySearch{}))
+		assert.True(t, has(t, s, EntrySearch{SessionIDs: []string{"a"}}))
+	})
+	t.Run("structured state is not searchable history", func(t *testing.T) {
+		assert.False(t, has(t, s, EntrySearch{CurrentSessionID: "c"}))
+	})
+	t.Run("the workspace scope counts a sibling session", func(t *testing.T) {
+		assert.True(t, has(t, s, EntrySearch{CurrentSessionID: "c", WorkspaceDir: proj}))
+		assert.False(t, has(t, s, EntrySearch{CurrentSessionID: "c", WorkspaceDir: filepath.Join(string(filepath.Separator), "work", "elsewhere")}))
+	})
+	t.Run("agent sessions are left out unless asked for", func(t *testing.T) {
+		createSession(t, s, "sub", other)
+		assert.Require(t, assert.NoErr(t, s.PatchSessionMeta(ctx, "sub", map[string]any{MetaKind: KindAgent, MetaParentSession: "b"})))
+		appendAll(t, s, "sub", user(t, "only the sub-agent wrote this"))
+		assert.False(t, has(t, s, EntrySearch{SessionIDs: []string{"sub"}}))
+		assert.True(t, has(t, s, EntrySearch{SessionIDs: []string{"sub"}, IncludeAgents: true}))
+	})
+	t.Run("kinds narrow the check", func(t *testing.T) {
+		assert.True(t, has(t, s, EntrySearch{Kinds: []string{EntryUser}}))
+		assert.False(t, has(t, s, EntrySearch{Kinds: []string{EntryHandoff}}))
+	})
+}

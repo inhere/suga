@@ -133,7 +133,21 @@ func (l *Ledger) Search(ctx context.Context, q native.LedgerQuery) (native.Ledge
 			Ref: messageRef(h.SessionID, h.Seq), Role: h.Role, Snippet: redact.Clean(h.Snippet),
 		})
 	}
-	return native.LedgerSearchResult{Hits: out, NextCursor: result.NextCursor, Notice: result.Notice}, nil
+	empty := false
+	// A plain query (no cursor, kind or time bound) that matched nothing is
+	// checked once for history at all: the result then says that another wording
+	// cannot help here instead of leaving the model to try one after another
+	// (suag-hpu7). A narrowed query keeps the plain no-match line - its scope may
+	// well hold history outside the narrowing.
+	if len(out) == 0 && q.Cursor == "" && len(q.Kinds) == 0 && q.Since.IsZero() && q.Until.IsZero() {
+		history, err := repo.HasSearchableEntries(ctx, search)
+		if err != nil {
+			return native.LedgerSearchResult{}, err
+		}
+		empty = !history
+	}
+	return native.LedgerSearchResult{Hits: out, NextCursor: result.NextCursor, Notice: result.Notice,
+		HistoryEmpty: empty}, nil
 }
 
 func scopeName(scope string) string {
@@ -214,7 +228,9 @@ func parseMessageRef(ref string) (string, int64, error) {
 	return m[1], seq, nil
 }
 
-// requireSession turns a missing session into a clear error.
+// requireSession turns a missing session into a clear error: a ref that names no
+// stored session has nothing to recall, so guessing another one is a dead end
+// (refs come from session_search).
 func (l *Ledger) requireSession(ctx context.Context, sessionID string) error {
 	repo, err := l.store()
 	if err != nil {
@@ -222,7 +238,8 @@ func (l *Ledger) requireSession(ctx context.Context, sessionID string) error {
 	}
 	if _, err := repo.GetSession(ctx, sessionID); err != nil {
 		if errors.Is(err, store.ErrSessionNotFound) {
-			return fmt.Errorf("session %q not found (deleted or never existed)", sessionID)
+			return fmt.Errorf("session %q not found (deleted or never existed); local history holds no such "+
+				"session: get a ref from session_search instead of guessing one", sessionID)
 		}
 		return err
 	}
@@ -249,6 +266,18 @@ func (l *Ledger) readMessages(ctx context.Context, sessionID string, seq int64, 
 		return "", err
 	}
 	if len(entries) <= offset {
+		// A session with no searchable entry at all is not "read further": it has
+		// no history, so the model is told to stop instead of paging through refs
+		// (suag-hpu7). An offset past the end of a session that does hold history
+		// keeps the plain message.
+		history, err := repo.HasSearchableEntries(ctx, store.EntrySearch{SessionIDs: []string{sessionID}, IncludeAgents: true})
+		if err != nil {
+			return "", err
+		}
+		if !history {
+			return "", fmt.Errorf("session %q has no stored history: there is nothing to recall - find a ref "+
+				"with session_search instead of trying other refs or offsets", sessionID)
+		}
 		return "", fmt.Errorf("no message at or after %s (offset %d)", messageRef(sessionID, seq), offset)
 	}
 	entries = entries[offset:]

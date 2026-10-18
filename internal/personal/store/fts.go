@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -258,6 +259,61 @@ func (s *Store) searchEntries(ctx context.Context, q EntrySearch, requestedLimit
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// HasSearchableEntries reports whether the scope of q holds any searchable entry
+// at all (an indexed type with text): when it does not, no wording can match
+// anything here, and the caller says so instead of letting the model try one
+// query after another (suag-hpu7). Query, Limit, Cursor, Since and Until are
+// ignored; SessionIDs, WorkspaceDir, CurrentSessionID, FoldCase, Kinds and
+// IncludeAgents pick the scope exactly as SearchEntriesPage does. The retrieval
+// tools' own transcripts count as entries here (only excluding them from a match
+// is cheap to skip), so a ledger holding nothing else reports true.
+func (s *Store) HasSearchableEntries(ctx context.Context, q EntrySearch) (bool, error) {
+	if err := validateSearchKinds(q.Kinds); err != nil {
+		return false, err
+	}
+	var (
+		where string
+		args  []any
+	)
+	if len(q.SessionIDs) > 0 {
+		where = joinWhere(where, `f.session_id IN (`+placeholders(len(q.SessionIDs))+`)`)
+		for _, id := range q.SessionIDs {
+			args = append(args, id)
+		}
+	}
+	if !q.IncludeAgents {
+		where = joinWhere(where, notAgentSession("ss.meta_json"))
+	}
+	if q.CurrentSessionID != "" || q.WorkspaceDir != "" {
+		condition, scopeArgs := workspaceScopeCondition(q)
+		where = joinWhere(where, condition)
+		args = append(args, scopeArgs...)
+	}
+	if len(q.Kinds) > 0 {
+		where = joinWhere(where, `f.role IN (`+placeholders(len(q.Kinds))+`)`)
+		for _, kind := range q.Kinds {
+			args = append(args, kind)
+		}
+	}
+	if where == "" {
+		where = "1"
+	}
+	// The tuning limits and the retrieval-tool exclusion of searchEntries are left
+	// out on purpose: this asks whether the scope holds anything to search, and
+	// the two extra predicates would make an empty scope scan the whole table.
+	sqlText := `SELECT 1 FROM (` + ftsSourceSelect("") + `) AS f
+		JOIN sessions AS ss ON ss.id = f.session_id
+		WHERE ` + where + ` LIMIT 1`
+	var one int
+	switch err := s.db.QueryRowContext(ctx, sqlText, args...).Scan(&one); {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("check searchable entries: %w", err)
+	}
+	return true, nil
 }
 
 // workspaceScopeCondition builds the SQL scope without materializing session
