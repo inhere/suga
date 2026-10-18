@@ -161,8 +161,9 @@ func TestFileRefsToolQualified(t *testing.T) {
 		assert.StrContains(t, got, "internal/config/config.go:6 def ReadOnly bool")
 		// The receiver variable is not named after the type, so it is not a kept
 		// use - but o is used once, so its line is shown as a maybe.
-		assert.StrContains(t, got, "[maybe also Options: uses through variables whose type the filter cannot tell "+
-			"(names used at most 2 times) - check each line]\ninternal/config/config.go:10 sel(o) if o.ReadOnly {")
+		assert.StrContains(t, got, "[maybe also Options: unqualified uses (a call inside the defining package needs no "+
+			"qualifier) and uses through variables whose type the filter cannot tell (names used at most 2 times) - "+
+			"check each line]\ninternal/config/config.go:10 sel(o) if o.ReadOnly {")
 		assert.NotContains(t, got, "loader.")
 		assert.StrContains(t, got, `[qualified by "Options": kept the definitions of type/package Options and the `+
 			`sel/call uses whose qualifier text is Options or ends with Options (case-insensitive); dropped 3 use(s) of `+

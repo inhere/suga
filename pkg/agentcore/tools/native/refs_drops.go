@@ -26,6 +26,11 @@ const (
 type refDrops struct {
 	counts map[string]int
 	vars   []Ref
+	// bare are the dropped Go uses without a qualifier. Inside the package
+	// that defines the name a call needs none, so with Q a package alias
+	// (appconfig.ReadModelSettings) the package's own ReadModelSettings("")
+	// calls land here and must stay visible.
+	bare []Ref
 }
 
 func newRefDrops() *refDrops { return &refDrops{counts: map[string]int{}} }
@@ -43,7 +48,13 @@ func dropKey(ref Ref) string {
 func (d *refDrops) add(ref Ref) {
 	key := dropKey(ref)
 	d.counts[key]++
-	if key != "" && !ref.Pkg {
+	switch {
+	case key == "":
+		// A definition of another object with the name is not a use.
+		if ref.Class != RefDef {
+			d.bare = append(d.bare, ref)
+		}
+	case !ref.Pkg:
 		d.vars = append(d.vars, ref)
 	}
 }
@@ -60,6 +71,7 @@ func (d *refDrops) merge(other *refDrops) {
 		d.counts[k] += n
 	}
 	d.vars = append(d.vars, other.vars...)
+	d.bare = append(d.bare, other.bare...)
 }
 
 // total is how many occurrences were dropped.
@@ -74,16 +86,18 @@ func (d *refDrops) total() int {
 	return n
 }
 
-// rare returns the dropped occurrences whose variable qualifier occurs at
-// most rareDropUses times in the search, in path and line order and capped,
-// plus how many such lines were left out by the cap. The model reads result
-// lines, not trailing notes: a *Runner held in a variable called child has to
-// appear as a line to be noticed.
+// rare returns the dropped occurrences worth a line of their own, in path and
+// line order and capped, plus how many were left out by the cap: the Go uses
+// without a qualifier (a call inside the defining package needs none) and the
+// uses through a variable qualifier that occurs at most rareDropUses times in
+// the search. The model reads result lines, not trailing notes: a *Runner held
+// in a variable called child, or config's own ReadModelSettings("") under
+// name appconfig.ReadModelSettings, has to appear as a line to be noticed.
 func (d *refDrops) rare() ([]Ref, int) {
 	if d == nil {
 		return nil, 0
 	}
-	var out []Ref
+	out := append([]Ref(nil), d.bare...)
 	for _, r := range d.vars {
 		if d.counts[dropKey(r)] <= rareDropUses {
 			out = append(out, r)

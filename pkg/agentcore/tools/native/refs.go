@@ -310,8 +310,9 @@ func (o *refOut) render(name, pathArg string, limit int) string {
 		// Rare variable qualifiers are shown as lines of their own group: the
 		// filter cannot tell their type, and one of them may hold a o.qual.
 		if rare, more := o.dropped.rare(); len(rare) > 0 {
-			lines = append(lines, fmt.Sprintf("[maybe also %s: uses through variables whose type the filter cannot "+
-				"tell (names used at most %d times) - check each line]", o.qual, rareDropUses))
+			lines = append(lines, fmt.Sprintf("[maybe also %s: unqualified uses (a call inside the defining package "+
+				"needs no qualifier) and uses through variables whose type the filter cannot tell (names used at "+
+				"most %d times) - check each line]", o.qual, rareDropUses))
 			for _, r := range rare {
 				lines = append(lines, fmt.Sprintf("%s:%d %s %s", r.File, r.Line, refClass(r), r.Text))
 			}
