@@ -42,7 +42,7 @@ func TestLanguagesRegistry(t *testing.T) {
 			clauses = append(clauses, lang.Name)
 		}
 	}
-	assert.Eq(t, []string{"Go", "Rust", "Java", "JavaScript/TypeScript", "Python"}, names)
+	assert.Eq(t, []string{"Go", "Rust", "Java", "JavaScript/TypeScript", "Python", "PHP"}, names)
 	// These two are the languages the prompt's dependency-API line names.
 	assert.Eq(t, []string{"Go", "Java"}, clauses)
 }
@@ -61,9 +61,10 @@ func TestRegistryDependencyRoots(t *testing.T) {
 		assert.Require(t, assert.True(t, ok, "registered: "+name))
 		assert.NotNil(t, lang.dependencyRoots, name)
 	}
-	// JS and Python have no cache outside the workspace: their packages live in
-	// node_modules and site-packages, which the file tools read where they are.
-	for _, name := range []string{"JavaScript/TypeScript", "Python"} {
+	// JS, Python and PHP have no cache outside the workspace: their packages live
+	// in node_modules, site-packages and vendor/, which the file tools read where
+	// they are.
+	for _, name := range []string{"JavaScript/TypeScript", "Python", "PHP"} {
 		assert.Nil(t, byName[name].dependencyRoots, name)
 	}
 
@@ -92,7 +93,9 @@ func TestRegistryDependencyRoots(t *testing.T) {
 // TestLanguageTestCommandPattern locks the commands the trace analysis counts as
 // test runs: the Go, Rust, JS and Python commands of before the split plus the
 // Java and Gradle ones suga-iizi added (the wrappers ./mvnw, mvnw.cmd, gradlew,
-// gradlew.bat, a subproject task ./gradlew :app:test and mvn verify).
+// gradlew.bat, a subproject task ./gradlew :app:test and mvn verify) and the
+// PHPUnit/Pest ones PHP moved out of otherTestCommands (phpunit alone is
+// recognised as before).
 func TestLanguageTestCommandPattern(t *testing.T) {
 	pattern := TestCommandPattern()
 	matching := []string{
@@ -127,6 +130,11 @@ func TestLanguageTestCommandPattern(t *testing.T) {
 		"./gradlew test --tests 'com.example.*'",
 		"make test",
 		"phpunit",
+		"phpunit --filter testAdd",
+		"./vendor/bin/phpunit",
+		"vendor/bin/phpunit --filter testAdd tests/",
+		"pest",
+		"./vendor/bin/pest --filter testAdd",
 		"rspec spec",
 		"ctest --output-on-failure",
 		"dotnet test",
@@ -156,6 +164,7 @@ func TestLanguageTestCommandPattern(t *testing.T) {
 		"./gradlew clean build",
 		"dotnet build",
 		"make build",
+		"composer install",
 	}
 	for _, command := range notMatching {
 		t.Run("no match "+command, func(t *testing.T) {
@@ -166,9 +175,9 @@ func TestLanguageTestCommandPattern(t *testing.T) {
 
 // TestLanguageFocusedTestPattern locks the focused-run flags: -run (Go), -k
 // (pytest), --test (cargo) and -t (jest/vitest) of before the split plus -Dtest
-// (Maven) and --tests (Gradle), which suga-iizi added. Such a run checks one
-// test or one class, so it is no proof that the suite passes and the analysis
-// must recognise it.
+// (Maven), --tests (Gradle) and --filter (PHPUnit/Pest), the last one with the
+// PHP entry. Such a run checks one test or one class, so it is no proof that
+// the suite passes and the analysis must recognise it.
 func TestLanguageFocusedTestPattern(t *testing.T) {
 	pattern := FocusedTestPattern()
 	focused := []string{
@@ -184,6 +193,9 @@ func TestLanguageFocusedTestPattern(t *testing.T) {
 		"./mvnw -Dtest='AppTest*' verify",
 		"./gradlew test --tests 'com.example.*'",
 		"./gradlew :app:test --tests=com.example.AppTest",
+		"vendor/bin/phpunit --filter testAdd",
+		"phpunit --filter=testAdd",
+		"./vendor/bin/pest --filter 'it adds two'",
 	}
 	for _, command := range focused {
 		t.Run("focused "+command, func(t *testing.T) {
@@ -204,6 +216,9 @@ func TestLanguageFocusedTestPattern(t *testing.T) {
 		"./gradlew :app:test",
 		"mvn -o -DskipTests verify",
 		"npm test -- --coverage",
+		"vendor/bin/phpunit",
+		"vendor/bin/phpunit tests/",
+		"pest",
 	}
 	for _, command := range whole {
 		t.Run("whole suite "+command, func(t *testing.T) {
