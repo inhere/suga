@@ -11,6 +11,7 @@
 ### 变更
 
 - `file_refs` 遇到非二进制、非文档且没有声明提取器的文本文件时，按词边界文本匹配退化并标注 approx；`.md`、`.txt`、`.rst` 仍不搜索。`file_symbols` 对不支持语言改为提示可直接使用的 `file_grep` 模式与 `file_read outline` 不可用。
+- 退化匹配的结果按文本粗分类：声明关键字（`fn`、`struct`、`def`、`class`、`macro`、`component` 等）后的名字记为 `def`，名字后跟 `(` 记为 `call`；没有提取器的文件位于 `tests/`、`test/`、`__tests__/`、`spec/` 目录下时按测试文件跳过（`include_tests` 可打开）。限定名查询不再丢掉定义包内不带限定的调用（`appconfig.ReadModelSettings` 会列出 `config` 包内的 `ReadModelSettings("")`）。
 
 ## [0.34.0] - 2026-10-18
 

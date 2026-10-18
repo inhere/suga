@@ -265,7 +265,7 @@ func TestFileRefsBareFallback(t *testing.T) {
 
 	t.Run("Rust, Tera html and toml use ref fallback", func(t *testing.T) {
 		got := runFileRefs(t, tool, map[string]any{"name": "target_attribute", "path": "."})
-		assert.StrContains(t, got, "templates/page.html:1 ref")
+		assert.StrContains(t, got, "templates/page.html:1 def")
 		assert.StrContains(t, got, "config.toml:2 ref")
 		assert.StrContains(t, got, "[approx: other text files have no parser")
 		assert.StrContains(t, got, "[skipped 1 documentation file(s)")
@@ -275,9 +275,9 @@ func TestFileRefsBareFallback(t *testing.T) {
 
 	t.Run("qualified fallback accepts Rust separators", func(t *testing.T) {
 		got := runFileRefs(t, tool, map[string]any{"name": "Config.load", "path": "src/lib.rs"})
-		assert.StrContains(t, got, "src/lib.rs:2 ref")
+		assert.StrContains(t, got, "src/lib.rs:2 call")
 		got = runFileRefs(t, tool, map[string]any{"name": "Config::load", "path": "src/lib.rs"})
-		assert.StrContains(t, got, "src/lib.rs:2 ref")
+		assert.StrContains(t, got, "src/lib.rs:2 call")
 		got = runFileRefs(t, tool, map[string]any{"name": "OtherConfig.load", "path": "src/lib.rs"})
 		assert.StrContains(t, got, `no references to "OtherConfig.load"`)
 	})
@@ -285,7 +285,7 @@ func TestFileRefsBareFallback(t *testing.T) {
 	t.Run("mixed directory keeps supported and fallback files", func(t *testing.T) {
 		got := runFileRefs(t, tool, map[string]any{"name": "target_attribute", "path": "."})
 		assert.StrContains(t, got, "mixed.go:3 def")
-		assert.StrContains(t, got, "templates/page.html:1 ref")
+		assert.StrContains(t, got, "templates/page.html:1 def")
 	})
 } // which is how a dependency's sources are reachable.
 func TestFileRefsToolReadRoot(t *testing.T) {

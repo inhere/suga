@@ -199,7 +199,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
-		if !includeTests && isTestFileName(d.Name()) {
+		if !includeTests && (isTestFileName(d.Name()) || (!SupportsSymbols(d.Name()) && inTestDir(rel))) {
 			out.tests++
 			return nil
 		}
@@ -272,9 +272,43 @@ func scanBareLineRefs(file string, src []byte, name, qual string, re *regexp.Reg
 			dropped.addText()
 			continue
 		}
-		refs = append(refs, Ref{File: file, Line: i + 1, Class: RefRef, Text: refLineText(line)})
+		refs = append(refs, Ref{File: file, Line: i + 1, Class: bareRefClass(line, name), Text: refLineText(line)})
 	}
 	return refs, dropped
+}
+
+// bareDeclKeywords are the words that introduce a declaration in the common
+// languages without an extractor (Rust fn/struct/trait/mod, Ruby/Python def,
+// Kotlin/Swift/C# class, Tera macro, ...): "<keyword> name" marks the line as
+// the definition. A guess from text, like the rest of the fallback.
+var bareDeclKeywords = `fn|def|func|function|fun|class|struct|enum|trait|interface|type|mod|module|macro|component|object|record`
+
+// bareRefClass labels a fallback line from its text: def after a declaration
+// keyword, call when the name is followed by "(", else ref. The classes keep
+// the result readable (a Rust "pub fn file_type" is not one of its callers);
+// they are not a parse.
+func bareRefClass(line, name string) string {
+	quoted := regexp.QuoteMeta(name)
+	if regexp.MustCompile(`\b(?:` + bareDeclKeywords + `)\s+` + quoted + `\b`).MatchString(line) {
+		return RefDef
+	}
+	if regexp.MustCompile(`(?:^|[^0-9A-Za-z_$])` + quoted + `\s*(?:::<[^>]*>)?\(`).MatchString(line) {
+		return RefCall
+	}
+	return RefRef
+}
+
+// inTestDir reports whether a fallback file sits under a test directory
+// (tests/, test/, __tests__/, spec/): languages without an extractor have no
+// test file naming the tool knows, and Rust keeps its tests in such folders.
+func inTestDir(rel string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		switch part {
+		case "tests", "test", "__tests__", "spec":
+			return true
+		}
+	}
+	return false
 }
 
 // bareQualifierMatches follows the fallback contract: a qualified query must
