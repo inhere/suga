@@ -6,6 +6,7 @@
 
 ### 新增
 
+- `file_read` 新增可选参数 `outline`：源文件超过 300 行时返回声明大纲（行号 + 声明行）与每段被省略的精确行范围，小文件、未支持类型与解析失败的文件回退为窗口读并说明原因；`paths` 的每一项可带 `:start-end[,start-end]` 行段后缀，一次调用可取同一文件的多段并与不带后缀的项混用，不带新参数时输出与之前完全一致。
 - 新增只读工具 `file_symbols`：一次列出文件或目录里各语言的声明（`file:line kind name signature`），支持 `name` 子串、`kind`、`include_tests`、`limit` 过滤；Go 用 `go/parser` 精确解析（func/method/type/const/var），JavaScript/TypeScript、Python、Java 用声明行识别器并标注 `approx`，装有 universal-ctags 时优先用它；不支持的文件类型明确报错并列出支持的语言，目录递归默认跳过测试文件。
 
 ## [0.31.0] - 2026-10-18
