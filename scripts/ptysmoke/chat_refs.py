@@ -139,6 +139,9 @@ def stored(binary, env, session):
         if row.get("kind") != "entry":
             continue
         body = row.get("json") or ""
+        if not isinstance(body, str):
+            # `suga export` writes an entry's json as an object, not a string.
+            body = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         if row.get("type") == "assistant" and '"Name":"file_refs"' in body:
             calls.append(body)
         elif row.get("type") == "tool":
