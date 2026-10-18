@@ -12,7 +12,11 @@ import (
 )
 
 const (
-	preferredReasonFoundPath        = "found on PATH"
+	// preferredReasonFoundPath: the command is on PATH. A session lists such a
+	// declaration only when it registered shell_exec (a read-only session cannot
+	// run it), so the manifest names that limit instead of promising that the
+	// prompt shows it.
+	preferredReasonFoundPath        = "found on PATH; read-only sessions do not list it"
 	preferredReasonMissingPath      = "not found on PATH"
 	preferredReasonMCPNotConfigured = "server not configured"
 	// preferredReasonMCPConfigured is the reason without a runtime to observe:
@@ -109,13 +113,28 @@ func refreshPreferredCommands(statuses []PreferredToolStatus) []PreferredToolSta
 	return refreshed
 }
 
+// preferredListed reports whether the environment section lists one declaration
+// in this session: a declaration that was not discovered never reaches the
+// prompt (design D6), a connected MCP server is listed in every mode, while a
+// command is listed only when the session registered shell_exec — a read-only
+// session cannot run it, so naming it would offer a tool the model lacks. The
+// manifest still reports the discovery fact (present) for commands and its
+// reason carries the same limit.
+func preferredListed(status PreferredToolStatus, shellExec bool) bool {
+	if !status.Present {
+		return false
+	}
+	return status.Kind != "command" || shellExec
+}
+
 // listedPreferredToolNames returns the declarations the environment section
-// actually lists: the available ones, in configuration order. Declarations that
-// are not available never reach the prompt (design D6).
-func listedPreferredToolNames(statuses []PreferredToolStatus) []string {
+// actually lists, in configuration order. It applies the same filter as the
+// rendered text, so the turn_context event cannot report a name the prompt did
+// not show.
+func listedPreferredToolNames(statuses []PreferredToolStatus, shellExec bool) []string {
 	var names []string
 	for _, status := range statuses {
-		if status.Present {
+		if preferredListed(status, shellExec) {
 			names = append(names, status.Name)
 		}
 	}
@@ -144,12 +163,14 @@ func (l *listedPreferredNames) get() []string {
 }
 
 // newPreferredEnvironmentSource builds the environment source of a runtime: it
-// renders the preferred declarations (the available ones only) and records the
-// names it listed in listed, so the turn_context event reports exactly the list
-// the prompt shows.
+// renders the preferred declarations this session can use and records the names
+// it listed in listed, so the turn_context event reports exactly the list the
+// prompt shows. opts.AllowWrite is also what registers shell_exec (BuildTools
+// skips every non-read-only tool without it), so it selects whether command
+// declarations are listed.
 func newPreferredEnvironmentSource(opts Options, listed *listedPreferredNames) func([]PreferredToolStatus) string {
 	return func(statuses []PreferredToolStatus) string {
-		listed.set(listedPreferredToolNames(statuses))
+		listed.set(listedPreferredToolNames(statuses, opts.AllowWrite))
 		envOpts := opts
 		envOpts.PreferredTools = statuses
 		return environmentPrompt(envOpts)

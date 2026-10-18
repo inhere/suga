@@ -103,11 +103,13 @@ func dependencyAPILine() string {
 		strings.Join(clauses, "; ") + ".\n"
 }
 
-// writePreferredTools renders only available declarations. This section is
-// segment context, not basePrompt, because discovery facts can change.
-func writePreferredTools(b *strings.Builder, statuses []PreferredToolStatus) {
+// writePreferredTools renders the declarations this session can use: the
+// available ones, and among commands only in a session that registered
+// shell_exec (shellExec). This section is segment context, not basePrompt,
+// because discovery facts can change.
+func writePreferredTools(b *strings.Builder, statuses []PreferredToolStatus, shellExec bool) {
 	for _, status := range statuses {
-		if !status.Present {
+		if !preferredListed(status, shellExec) {
 			continue
 		}
 		fmt.Fprintf(b, "- Preferred tool: %s (%s) — %s. Use when applicable; usage unclear, first check `--help`; record learned usage in memory.\n",
@@ -143,7 +145,7 @@ func environmentPrompt(opts Options) string {
 			fmt.Fprintf(&b, "  - %s: %s\n", d.Path, mode)
 		}
 	}
-	writePreferredTools(&b, opts.PreferredTools)
+	writePreferredTools(&b, opts.PreferredTools, opts.AllowWrite)
 	if opts.AllowWrite {
 		fmt.Fprintf(&b, "- Shell for shell_exec: %s\n", native.ShellName(gkconfig.String("tools.shell")))
 		// Interpreters found on PATH (tools.interpreters): with one at hand the

@@ -112,7 +112,7 @@ func TestEnvironmentPrompt(t *testing.T) {
 		assert.StrContains(t, p, "Shell for shell_exec: ")
 	})
 	t.Run("preferred tools list only present entries and fixed usage hint", func(t *testing.T) {
-		p := environmentPrompt(Options{Workspace: "/w", PreferredTools: []PreferredToolStatus{
+		p := environmentPrompt(Options{Workspace: "/w", AllowWrite: true, PreferredTools: []PreferredToolStatus{
 			{Name: "rg", Kind: "command", When: "search text", Present: true},
 			{Name: "offline", Kind: "mcp", When: "graph", Present: false},
 		}})
@@ -120,6 +120,21 @@ func TestEnvironmentPrompt(t *testing.T) {
 		assert.StrContains(t, p, "`--help`")
 		assert.StrContains(t, p, "record learned usage in memory")
 		assert.NotContains(t, p, "offline")
+	})
+	// A read-only session registers no shell_exec, so a command declaration is
+	// not listed there; a connected MCP server is listed in both modes.
+	t.Run("preferred commands need shell_exec, MCP does not", func(t *testing.T) {
+		statuses := []PreferredToolStatus{
+			{Name: "rg", Kind: "command", When: "search text", Present: true},
+			{Name: "graph", Kind: "mcp", When: "code graph", Present: true},
+		}
+		readOnly := environmentPrompt(Options{Workspace: "/w", PreferredTools: statuses})
+		assert.StrContains(t, readOnly, "Mode: read-only")
+		assert.StrContains(t, readOnly, "Preferred tool: graph (mcp) — code graph")
+		assert.NotContains(t, readOnly, "Preferred tool: rg")
+		writable := environmentPrompt(Options{Workspace: "/w", AllowWrite: true, PreferredTools: statuses})
+		assert.StrContains(t, writable, "Preferred tool: rg (command) — search text")
+		assert.StrContains(t, writable, "Preferred tool: graph (mcp) — code graph")
 	})
 }
 
