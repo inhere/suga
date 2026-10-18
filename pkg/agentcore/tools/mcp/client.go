@@ -386,9 +386,25 @@ func (a *mcpToolAdapter) MCPServer() string   { return a.client.serverName() }
 func (a *mcpToolAdapter) Name() string        { return a.def.Name }
 func (a *mcpToolAdapter) Description() string { return a.def.Description }
 func (a *mcpToolAdapter) Kind() tools.Kind    { return tools.KindMCP }
+
+// mcpPlaceholderArg is the optional argument a tool without parameters gets in
+// its schema: some OpenAI-compatible gateways turn an empty properties object
+// into null and reject the whole request (every tool of the turn with it), so
+// a server's no-argument tool (get-env, toggle-..., ...) broke every request.
+// Execute drops it before the call reaches the server.
+const mcpPlaceholderArg = "_unused"
+
 func (a *mcpToolAdapter) Schema() api.ToolSchema {
 	params := map[string]any{}
 	_ = json.Unmarshal(a.def.InputSchema, &params)
+	if params["type"] == nil {
+		params["type"] = "object"
+	}
+	if props, _ := params["properties"].(map[string]any); len(props) == 0 {
+		params["properties"] = map[string]any{mcpPlaceholderArg: map[string]any{
+			"type": "string", "description": "Unused: this tool takes no arguments; leave it out.",
+		}}
+	}
 	return api.ToolSchema{
 		Name:        a.def.Name,
 		Description: a.def.Description,
@@ -403,9 +419,18 @@ func (a *mcpToolAdapter) Execute(ctx context.Context, call api.ToolCall) (*api.T
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	args := call.Arguments
+	if _, ok := args[mcpPlaceholderArg]; ok {
+		args = make(map[string]any, len(call.Arguments))
+		for k, v := range call.Arguments {
+			if k != mcpPlaceholderArg {
+				args[k] = v
+			}
+		}
+	}
 	result, err := a.client.call(callCtx, "tools/call", map[string]any{
 		"name":      a.def.Name,
-		"arguments": call.Arguments,
+		"arguments": args,
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
