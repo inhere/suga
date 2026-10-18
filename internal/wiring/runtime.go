@@ -422,7 +422,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	contextWindow := appconfig.ContextWindowFor(settings.Main)
 	// A bad proxy is a startup error rather than a silently missing web_fetch.
-	if _, err := native.ParseFetchProxy(gkconfig.String("tools.web_fetch.proxy")); err != nil {
+	if err := validateNetworkProxy(); err != nil {
 		return nil, err
 	}
 	snapshotter := configuredSnapshotter()
@@ -714,7 +714,13 @@ func buildMainProviderSpecsWithEstimate(mainSpec appconfig.ModelSpec, fallbacks 
 }
 
 func buildProviderWithEstimate(spec appconfig.ModelSpec, options personal.EstimateOptions) (agentcore.Provider, error) {
-	provider, err := appconfig.BuildProvider(spec)
+	// The global network.proxy selector is resolved once per provider; a bad
+	// value fails startup here (see validateNetworkProxy).
+	selector, err := networkProxySelector()
+	if err != nil {
+		return nil, err
+	}
+	provider, err := appconfig.BuildProviderWithProxy(spec, networkProxyFunc(selector))
 	if err != nil {
 		return nil, err
 	}

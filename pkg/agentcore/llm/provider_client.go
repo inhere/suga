@@ -4,7 +4,23 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
+
+// proxyTransport clones the default transport and pins the global proxy
+// selector on it, so this client stops reading HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
+// A nil selector returns an untyped nil RoundTripper: the caller then keeps the
+// default transport, i.e. the environment behavior of an unconfigured
+// network.proxy.
+func proxyTransport(proxy netproxy.ProxyFunc) http.RoundTripper {
+	if proxy == nil {
+		return nil
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxy
+	return transport
+}
 
 // newProviderClient creates every provider HTTP client with the same redirect
 // policy. Provider requests carry credentials in headers that Go would otherwise

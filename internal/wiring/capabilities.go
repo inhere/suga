@@ -14,6 +14,7 @@ import (
 
 	axconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	toolsmcp "github.com/inhere/suga/pkg/agentcore/tools/mcp"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
@@ -221,10 +222,24 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		Interpreters:      detectInterpreters(),
 		FetchAllowPrivate: gkconfig.Bool("tools.web_fetch.allow_private"),
 		FetchProxy:        gkconfig.String("tools.web_fetch.proxy"),
+		NetworkProxy:      configuredNetworkProxy(),
 		ShellTimeoutMax: time.Duration(gkconfig.Int("tools.shell_timeout_max",
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,
 		ShellBackgroundAfter: shellBackgroundAfter(),
 	}
+}
+
+// configuredNetworkProxy resolves network.proxy for the native tools. Open()
+// validates the value at startup, so an error here means a caller built tools
+// without that step (a test or the standalone manifest): warn and keep the
+// previous per-tool behavior instead of applying half a configuration.
+func configuredNetworkProxy() *netproxy.Selector {
+	selector, err := networkProxySelector()
+	if err != nil {
+		slog.Warn("skip invalid network.proxy", "err", err)
+		return nil
+	}
+	return selector
 }
 
 func swapMCPProviderFactoryForTest(factory func(ctx context.Context, settings toolsmcp.ServerSettings) (capabilityToolProvider, error)) func() {

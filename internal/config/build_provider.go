@@ -5,11 +5,20 @@ import (
 	"time"
 
 	"github.com/inhere/suga/pkg/agentcore/llm"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
 
 // BuildProvider constructs the llm provider for one resolved model. The
 // provider Name is the configured provider id so trace/stats record it.
 func BuildProvider(spec ModelSpec) (llm.Provider, error) {
+	return BuildProviderWithProxy(spec, nil)
+}
+
+// BuildProviderWithProxy additionally pins the global network.proxy selector on
+// the provider's HTTP clients: a matched host goes through the proxy, every
+// other host connects directly. A nil selector keeps the default transport,
+// which follows the environment proxies.
+func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provider, error) {
 	p := spec.Provider
 	switch p.Type {
 	case ProviderTypeAnthropic:
@@ -28,6 +37,7 @@ func BuildProvider(spec ModelSpec) (llm.Provider, error) {
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
+			Proxy:                 proxy,
 		}), nil
 	case ProviderTypeOpenAIResponses:
 		return llm.NewResponsesProvider(llm.ResponsesConfig{
@@ -43,6 +53,7 @@ func BuildProvider(spec ModelSpec) (llm.Provider, error) {
 				// Request bounds: timeouts.*, providers.<id>.timeouts.
 				RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 				ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
+				Proxy:                 proxy,
 			},
 			Compat: p.Compat,
 		}), nil
@@ -59,6 +70,7 @@ func BuildProvider(spec ModelSpec) (llm.Provider, error) {
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
+			Proxy:                 proxy,
 		}), nil
 	default:
 		return nil, fmt.Errorf("providers.%s: unsupported type %q (want openai|openai-responses|anthropic)", p.ID, p.Type)
