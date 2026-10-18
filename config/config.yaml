@@ -204,10 +204,15 @@ serpapi_key: "" # or reference an env var, e.g. "${SERPAPI_KEY}"
 #     url: "${SUGA_PROXY_URL}"   # http://, https:// or socks5://; credentials stay in .env
 #     sites: ["api.openai.com", ".anthropic.com", "serpapi.com"]
 
-# Optional MCP servers exposed as additional tool providers
+# Optional MCP servers exposed as additional tool providers. A server is
+# either stdio (command/args/env) or Streamable HTTP (url/headers); headers
+# expand ${VAR} from the process environment or $SUGA_HOME/.env, so tokens stay
+# out of the file. `transport` may be `stdio` or `streamable_http`; it defaults
+# to the shape of the entry. Legacy `sse` is not supported.
 mcp:
   servers: []
-  # call_timeout_sec: 120  # bound on one MCP tool call
+  # call_timeout_sec: 120   # bound on one MCP tool call
+  # startup_timeout_sec: 30 # bound on one server's initialize + tools/list
   # servers:
   #   - id: filesystem
   #     command: npx
@@ -217,6 +222,11 @@ mcp:
   #       - ./workspace
   #     env:
   #       NODE_ENV: development
+  #   - id: remote
+  #     url: https://mcp.example.com/mcp
+  #     transport: streamable_http
+  #     headers:
+  #       Authorization: "Bearer ${MCP_TOKEN}"
 
 # Skills (SKILL.md under <workspace>/.agents/skills, <workspace>/skills,
 # ~/.agents/skills). With more than list_max skills only workspace skills are

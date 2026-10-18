@@ -45,7 +45,11 @@ func ResolvePreferredTools(registry *tools.Registry, extraServers []mcp.ServerSe
 	if err != nil {
 		return nil, err
 	}
-	servers := append(appconfig.ReadMCPServerSettings(), extraServers...)
+	configuredServers, err := appconfig.ReadMCPServerSettings()
+	if err != nil {
+		return nil, err
+	}
+	servers := append(configuredServers, extraServers...)
 	configured := make(map[string]struct{}, len(servers))
 	for _, server := range servers {
 		id := strings.TrimSpace(server.ID)

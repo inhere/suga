@@ -138,6 +138,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "agents.max_tokens", Type: ConfigTypeInt, Writable: true, Reader: "agents"},
 	{Pattern: "agents.timeout", Type: ConfigTypeDuration, Writable: true, Reader: "agents"},
 	{Pattern: "mcp.call_timeout_sec", Type: ConfigTypeInt, Writable: true},
+	{Pattern: "mcp.startup_timeout_sec", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "mcp.servers", Type: ConfigTypeYAML, Writable: true, Reader: "mcp"},
 	{Pattern: "tools.preferred", Type: ConfigTypeYAML, Writable: true, Reader: "preferred_tools"},
 	{Pattern: "tools.deferred", Type: ConfigTypeEnum, Writable: true},
@@ -539,7 +540,7 @@ func dispatchConfigReader(reader string) error {
 	case "approval_rules":
 		_, err = ReadApprovalRulesSettings()
 	case "mcp":
-		_ = ReadMCPServerSettings()
+		_, err = ReadMCPServerSettings()
 	case "network_proxy":
 		_, err = ReadNetworkProxy()
 	case "preferred_tools":
@@ -777,6 +778,8 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		return settings.Sites, len(settings.Sites) > 0, nil
 	case "mcp.call_timeout_sec":
 		return MCPCallTimeout(), gkconfig.Get(key) != nil, nil
+	case "mcp.startup_timeout_sec":
+		return MCPStartupTimeout(), gkconfig.Get(key) != nil, nil
 	case "tools.preferred":
 		value, err := ReadPreferredTools()
 		return value, gkconfig.Get(key) != nil, err

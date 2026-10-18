@@ -126,9 +126,14 @@ func (*Agent) Initialize(_ context.Context, req acp.InitializeRequest) (acp.Init
 		return acp.InitializeResponse{}, acp.NewInvalidParams(map[string]any{"protocolVersion": req.ProtocolVersion})
 	}
 	return acp.InitializeResponse{
-		ProtocolVersion:   acp.ProtocolVersionNumber,
-		AgentCapabilities: acp.AgentCapabilities{LoadSession: true},
-		AuthMethods:       []acp.AuthMethod{},
+		ProtocolVersion: acp.ProtocolVersionNumber,
+		AgentCapabilities: acp.AgentCapabilities{
+			LoadSession: true,
+			// Streamable HTTP MCP servers are accepted in session setup; stdio
+			// stays the transport every client can use.
+			McpCapabilities: acp.McpCapabilities{Http: true},
+		},
+		AuthMethods: []acp.AuthMethod{},
 	}, nil
 }
 

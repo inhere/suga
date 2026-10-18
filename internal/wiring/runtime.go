@@ -503,11 +503,16 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// suga_manifest is read-only local data, so it is registered in every
 	// mode. It reports the live registry (MCP tools included) when called.
 	capabilities.Registry.Register(NewManifestTool(func(context.Context) (any, error) {
+		mcpServers, err := appconfig.ReadMCPServerSettings()
+		if err != nil {
+			return nil, err
+		}
 		return BuildManifest(ManifestInput{
 			Version: buildVersion, Settings: settings, Registry: capabilities.Registry,
-			MCPServers: append(appconfig.ReadMCPServerSettings(), servers...),
-			Preferred:  preferredTools,
-			SkillRoots: skillRoots(workspace), Skills: skillReg,
+			MCPServers:    append(mcpServers, servers...),
+			ToolConflicts: capabilities.Conflicts(),
+			Preferred:     preferredTools,
+			SkillRoots:    skillRoots(workspace), Skills: skillReg,
 			Memory: memSetup, Policy: memPolicy, Approval: refreshManifestApprovalRules(approval.RuleSource),
 			ToolsApproval: manifestToolsApprovalAction(),
 			InlineBytes:   rs.inlineBytes, SpillBytes: rs.spillBytes, SessionsDir: sessionsDir,
@@ -808,7 +813,12 @@ func buildPersonalCLICapabilitiesWithSnapshot(ctx context.Context, workspace str
 	if err != nil {
 		return defaultCapabilities{}, err
 	}
-	for _, settings := range append(appconfig.ReadMCPServerSettings(), servers...) {
+	configured, err := appconfig.ReadMCPServerSettings()
+	if err != nil {
+		_ = built.Close()
+		return defaultCapabilities{}, err
+	}
+	for _, settings := range append(configured, servers...) {
 		provider, err := mcpProviderFactory(ctx, settings)
 		if err != nil {
 			_ = built.Close()
@@ -819,6 +829,7 @@ func buildPersonalCLICapabilitiesWithSnapshot(ctx context.Context, workspace str
 			_ = built.Close()
 			return defaultCapabilities{}, fmt.Errorf("register mcp tools for %q: %w", settings.ID, err)
 		}
+		built.recordConflicts(provider)
 		built.closers = append(built.closers, provider)
 	}
 	return built, nil

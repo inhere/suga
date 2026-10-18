@@ -14,6 +14,7 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
+	toolsmcp "github.com/inhere/suga/pkg/agentcore/tools/mcp"
 )
 
 // manifestConfig sets a fake provider and a workspace with its own Git boundary
@@ -211,4 +212,22 @@ func TestManifestToolInReadOnlySet(t *testing.T) {
 	t.Cleanup(func() { _ = rt.Close() })
 	assert.Contains(t, rt.Registry.List(), "suga_manifest")
 	assert.NotContains(t, rt.Registry.List(), "shell_exec")
+}
+
+// TestBuildManifestToolConflicts: the manifest reports the same-name tool
+// collisions of the live registry (server/tool/kept_by) and keeps the empty
+// list for a standalone manifest, which never starts an MCP server.
+func TestBuildManifestToolConflicts(t *testing.T) {
+	m := BuildManifest(ManifestInput{ToolConflicts: []toolsmcp.Conflict{
+		{Server: "mcp.gofer", Tool: "file_read", KeptBy: "builtin"},
+	}})
+	assert.Eq(t, []ManifestToolConflict{
+		{Server: "mcp.gofer", Tool: "file_read", KeptBy: "builtin"},
+	}, m.ToolConflicts)
+
+	standalone := BuildManifest(ManifestInput{})
+	assert.Eq(t, 0, len(standalone.ToolConflicts))
+	encoded, err := json.Marshal(standalone)
+	assert.NoErr(t, err)
+	assert.StrContains(t, string(encoded), `"tool_conflicts":[]`)
 }

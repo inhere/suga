@@ -40,6 +40,9 @@ type Manifest struct {
 	Taint         ManifestTaint         `json:"taint"`
 	WritePolicy   ManifestWritePolicy   `json:"write_policy"`
 	ApprovalRules ManifestApprovalRules `json:"approval_rules"`
+	// ToolConflicts lists same-name tool collisions of the live registry; it is
+	// always present and stays empty when nothing collided.
+	ToolConflicts []ManifestToolConflict `json:"tool_conflicts"`
 }
 
 // ManifestModel is one model and the provider serving it.
@@ -166,6 +169,16 @@ type ManifestApprovalDefaults struct {
 	ToolsApproval string `json:"tools_approval"`
 }
 
+// ManifestToolConflict is one same-name tool collision seen while registering
+// the runtime tools (design D8): Tool keeps its first owner (KeptBy) and the
+// dropped Server is listed here. It carries no endpoint, argument, environment
+// variable or header value.
+type ManifestToolConflict struct {
+	Server string `json:"server"`
+	Tool   string `json:"tool"`
+	KeptBy string `json:"kept_by"`
+}
+
 // ManifestInput is everything BuildManifest summarizes.
 type ManifestInput struct {
 	Version  string
@@ -173,6 +186,9 @@ type ManifestInput struct {
 	// Registry is the base tool registry (MCP tools included when running).
 	Registry   *tools.Registry
 	MCPServers []mcp.ServerSettings
+	// ToolConflicts are the same-name collisions registered during startup; it
+	// stays empty for the standalone manifest, which never starts a server.
+	ToolConflicts []mcp.Conflict
 	// Preferred is the discovery snapshot shown by the manifest; nil = no
 	// declared tool. The runtime manifest reuses its startup snapshot.
 	Preferred  []PreferredToolStatus
@@ -209,6 +225,9 @@ func BuildManifest(in ManifestInput) Manifest {
 		Preferred:     []ManifestPreferred{},
 		Memory:        []ManifestMemory{},
 		Skills:        ManifestSkills{Roots: []string{}},
+		// A standalone manifest starts no server, so this keeps the empty list
+		// that means "no runtime conflict discovered".
+		ToolConflicts: []ManifestToolConflict{},
 	}
 	if in.Settings.Compact != nil {
 		c := manifestModel(*in.Settings.Compact)
@@ -236,6 +255,9 @@ func BuildManifest(in ManifestInput) Manifest {
 	}
 	for _, s := range in.MCPServers {
 		m.MCPServers = append(m.MCPServers, ManifestMCPServer{ID: s.ID, Command: s.Command})
+	}
+	for _, conflict := range in.ToolConflicts {
+		m.ToolConflicts = append(m.ToolConflicts, ManifestToolConflict(conflict))
 	}
 	// Declaration order: the resolver keeps the configured order, so a manifest
 	// renders the same list the prompt shows. The conversion copies exactly the
@@ -422,9 +444,13 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		return Manifest{}, manifestParts{}, err
 	}
 
+	mcpServers, err := appconfig.ReadMCPServerSettings()
+	if err != nil {
+		return Manifest{}, manifestParts{}, err
+	}
 	m := BuildManifest(ManifestInput{
 		Version: buildVersion, Settings: st.models, Registry: reg,
-		MCPServers: appconfig.ReadMCPServerSettings(), Preferred: preferred,
+		MCPServers: mcpServers, Preferred: preferred,
 		SkillRoots: skillRoots(workspace), Skills: skillReg,
 		Memory: st.memSetup, Policy: st.memPolicy, Approval: approval,
 		ToolsApproval: manifestToolsApprovalAction(),

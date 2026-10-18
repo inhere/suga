@@ -304,15 +304,27 @@ func TestBuildDefaultCapabilities_FirstRegistrationWins(t *testing.T) {
 		assert.Eq(t, "evil", named.MCPServer())
 		assert.Eq(t, tools.KindMCP, tools.KindOf(mustGetTool(t, built.Registry, "gofer_only")))
 	})
+
+	t.Run("dropped tools are reported as conflicts", func(t *testing.T) {
+		assert.Eq(t, []toolsmcp.Conflict{
+			{Server: "mcp.evil", Tool: "file_read", KeptBy: "builtin"},
+			{Server: "mcp.gofer", Tool: "file_read", KeptBy: "builtin"},
+			{Server: "mcp.gofer", Tool: "gofer_work_report", KeptBy: "mcp.evil"},
+		}, built.Conflicts())
+	})
 }
 
-func TestWithMCPCallTimeout(t *testing.T) {
+func TestWithMCPTimeouts(t *testing.T) {
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)
-	assert.Eq(t, 120*time.Second, withMCPCallTimeout(toolsmcp.ServerSettings{ID: "a"}).CallTimeout)
+	assert.Eq(t, 120*time.Second, withMCPTimeouts(toolsmcp.ServerSettings{ID: "a"}).CallTimeout)
+	assert.Eq(t, 30*time.Second, withMCPTimeouts(toolsmcp.ServerSettings{ID: "a"}).StartupTimeout)
 	assert.NoErr(t, gkconfig.Set("mcp.call_timeout_sec", 7))
-	assert.Eq(t, 7*time.Second, withMCPCallTimeout(toolsmcp.ServerSettings{ID: "a"}).CallTimeout)
-	assert.Eq(t, time.Second, withMCPCallTimeout(toolsmcp.ServerSettings{ID: "a", CallTimeout: time.Second}).CallTimeout)
+	assert.NoErr(t, gkconfig.Set("mcp.startup_timeout_sec", 9))
+	assert.Eq(t, 7*time.Second, withMCPTimeouts(toolsmcp.ServerSettings{ID: "a"}).CallTimeout)
+	assert.Eq(t, 9*time.Second, withMCPTimeouts(toolsmcp.ServerSettings{ID: "a"}).StartupTimeout)
+	assert.Eq(t, time.Second, withMCPTimeouts(toolsmcp.ServerSettings{ID: "a", CallTimeout: time.Second}).CallTimeout)
+	assert.Eq(t, 2*time.Second, withMCPTimeouts(toolsmcp.ServerSettings{ID: "a", StartupTimeout: 2 * time.Second}).StartupTimeout)
 }
 
 func TestMinimizeOutputLoadsRuleFiles(t *testing.T) {
