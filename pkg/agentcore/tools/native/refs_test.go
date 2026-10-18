@@ -253,6 +253,7 @@ func TestFileRefsBareFallback(t *testing.T) {
 		"config.toml":         []byte("[extra]\nname = \"target_attribute\"\n"),
 		"notes.md":            []byte("target_attribute\n"),
 		"image.bin":           {0, 1, 2, 0, 3},
+		"large.rs":            []byte(strings.Repeat("x", maxSearchFileBytes+1)),
 		"mixed.go":            []byte("package mixed\n\nfunc target_attribute() {}\n"),
 	}
 	for name, content := range files {
@@ -269,11 +270,16 @@ func TestFileRefsBareFallback(t *testing.T) {
 		assert.StrContains(t, got, "[approx: other text files have no parser")
 		assert.StrContains(t, got, "[skipped 1 documentation file(s)")
 		assert.StrContains(t, got, "[skipped 1 binary file(s)]")
+		assert.StrContains(t, got, "[skipped 1 file(s) over")
 	})
 
 	t.Run("qualified fallback accepts Rust separators", func(t *testing.T) {
 		got := runFileRefs(t, tool, map[string]any{"name": "Config.load", "path": "src/lib.rs"})
 		assert.StrContains(t, got, "src/lib.rs:2 ref")
+		got = runFileRefs(t, tool, map[string]any{"name": "Config::load", "path": "src/lib.rs"})
+		assert.StrContains(t, got, "src/lib.rs:2 ref")
+		got = runFileRefs(t, tool, map[string]any{"name": "OtherConfig.load", "path": "src/lib.rs"})
+		assert.StrContains(t, got, `no references to "OtherConfig.load"`)
 	})
 
 	t.Run("mixed directory keeps supported and fallback files", func(t *testing.T) {

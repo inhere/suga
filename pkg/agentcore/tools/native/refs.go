@@ -131,6 +131,9 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 		if set.searchable {
 			out.files = 1
 		}
+		if set.tooLarge {
+			out.tooLarge = 1
+		}
 		out.goRefs = !set.approx && !set.bare && len(set.refs) > 0
 	} else if err := t.walkDir(ctx, target, name, qual, re, limit, includeTests, noIgnore, out); err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
@@ -156,11 +159,16 @@ type refScan struct {
 	approx     bool
 	bare       bool
 	searchable bool
+	tooLarge   bool
 	dropped    *refDrops
 }
 
 // oneFile searches one file through os.Root, the way file_symbols reads one.
 func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) (refScan, error) {
+	if info, err := os.Stat(target.abs); err == nil && info.Size() > maxSearchFileBytes {
+		return refScan{tooLarge: true}, nil
+	}
+
 	file, err := withRoot(target.base, target.abs, func(root *os.Root, rel string) (symbolFile, error) {
 		return readSymbolFile(root, target, rel)
 	})
@@ -276,11 +284,27 @@ func bareQualifierMatches(line, qual, name string) bool {
 		return true
 	}
 	for _, sep := range []string{".", "::", "->"} {
-		if strings.Contains(line, qual+sep+name) {
-			return true
+		token := qual + sep + name
+		for start := 0; start < len(line); {
+			i := strings.Index(line[start:], token)
+			if i < 0 {
+				break
+			}
+			i += start
+			end := i + len(token)
+			beforeOK := i == 0 || !isBareIdentByte(line[i-1])
+			afterOK := end == len(line) || !isBareIdentByte(line[end])
+			if beforeOK && afterOK {
+				return true
+			}
+			start = i + 1
 		}
 	}
 	return false
+}
+
+func isBareIdentByte(b byte) bool {
+	return b == '_' || b == '$' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
 
 // isRefDocumentation keeps prose files out of reference results.
@@ -321,13 +345,20 @@ func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]
 // the result, so "a.b.Run" searches Run with Q=b and "Run" searches it
 // unqualified. A trailing or doubled dot falls back to the text as it is.
 func splitRefName(raw string) (name, qual string) {
-	i := strings.LastIndexByte(raw, '.')
-	if i <= 0 || i == len(raw)-1 {
+	separator, i := ".", strings.LastIndexByte(raw, '.')
+	for _, candidate := range []string{"::", "->"} {
+		if j := strings.LastIndex(raw, candidate); j > i {
+			separator, i = candidate, j
+		}
+	}
+	if i <= 0 || i == len(raw)-len(separator) {
 		return raw, ""
 	}
-	name, qual = raw[i+1:], raw[:i]
-	if j := strings.LastIndexByte(qual, '.'); j >= 0 {
-		qual = qual[j+1:]
+	name, qual = raw[i+len(separator):], raw[:i]
+	if separator == "." {
+		if j := strings.LastIndexByte(qual, '.'); j >= 0 {
+			qual = qual[j+1:]
+		}
 	}
 	if qual == "" {
 		return name, ""

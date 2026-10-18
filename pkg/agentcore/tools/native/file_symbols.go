@@ -113,7 +113,7 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 		return nil, fmt.Errorf("file_symbols: %w", err)
 	}
 
-	out := &symbolOut{}
+	out := &symbolOut{fallbackPattern: symbolFallbackPattern(filepath.Ext(pathArg), filter.name)}
 	// A file argument is parsed as that file: a type no extractor covers is
 	// refused with the supported list, not answered with an empty result.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
@@ -228,16 +228,17 @@ func readSymbolFile(root *os.Root, target readTarget, rel string) (symbolFile, e
 // symbolOut collects one run: the matching declarations and everything the
 // model should know about what was left out.
 type symbolOut struct {
-	syms        []Symbol
-	files       int // source files that were parsed
-	tests       int // test files left out
-	unsupported int // files of a type no extractor covers
-	tooLarge    int // files over maxSearchFileBytes
-	approx      bool
-	more        bool // the walk stopped one declaration past the limit
-	errors      []string
-	ignoreNote  string
-	timedOut    bool
+	syms            []Symbol
+	files           int // source files that were parsed
+	tests           int // test files left out
+	unsupported     int // files of a type no extractor covers
+	tooLarge        int // files over maxSearchFileBytes
+	fallbackPattern string
+	approx          bool
+	more            bool // the walk stopped one declaration past the limit
+	errors          []string
+	ignoreNote      string
+	timedOut        bool
 }
 
 // noteError records an unreadable or unparsable file; the result names the
@@ -300,7 +301,7 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, fmt.Sprintf("[skipped %d test file(s); pass include_tests: true to include them]", o.tests))
 	}
 	if o.unsupported > 0 {
-		notes = append(notes, fmt.Sprintf("[skipped %d file(s) with no declaration extractor; use file_grep with pattern: \\\"\\\\bname\\\\b\\\"; file_read outline=true is unavailable for these files]", o.unsupported))
+		notes = append(notes, fmt.Sprintf("[skipped %d file(s) with no declaration extractor; use file_grep with pattern: %s; file_read outline=true is unavailable for these files]", o.unsupported, o.fallbackPattern))
 	}
 	if o.tooLarge > 0 {
 		notes = append(notes, fmt.Sprintf("[skipped %d file(s) over %d bytes]", o.tooLarge, maxSearchFileBytes))
