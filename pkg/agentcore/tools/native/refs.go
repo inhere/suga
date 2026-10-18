@@ -118,7 +118,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	re := refWordRe(name)
 
-	out := &refOut{name: name, qual: qual}
+	out := &refOut{name: name, qual: qual, dropped: refDrops{}}
 	// A file argument is searched as that file: a type no extractor covers is
 	// refused with the supported list, not answered with an empty result.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
@@ -146,16 +146,16 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 }
 
 // oneFile searches one file through os.Root, the way file_symbols reads one.
-func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) ([]Ref, bool, int, error) {
+func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) ([]Ref, bool, refDrops, error) {
 	if !SupportsSymbols(target.abs) {
-		return nil, false, 0, fmt.Errorf("unsupported file type %q; supported: %s",
+		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
 			filepath.Ext(target.abs), SupportedSymbolLanguages())
 	}
 	file, err := withRoot(target.base, target.abs, func(root *os.Root, rel string) (symbolFile, error) {
 		return readSymbolFile(root, target, rel)
 	})
 	if err != nil {
-		return nil, false, 0, err
+		return nil, false, nil, err
 	}
 	return scanRefs(file.name, file.data, name, qual, re)
 }
@@ -201,7 +201,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 		}
 		out.approx = out.approx || approx
 		out.goRefs = out.goRefs || (!approx && len(refs) > 0)
-		out.dropped += dropped
+		out.dropped.merge(dropped)
 		out.refs = append(out.refs, refs...)
 		if len(out.refs) > limit {
 			out.more = true
@@ -222,10 +222,10 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 // nothing, which is why the caller filters on the same word-bounded pattern
 // first. qual narrows the result to the Q of a qualified name and dropped is how
 // many occurrences of the name qualified something else.
-func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, bool, int, error) {
+func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, bool, refDrops, error) {
 	lang, ok := symbolLanguageFor(file)
 	if !ok {
-		return nil, false, 0, fmt.Errorf("unsupported file type %q; supported: %s",
+		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
 			filepath.Ext(file), SupportedSymbolLanguages())
 	}
 	if lang.approx { // Go is the only language with an exact extractor
@@ -233,7 +233,7 @@ func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]
 		return refs, true, dropped, nil
 	}
 	if !re.Match(src) {
-		return nil, false, 0, nil
+		return nil, false, nil, nil
 	}
 	refs, dropped, err := scanGoRefs(file, src, name, qual)
 	return refs, false, dropped, err
@@ -262,11 +262,11 @@ func splitRefName(raw string) (name, qual string) {
 // about what was left out.
 type refOut struct {
 	refs    []Ref
-	files   int    // supported source files that were read
-	name    string // the searched identifier, without its qualifier
-	qual    string // the Q of a qualified query; empty when the name had no dot
-	dropped int    // occurrences of the name that qualify another object
-	tests   int    // test files left out
+	files   int      // supported source files that were read
+	name    string   // the searched identifier, without its qualifier
+	qual    string   // the Q of a qualified query; empty when the name had no dot
+	dropped refDrops // occurrences of the name that qualify another object, by qualifier
+	tests   int      // test files left out
 
 	unsupported int // files of a type no extractor covers
 	tooLarge    int // files over maxSearchFileBytes
@@ -341,24 +341,32 @@ func (o *refOut) notes(limit int) []string {
 		// A name defined here but used elsewhere is the common false empty: the
 		// search only looks inside path. A qualified search that only dropped other
 		// qualifiers is told apart by the note below, not by this hint.
-		if o.dropped == 0 {
+		if o.dropped.total() == 0 {
 			notes = append(notes, "[no references in this path; the name may be used from another package/directory - "+
 				"try the workspace root (path=.) or the defining package's parent]")
 		}
 	}
 	if o.qual != "" {
 		// The filter is textual, and the model should know what it left out: the
-		// same name is used on other objects often enough to look like a miss.
+		// same name is used on other objects often enough to look like a miss,
+		// and a variable whose name says nothing (child.Run on a *Runner) is
+		// dropped too - so the dropped qualifiers are named, not only counted.
 		notes = append(notes, fmt.Sprintf("[qualified by %q: kept the definitions of type/package %s and the "+
 			"sel/call uses whose qualifier text is %s or ends with %s (case-insensitive); dropped %d use(s) of "+
-			"%q with another qualifier - search without the qualifier for all of them]",
-			o.qual, o.qual, o.qual, o.qual, o.dropped, o.name))
+			"%q with another qualifier%s - a variable among them may still refer to %s, so check the names you "+
+			"do not recognise, or search without the qualifier for all of them]",
+			o.qual, o.qual, o.qual, o.qual, o.dropped.total(), o.name, o.dropped.describe(), o.qual))
 	}
 	if o.goRefs {
 		// The conclusion the model needs to stop re-checking with file_grep: a Go
 		// result is complete for the name, only its other objects are in question.
-		notes = append(notes, "[Go results come from a syntax parse and list every occurrence; only confirm "+
-			"same-named other objects - no file_grep needed to fill in]")
+		if o.qual == "" {
+			notes = append(notes, "[Go results come from a syntax parse and list every occurrence; only confirm "+
+				"same-named other objects - no file_grep needed to fill in]")
+		} else {
+			notes = append(notes, "[Go results come from a syntax parse: together with the dropped qualifiers "+
+				"above they account for every occurrence - no file_grep needed to fill in]")
+		}
 	}
 	// Fixed line: the tool does not resolve types, so a match may be another
 	// object with that name and the shown line decides.

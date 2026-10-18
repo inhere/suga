@@ -55,11 +55,11 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 // qual is the Q of a "Q.Name" argument (empty = no filter) and dropped counts
 // the occurrences of name that qualify another object (another package, another
 // type, a receiver variable). The filter is textual, see qualifierMatches.
-func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, int, error) {
+func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, refDrops, error) {
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, file, src, parser.SkipObjectResolution)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 	lines := newSourceLines(src)
 	imports := goImportNames(parsed)
@@ -73,7 +73,7 @@ func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, int, error) 
 		return string(src[from:to])
 	}
 	var out []Ref
-	dropped := 0
+	dropped := refDrops{}
 	// stack is the path to the node being visited: the parent decides how an
 	// identifier is used, which is all the classification needs.
 	var stack []ast.Node
@@ -173,8 +173,9 @@ func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, int, error) 
 			ref.Class = RefRef // a bare use: a type, an operand, an embedded name
 		}
 		if !keep {
-			// A use of the same name on another object: counted, not listed.
-			dropped++
+			// A use of the same name on another object: counted by its
+			// qualifier, not listed.
+			dropped.add(ref)
 			return true
 		}
 		ref.Text = refLineText(lines.at(ref.Line))

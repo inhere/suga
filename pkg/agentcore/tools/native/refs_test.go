@@ -163,7 +163,13 @@ func TestFileRefsToolQualified(t *testing.T) {
 		assert.NotContains(t, got, "loader.")
 		assert.StrContains(t, got, `[qualified by "Options": kept the definitions of type/package Options and the `+
 			`sel/call uses whose qualifier text is Options or ends with Options (case-insensitive); dropped 3 use(s) of `+
-			`"ReadOnly" with another qualifier - search without the qualifier for all of them]`)
+			`"ReadOnly" with another qualifier (variables: o 1; 2 unqualified or text matches) - a variable among `+
+			`them may still refer to Options, so check the names you do not recognise, or search without the `+
+			`qualifier for all of them]`)
+		// o is an Options: the receiver variable that the text filter cannot
+		// tie to the type is named, so the model can still find it.
+		assert.StrContains(t, got, "variables: o 1")
+		assert.StrContains(t, got, "together with the dropped qualifiers above they account for every occurrence")
 	})
 
 	t.Run("a qualifier that only names the receiver keeps just that use", func(t *testing.T) {

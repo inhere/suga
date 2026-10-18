@@ -249,7 +249,7 @@ func TestGoRefsQualified(t *testing.T) {
 			refs, dropped, err := scanGoRefs("fixture.go", []byte(goRefsQualifiedFixture), "Run", c.qual)
 			assert.Require(t, assert.NoErr(t, err))
 			assert.Eq(t, c.want, refLineClasses(refs))
-			assert.Eq(t, c.dropped, dropped)
+			assert.Eq(t, c.dropped, dropped.total())
 		})
 	}
 
@@ -257,7 +257,7 @@ func TestGoRefsQualified(t *testing.T) {
 		refs, dropped, err := scanGoRefs("fixture.go", []byte(goRefsQualifiedFixture), "Run", "")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, 8, len(refs))
-		assert.Eq(t, 0, dropped)
+		assert.Eq(t, 0, dropped.total())
 	})
 }
 
@@ -311,4 +311,26 @@ func TestSplitRefName(t *testing.T) {
 			assert.Eq(t, c.qual, qual)
 		})
 	}
+}
+
+// TestRefDropsDescribe pins how the dropped qualifiers are named: variables
+// sorted with their counts, packages and unqualified uses only summed.
+func TestRefDropsDescribe(t *testing.T) {
+	t.Run("variables are named, packages and bare uses counted", func(t *testing.T) {
+		d := refDrops{"t": 40, "cmd": 3, "child": 1, "pkg:exec": 2, "": 1}
+		assert.Eq(t, 47, d.total())
+		assert.Eq(t, " (variables: child 1, cmd 3, t 40; 2 through imported packages; 1 unqualified or text matches)", d.describe())
+	})
+
+	t.Run("nothing dropped describes nothing", func(t *testing.T) {
+		assert.Eq(t, "", refDrops{}.describe())
+	})
+
+	t.Run("a long list is capped", func(t *testing.T) {
+		d := refDrops{}
+		for i := 0; i < maxDropNames+3; i++ {
+			d[fmt.Sprintf("v%02d", i)] = 1
+		}
+		assert.StrContains(t, d.describe(), "and 3 more)")
+	})
 }

@@ -125,21 +125,21 @@ func TestLineRefsQualified(t *testing.T) {
 			"    return cfg.ReadOnly\n" // 4
 		refs, dropped := scanLineRefs("fixture.py", []byte(src), "ReadOnly", "opts")
 		assert.Eq(t, []int{2}, refLines(refs))
-		assert.Eq(t, 1, dropped)
+		assert.Eq(t, 1, dropped.total())
 	})
 
 	t.Run("Q::name is the other shape the filter accepts", func(t *testing.T) {
 		src := "Config::ReadOnly\nother.ReadOnly\n"
 		refs, dropped := scanLineRefs("fixture.ts", []byte(src), "ReadOnly", "Config")
 		assert.Eq(t, []int{1}, refLines(refs))
-		assert.Eq(t, 1, dropped)
+		assert.Eq(t, 1, dropped.total())
 	})
 
 	t.Run("a comment keeps no qualified use either", func(t *testing.T) {
 		src := "// opts.ReadOnly is a flag\nreturn 1\n"
 		refs, dropped := scanLineRefs("fixture.ts", []byte(src), "ReadOnly", "opts")
 		assert.Eq(t, 0, len(refs))
-		assert.Eq(t, 0, dropped)
+		assert.Eq(t, 0, dropped.total())
 	})
 }
 
