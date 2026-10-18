@@ -14,6 +14,7 @@
 
 ### 修复
 
+- `file_symbols` 与 `file_refs`：跳过被忽略目录时结果提示“pass no_ignore: true”，但两个工具此前并不接受该参数，按提示重试也不生效；现在两者都支持 `no_ignore`（与 `file_grep`/`file_find` 一致，`.git` 始终跳过）。
 - `tools.preferred` 里 `kind: command` 的优先项只在本会话注册了 `shell_exec` 时写进环境说明：只读会话不再列出模型根本不能执行的命令（`kind: mcp` 不受影响，连上的 MCP 服务照常列出）；`suga manifest` 仍报告命令已在 PATH 上（`present=true`），原因里写明只读会话不列出；`turn_context.preferred_tools` 与提示词一致，只记实际列出的名字。
 
 ## [0.31.1] - 2026-10-18

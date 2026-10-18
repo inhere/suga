@@ -234,7 +234,7 @@ func TestFileSymbolsToolMetadata(t *testing.T) {
 	schema := tool.Schema()
 	assert.Eq(t, "object", schema.InputSchema["type"])
 	props, _ := schema.InputSchema["properties"].(map[string]any)
-	assert.Len(t, props, 5)
+	assert.Len(t, props, 6)
 	assert.Contains(t, schema.InputSchema["required"], "path")
 	assert.StrContains(t, schema.Description, "file_grep")
 }

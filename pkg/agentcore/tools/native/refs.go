@@ -74,6 +74,10 @@ func (t *FileRefsTool) Schema() api.ToolSchema {
 					"type":        "boolean",
 					"description": "Also search *_test.go, *.test.ts, test_*.py and *Test.java (default false)",
 				},
+				"no_ignore": map[string]any{
+					"type":        "boolean",
+					"description": "Also search .gitignore matches and node_modules/vendor/dist (.git is always skipped)",
+				},
 				"limit": map[string]any{
 					"type":        "integer",
 					"description": fmt.Sprintf("Maximum matches to list (default %d)", defaultRefLimit),
@@ -99,6 +103,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 		limit = int(n)
 	}
 	includeTests, _ := call.Arguments["include_tests"].(bool)
+	noIgnore, _ := call.Arguments["no_ignore"].(bool)
 	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), pathArg)
 	if err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
@@ -114,7 +119,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 			return nil, fmt.Errorf("file_refs: %w", err)
 		}
 		out.files, out.approx, out.refs = 1, approx, refs
-	} else if err := t.walkDir(ctx, target, name, re, limit, includeTests, out); err != nil {
+	} else if err := t.walkDir(ctx, target, name, re, limit, includeTests, noIgnore, out); err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
 	}
 	if out.files == 0 {
@@ -149,10 +154,10 @@ func (t *FileRefsTool) oneFile(target readTarget, name string, re *regexp.Regexp
 // walkDir searches every supported source file under the directory target,
 // stopping one match past limit (the result then says more matched instead of
 // walking a whole module cache).
-func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name string, re *regexp.Regexp, limit int, includeTests bool, out *refOut) error {
+func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name string, re *regexp.Regexp, limit int, includeTests bool, noIgnore bool, out *refOut) error {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
-	walk, err := walkWorkspace(ctx, target.base, target.abs, false, func(root *os.Root, rel string, d fs.DirEntry) error {
+	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
 		if !includeTests && isTestFileName(d.Name()) {
 			out.tests++
 			return nil
