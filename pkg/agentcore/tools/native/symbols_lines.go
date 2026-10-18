@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// The lightweight recognisers: JavaScript/TypeScript, Python and Java get a
-// declaration-line recogniser instead of a parser (design 0.2), so their
+// The lightweight recognisers: JavaScript/TypeScript, Python, Java and PHP get
+// a declaration-line recogniser instead of a parser (design 0.2), so their
 // results are marked approx. They never fail on a broken file - they read what
 // a declaration line looks like - which is enough to answer "which
 // declarations are in this file, on which line" while file_grep stays the way
@@ -39,7 +39,9 @@ var jsSymbolLanguage = symbolLanguage{
 		".ts": "TypeScript", ".tsx": "TypeScript", ".mts": "TypeScript", ".cts": "TypeScript",
 		".js": "JavaScript", ".jsx": "JavaScript", ".mjs": "JavaScript", ".cjs": "JavaScript",
 	},
-	extract: func(file string, src []byte) ([]Symbol, error) { return braceSymbols(file, src, jsDecls) },
+	extract: func(file string, src []byte) ([]Symbol, error) {
+		return braceSymbols(file, src, jsDecls, braceStyle{mask: maskBraces})
+	},
 }
 
 // jsDecls are the JavaScript/TypeScript declaration lines: classes,
@@ -67,7 +69,9 @@ var jsDecls = []braceDecl{
 var javaSymbolLanguage = symbolLanguage{
 	name: "Java", exts: []string{".java"}, approx: true, source: sourceDeclLines,
 	ctagsLanguage: map[string]string{".java": "Java"},
-	extract:       func(file string, src []byte) ([]Symbol, error) { return braceSymbols(file, src, javaDecls) },
+	extract: func(file string, src []byte) ([]Symbol, error) {
+		return braceSymbols(file, src, javaDecls, braceStyle{mask: maskBraces})
+	},
 }
 
 // javaDecls are the Java declaration lines: classes, interfaces, enums and
@@ -100,14 +104,18 @@ var javaNonDeclNames = map[string]bool{
 // a type body apart from the statements of a function body, where a local const
 // or a bare call looks like a declaration. Braces inside '...', "..." and
 // `...` strings and after // are ignored, and /* */ comments, multi-line
-// template strings and """ text blocks are blanked first (maskSpans).
-func braceSymbols(file string, src []byte, decls []braceDecl) ([]Symbol, error) {
-	lines := newSourceLines(maskSpans(src, maskBraces))
+// template strings and """ text blocks are blanked first (maskSpans, with the
+// style of the language).
+func braceSymbols(file string, src []byte, decls []braceDecl, style braceStyle) ([]Symbol, error) {
+	lines := newSourceLines(maskSpans(src, style.mask))
 	var out []Symbol
 	// braces is the brace depth, bodyStack the brace depths of the type bodies
 	// currently open: a member rule matches only directly inside one of them, so
 	// a statement of a method body is never taken for a declaration.
 	braces, bodyStack := 0, []int(nil)
+	// pendingBody is a type body whose opening brace has not been read yet (the
+	// PSR-12 style of PHP writes it on the next line).
+	pendingBody := false
 	for i, raw := range lines.lines {
 		line := strings.TrimSpace(raw)
 		if line == "" {
@@ -152,11 +160,31 @@ func braceSymbols(file string, src []byte, decls []braceDecl) ([]Symbol, error) 
 		if braces < 0 {
 			braces = 0
 		}
-		if opened && delta > 0 {
+		switch {
+		case opened && delta > 0:
 			bodyStack = append(bodyStack, braces) // the type body just opened
+			pendingBody = false
+		case opened:
+			pendingBody = style.bodyBraceNextLine
+		case pendingBody && delta > 0:
+			bodyStack = append(bodyStack, braces) // the "{" of a declaration-line body
+			pendingBody = false
 		}
 	}
 	return out, nil
+}
+
+// braceStyle is how one brace-delimited language's recogniser reads a file: the
+// style of its comments and of its multi-line strings, and where the opening
+// brace of a type body may sit.
+type braceStyle struct {
+	mask maskStyle
+	// bodyBraceNextLine accepts that brace on a follow-up line (PHP's PSR-12
+	// writes "class Foo" and then "{"): the body is pushed at the next line that
+	// opens a brace. It is off for JavaScript/TypeScript and Java, whose style
+	// puts the brace on the declaration line, so their results are exactly what
+	// they were.
+	bodyBraceNextLine bool
 }
 
 // braceDelta is the change in brace depth of one line, ignoring braces inside

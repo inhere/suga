@@ -17,7 +17,7 @@ import (
 
 // The kinds the extractors report. Go keeps its own vocabulary
 // (func/method/type/const/var), the other languages theirs (class, interface,
-// enum, record); file_symbols' kind filter accepts either.
+// enum, record, trait); file_symbols' kind filter accepts either.
 const (
 	SymbolFunc      = "func"
 	SymbolMethod    = "method"
@@ -28,11 +28,15 @@ const (
 	SymbolInterface = "interface"
 	SymbolEnum      = "enum"
 	SymbolRecord    = "record"
+	// SymbolTrait is PHP's trait, which is neither a class nor an interface: its
+	// own kind keeps a listing honest (a language-specific kind, like the ones
+	// ctags reports and the vocabulary does not know).
+	SymbolTrait = "trait"
 )
 
 // SymbolKinds is the whole kind vocabulary, in the order the messages list it.
 var SymbolKinds = []string{SymbolFunc, SymbolMethod, SymbolType, SymbolConst, SymbolVar,
-	SymbolClass, SymbolInterface, SymbolEnum, SymbolRecord}
+	SymbolClass, SymbolInterface, SymbolEnum, SymbolRecord, SymbolTrait}
 
 // The names of the extraction sources (SymbolSet.Source).
 const (
@@ -81,8 +85,9 @@ type symbolLanguage struct {
 }
 
 // symbolLanguages is the registry, in the order the refusal message and the
-// tool description list the languages.
-var symbolLanguages = []symbolLanguage{goSymbolLanguage, jsSymbolLanguage, pythonSymbolLanguage, javaSymbolLanguage}
+// tool description list the languages. A new language is appended: the order of
+// the existing ones is what the tests and the reminders expect.
+var symbolLanguages = []symbolLanguage{goSymbolLanguage, jsSymbolLanguage, pythonSymbolLanguage, javaSymbolLanguage, phpSymbolLanguage}
 
 // symbolLanguageFor returns the extractor that owns file's extension.
 func symbolLanguageFor(file string) (symbolLanguage, bool) {
