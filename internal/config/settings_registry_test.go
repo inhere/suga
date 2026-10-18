@@ -98,11 +98,19 @@ func TestParseConfigValue(t *testing.T) {
 		{name: "integer", key: "retry.max_attempts", raw: "4", want: 4},
 		{name: "duration", key: "retry.base_delay", raw: "2s", want: 2 * time.Second},
 		{name: "list", key: "fallback_models", raw: "openai/a, deepseek/b", want: []string{"openai/a", "deepseek/b"}},
+		{name: "yaml list", key: "tools.auto_allow", raw: "[\"a/b\"]", want: []string{"a/b"}},
+		{name: "yaml list unquoted items", key: "tools.auto_allow", raw: "[a/b, c/*]", want: []string{"a/b", "c/*"}},
+		{name: "yaml list with spaces and quotes", key: "tools.read_roots", raw: "[\"a b\", 'c d']", want: []string{"a b", "c d"}},
+		{name: "yaml empty list", key: "skills.always_load", raw: "[]", want: []string{}},
+		{name: "yaml list keeps glob brackets inside quotes", key: "tools.auto_allow", raw: "[\"[everything/echo]\"]", want: []string{"[everything/echo]"}},
 		{name: "interpreter switch", key: "tools.interpreters", raw: "off", want: false},
 		{name: "enum", key: "providers.gateway.thinking", raw: "HIGH", want: "high"},
 		{name: "yaml map", key: "providers.gateway.headers", raw: "{X-Test: value}", want: map[string]string{"X-Test": "value"}},
 		{name: "bad type", key: "retry.max_attempts", raw: "many", err: true},
 		{name: "bad enum", key: "tools.deferred", raw: "sometimes", err: true},
+		{name: "broken yaml list", key: "tools.auto_allow", raw: "[a/b", err: true},
+		{name: "yaml list item is not a string", key: "tools.auto_allow", raw: "[1]", err: true},
+		{name: "yaml list item is empty", key: "tools.auto_allow", raw: "[\"\"]", err: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

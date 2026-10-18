@@ -163,6 +163,52 @@ func TestConfigSetAllowsSimpleRuntimeKeys(t *testing.T) {
 	_, err = os.Stat(filepath.Join(home, "run", "locks", "config.lock"))
 	assert.NoErr(t, err)
 }
+
+// TestConfigSetAcceptsYAMLListValues covers the two accepted spellings of a
+// string list: the comma form and the YAML flow form copied from config.yaml.
+// Both must end up as the same block-style list, and a value that starts with
+// "[" but is not a list of strings must be rejected without touching the file.
+func TestConfigSetAcceptsYAMLListValues(t *testing.T) {
+	t.Run("yaml list writes the same bytes as the comma form", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		commaHome := setupConfigCLI(t, "model: openai/config\n")
+		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"config", "set", "tools.auto_allow", `a/b, c/*`})
+		assert.Require(t, assert.NoErr(t, err))
+		commaBody, readErr := os.ReadFile(filepath.Join(commaHome, "config.yaml"))
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.StrContains(t, string(commaBody), "auto_allow:\n  - a/b\n  - c/*\n")
+
+		stdout.Reset()
+		yamlHome := setupConfigCLI(t, "model: openai/config\n")
+		err = newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"config", "set", "tools.auto_allow", `["a/b", 'c/*']`})
+		assert.Require(t, assert.NoErr(t, err))
+		yamlBody, readErr := os.ReadFile(filepath.Join(yamlHome, "config.yaml"))
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.Eq(t, string(commaBody), string(yamlBody))
+		// The read-back goes through the same projection as the comma form.
+		assert.StrContains(t, stdout.String(), "a/b")
+		assert.StrContains(t, stdout.String(), "c/*")
+	})
+
+	t.Run("invalid yaml list is an input error without writes", func(t *testing.T) {
+		home := setupConfigCLI(t, "model: openai/config\n")
+		configPath := filepath.Join(home, "config.yaml")
+		before, readErr := os.ReadFile(configPath)
+		assert.Require(t, assert.NoErr(t, readErr))
+
+		for _, value := range []string{"[a/b", "[1]", "[[a/b]]", `[""]`} {
+			var stdout, stderr bytes.Buffer
+			err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"config", "set", "tools.auto_allow", value})
+			assert.Require(t, assert.Err(t, err))
+			assert.Eq(t, 2, ExitCode(err))
+			assert.StrContains(t, err.Error(), "tools.auto_allow")
+		}
+		after, readErr := os.ReadFile(configPath)
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.Eq(t, string(before), string(after))
+	})
+}
+
 func setupConfigCLI(t *testing.T, content string) string {
 	t.Helper()
 	home := t.TempDir()
