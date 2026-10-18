@@ -42,6 +42,9 @@ func (t *FileRefsTool) Description() string {
 	return "Find where a name is used: who calls X, who uses X, where is X referenced. " +
 		"Searches a file, a directory (recursive) or the workspace and answers one `path:line class[(qualifier)] text` " +
 		"line each, sorted by path and line. Use it instead of guessing file_grep patterns for a call chain. " +
+		"A qualified name narrows the result to the uses of that type or package: name: \"Runner.Run\" keeps the " +
+		"definitions of type Runner and the Runner.x / pkg.Run uses, and a longer path such as s.runner.Run keeps " +
+		"its last segment. " +
 		"Go is parsed exactly (class def, call, sel or ref; sel/call carry the X of X.name, with pkg:X when X is an " +
 		"imported package) but without type checking, so a match may be another local, field or another package's " +
 		"symbol - the shown line decides. JavaScript/TypeScript, Python and Java match word-bounded text with " +
@@ -63,8 +66,9 @@ func (t *FileRefsTool) Schema() api.ToolSchema {
 			"type": "object",
 			"properties": map[string]any{
 				"name": map[string]any{
-					"type":        "string",
-					"description": "The identifier to look for: a function, method, type, field, variable or import name (case-sensitive)",
+					"type": "string",
+					"description": "The identifier to look for: a function, method, type, field, variable or import name (case-sensitive); " +
+						"a qualified name such as Runner.Run keeps only the uses qualified by Runner",
 				},
 				"path": map[string]any{
 					"type":        "string",
@@ -94,6 +98,10 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	if name == "" {
 		return nil, fmt.Errorf("file_refs: %q arg is required", "name")
 	}
+	// A "Q.Name" argument searches Name and keeps its Q uses only; the display
+	// name stays as it was written, so a zero-match result echoes the query.
+	displayName := name
+	name, qual := splitRefName(name)
 	pathArg, _ := call.Arguments["path"].(string)
 	if pathArg == "" {
 		pathArg = "."
@@ -110,16 +118,17 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	re := refWordRe(name)
 
-	out := &refOut{}
+	out := &refOut{name: name, qual: qual}
 	// A file argument is searched as that file: a type no extractor covers is
 	// refused with the supported list, not answered with an empty result.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
-		refs, approx, err := t.oneFile(target, name, re)
+		refs, approx, dropped, err := t.oneFile(target, name, qual, re)
 		if err != nil {
 			return nil, fmt.Errorf("file_refs: %w", err)
 		}
-		out.files, out.approx, out.refs = 1, approx, refs
-	} else if err := t.walkDir(ctx, target, name, re, limit, includeTests, noIgnore, out); err != nil {
+		out.files, out.approx, out.refs, out.dropped = 1, approx, refs, dropped
+		out.goRefs = !approx && len(refs) > 0
+	} else if err := t.walkDir(ctx, target, name, qual, re, limit, includeTests, noIgnore, out); err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
 	}
 	if out.files == 0 {
@@ -132,29 +141,29 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	return &api.ToolResult{
 		CallID:  call.CallID,
 		Name:    t.Name(),
-		Content: TruncateHeadTail(out.render(name, pathArg, limit), rawLimit(t.maxOut)),
+		Content: TruncateHeadTail(out.render(displayName, pathArg, limit), rawLimit(t.maxOut)),
 	}, nil
 }
 
 // oneFile searches one file through os.Root, the way file_symbols reads one.
-func (t *FileRefsTool) oneFile(target readTarget, name string, re *regexp.Regexp) ([]Ref, bool, error) {
+func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) ([]Ref, bool, int, error) {
 	if !SupportsSymbols(target.abs) {
-		return nil, false, fmt.Errorf("unsupported file type %q; supported: %s",
+		return nil, false, 0, fmt.Errorf("unsupported file type %q; supported: %s",
 			filepath.Ext(target.abs), SupportedSymbolLanguages())
 	}
 	file, err := withRoot(target.base, target.abs, func(root *os.Root, rel string) (symbolFile, error) {
 		return readSymbolFile(root, target, rel)
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
-	return scanRefs(file.name, file.data, name, re)
+	return scanRefs(file.name, file.data, name, qual, re)
 }
 
 // walkDir searches every supported source file under the directory target,
 // stopping one match past limit (the result then says more matched instead of
 // walking a whole module cache).
-func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name string, re *regexp.Regexp, limit int, includeTests bool, noIgnore bool, out *refOut) error {
+func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qual string, re *regexp.Regexp, limit int, includeTests bool, noIgnore bool, out *refOut) error {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
@@ -184,13 +193,15 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name stri
 		if !re.Match(file.data) {
 			return nil
 		}
-		refs, approx, err := scanRefs(file.name, file.data, name, re)
+		refs, approx, dropped, err := scanRefs(file.name, file.data, name, qual, re)
 		if err != nil {
 			// A parser error names the file and the line itself.
 			out.noteError(err.Error())
 			return nil
 		}
 		out.approx = out.approx || approx
+		out.goRefs = out.goRefs || (!approx && len(refs) > 0)
+		out.dropped += dropped
 		out.refs = append(out.refs, refs...)
 		if len(out.refs) > limit {
 			out.more = true
@@ -209,32 +220,58 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name stri
 // languages of the registry by word-bounded text match (approx). A file type
 // the registry does not know is an error; a file without the name yields
 // nothing, which is why the caller filters on the same word-bounded pattern
-// first.
-func scanRefs(file string, src []byte, name string, re *regexp.Regexp) ([]Ref, bool, error) {
+// first. qual narrows the result to the Q of a qualified name and dropped is how
+// many occurrences of the name qualified something else.
+func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, bool, int, error) {
 	lang, ok := symbolLanguageFor(file)
 	if !ok {
-		return nil, false, fmt.Errorf("unsupported file type %q; supported: %s",
+		return nil, false, 0, fmt.Errorf("unsupported file type %q; supported: %s",
 			filepath.Ext(file), SupportedSymbolLanguages())
 	}
 	if lang.approx { // Go is the only language with an exact extractor
-		return ScanLineRefs(file, src, name), true, nil
+		refs, dropped := scanLineRefs(file, src, name, qual)
+		return refs, true, dropped, nil
 	}
 	if !re.Match(src) {
-		return nil, false, nil
+		return nil, false, 0, nil
 	}
-	refs, err := ScanGoRefs(file, src, name)
-	return refs, false, err
+	refs, dropped, err := scanGoRefs(file, src, name, qual)
+	return refs, false, dropped, err
+}
+
+// splitRefName splits a possibly qualified name argument: the last dot segment
+// is the name to search and the segment before it the qualifier Q that narrows
+// the result, so "a.b.Run" searches Run with Q=b and "Run" searches it
+// unqualified. A trailing or doubled dot falls back to the text as it is.
+func splitRefName(raw string) (name, qual string) {
+	i := strings.LastIndexByte(raw, '.')
+	if i <= 0 || i == len(raw)-1 {
+		return raw, ""
+	}
+	name, qual = raw[i+1:], raw[:i]
+	if j := strings.LastIndexByte(qual, '.'); j >= 0 {
+		qual = qual[j+1:]
+	}
+	if qual == "" {
+		return name, ""
+	}
+	return name, qual
 }
 
 // refOut collects one run: the matches and everything the model should know
 // about what was left out.
 type refOut struct {
-	refs        []Ref
-	files       int // supported source files that were read
-	tests       int // test files left out
+	refs    []Ref
+	files   int    // supported source files that were read
+	name    string // the searched identifier, without its qualifier
+	qual    string // the Q of a qualified query; empty when the name had no dot
+	dropped int    // occurrences of the name that qualify another object
+	tests   int    // test files left out
+
 	unsupported int // files of a type no extractor covers
 	tooLarge    int // files over maxSearchFileBytes
 	approx      bool
+	goRefs      bool // at least one shown match came from the Go parser
 	more        bool // the walk stopped one match past the limit
 	errors      []string
 	ignoreNote  string
@@ -302,9 +339,26 @@ func (o *refOut) notes(limit int) []string {
 	}
 	if len(o.refs) == 0 {
 		// A name defined here but used elsewhere is the common false empty: the
-		// search only looks inside path.
-		notes = append(notes, "[no references in this path; the name may be used from another package/directory - "+
-			"try the workspace root (path=.) or the defining package's parent]")
+		// search only looks inside path. A qualified search that only dropped other
+		// qualifiers is told apart by the note below, not by this hint.
+		if o.dropped == 0 {
+			notes = append(notes, "[no references in this path; the name may be used from another package/directory - "+
+				"try the workspace root (path=.) or the defining package's parent]")
+		}
+	}
+	if o.qual != "" {
+		// The filter is textual, and the model should know what it left out: the
+		// same name is used on other objects often enough to look like a miss.
+		notes = append(notes, fmt.Sprintf("[qualified by %q: kept the definitions of type/package %s and the "+
+			"sel/call uses whose qualifier text is %s or ends with %s (case-insensitive); dropped %d use(s) of "+
+			"%q with another qualifier - search without the qualifier for all of them]",
+			o.qual, o.qual, o.qual, o.qual, o.dropped, o.name))
+	}
+	if o.goRefs {
+		// The conclusion the model needs to stop re-checking with file_grep: a Go
+		// result is complete for the name, only its other objects are in question.
+		notes = append(notes, "[Go results come from a syntax parse and list every occurrence; only confirm "+
+			"same-named other objects - no file_grep needed to fill in]")
 	}
 	// Fixed line: the tool does not resolve types, so a match may be another
 	// object with that name and the shown line decides.

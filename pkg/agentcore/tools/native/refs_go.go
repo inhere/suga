@@ -47,10 +47,19 @@ type Ref struct {
 // comments and string literals are not identifiers, so they never match. A
 // file that does not parse returns its error to the caller.
 func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
+	refs, _, err := scanGoRefs(file, src, name, "")
+	return refs, err
+}
+
+// scanGoRefs is ScanGoRefs with the qualified-name filter of one file_refs call:
+// qual is the Q of a "Q.Name" argument (empty = no filter) and dropped counts
+// the occurrences of name that qualify another object (another package, another
+// type, a receiver variable). The filter is textual, see qualifierMatches.
+func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, int, error) {
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, file, src, parser.SkipObjectResolution)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	lines := newSourceLines(src)
 	imports := goImportNames(parsed)
@@ -64,6 +73,7 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 		return string(src[from:to])
 	}
 	var out []Ref
+	dropped := 0
 	// stack is the path to the node being visited: the parent decides how an
 	// identifier is used, which is all the classification needs.
 	var stack []ast.Node
@@ -85,10 +95,18 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 			return true
 		}
 		ref := Ref{File: file, Line: fset.Position(ident.Pos()).Line}
+		// keep is the qualified-name filter, and it keeps everything when qual is
+		// empty. A bare occurrence carries no qualifier text, so the only qualifier
+		// it can be tied to is the file's package name; the cases below add the
+		// receiver and owner type of a definition and the qualifier of a selector.
+		keep := qual == "" || parsed.Name.Name == qual
 		switch p := parent.(type) {
 		case *ast.FuncDecl:
 			if p.Name == ident {
 				ref.Class = RefDef
+				// A method of type Q (func (r *Q) Name) is a Q.Name definition; a
+				// plain function belongs to its package and is left to keep above.
+				keep = keep || qualifierMatches(qual, recvTypeName(p))
 			}
 		case *ast.TypeSpec:
 			if p.Name == ident {
@@ -104,6 +122,9 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 			// name is bound rather than used.
 			if identIn(p.Names, ident) {
 				ref.Class = RefDef
+				// The field of a struct or interface type Q is a Q.Name definition;
+				// fieldOwnerType is empty for parameters, results and receivers.
+				keep = keep || qualifierMatches(qual, fieldOwnerType(stack))
 			}
 		case *ast.ImportSpec:
 			// An explicit import name ("import x \"path\"").
@@ -135,6 +156,9 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 				ref.Class = RefSel
 				ref.Qualifier = nodeText(p.X)
 				ref.Pkg = imports[ref.Qualifier]
+				// x.Name, pkg.Name and s.runner.Name all qualify the use; the
+				// qualifier text is all the filter has to decide on.
+				keep = qualifierMatches(qual, ref.Qualifier)
 				// X.Name(...) is a call of the name rather than a field read.
 				if call, ok := grandparent.(*ast.CallExpr); ok && call.Fun == p {
 					ref.Class = RefCall
@@ -147,6 +171,11 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 		}
 		if ref.Class == "" {
 			ref.Class = RefRef // a bare use: a type, an operand, an embedded name
+		}
+		if !keep {
+			// A use of the same name on another object: counted, not listed.
+			dropped++
+			return true
 		}
 		ref.Text = refLineText(lines.at(ref.Line))
 		out = append(out, ref)
@@ -161,7 +190,66 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 		}
 		return out[i].Class < out[j].Class
 	})
-	return out, nil
+	return out, dropped, nil
+}
+
+// qualifierMatches reports whether the qualifier text of one occurrence can be
+// the Q of a "Q.Name" argument. There is no type resolution, so it matches the
+// text and errs on keeping: the qualifier itself, its last dot segment compared
+// case-insensitively (s.runner.Run for Runner.Run), and that is also what lets a
+// package alias named Q through.
+func qualifierMatches(q, qual string) bool {
+	if q == "" || qual == "" {
+		return q == ""
+	}
+	if qual == q {
+		return true
+	}
+	if i := strings.LastIndexByte(qual, '.'); i >= 0 {
+		qual = qual[i+1:]
+	}
+	return strings.EqualFold(qual, q)
+}
+
+// recvTypeName returns the receiver type name of a method declaration (T for
+// func (r *T), func (r T) and func (r T[P])) and "" for a plain function.
+func recvTypeName(p *ast.FuncDecl) string {
+	if p.Recv == nil || len(p.Recv.List) == 0 {
+		return ""
+	}
+	typ := p.Recv.List[0].Type
+	for {
+		switch t := typ.(type) {
+		case *ast.StarExpr:
+			typ = t.X
+		case *ast.IndexExpr: // a generic receiver, T[P]
+			typ = t.X
+		case *ast.IndexListExpr:
+			typ = t.X
+		case *ast.Ident:
+			return t.Name
+		default:
+			return ""
+		}
+	}
+}
+
+// fieldOwnerType returns the struct or interface type a field belongs to and ""
+// when the field is a parameter, a result or a receiver. stack is the node path
+// of the walker whose last element is the identifier itself: the type spec, the
+// struct type, its field list, the field, the identifier.
+func fieldOwnerType(stack []ast.Node) string {
+	n := len(stack)
+	if n < 5 {
+		return ""
+	}
+	switch stack[n-4].(type) {
+	case *ast.StructType, *ast.InterfaceType:
+		if spec, ok := stack[n-5].(*ast.TypeSpec); ok {
+			return spec.Name.Name
+		}
+	}
+	return ""
 }
 
 // scanRefs-style helpers shared by the Go extractor and the approximate
