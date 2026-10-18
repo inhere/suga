@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 新增只读工具 `file_refs`：按名字列出使用点（“谁调用了 X、X 在哪被用”），一次调用返回 `path:line class[(qualifier)] 命中行`，按 path、line 排序。Go 用 `go/parser` + `go/ast` 精确分类 `def`/`call`/`sel`/`ref`，`call`/`sel` 带限定符且限定符是该文件 import 的包名时标 `pkg:X`；**不做类型检查**，因此同名局部变量、字段或其它包的同名符号也会命中，结果尾部固定一行说明由命中行原文判断。JavaScript/TypeScript、Python、Java 用词边界文本匹配（注释与字符串先遮蔽）并标 `approx`；参数 `name`（必填）、`path`（默认工作区根，支持文件/目录/只读 root 绝对路径）、`include_tests`（默认 false）、`limit`（默认 200）；目录扫描先用词边界正则预过滤，只有命中的 Go 文件才解析；零命中时提示名字可能只被其它包/目录使用。`file_symbols` 描述同时注明它只列声明、不列使用点。
+
 ## [0.32.0] - 2026-10-18
 
 全局代理 `network.proxy`（名单内站点走代理）；MCP 支持 Streamable HTTP 与认证头；模型可声明 `thinking_style` 与 `stream_required`；新增多语言 `file_symbols`，`file_read` 支持声明大纲与多段范围读；只读运行不再列出命令类优先工具；修复 MCP 无参工具让网关拒绝整次请求。

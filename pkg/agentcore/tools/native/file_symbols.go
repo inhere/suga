@@ -43,7 +43,8 @@ func (t *FileSymbolsTool) Description() string {
 		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
 		"JavaScript/TypeScript, Python and Java are recognised from their declaration lines and marked approx " +
 		"(confirm a name with file_grep); universal-ctags is used first when it is installed and covers more " +
-		"languages. Any other file type is refused with the supported list. " +
+		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
+		"Any other file type is refused with the supported list. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d declarations.",
 			defaultSymbolLimit)
 }

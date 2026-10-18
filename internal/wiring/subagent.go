@@ -47,8 +47,8 @@ var _ native.SubAgents = (*subAgents)(nil)
 // out: it marks the session as having read external content, and a fresh
 // sub-agent session has nothing of its own to recall.
 var subAgentTools = map[string][]string{
-	native.AgentExplore:  {"file_read", "file_list", "file_grep", "file_find", "file_symbols"},
-	native.AgentResearch: {"file_read", "file_list", "file_grep", "file_find", "file_symbols", "web_fetch", "web_search"},
+	native.AgentExplore:  {"file_read", "file_list", "file_grep", "file_find", "file_symbols", "file_refs"},
+	native.AgentResearch: {"file_read", "file_list", "file_grep", "file_find", "file_symbols", "file_refs", "web_fetch", "web_search"},
 }
 
 func (s *subAgents) Scope(ctx context.Context) (string, string) { return personal.CurrentTurn(ctx) }

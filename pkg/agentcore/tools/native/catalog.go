@@ -90,6 +90,9 @@ func Catalog() []Spec {
 		{Name: "file_symbols", New: func(env Env) api.Tool {
 			return &FileSymbolsTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
+		{Name: "file_refs", New: func(env Env) api.Tool {
+			return &FileRefsTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+		}},
 		{Name: "web_fetch", New: func(env Env) api.Tool {
 			t, err := NewWebFetchToolWithSelector(env.FetchAllowPrivate, env.FetchProxy, env.NetworkProxy)
 			if err != nil {
