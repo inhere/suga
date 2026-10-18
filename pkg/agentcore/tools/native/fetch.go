@@ -110,7 +110,8 @@ func ParseFetchProxy(proxy string) (*url.URL, error) {
 	}
 	u, err := url.Parse(proxy)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5") {
-		return nil, fmt.Errorf("tools.web_fetch.proxy must be an http://, https:// or socks5:// URL, got %q", proxy)
+		// The value is not echoed: a proxy URL may carry user:password.
+		return nil, errors.New("tools.web_fetch.proxy must be an http://, https:// or socks5:// URL")
 	}
 	return u, nil
 }

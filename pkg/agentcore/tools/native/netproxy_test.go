@@ -139,3 +139,11 @@ func TestSearchWithNetworkProxy(t *testing.T) {
 		assert.True(t, transport == nil)
 	})
 }
+
+// TestParseFetchProxyDoesNotEchoTheValue: an invalid legacy proxy setting is
+// reported without its value, which may hold user:password.
+func TestParseFetchProxyDoesNotEchoTheValue(t *testing.T) {
+	_, err := ParseFetchProxy("ftp://user:s3cret@proxy.example:21")
+	assert.Require(t, assert.Err(t, err))
+	assert.NotContains(t, err.Error(), "s3cret")
+}
