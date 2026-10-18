@@ -77,7 +77,7 @@ func (t *FileSymbolsTool) Schema() api.ToolSchema {
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
-					"description": "Also list *_test.go, *.test.ts, test_*.py and *Test.java (default false)",
+					"description": "Also list *_test.go, *.test.ts, test_*.py, *Test.java and *Test.php (default false)",
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
@@ -396,6 +396,8 @@ var testFilePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?:\.|-)(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$`),
 	regexp.MustCompile(`^(?:test_.*|.*_test)\.pyi?$`),
 	regexp.MustCompile(`(?:Test|Tests|IT)\.java$`),
+	// PHPUnit and Pest name the test classes FooTest.php.
+	regexp.MustCompile(`Test\.php$`),
 }
 
 // isTestFileName reports whether name looks like a test file of one of the

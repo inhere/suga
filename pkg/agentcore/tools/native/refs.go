@@ -76,7 +76,7 @@ func (t *FileRefsTool) Schema() api.ToolSchema {
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
-					"description": "Also search *_test.go, *.test.ts, test_*.py and *Test.java (default false)",
+					"description": "Also search *_test.go, *.test.ts, test_*.py, *Test.java and *Test.php (default false)",
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
