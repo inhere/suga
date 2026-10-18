@@ -18,6 +18,8 @@
 - MCP 接入 Streamable HTTP：`mcp.servers` 可写 `url`、`transport: streamable_http` 与 `headers`（值支持 `${VAR}` 展开，认证值只进内存），支持 JSON 与 SSE 响应、`Mcp-Session-Id` 会话、请求取消与 session 关闭；新增独立启动超时 `mcp.startup_timeout_sec`（缺省 30 秒），stdio server 行为不变，旧 `sse` 配置明确报错。
 - ACP `session/new`、`session/load` 接受 HTTP MCP server（initialize 中声明该能力），且不从 ACP payload 展开宿主环境变量；HTTP MCP 工具的权限、`tools.deferred` 与 preferred 语义与 stdio 完全相同。
 - MCP 同名工具冲突除日志外可在运行时 manifest 的 `tool_conflicts`（`server`/`tool`/`kept_by`）中查询，仍不自动改名。
+- `file_read` 新增可选参数 `outline`：源文件超过 300 行时返回声明大纲（行号 + 声明行）与每段被省略的精确行范围，小文件、未支持类型与解析失败的文件回退为窗口读并说明原因；`paths` 的每一项可带 `:start-end[,start-end]` 行段后缀，一次调用可取同一文件的多段并与不带后缀的项混用，不带新参数时输出与之前完全一致。
+- 新增只读工具 `file_symbols`：一次列出文件或目录里各语言的声明（`file:line kind name signature`），支持 `name` 子串、`kind`、`include_tests`、`limit` 过滤；Go 用 `go/parser` 精确解析（func/method/type/const/var），JavaScript/TypeScript、Python、Java 用声明行识别器并标注 `approx`，装有 universal-ctags 时优先用它；不支持的文件类型明确报错并列出支持的语言，目录递归默认跳过测试文件。
 
 ## [0.31.0] - 2026-10-18
 
