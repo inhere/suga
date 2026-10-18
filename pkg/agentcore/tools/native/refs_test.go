@@ -89,8 +89,10 @@ func TestFileRefsToolMeta(t *testing.T) {
 	required, ok := schema.InputSchema["required"].([]any)
 	assert.Require(t, assert.True(t, ok))
 	assert.Eq(t, []any{"name"}, required)
-	// The description answers the question the tool exists for.
+	// The description answers the question the tool exists for, and says how a
+	// qualified name narrows the result.
 	assert.StrContains(t, tool.Description(), "who calls X")
+	assert.StrContains(t, tool.Description(), `name: "Runner.Run"`)
 }
 
 // TestFileRefsToolDirectory is the tool's main workflow: one call over a
@@ -145,6 +147,52 @@ func TestFileRefsToolDirectory(t *testing.T) {
 		got := runFileRefs(t, tool, map[string]any{"name": "NoSuchName", "path": "internal/config"})
 		assert.StrContains(t, got, `no references to "NoSuchName" in internal/config`)
 		assert.StrContains(t, got, "[no references in this path; the name may be used from another package/directory")
+	})
+}
+
+// TestFileRefsToolQualified is the qualified name argument end to end: the result
+// keeps only the uses of that type or package and says how many others it left
+// out.
+func TestFileRefsToolQualified(t *testing.T) {
+	_, tool := refsWorkspace(t)
+
+	t.Run("a type-qualified name keeps its field and drops the uses of other qualifiers", func(t *testing.T) {
+		got := runFileRefs(t, tool, map[string]any{"name": "Options.ReadOnly", "path": "internal/config"})
+		assert.StrContains(t, got, "internal/config/config.go:6 def ReadOnly bool")
+		assert.NotContains(t, got, "sel(o)") // the receiver variable is not named after the type
+		assert.NotContains(t, got, "loader.")
+		assert.StrContains(t, got, `[qualified by "Options": kept the definitions of type/package Options and the `+
+			`sel/call uses whose qualifier text is Options or ends with Options (case-insensitive); dropped 3 use(s) of `+
+			`"ReadOnly" with another qualifier - search without the qualifier for all of them]`)
+	})
+
+	t.Run("a qualifier that only names the receiver keeps just that use", func(t *testing.T) {
+		got := runFileRefs(t, tool, map[string]any{"name": "o.ReadOnly", "path": "internal/config/config.go"})
+		assert.StrContains(t, got, "internal/config/config.go:10 sel(o) if o.ReadOnly {")
+		assert.NotContains(t, got, "config.go:6 def")
+		assert.StrContains(t, got, "dropped 1 use(s) of \"ReadOnly\" with another qualifier")
+	})
+
+	t.Run("the approximate languages filter on the qualified text as well", func(t *testing.T) {
+		got := runFileRefs(t, tool, map[string]any{"name": "opts.ReadOnly", "path": "internal/config/loader.py"})
+		assert.StrContains(t, got, "internal/config/loader.py:2 ref return opts.ReadOnly")
+		assert.StrContains(t, got, "dropped 0 use(s)")
+
+		got = runFileRefs(t, tool, map[string]any{"name": "Options.ReadOnly", "path": "internal/config/loader.py"})
+		assert.StrContains(t, got, `no references to "Options.ReadOnly" in internal/config/loader.py`)
+		assert.StrContains(t, got, "dropped 1 use(s)")
+		// Only other qualifiers were dropped, so the cross-package hint would mislead.
+		assert.NotContains(t, got, "[no references in this path")
+	})
+
+	t.Run("the Go result says the list is complete, the approx one does not", func(t *testing.T) {
+		goOut := runFileRefs(t, tool, map[string]any{"name": "ReadOnly", "path": "internal/config/config.go"})
+		assert.StrContains(t, goOut, "[Go results come from a syntax parse and list every occurrence; "+
+			"only confirm same-named other objects - no file_grep needed to fill in]")
+
+		approxOut := runFileRefs(t, tool, map[string]any{"name": "ReadOnly", "path": "internal/config/loader.py"})
+		assert.NotContains(t, approxOut, "[Go results come from a syntax parse")
+		assert.StrContains(t, approxOut, "[approx: ")
 	})
 }
 

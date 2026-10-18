@@ -114,6 +114,58 @@ func TestLineRefs(t *testing.T) {
 	})
 }
 
+// TestLineRefsQualified covers the qualified-name filter of the approximate
+// matcher: only the lines writing the qualified name stay, the others are
+// counted as dropped.
+func TestLineRefsQualified(t *testing.T) {
+	t.Run("a Python qualified use keeps its line and counts the others", func(t *testing.T) {
+		src := "def load():\n" + // 1
+			"    return opts.ReadOnly\n" + // 2
+			"def other(cfg):\n" + // 3
+			"    return cfg.ReadOnly\n" // 4
+		refs, dropped := scanLineRefs("fixture.py", []byte(src), "ReadOnly", "opts")
+		assert.Eq(t, []int{2}, refLines(refs))
+		assert.Eq(t, 1, dropped)
+	})
+
+	t.Run("Q::name is the other shape the filter accepts", func(t *testing.T) {
+		src := "Config::ReadOnly\nother.ReadOnly\n"
+		refs, dropped := scanLineRefs("fixture.ts", []byte(src), "ReadOnly", "Config")
+		assert.Eq(t, []int{1}, refLines(refs))
+		assert.Eq(t, 1, dropped)
+	})
+
+	t.Run("a comment keeps no qualified use either", func(t *testing.T) {
+		src := "// opts.ReadOnly is a flag\nreturn 1\n"
+		refs, dropped := scanLineRefs("fixture.ts", []byte(src), "ReadOnly", "opts")
+		assert.Eq(t, 0, len(refs))
+		assert.Eq(t, 0, dropped)
+	})
+}
+
+// TestApproxQualifierMatches covers the shapes the filter looks for in one
+// masked line, and the qualifier it must not accept.
+func TestApproxQualifierMatches(t *testing.T) {
+	cases := []struct {
+		line string
+		qual string
+		name string
+		want bool
+	}{
+		{"return opts.ReadOnly", "opts", "ReadOnly", true},
+		{"Config::ReadOnly = 1", "Config", "ReadOnly", true},
+		{"RunnerRun()", "Runner", "Run", true},
+		{"return cfg.ReadOnly", "opts", "ReadOnly", false},
+		{"return opts.ReadOnly", "Options", "ReadOnly", false},
+		{"return opts.ReadOnly", "", "ReadOnly", true}, // no filter keeps the line
+	}
+	for _, c := range cases {
+		t.Run(c.qual+"|"+c.line, func(t *testing.T) {
+			assert.Eq(t, c.want, approxQualifierMatches(c.line, c.qual, c.name))
+		})
+	}
+}
+
 // TestRefWordRe covers the matcher itself, whose boundaries decide what the
 // approximate languages report.
 func TestRefWordRe(t *testing.T) {
