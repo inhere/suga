@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+### 新增
+
+- `providers.<id>.thinking_style` 与 `providers.<id>.models.<model>.thinking_style`：声明 Claude 协议的思考请求形状（`budget` | `adaptive` | `none`），不再只按模型名推断；未声明时保持原启发式。
+- `providers.<id>.stream_required` 与 `providers.<id>.models.<model>.stream_required`：声明只接受流式请求的网关，所有请求（含压缩摘要等内部请求）都带 `stream: true`；`suga models` 与 `suga manifest` 显示生效值。
+
 ## [0.31.0] - 2026-10-18
 
 记忆检索按相关度排序（FTS5 派生索引）、交接摘要固定小节并可检索、记忆条目可标注 `applies_when`；前台长命令超时转后台任务；写工具参数按 schema 校验；`trace --web` 只读与自动刷新；run 收尾行显示上下文用量；修复只接受流式请求的网关上压缩与交接失败；新增可在 Windows 跑的 Go 版终端冒烟。

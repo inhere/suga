@@ -54,6 +54,12 @@ const responsesPath = "/responses"
 
 // Generate implements Provider.
 func (p *ResponsesProvider) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) (*agentcoreapi.GenerateResult, error) {
+	if p.streamRequired {
+		// The endpoint answers only streamed requests (providers.<id>
+		// [.models.<model>].stream_required): even a caller of Generate - a
+		// summary, for example - gets stream=true.
+		return p.Stream(ctx, req, nil)
+	}
 	ctx = ensureRetryReport(ctx)
 	body := p.buildResponsesBody(ctx, req, false)
 	logProviderRequest(p.Name(), responsesPath, body)

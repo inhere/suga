@@ -23,8 +23,10 @@ func BuildProvider(spec ModelSpec) (llm.Provider, error) {
 			PromptCache: p.PromptCache,
 			// Extended thinking: adaptive + effort, or a token budget on
 			// older models (see llm.applyClaudeThinking).
-			Thinking: spec.ThinkingLevel(),
-			Retry:    p.Retry,
+			Thinking:       spec.ThinkingLevel(),
+			ThinkingStyle:  ThinkingStyleFor(spec),
+			StreamRequired: StreamRequiredFor(spec),
+			Retry:          p.Retry,
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
@@ -40,6 +42,7 @@ func BuildProvider(spec ModelSpec) (llm.Provider, error) {
 				// Thinking level as reasoning.effort ("off" is "none").
 				ReasoningEffort: reasoningEffort(spec.ThinkingLevel()),
 				Retry:           p.Retry,
+				StreamRequired:  StreamRequiredFor(spec),
 				// Request bounds: timeouts.*, providers.<id>.timeouts.
 				RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 				ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
@@ -56,6 +59,7 @@ func BuildProvider(spec ModelSpec) (llm.Provider, error) {
 			// Thinking level as reasoning_effort, see reasoningEffort.
 			ReasoningEffort: reasoningEffort(spec.ThinkingLevel()),
 			Retry:           p.Retry,
+			StreamRequired:  StreamRequiredFor(spec),
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),

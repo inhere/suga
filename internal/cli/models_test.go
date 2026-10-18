@@ -58,6 +58,25 @@ providers:
 	})
 }
 
+func TestModelsCommandShowsDeclaredThinkingStyleAndStreamRequirement(t *testing.T) {
+	setupConfigCLI(t, `
+model: gateway/main
+providers:
+  gateway:
+    type: openai
+    thinking_style: adaptive
+    base_url: http://127.0.0.1:1/v1
+    models:
+      main: {stream_required: true}
+`)
+	var stdout, stderr bytes.Buffer
+	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"models"})
+	assert.NoErr(t, err)
+	assert.StrContains(t, stdout.String(), "thinking_style=adaptive")
+	assert.StrContains(t, stdout.String(), "stream_required=yes")
+	assert.Eq(t, "", stderr.String())
+}
+
 func TestModelsCommandDoesNotContactConfiguredEndpoint(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

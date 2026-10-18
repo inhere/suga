@@ -39,6 +39,8 @@ fallback_models:
 - `providers.<id>.max_output_tokens` 与 `providers.<id>.models.<model>.max_output_tokens`：模型回答的输出 token 上限，取值顺序为模型级 > provider 级；未配置时由协议决定。Anthropic/Claude 默认发送 32000，OpenAI chat/completions 与 Responses 不发送该字段而使用服务端默认。`--max-output-tokens` > `SUGA_MAX_OUTPUT_TOKENS` > 模型级 > provider 级，可覆盖本次运行。
 - `providers.<id>.models.<model>.model_id`：实际发给 provider 的模型 id；不设时发送 `<model>` 本身。用它给很长的上游 id 起一个短名：引用、trace、统计、价格与上下文窗口都按短名，只有请求里用 `model_id`。用完整的上游 id 引用也会对应到这个短名。
 - `providers.<id>.models.<model>.type`、`base_url`：该模型自己的协议与地址，覆盖 provider 的。同一个网关（command-code、opencode 等）常把 Claude 模型放在 Anthropic 协议的端点、其余模型放在 OpenAI 兼容端点，这时在 Claude 模型上写 `type: anthropic` 和对应的 `base_url` 即可，不必再拆一个 provider；`api_key`、`headers` 等仍沿用 provider 的。
+- `providers.<id>.thinking_style` 与 `providers.<id>.models.<model>.thinking_style`：声明思考请求形状而不按模型名推断，取值 `budget`（`thinking: {type: enabled, budget_tokens}`）、`adaptive`（`thinking: {type: adaptive}` 与 `output_config.effort`）与 `none`（不发送思考参数，即使档位已设置）。优先级：模型级 > provider 级；都不设时保持原来的模型名推断（Claude 4.5 及更早用 budget，更新的用 adaptive）。只影响 `anthropic` 类型的请求形状；`suga manifest` 显示主模型生效的值。
+- `providers.<id>.stream_required` 与 `providers.<id>.models.<model>.stream_required`：布尔值，声明只接受流式请求的网关；为 true 时该 provider（或该模型）的所有请求都带 `stream: true`，包括压缩摘要等内部请求（`stream_required: true` 自身隐含支持流式）。模型级显式写 `false` 可关掉 provider 级的默认；不声明时保持原来的调用路径。`suga models` 与 `suga manifest` 显示生效值。
 - `providers.<id>.thinking` 与 `providers.<id>.models.<model>.thinking`：思考档位，取值 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`auto`（与 omp 相同）。优先级：命令行 `--thinking`（只作用于主模型）> 模型级 > provider 级；都不设或 `auto` 时不发送，用 provider 的默认。`openai` 类型作为请求字段 `reasoning_effort` 原样发送，各 provider 支持的取值不同（如 command-code 为 `off|low|medium|high|xhigh|max`，OpenAI 为 `none|minimal|low|medium|high`），不支持的取值由 provider 报错。`anthropic` 类型走 extended thinking：Claude 4.6 及以后的模型发送 `thinking: {type: adaptive, display: summarized}` 与 `output_config.effort`（`minimal` 按 `low`），4.5 及更早的模型发送 `thinking: {type: enabled, budget_tokens}`（minimal 1024 … max 31000）并带 interleaved-thinking beta 头；设置档位且请求未指定时 `max_tokens` 为 32000；`off`、`auto` 与不设都不发送思考参数（部分新模型默认就会思考，也不接受关闭）。带签名的 thinking 块随工具调用保存，并在之后的请求里原样回传。签名绑定请求前缀，所以主模型为 `anthropic` 类型时不做历史折叠（`context.fold_every` 不生效）。`suga manifest` 显示主模型生效的档位。
 - 简单匹配：provider 写了 `models` 而引用的模型不在其中（既不是某个键，也不是某个 `model_id`）时，按名字的一部分查找已配置的模型（不区分大小写，查键与 `model_id`；写了 `provider/` 前缀只查该 provider，否则查所有列了模型的 provider；有完全相同的只取它）。唯一匹配就用它，如 `--model haiku` 选中 `command-code/claude-haiku-5-5`；多个匹配时报错并列出候选；没有匹配时在 stderr 警告一次并照原样发送，多半是模型名写错。没有 `models` 的 provider 不做匹配也不检查。未配置 `model` 时，裸名同样按此在所有 provider 中查找。`model`、`--model`、`SUGA_MODEL`、`compact_model`、`fallback_models` 都适用。
 - `compact_model`：自动压缩与 `:compact` 使用的模型，引用规则同 `model`；裸模型名使用主模型的 provider；不设则用当前回合的模型。
@@ -123,6 +125,8 @@ providers:
     api_key: "${COMMAND_CODE_API_KEY}"
     context_window: 1000000                # 本 provider 所有模型的默认窗口
     thinking: high                         # 默认思考档位（--thinking 可临时覆盖）
+    thinking_style: adaptive               # 可选的请求形状：budget | adaptive | none
+    stream_required: true                  # 可选的：该 provider 只接受流式请求
     models:
       deepseek-v4.1-flash:                 # suga 里用的短名
         model_id: deepseek/deepseek-v4.1-flash   # 请求里发送的 id

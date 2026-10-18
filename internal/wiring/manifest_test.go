@@ -137,6 +137,18 @@ func TestLoadManifest(t *testing.T) {
 		_, err = LoadManifest(ManifestOptions{Thinking: "huge"})
 		assert.ErrMsgContains(t, err, "--thinking: unknown thinking level")
 	})
+	t.Run("declared thinking style and stream requirement are reported", func(t *testing.T) {
+		assert.NoErr(t, gkconfig.Set("providers.openai.thinking_style", "budget"))
+		assert.NoErr(t, gkconfig.Set("providers.openai.stream_required", true))
+		t.Cleanup(func() {
+			_ = gkconfig.Set("providers.openai.thinking_style", "")
+			_ = gkconfig.Set("providers.openai.stream_required", false)
+		})
+		m, err := LoadManifest(ManifestOptions{})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "budget", m.Models.Main.ThinkingStyle)
+		assert.True(t, m.Models.Main.StreamRequired)
+	})
 	t.Run("invalid fold settings fail", func(t *testing.T) {
 		assert.NoErr(t, gkconfig.Set("context.fold_keep", 0))
 		t.Cleanup(func() { _ = gkconfig.Set("context.fold_keep", 5) })

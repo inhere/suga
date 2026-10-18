@@ -30,15 +30,20 @@ type ModelCatalogProvider struct {
 // ModelCatalogModel is one canonical provider/model reference. ModelID is the
 // effective upstream id, while Ref remains the stable local configuration key.
 type ModelCatalogModel struct {
-	Ref           string   `json:"ref"`
-	Provider      string   `json:"provider"`
-	Model         string   `json:"model"`
-	ModelID       string   `json:"model_id,omitempty"`
-	Type          string   `json:"type,omitempty"`
-	ContextWindow int      `json:"context_window"`
-	Thinking      string   `json:"thinking,omitempty"`
-	Roles         []string `json:"roles"`
-	CanSwitch     bool     `json:"can_switch"`
+	Ref           string `json:"ref"`
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	ModelID       string `json:"model_id,omitempty"`
+	Type          string `json:"type,omitempty"`
+	ContextWindow int    `json:"context_window"`
+	Thinking      string `json:"thinking,omitempty"`
+	// ThinkingStyle is the declared thinking request shape ("" = the model-name
+	// heuristic), see ThinkingStyleFor.
+	ThinkingStyle string `json:"thinking_style,omitempty"`
+	// StreamRequired marks a model whose endpoint answers only streamed requests.
+	StreamRequired bool     `json:"stream_required,omitempty"`
+	Roles          []string `json:"roles"`
+	CanSwitch      bool     `json:"can_switch"`
 }
 
 // BuildModelCatalog projects resolved providers and model roles. The caller is
@@ -151,6 +156,7 @@ func addCatalogModel(models map[string]*ModelCatalogModel, spec ModelSpec, confi
 			Ref: ref, Provider: spec.Provider.ID, Model: spec.Model,
 			ModelID: spec.APIModel(), Type: spec.Provider.Type,
 			ContextWindow: ContextWindowFor(spec), Thinking: spec.ThinkingLevel(),
+			ThinkingStyle: ThinkingStyleFor(spec), StreamRequired: StreamRequiredFor(spec),
 			Roles: []string{},
 		}
 		models[ref] = model

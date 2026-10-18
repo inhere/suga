@@ -43,6 +43,17 @@ type ModelConfig struct {
 	// Thinking (models.<key>.thinking) is the model's thinking level, see
 	// ThinkingLevels; "" falls back to the provider's.
 	Thinking string
+	// ThinkingStyle (models.<key>.thinking_style) pins the protocol shape of
+	// extended thinking (budget|adaptive|none, see ThinkingStyles) instead of
+	// guessing it from the model name; "" falls back to the provider's, and
+	// then to the model-name heuristic.
+	ThinkingStyle string
+	// StreamRequired (models.<key>.stream_required) marks a model whose endpoint
+	// answers only streamed requests: the provider sends every request with
+	// stream=true. StreamRequiredSet records that the key was written, so an
+	// explicit false overrides the provider level.
+	StreamRequired    bool
+	StreamRequiredSet bool
 	// Price is the optional per-million-token price used to compute cost when
 	// the provider reports none; the zero value means "no price configured".
 	Price Price
@@ -77,6 +88,13 @@ type ProviderConfig struct {
 	// Thinking (providers.<id>.thinking) is the default thinking level of the
 	// provider's models; "" leaves the provider's own default.
 	Thinking string
+	// ThinkingStyle (providers.<id>.thinking_style) is the default thinking
+	// style of the provider's models; "" leaves the model-name heuristic.
+	ThinkingStyle string
+	// StreamRequired (providers.<id>.stream_required) sends every request of
+	// this provider's models as a streamed request, summaries included: some
+	// gateways answer only stream=true.
+	StreamRequired bool
 	// PromptCache (providers.<id>.prompt_cache) enables Claude cache_control
 	// breakpoints; only meaningful for type anthropic.
 	PromptCache bool
@@ -182,8 +200,10 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 			ContextWindow:   intValue(entry["context_window"]),
 			MaxOutputTokens: intValue(entry["max_output_tokens"]),
 			Thinking:        stringValue(entry["thinking"]),
+			ThinkingStyle:   stringValue(entry["thinking_style"]),
 		}
 		promptCache, promptCacheSet := entry["prompt_cache"].(bool)
+		streamRequired, streamRequiredSet := entry["stream_required"].(bool)
 		user.Compat = normalizeStringList(entry["compat"])
 
 		if err := normalizeThinking(id, &user); err != nil {
@@ -209,8 +229,12 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 			merged.MaxOutputTokens = user.MaxOutputTokens
 		}
 		merged.Thinking = firstNonEmpty(user.Thinking, merged.Thinking)
+		merged.ThinkingStyle = firstNonEmpty(user.ThinkingStyle, merged.ThinkingStyle)
 		if promptCacheSet {
 			merged.PromptCache = promptCache
+		}
+		if streamRequiredSet {
+			merged.StreamRequired = streamRequired
 		}
 		if len(user.Compat) > 0 {
 			merged.Compat = user.Compat
@@ -248,16 +272,25 @@ func validProviderType(t string) bool {
 	return t == ProviderTypeOpenAI || t == ProviderTypeOpenAIResponses || t == ProviderTypeAnthropic
 }
 
-// normalizeThinking validates the provider's and its models' thinking levels.
+// normalizeThinking validates the provider's and its models' thinking levels
+// and thinking styles (both accept the same flexible case).
 func normalizeThinking(id string, p *ProviderConfig) error {
 	level, err := ParseThinking(p.Thinking)
 	if err != nil {
 		return fmt.Errorf("providers.%s.thinking: %w", id, err)
 	}
 	p.Thinking = level
+	style, err := ParseThinkingStyle(p.ThinkingStyle)
+	if err != nil {
+		return fmt.Errorf("providers.%s.thinking_style: %w", id, err)
+	}
+	p.ThinkingStyle = style
 	for key, cfg := range p.Models {
 		if cfg.Thinking, err = ParseThinking(cfg.Thinking); err != nil {
 			return fmt.Errorf("providers.%s.models.%s.thinking: %w", id, key, err)
+		}
+		if cfg.ThinkingStyle, err = ParseThinkingStyle(cfg.ThinkingStyle); err != nil {
+			return fmt.Errorf("providers.%s.models.%s.thinking_style: %w", id, key, err)
 		}
 		p.Models[key] = cfg
 	}
@@ -294,6 +327,10 @@ func readModelConfigs(raw any) map[string]ModelConfig {
 			cfg.ContextWindow = intValue(entry["context_window"])
 			cfg.MaxOutputTokens = intValue(entry["max_output_tokens"])
 			cfg.Thinking = stringValue(entry["thinking"])
+			cfg.ThinkingStyle = stringValue(entry["thinking_style"])
+			if v, ok := entry["stream_required"].(bool); ok {
+				cfg.StreamRequired, cfg.StreamRequiredSet = v, true
+			}
 			cfg.Price = readPrice(entry["price"])
 		}
 		models[strings.TrimSpace(name)] = cfg
@@ -577,6 +614,27 @@ func ContextWindowFor(spec ModelSpec) int {
 		return spec.Provider.ContextWindow
 	}
 	return ContextWindowForModel(spec.APIModel())
+}
+
+// ThinkingStyleFor returns the configured thinking style of spec's model
+// (ThinkingStyles): providers.<id>.models.<model>.thinking_style, else
+// providers.<id>.thinking_style, else "" for the model-name heuristic (see
+// llm.applyClaudeThinking).
+func ThinkingStyleFor(spec ModelSpec) string {
+	if cfg, ok := spec.Provider.Models[spec.Model]; ok && cfg.ThinkingStyle != "" {
+		return cfg.ThinkingStyle
+	}
+	return spec.Provider.ThinkingStyle
+}
+
+// StreamRequiredFor reports whether spec's model must be requested with
+// stream=true: providers.<id>.models.<model>.stream_required when written, else
+// providers.<id>.stream_required.
+func StreamRequiredFor(spec ModelSpec) bool {
+	if cfg, ok := spec.Provider.Models[spec.Model]; ok && cfg.StreamRequiredSet {
+		return cfg.StreamRequired
+	}
+	return spec.Provider.StreamRequired
 }
 
 // MaxOutputTokensFor returns the configured output token limit of spec's
