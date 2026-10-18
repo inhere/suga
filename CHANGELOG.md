@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.34.0] - 2026-10-18
+
+`file_refs` 支持限定名（`Runner.Run`），少见的接收者变量直接显示该行；稳定提示词把 `file_refs` 定为“谁调用了 X”的第一步、只回答被问的范围（测试只给数量）；`file_read` 描述把多段读写为首选。
+
 ### 新增
 
 - `file_refs` 的 `name` 支持限定名：写成 `Runner.Run`、`appconfig.ReadModelSettings` 或 `s.runner.Run`（取最后一个 `.` 前的一段作限定）时只列出能属于该类型/包的用法，并在结果说明里写出过滤规则与“去掉了 N 条其它限定的使用”。Go 按接收者类型、包名与限定符文本（含 `s.runner` 末段与大小写不敏感比较）判断，其它语言按 `Q.名字`/`Q::名字` 文本匹配；仍是文本匹配、不做类型解析。Go 结果另加一行结论提示：结果来自语法解析、已列出全部出现位置，只需确认同名的其它对象，不必再用 `file_grep` 补漏。`name` 字段名与默认（不限定的）行为不变。
@@ -782,7 +786,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.33.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/inhere/suga/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/inhere/suga/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/inhere/suga/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/inhere/suga/compare/v0.31.0...v0.31.1
