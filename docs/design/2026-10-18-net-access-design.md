@@ -1,13 +1,14 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 网络与接入设计
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 待用户审批
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `suga-gtr6`、`suga-8pvi`、`suga-48zd` 核对 v0.31.0 代码，设计全局代理、模型能力声明与 MCP Streamable HTTP 接入；三件事保持独立，待用户审批。 |
+| 0.2 | 2026-10-18 | 监督（Claude） | 审核简化 8pvi：不新增嵌套 capabilities，只在现有 providers.*（及 models.*）层补 thinking_style 与 stream_required（见“0.2 审核修订”）；Q1–Q5 按建议。 |
 
 ### 思考模式与范围冻结
 
@@ -18,6 +19,13 @@
 - expansion_policy：DEFER_OR_REQUEST。若需要改动 `memory`、ACP 协议版本、工具审批边界、web_fetch 的私网安全边界，停止实施并回到本设计 Gate。
 - review budget：小。三件事分别拥有配置、运行时和回滚边界；优先复用现有 `http.Transport`、provider config、MCP JSON-RPC 与 `tools.Registry`，不复制协议实现。
 - 停止条件：用户批准本设计和对应计划前不实施。
+
+## 0.2 审核修订（与下文冲突时以本节为准）
+
+- **8pvi 简化**：不新增 `capabilities` 嵌套层。`providers.<id>` 与 `providers.<id>.models.<name>` 下已有 `context_window`、`max_output_tokens`、`thinking`、`prompt_cache`，继续沿用；只补两个缺失字段（模型级覆盖 provider 级）：
+  - `thinking_style: budget | adaptive | none`——替代按模型名猜 thinking 请求形状；未声明时保留现有启发式。
+  - `stream_required: true`——只接受流式请求的网关；所有请求（含摘要等内部请求）走流式路径。
+- Q1–Q5 按建议结论执行。
 
 ## 背景与目标
 
