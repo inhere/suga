@@ -83,6 +83,12 @@ func writeModelsText(out io.Writer, catalog appconfig.ModelCatalog) error {
 				details = append(details, "type="+model.Type)
 			}
 			details = append(details, fmt.Sprintf("context=%d", model.ContextWindow), "switch="+yesNo(model.CanSwitch))
+			if model.ThinkingStyle != "" {
+				details = append(details, "thinking_style="+model.ThinkingStyle)
+			}
+			if model.StreamRequired {
+				details = append(details, "stream_required=yes")
+			}
 			fmt.Fprintf(tw, "  %s %s\t%s\t%s\n", marker, model.Ref, role, strings.Join(details, " "))
 		}
 		_ = tw.Flush()

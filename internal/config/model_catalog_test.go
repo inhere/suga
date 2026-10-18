@@ -63,6 +63,33 @@ providers:
 	}
 }
 
+func TestBuildModelCatalogProjectsThinkingStyleAndStreamRequirement(t *testing.T) {
+	loadYAML(t, `
+model: gw/streaming
+providers:
+  gw:
+    type: openai
+    thinking_style: adaptive
+    models:
+      streaming:
+        stream_required: true
+      plain: {}
+`)
+	providers, err := ReadProviders()
+	assert.Require(t, assert.NoErr(t, err))
+	settings, err := ReadModelSettings("")
+	assert.Require(t, assert.NoErr(t, err))
+	catalog := BuildModelCatalog(providers, settings)
+
+	streaming := findCatalogModel(t, catalog, "gw/streaming")
+	assert.Eq(t, ThinkingStyleAdaptive, streaming.ThinkingStyle)
+	assert.True(t, streaming.StreamRequired)
+
+	plain := findCatalogModel(t, catalog, "gw/plain")
+	assert.Eq(t, ThinkingStyleAdaptive, plain.ThinkingStyle) // provider value
+	assert.False(t, plain.StreamRequired)
+}
+
 func TestBuildModelCatalogKeepsConfiguredAliasesButDeduplicatesProviderIDs(t *testing.T) {
 	loadYAML(t, `
 model: gateway/one

@@ -207,6 +207,8 @@ var providerKeyDescriptors = map[string]ConfigKey{
 	"context_window":    {Pattern: "providers.<id>.context_window", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
 	"max_output_tokens": {Pattern: "providers.<id>.max_output_tokens", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
 	"thinking":          {Pattern: "providers.<id>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
+	"thinking_style":    {Pattern: "providers.<id>.thinking_style", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
+	"stream_required":   {Pattern: "providers.<id>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"prompt_cache":      {Pattern: "providers.<id>.prompt_cache", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"compat":            {Pattern: "providers.<id>.compat", Type: ConfigTypeStringList, Writable: true, Reader: "providers"},
 }
@@ -218,6 +220,8 @@ var providerModelKeyDescriptors = map[string]ConfigKey{
 	"context_window":    {Pattern: "providers.<id>.models.<name>.context_window", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
 	"max_output_tokens": {Pattern: "providers.<id>.models.<name>.max_output_tokens", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
 	"thinking":          {Pattern: "providers.<id>.models.<name>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
+	"thinking_style":    {Pattern: "providers.<id>.models.<name>.thinking_style", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
+	"stream_required":   {Pattern: "providers.<id>.models.<name>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"price":             {Pattern: "providers.<id>.models.<name>.price", Type: ConfigTypeStringMap, Writable: true, Reader: "providers"},
 }
 
@@ -380,6 +384,8 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = []string{ProviderTypeOpenAI, ProviderTypeOpenAIResponses, ProviderTypeAnthropic}
 	case strings.HasSuffix(key, ".thinking"):
 		allowed = ThinkingLevels
+	case strings.HasSuffix(key, ".thinking_style"):
+		allowed = ThinkingStyles
 	case key == "chat.agent_progress":
 		allowed = []string{ChatAgentProgressSummary, ChatAgentProgressFull, ChatAgentProgressOff}
 	case key == "chat.notify":

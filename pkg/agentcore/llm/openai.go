@@ -31,6 +31,8 @@ type OpenAIProvider struct {
 	reasoningEffort string
 	// retry is the provider's shared retry state (OpenAIConfig.Retry).
 	retry *backoff
+	// streamRequired sends every request as a streamed one (OpenAIConfig).
+	streamRequired bool
 }
 
 // OpenAIConfig configures an OpenAIProvider.
@@ -46,6 +48,10 @@ type OpenAIConfig struct {
 	ReasoningEffort string
 	// Retry is the retry policy; zero fields take DefaultRetryPolicy's.
 	Retry RetryPolicy
+	// StreamRequired sends every request as a streamed one: Generate is routed
+	// through Stream. Some gateways answer only stream=true requests, the
+	// internal summary requests included.
+	StreamRequired bool
 	// RequestTimeout bounds one non-streamed request as a whole
 	// (http.Client.Timeout); zero takes DefaultRequestTimeout and NoTimeout
 	// disables the bound. See timeouts.go.
@@ -81,6 +87,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 
 		reasoningEffort: cfg.ReasoningEffort,
 		retry:           newBackoff(cfg.Retry),
+		streamRequired:  cfg.StreamRequired,
 	}
 }
 
@@ -94,6 +101,12 @@ func (p *OpenAIProvider) SupportsToolChoice() bool { return true }
 
 // Generate implements the public agentcore provider contract.
 func (p *OpenAIProvider) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) (*agentcoreapi.GenerateResult, error) {
+	if p.streamRequired {
+		// The endpoint answers only streamed requests (providers.<id>
+		// [.models.<model>].stream_required): even a caller of Generate - a
+		// summary, for example - gets stream=true.
+		return p.Stream(ctx, req, nil)
+	}
 	ctx = ensureRetryReport(ctx)
 	model := req.Model
 	if model == "" {

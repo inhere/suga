@@ -16,6 +16,15 @@ import (
 // claudeMinThinkingBudget is the smallest budget_tokens Anthropic accepts.
 const claudeMinThinkingBudget = 1024
 
+// Thinking styles accepted in ClaudeConfig.ThinkingStyle
+// (providers.<id>[.models.<model>].thinking_style). They pin the request shape
+// that would otherwise be guessed from the model name; "" keeps that guess.
+const (
+	ClaudeThinkingBudget   = "budget"
+	ClaudeThinkingAdaptive = "adaptive"
+	ClaudeThinkingNone     = "none"
+)
+
 // claudeInterleavedBeta enables thinking between tool calls for budget mode.
 const claudeInterleavedBeta = "interleaved-thinking-2025-05-14"
 
@@ -50,16 +59,31 @@ func claudeBudgetMode(model string) bool {
 // several newer models think by default and reject {"type": "disabled"}.
 // Budget mode also needs the interleaved-thinking beta (setThinkingBeta).
 //
+// style is the declared thinking style (ClaudeThinkingBudget,
+// ClaudeThinkingAdaptive or ClaudeThinkingNone). "" falls back to the
+// model-name heuristic (claudeBudgetMode); "none" never sends thinking
+// parameters, so an endpoint that rejects them can be pinned explicitly.
+//
 // Thinking counts toward max_tokens, so body's max_tokens must already be set:
 // the budget is capped below it, and a request with too little room for a
 // valid budget (max_tokens <= 1024) goes without thinking rather than with a
 // request the API rejects.
-func applyClaudeThinking(body map[string]any, model, level string) {
+func applyClaudeThinking(body map[string]any, model, level, style string) {
 	effort, ok := claudeEfforts[level]
 	if !ok {
 		return
 	}
-	if claudeBudgetMode(model) {
+	if style == "" {
+		if claudeBudgetMode(model) {
+			style = ClaudeThinkingBudget
+		} else {
+			style = ClaudeThinkingAdaptive
+		}
+	}
+	if style == ClaudeThinkingNone {
+		return
+	}
+	if style == ClaudeThinkingBudget {
 		budget := claudeBudgets[level]
 		if max, _ := body["max_tokens"].(int); max > 0 && budget >= max {
 			budget = max - 1 // budget_tokens must stay below max_tokens

@@ -20,6 +20,28 @@ func ParseThinking(v string) (string, error) {
 	return "", fmt.Errorf("unknown thinking level %q (want %s)", v, strings.Join(ThinkingLevels, ", "))
 }
 
+// Thinking styles accepted in providers.<id>.thinking_style and
+// providers.<id>.models.<key>.thinking_style. They pin the protocol shape of
+// extended thinking instead of guessing it from the model name.
+const (
+	ThinkingStyleBudget   = "budget"   // {"type": "enabled", "budget_tokens": N} + interleaved beta
+	ThinkingStyleAdaptive = "adaptive" // {"type": "adaptive"} + output_config.effort
+	ThinkingStyleNone     = "none"     // never send thinking parameters
+)
+
+// ThinkingStyles are the accepted thinking styles; see ParseThinkingStyle.
+var ThinkingStyles = []string{ThinkingStyleBudget, ThinkingStyleAdaptive, ThinkingStyleNone}
+
+// ParseThinkingStyle normalizes and validates a thinking style; "" stays
+// unset, which keeps the model-name heuristic (see ThinkingStyleFor).
+func ParseThinkingStyle(v string) (string, error) {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" || slices.Contains(ThinkingStyles, v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown thinking style %q (want %s)", v, strings.Join(ThinkingStyles, ", "))
+}
+
 // ThinkingLevel is the effective thinking level of s: the override set from
 // --thinking, then models.<key>.thinking, then providers.<id>.thinking; ""
 // when none is set.

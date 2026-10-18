@@ -49,6 +49,10 @@ type ManifestModel struct {
 	ModelID       string `json:"model_id,omitempty"` // sent to the provider when it differs from model
 	ContextWindow int    `json:"context_window"`
 	Thinking      string `json:"thinking,omitempty"` // effective thinking level ("" = provider default)
+	// ThinkingStyle is the declared thinking request shape ("" = model-name heuristic).
+	ThinkingStyle string `json:"thinking_style,omitempty"`
+	// StreamRequired marks a model whose endpoint answers only streamed requests.
+	StreamRequired bool `json:"stream_required,omitempty"`
 }
 
 // ManifestModels is the effective model selection.
@@ -325,7 +329,8 @@ func projectTrustReason(loaded ApprovalRules) string {
 }
 
 func manifestModel(s appconfig.ModelSpec) ManifestModel {
-	m := ManifestModel{Provider: s.Provider.ID, Model: s.Model, ContextWindow: appconfig.ContextWindowFor(s), Thinking: s.ThinkingLevel()}
+	m := ManifestModel{Provider: s.Provider.ID, Model: s.Model, ContextWindow: appconfig.ContextWindowFor(s),
+		Thinking: s.ThinkingLevel(), ThinkingStyle: appconfig.ThinkingStyleFor(s), StreamRequired: appconfig.StreamRequiredFor(s)}
 	if id := s.APIModel(); id != s.Model {
 		m.ModelID = id
 	}

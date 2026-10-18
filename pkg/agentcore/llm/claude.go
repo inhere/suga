@@ -45,6 +45,11 @@ type ClaudeProvider struct {
 	headers      map[string]string
 	promptCache  bool
 	thinking     string
+	// thinkingStyle pins the thinking request shape (ClaudeConfig.ThinkingStyle,
+	// see applyClaudeThinking); "" guesses it from the model name.
+	thinkingStyle string
+	// streamRequired sends every request as a streamed one (ClaudeConfig).
+	streamRequired bool
 	// retry is the provider's shared retry state (ClaudeConfig.Retry).
 	retry *backoff
 }
@@ -89,6 +94,14 @@ type ClaudeConfig struct {
 	// max, auto; see applyClaudeThinking). "", "auto" and "off" send no
 	// thinking parameters.
 	Thinking string
+	// ThinkingStyle pins the thinking request shape (budget, adaptive or none,
+	// see ClaudeThinking* constants and applyClaudeThinking); "" keeps the
+	// model-name heuristic. "none" never sends thinking parameters.
+	ThinkingStyle string
+	// StreamRequired sends every request as a streamed one: Generate is routed
+	// through Stream. Some gateways answer only stream=true requests, the
+	// internal summary requests included.
+	StreamRequired bool
 	// Retry is the retry policy; zero fields take DefaultRetryPolicy's.
 	Retry RetryPolicy
 	// RequestTimeout bounds one non-streamed request as a whole
@@ -113,16 +126,18 @@ func NewClaudeProvider(cfg ClaudeConfig) *ClaudeProvider {
 		cfg.Name = "anthropic"
 	}
 	return &ClaudeProvider{
-		name:         cfg.Name,
-		apiKey:       cfg.APIKey,
-		model:        cfg.Model,
-		messagesURL:  claudeMessagesURL(cfg.BaseURL),
-		client:       newProviderClient(requestTimeout(cfg.RequestTimeout), proxyTransport(cfg.Proxy)),
-		streamClient: newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout), cfg.Proxy),
-		headers:      cfg.Headers,
-		promptCache:  cfg.PromptCache,
-		thinking:     cfg.Thinking,
-		retry:        newBackoff(cfg.Retry),
+		name:           cfg.Name,
+		apiKey:         cfg.APIKey,
+		model:          cfg.Model,
+		messagesURL:    claudeMessagesURL(cfg.BaseURL),
+		client:         newProviderClient(requestTimeout(cfg.RequestTimeout), proxyTransport(cfg.Proxy)),
+		streamClient:   newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout), cfg.Proxy),
+		headers:        cfg.Headers,
+		promptCache:    cfg.PromptCache,
+		thinking:       cfg.Thinking,
+		thinkingStyle:  cfg.ThinkingStyle,
+		streamRequired: cfg.StreamRequired,
+		retry:          newBackoff(cfg.Retry),
 	}
 }
 
@@ -149,6 +164,12 @@ func (p *ClaudeProvider) SupportsToolChoice() bool { return true }
 
 // Generate implements the public agentcore provider contract.
 func (p *ClaudeProvider) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) (*agentcoreapi.GenerateResult, error) {
+	if p.streamRequired {
+		// The endpoint answers only streamed requests (providers.<id>
+		// [.models.<model>].stream_required): even a caller of Generate - a
+		// summary, for example - gets stream=true.
+		return p.Stream(ctx, req, nil)
+	}
 	ctx = ensureRetryReport(ctx)
 	model := req.Model
 	if model == "" {
@@ -244,7 +265,7 @@ func (p *ClaudeProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 		"messages":   msgs,
 		"max_tokens": claudeMaxTokens(req),
 	}
-	applyClaudeThinking(body, model, p.thinking)
+	applyClaudeThinking(body, model, p.thinking, p.thinkingStyle)
 	if system != "" {
 		// A block array only when prompt caching is on: Anthropic accepts both
 		// shapes, but some /v1/messages-compatible gateways only take a string.

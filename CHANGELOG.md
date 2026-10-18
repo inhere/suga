@@ -13,6 +13,8 @@
 - 交接摘要 FTS 回填迁移只回填 `handoff` 记录，不再逐条检查已有索引；约 1 GB 的会话库上迁移在 1 秒内完成。
 ### 新增
 - 新增全局出网代理 `network.proxy.url` / `network.proxy.sites`：配置后模型请求、`web_fetch`、`web_search` 共用一份按站点白名单的代理选择（精确 host、`.suffix` 子域、`host:port`、`*`），未命中的请求直连；未配置时三者保持原有行为（`web_fetch` 忽略环境代理并按目标 IP 检查，模型/搜索跟随 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`）。`url` 支持 `${VAR}`（凭据放 `.env`），标记为 sensitive，非法值或未解析的引用在启动时报错而不是静默直连。
+- `providers.<id>.thinking_style` 与 `providers.<id>.models.<model>.thinking_style`：声明 Claude 协议的思考请求形状（`budget` | `adaptive` | `none`），不再只按模型名推断；未声明时保持原启发式。
+- `providers.<id>.stream_required` 与 `providers.<id>.models.<model>.stream_required`：声明只接受流式请求的网关，所有请求（含压缩摘要等内部请求）都带 `stream: true`；`suga models` 与 `suga manifest` 显示生效值。
 
 ## [0.31.0] - 2026-10-18
 
