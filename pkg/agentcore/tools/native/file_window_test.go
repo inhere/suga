@@ -59,7 +59,8 @@ func TestFileReadWindow(t *testing.T) {
 	})
 	t.Run("first line carries its number", func(t *testing.T) {
 		out := execTool(t, tool, map[string]any{"path": "big.txt", "offset": "3", "limit": 1})
-		assert.True(t, strings.HasPrefix(out, "3\t第3行 line 3\n[truncated at limit 1 lines; continue with offset=4]"), out)
+		assert.True(t, strings.HasPrefix(out, "3\t第3行 line 3\n[truncated at limit 1 lines; the file has 250 lines; "+
+			"read a span as big.txt:start-end; continue with offset=4]"), out)
 	})
 	t.Run("offset past the end", func(t *testing.T) {
 		assert.StrContains(t, execTool(t, tool, map[string]any{"path": "big.txt", "offset": 999}), "has 250 lines")
@@ -144,7 +145,8 @@ func TestFileReadPaths(t *testing.T) {
 	t.Run("offset and limit apply to each file", func(t *testing.T) {
 		out := execTool(t, tool, map[string]any{"paths": []any{"a.txt", "c.txt"}, "offset": 2, "limit": 1})
 		assert.StrContains(t, out, "==> a.txt <==\n2\ttwo\n")
-		assert.StrContains(t, out, "==> c.txt <==\n2\tfive\n[truncated at limit 1 lines; continue with offset=3]")
+		assert.StrContains(t, out, "==> c.txt <==\n2\tfive\n[truncated at limit 1 lines; the file has 3 lines; "+
+			"read a span as c.txt:start-end; continue with offset=3]")
 	})
 	t.Run("a failing path is reported in place", func(t *testing.T) {
 		out := execTool(t, tool, map[string]any{"paths": []any{"missing.txt", "../x.txt", "b.txt"}})

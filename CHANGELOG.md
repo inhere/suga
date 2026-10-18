@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 变更
+
+- `file_read` 被截断时，提示行里补上文件总行数、已支持语言的声明数，以及 `outline=true`（取声明清单）与 `path:start-end`（取指定行段）两种续读方式；只在确实被截断时出现，未截断的输出与之前完全一致。
+
 ## [0.32.0] - 2026-10-18
 
 全局代理 `network.proxy`（名单内站点走代理）；MCP 支持 Streamable HTTP 与认证头；模型可声明 `thinking_style` 与 `stream_required`；新增多语言 `file_symbols`，`file_read` 支持声明大纲与多段范围读；只读运行不再列出命令类优先工具；修复 MCP 无参工具让网关拒绝整次请求。

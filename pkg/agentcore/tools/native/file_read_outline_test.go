@@ -296,7 +296,8 @@ func TestFileReadRanges(t *testing.T) {
 	})
 	t.Run("the old calls keep their exact output", func(t *testing.T) {
 		assert.Eq(t, "1\tone\n2\ttwo\n3\tthree\n4\tfour\n5\tfive", execTool(t, tool, map[string]any{"path": "a.txt"}))
-		assert.Eq(t, "2\ttwo\n[truncated at limit 1 lines; continue with offset=3]",
+		assert.Eq(t, "2\ttwo\n[truncated at limit 1 lines; the file has 5 lines; "+
+			"read a span as a.txt:start-end; continue with offset=3]",
 			execTool(t, tool, map[string]any{"path": "a.txt", "offset": 2, "limit": 1}))
 		assert.Eq(t, "==> a.txt <==\n1\tone\n2\ttwo\n3\tthree\n4\tfour\n5\tfive\n\n==> b.txt <==\n1\tbee",
 			execTool(t, tool, map[string]any{"paths": []any{"a.txt", "b.txt"}}))
