@@ -313,24 +313,64 @@ func TestSplitRefName(t *testing.T) {
 	}
 }
 
-// TestRefDropsDescribe pins how the dropped qualifiers are named: variables
-// sorted with their counts, packages and unqualified uses only summed.
+// TestRefDropsDescribe pins how the dropped qualifiers are named and which
+// lines are shown: variables sorted with their counts, packages and bare uses
+// only summed, and the lines of rarely used variables kept.
 func TestRefDropsDescribe(t *testing.T) {
+	drops := func(counts map[string]int) *refDrops {
+		d := newRefDrops()
+		for k, n := range counts {
+			for i := 0; i < n; i++ {
+				switch {
+				case k == "":
+					d.addText()
+				case strings.HasPrefix(k, "pkg:"):
+					d.add(Ref{File: "a.go", Line: i + 1, Qualifier: strings.TrimPrefix(k, "pkg:"), Pkg: true})
+				default:
+					d.add(Ref{File: k + ".go", Line: i + 1, Qualifier: k})
+				}
+			}
+		}
+		return d
+	}
+
 	t.Run("variables are named, packages and bare uses counted", func(t *testing.T) {
-		d := refDrops{"t": 40, "cmd": 3, "child": 1, "pkg:exec": 2, "": 1}
+		d := drops(map[string]int{"t": 40, "cmd": 3, "child": 1, "pkg:exec": 2, "": 1})
 		assert.Eq(t, 47, d.total())
 		assert.Eq(t, " (variables: child 1, cmd 3, t 40; 2 through imported packages; 1 unqualified or text matches)", d.describe())
 	})
 
-	t.Run("nothing dropped describes nothing", func(t *testing.T) {
-		assert.Eq(t, "", refDrops{}.describe())
+	t.Run("only rarely used variables keep their lines", func(t *testing.T) {
+		d := drops(map[string]int{"t": 40, "cmd": 3, "child": 1, "x": 2, "pkg:exec": 1})
+		rare, more := d.rare()
+		assert.Eq(t, 0, more)
+		assert.Eq(t, []string{"child.go:1", "x.go:1", "x.go:2"}, refFileLines(rare))
 	})
 
-	t.Run("a long list is capped", func(t *testing.T) {
-		d := refDrops{}
-		for i := 0; i < maxDropNames+3; i++ {
-			d[fmt.Sprintf("v%02d", i)] = 1
-		}
-		assert.StrContains(t, d.describe(), "and 3 more)")
+	t.Run("nothing dropped describes nothing", func(t *testing.T) {
+		assert.Eq(t, "", newRefDrops().describe())
+		rare, _ := newRefDrops().rare()
+		assert.Empty(t, rare)
 	})
+
+	t.Run("long lists are capped", func(t *testing.T) {
+		counts := map[string]int{}
+		for i := 0; i < maxDropNames+3; i++ {
+			counts[fmt.Sprintf("v%02d", i)] = 1
+		}
+		d := drops(counts)
+		assert.StrContains(t, d.describe(), "and 3 more)")
+		rare, more := d.rare()
+		assert.Len(t, rare, maxRareDropLines)
+		assert.Eq(t, maxDropNames+3-maxRareDropLines, more)
+	})
+}
+
+// refFileLines is the path:line of each ref.
+func refFileLines(refs []Ref) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, fmt.Sprintf("%s:%d", r.File, r.Line))
+	}
+	return out
 }

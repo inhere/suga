@@ -46,19 +46,19 @@ func ScanLineRefs(file string, src []byte, name string) []Ref {
 // scanLineRefs is ScanLineRefs with the qualified-name filter of one file_refs
 // call: with qual set (the Q of "Q.Name"), only the lines holding Q.name are
 // kept and dropped counts the lines that only held other qualifiers.
-func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, refDrops) {
+func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops) {
 	style := refMaskStyle(file)
 	masked := newSourceLines(maskInline(maskSpans(src, style), style))
 	original := newSourceLines(src)
 	re := refWordRe(name)
 	var out []Ref
-	dropped := refDrops{}
+	dropped := newRefDrops()
 	for i, line := range masked.lines {
 		if !re.MatchString(line) {
 			continue
 		}
 		if !approxQualifierMatches(line, qual, name) {
-			dropped[""]++ // a text match has no parsed qualifier to name
+			dropped.addText() // a text match has no parsed qualifier to name
 			continue
 		}
 		// The line is shown as it is written: the masked line is not readable.

@@ -6,48 +6,112 @@ import (
 	"strings"
 )
 
-// maxDropNames caps how many dropped qualifiers a qualified file_refs result
-// names; the rest are only counted.
-const maxDropNames = 20
+const (
+	// maxDropNames caps how many dropped qualifiers a qualified file_refs
+	// result names; the rest are only counted.
+	maxDropNames = 20
+	// rareDropUses is how often a variable qualifier may occur and still have
+	// its lines shown: a name used once or twice (child.Run) is likely a
+	// specific value, while t.Run or cmd.Run in bulk is another object.
+	rareDropUses = 2
+	// maxRareDropLines caps the lines shown for rare variable qualifiers.
+	maxRareDropLines = 10
+)
 
-// refDrops counts the occurrences a qualified file_refs search left out, by the
-// qualifier text they had: "child" for child.Run, "pkg:exec" for exec.Run
-// through an import, "" for a bare use or an approximate text match.
-type refDrops map[string]int
-
-// add counts one dropped Go occurrence under its qualifier.
-func (d refDrops) add(ref Ref) {
-	key := ref.Qualifier
-	if ref.Pkg && key != "" {
-		key = "pkg:" + key
-	}
-	d[key]++
+// refDrops is what a qualified file_refs search left out: the count of
+// occurrences by the qualifier text they had ("child" for child.Run,
+// "pkg:exec" for exec.Run through an import, "" for a bare use or an
+// approximate text match), and the occurrences through variables, whose type
+// the textual filter cannot tell.
+type refDrops struct {
+	counts map[string]int
+	vars   []Ref
 }
 
-// merge adds the drops of one file to the totals of a search.
-func (d refDrops) merge(other refDrops) {
-	for k, n := range other {
-		d[k] += n
+func newRefDrops() *refDrops { return &refDrops{counts: map[string]int{}} }
+
+// key is the counting key of one dropped Go occurrence.
+func dropKey(ref Ref) string {
+	if ref.Pkg && ref.Qualifier != "" {
+		return "pkg:" + ref.Qualifier
 	}
+	return ref.Qualifier
+}
+
+// add counts one dropped Go occurrence and keeps it when a variable
+// qualified it.
+func (d *refDrops) add(ref Ref) {
+	key := dropKey(ref)
+	d.counts[key]++
+	if key != "" && !ref.Pkg {
+		d.vars = append(d.vars, ref)
+	}
+}
+
+// addText counts one dropped approximate (text) match.
+func (d *refDrops) addText() { d.counts[""]++ }
+
+// merge adds the drops of one file to the totals of a search.
+func (d *refDrops) merge(other *refDrops) {
+	if other == nil {
+		return
+	}
+	for k, n := range other.counts {
+		d.counts[k] += n
+	}
+	d.vars = append(d.vars, other.vars...)
 }
 
 // total is how many occurrences were dropped.
-func (d refDrops) total() int {
+func (d *refDrops) total() int {
+	if d == nil {
+		return 0
+	}
 	n := 0
-	for _, c := range d {
+	for _, c := range d.counts {
 		n += c
 	}
 	return n
 }
 
+// rare returns the dropped occurrences whose variable qualifier occurs at
+// most rareDropUses times in the search, in path and line order and capped,
+// plus how many such lines were left out by the cap. The model reads result
+// lines, not trailing notes: a *Runner held in a variable called child has to
+// appear as a line to be noticed.
+func (d *refDrops) rare() ([]Ref, int) {
+	if d == nil {
+		return nil, 0
+	}
+	var out []Ref
+	for _, r := range d.vars {
+		if d.counts[dropKey(r)] <= rareDropUses {
+			out = append(out, r)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		return out[i].Line < out[j].Line
+	})
+	if len(out) > maxRareDropLines {
+		return out[:maxRareDropLines], len(out) - maxRareDropLines
+	}
+	return out, 0
+}
+
 // describe names the dropped variable qualifiers (sorted, with counts) and
-// sums up the imported packages and the unqualified uses, so a *Runner held in
-// a variable called child stays visible: ` (variables: child 1, cmd 3, t 40;
-// 5 through imported packages; 2 unqualified)`. Empty when nothing was dropped.
-func (d refDrops) describe() string {
+// sums up the imported packages and the unqualified uses:
+// ` (variables: child 1, cmd 3, t 40; 5 through imported packages; 2
+// unqualified or text matches)`. Empty when nothing was dropped.
+func (d *refDrops) describe() string {
+	if d.total() == 0 {
+		return ""
+	}
 	var vars []string
 	pkgs, bare := 0, 0
-	for k, n := range d {
+	for k, n := range d.counts {
 		switch {
 		case k == "":
 			bare += n
@@ -56,9 +120,6 @@ func (d refDrops) describe() string {
 		default:
 			vars = append(vars, k)
 		}
-	}
-	if len(vars) == 0 && pkgs == 0 && bare == 0 {
-		return ""
 	}
 	sort.Strings(vars)
 	var parts []string
@@ -69,7 +130,7 @@ func (d refDrops) describe() string {
 		}
 		names := make([]string, 0, len(shown))
 		for _, k := range shown {
-			names = append(names, fmt.Sprintf("%s %d", k, d[k]))
+			names = append(names, fmt.Sprintf("%s %d", k, d.counts[k]))
 		}
 		list := strings.Join(names, ", ")
 		if more := len(vars) - len(shown); more > 0 {

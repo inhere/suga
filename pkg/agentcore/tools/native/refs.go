@@ -118,7 +118,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	re := refWordRe(name)
 
-	out := &refOut{name: name, qual: qual, dropped: refDrops{}}
+	out := &refOut{name: name, qual: qual, dropped: newRefDrops()}
 	// A file argument is searched as that file: a type no extractor covers is
 	// refused with the supported list, not answered with an empty result.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
@@ -146,7 +146,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 }
 
 // oneFile searches one file through os.Root, the way file_symbols reads one.
-func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) ([]Ref, bool, refDrops, error) {
+func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.Regexp) ([]Ref, bool, *refDrops, error) {
 	if !SupportsSymbols(target.abs) {
 		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
 			filepath.Ext(target.abs), SupportedSymbolLanguages())
@@ -222,7 +222,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 // nothing, which is why the caller filters on the same word-bounded pattern
 // first. qual narrows the result to the Q of a qualified name and dropped is how
 // many occurrences of the name qualified something else.
-func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, bool, refDrops, error) {
+func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, bool, *refDrops, error) {
 	lang, ok := symbolLanguageFor(file)
 	if !ok {
 		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
@@ -262,11 +262,11 @@ func splitRefName(raw string) (name, qual string) {
 // about what was left out.
 type refOut struct {
 	refs    []Ref
-	files   int      // supported source files that were read
-	name    string   // the searched identifier, without its qualifier
-	qual    string   // the Q of a qualified query; empty when the name had no dot
-	dropped refDrops // occurrences of the name that qualify another object, by qualifier
-	tests   int      // test files left out
+	files   int       // supported source files that were read
+	name    string    // the searched identifier, without its qualifier
+	qual    string    // the Q of a qualified query; empty when the name had no dot
+	dropped *refDrops // occurrences of the name that qualify another object, by qualifier
+	tests   int       // test files left out
 
 	unsupported int // files of a type no extractor covers
 	tooLarge    int // files over maxSearchFileBytes
@@ -304,6 +304,20 @@ func (o *refOut) render(name, pathArg string, limit int) string {
 	} else {
 		for _, r := range shown {
 			lines = append(lines, fmt.Sprintf("%s:%d %s %s", r.File, r.Line, refClass(r), r.Text))
+		}
+	}
+	if o.qual != "" {
+		// Rare variable qualifiers are shown as lines of their own group: the
+		// filter cannot tell their type, and one of them may hold a o.qual.
+		if rare, more := o.dropped.rare(); len(rare) > 0 {
+			lines = append(lines, fmt.Sprintf("[maybe also %s: uses through variables whose type the filter cannot "+
+				"tell (names used at most %d times) - check each line]", o.qual, rareDropUses))
+			for _, r := range rare {
+				lines = append(lines, fmt.Sprintf("%s:%d %s %s", r.File, r.Line, refClass(r), r.Text))
+			}
+			if more > 0 {
+				lines = append(lines, fmt.Sprintf("[and %d more such line(s)]", more))
+			}
 		}
 	}
 	return strings.Join(append(lines, o.notes(limit)...), "\n")

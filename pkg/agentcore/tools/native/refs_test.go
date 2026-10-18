@@ -159,7 +159,10 @@ func TestFileRefsToolQualified(t *testing.T) {
 	t.Run("a type-qualified name keeps its field and drops the uses of other qualifiers", func(t *testing.T) {
 		got := runFileRefs(t, tool, map[string]any{"name": "Options.ReadOnly", "path": "internal/config"})
 		assert.StrContains(t, got, "internal/config/config.go:6 def ReadOnly bool")
-		assert.NotContains(t, got, "sel(o)") // the receiver variable is not named after the type
+		// The receiver variable is not named after the type, so it is not a kept
+		// use - but o is used once, so its line is shown as a maybe.
+		assert.StrContains(t, got, "[maybe also Options: uses through variables whose type the filter cannot tell "+
+			"(names used at most 2 times) - check each line]\ninternal/config/config.go:10 sel(o) if o.ReadOnly {")
 		assert.NotContains(t, got, "loader.")
 		assert.StrContains(t, got, `[qualified by "Options": kept the definitions of type/package Options and the `+
 			`sel/call uses whose qualifier text is Options or ends with Options (case-insensitive); dropped 3 use(s) of `+
