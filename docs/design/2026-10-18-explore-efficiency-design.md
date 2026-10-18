@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 仓库探索效率优化设计
 
-> 状态：Draft 0.2 / 待用户审批
+> 状态：Draft 0.3 / 已批准实施
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `docs/research/2026-10-18-explore-efficiency.md` 的 9 次真实模型实测，只保留两个收益最大的手段：`file_read` 的声明大纲与多段范围读、Go 符号声明清单；辅助小模型（suag-5qb4）在本版暂不做。 |
 | 0.2 | 2026-10-18 | 监督（Claude） | 按用户意见改为多语言符号提取：Go 用 go/parser，TS/JS、Python、Java 用轻量声明识别器，主机有 universal-ctags 时优先；Q1 300 行、Q2 file_symbols、Q3 覆盖模块缓存；Q4 另立 suga-6gx3（见“0.2 审核修订”）。 |
+| 0.3 | 2026-10-18 | 监督（Claude） | 用户批准实施（2026-10-18“批准第十五批两份设计”），按 0.2 审核修订执行。 |
 
 ### 思考模式与范围冻结
 
