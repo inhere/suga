@@ -187,6 +187,11 @@ def main():
     shutil.rmtree(home, ignore_errors=True)
     os.makedirs(ws, exist_ok=True)
     isolate_ws(ws)
+    # A go.mod of its own makes the fixture a separate module: the scratch
+    # workspace stays under this repository's tmp/, and a leftover svc.go
+    # (it imports a package that does not exist) must not break `go build ./...`.
+    with open(os.path.join(ws, "go.mod"), "w", encoding="utf-8") as f:
+        f.write("module example.com/refsmoke\n\ngo 1.22\n")
     os.makedirs(os.path.join(ws, "svc"), exist_ok=True)
     os.makedirs(os.path.join(ws, "web"), exist_ok=True)
     with open(os.path.join(ws, "svc", "svc.go"), "w", encoding="utf-8") as f:
