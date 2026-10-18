@@ -55,6 +55,14 @@ func basePrompt() string {
 	// suag-jz0l): exploration took one tool per step, and most extra steps came
 	// after the tests already passed.
 	b.WriteString("- Put independent reads, searches and commands in the same response so they run together (several files in one file_read, a search plus a listing, ...).\n")
+	// Exploration review (docs/research/2026-10-18-explore-efficiency.md section
+	// 9.7 candidate 1, suag-7ih4): T6-2 spent its first 8 steps on 13 file_grep
+	// calls guessing a ".Run(" pattern before trying file_refs, and T6-3 made 55
+	// more greps after a file_refs answer was already in hand. The sentence names
+	// the default first step for "who calls X" as the one place the file tools are
+	// documented; it is part of the stable system prompt prefix, so a session
+	// rebuilds its cached prefix once after a wording change.
+	b.WriteString("- To answer who calls X, where X is used or which callers X has, start with file_refs instead of guessing a file_grep pattern; for Go its result already lists every occurrence, so read the few places you need and do not re-check with file_grep. grep is still for text that is not an identifier (a string, a config key, a comment).\n")
 	// R6 write-to-green review: suga made one edit per step where omp sent
 	// all fixes for a test run at once; file_edit's edits went unused.
 	b.WriteString("- Make independent changes together: several replacements in one file in one file_edit call (edits), and edits to different files in the same response, e.g. every fix a failed test run calls for.\n")

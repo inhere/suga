@@ -63,6 +63,15 @@ func TestBasePrompt(t *testing.T) {
 			"~/.m2/repository/<group path>/<artifact>/<version>/ (`mvn -o dependency:sources` fetches the sources)."
 		assert.Eq(t, want, promptLine(p, "- To learn a dependency's API"))
 	})
+	t.Run("refs first for callers", func(t *testing.T) {
+		p := basePrompt()
+		// A line of the stable prefix (research 2026-10-18-explore-efficiency
+		// section 9.7 candidate 1); its wording is locked here.
+		assert.Eq(t, "- To answer who calls X, where X is used or which callers X has, start with file_refs "+
+			"instead of guessing a file_grep pattern; for Go its result already lists every occurrence, so "+
+			"read the few places you need and do not re-check with file_grep. grep is still for text that is "+
+			"not an identifier (a string, a config key, a comment).", promptLine(p, "- To answer who calls X"))
+	})
 	t.Run("no date or time", func(t *testing.T) {
 		re := regexp.MustCompile(`\d{4}-\d{2}-\d{2}|\d{2}:\d{2}`)
 		assert.False(t, re.MatchString(basePrompt()))
