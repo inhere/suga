@@ -63,6 +63,12 @@ func basePrompt() string {
 	// documented; it is part of the stable system prompt prefix, so a session
 	// rebuilds its cached prefix once after a wording change.
 	b.WriteString("- To answer who calls X, where X is used or which callers X has, start with file_refs instead of guessing a file_grep pattern; for Go its result already lists every occurrence, so read the few places you need and do not re-check with file_grep. grep is still for text that is not an identifier (a string, a config key, a comment).\n")
+	// Scope of the answer (section 9.7 candidate 4): all three T5 runs had the 5
+	// production call sites by step 2 and then built a per-file listing of the
+	// test call sites (7 of the 9 file_symbols calls in T5-1, 4 of 6 steps in
+	// T5-2). The count keeps the fact without the steps. Same stable prefix as the
+	// file_refs line above.
+	b.WriteString("- Answer the scope that was asked for: for callers or use sites list production code only and say how many uses are in tests (e.g. \"N more in tests\") unless the user asks about tests.\n")
 	// R6 write-to-green review: suga made one edit per step where omp sent
 	// all fixes for a test run at once; file_edit's edits went unused.
 	b.WriteString("- Make independent changes together: several replacements in one file in one file_edit call (edits), and edits to different files in the same response, e.g. every fix a failed test run calls for.\n")
