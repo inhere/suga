@@ -83,7 +83,7 @@ Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 - **Background and watch tasks**: `shell_exec` with `background: true` runs in the background; `every` / `watch_paths` turn it into a watcher that notifies the model on changes.
 - **Large output**: results over `tools.max_output_bytes` are offloaded to a ref; shell test/build output is first trimmed by output rules (customizable in `output-rules.yaml`).
 - **MCP**: `--mcp-config` or `mcp.servers`; all calls are denied until allowed in `tools.auto_allow` / `tools.read_only_allow`.
-- **Preferred tools**: `tools.preferred` declares commands (`rg`, `xerj`) and MCP servers this machine already has; the available ones are listed in the environment section and `suga manifest` shows `present` plus a reason for every declaration, including the missing ones. Preference only ranks tools: it never allows an MCP call or skips the `shell_exec` approval, and a missing tool just stays out of the prompt.
+- **Preferred tools**: `tools.preferred` declares commands (`rg`, `xerj`) and MCP servers this machine already has; the available ones are listed in the environment section (a `kind: command` entry only in a session that registered `shell_exec`, so a read-only session leaves it out) and `suga manifest` shows `present` plus a reason for every declaration, including the missing ones, with command reasons naming that read-only limit. Preference only ranks tools: it never allows an MCP call or skips the `shell_exec` approval, and a missing tool just stays out of the prompt.
 
 ## Sub-agents
 

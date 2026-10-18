@@ -50,10 +50,10 @@ suga config set tools.preferred '[{name: rg, kind: command, when: "精确搜索�
 
 - 三项都必填：`name`（可执行文件名，不带参数和 shell 语法；`mcp` 时是 `mcp.servers` 里的 server `id`）、`kind`（`command` 或 `mcp`）、`when`（一句适用场景）。列表顺序即展示顺序；`config set` 整列表替换，不支持 `tools.preferred[0]` 这样的元素级路径。名字重复、空值、未知字段、非法 `kind` 都会让命令失败（退出码 2）且原配置文件不变。
 - **探测方式**：`command` 按当前 PATH 查找（Windows 交给 Go 的 `PATHEXT`，`.exe`、`.cmd` 都认），只查 PATH 不执行命令，也不产生审批请求；`mcp` 以会话启动时该 server 启动并 `tools/list` 成功为准。`suga manifest` 不启动 MCP，`mcp` 项只报是否已在 `mcp.servers` 中配置。
-- **只列存在项**：环境说明里只出现可用项，形如 ``- Preferred tool: rg (command) — <when>. Use when applicable; usage unclear, first check `--help`; record learned usage in memory.``；不可用项不写进提示词。列表只进段上下文，不改稳定系统提示，所以新装命令在下一个 segment 才出现，`command` 在新 segment 重新查 PATH，MCP 状态在会话启动时固定。
+- **只列能用项**：环境说明里只出现可用项，形如 ``- Preferred tool: rg (command) — <when>. Use when applicable; usage unclear, first check `--help`; record learned usage in memory.``；不可用项不写进提示词。另外 `command` 项只在本会话注册了 `shell_exec` 时可写会话里列出：只读会话（`run` 无 `--allow-write`、chat 未开 `tools.allow_write`、ACP `read_only`）列出连上的 `mcp` 项、不列 `command` 项，因为那里的模型执行不了命令。列表只进段上下文，不改稳定系统提示，所以新装命令在下一个 segment 才出现，`command` 在新 segment 重新查 PATH，MCP 状态在会话启动时固定。
 - **MCP 常驻**：`kind: mcp` 的 server 注册出来的工具不会被 `tools.deferred: auto|always` 放进 `tool_search` 延迟集合，直接出现在工具列表里；其他 MCP 照旧。
 - **优先不等于放行**：`preferred` 只影响提示词与可见性。MCP 调用仍按 `tools.auto_allow` / `tools.read_only_allow` 判定：不在放行名单时 chat 与 `run` 直接拒绝（不询问），ACP 走客户端权限请求；`command` 仍经过 `shell_exec` 的审批，可用审批规则放行，例如 `command: ["rg *"]`。
-- **观测**：`suga manifest --json` 的 `preferred_tools` 列出每个声明的 `kind`、`when`、`present` 与原因（`found on PATH`、`not found on PATH`、`server not configured`、`configured; connection confirmed at session start`、`connected at runtime`、`not connected at runtime`）；`suga trace <session> --json` 的 `turn_context.preferred_tools` 是本回合环境说明实际列出的名字（按声明顺序）。
+- **观测**：`suga manifest --json` 的 `preferred_tools` 列出每个声明的 `kind`、`when`、`present` 与原因（`found on PATH; read-only sessions do not list it`、`not found on PATH`、`server not configured`、`configured; connection confirmed at session start`、`connected at runtime`、`not connected at runtime`）——命令项找不到就是 `not found on PATH`，找到了也仍写 `present=true`，原因里注明了只读会话不列出；`suga trace <session> --json` 的 `turn_context.preferred_tools` 是本回合环境说明实际列出的名字（按声明顺序，只读会话里没有 `command` 项）。
 - **语义检索提供者**：例如把 `xerj`（`command`，在已建索引的项目上做语义检索）或某个代码图谱 MCP 声明为优先项，让 Agent 先试它、再用内置工具兜底。不可用时（命令不在 PATH、MCP 没配置或没连上）Agent 照常用 `file_grep`、`file_find`、`session_search` 等内置工具，不会因为优先项缺失而失败。MCP 返回属外部内容：读过之后会话按现有污点规则被标记，之后的记忆写入受 `memory.write_tainted` 约束。
 
 ## 写权限与审批

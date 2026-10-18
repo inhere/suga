@@ -83,7 +83,7 @@ suga chat                                         # 在当前目录开启交互�
 - **后台与监听任务**：`shell_exec` 带 `background: true` 后台运行；加 `every` / `watch_paths` 变成监听，结果变化时通知模型。
 - **大输出**：超过 `tools.max_output_bytes` 的结果外置为 ref；shell 测试/构建输出先按输出规则精简（可在 `output-rules.yaml` 定制）。
 - **MCP**：`--mcp-config` 或 `mcp.servers` 接入，默认全部拒绝，需在 `tools.auto_allow` / `tools.read_only_allow` 放行。
-- **优先工具**：`tools.preferred` 声明本机已有的命令（如 `rg`、`xerj`）与 MCP 服务；可用项写进环境说明，`suga manifest` 对每项显示 `present` 与原因（包括缺失项）。优先只是排序提示：不会放行 MCP 调用、也不跳 `shell_exec` 的审批，缺失的项只是不进提示词。
+- **优先工具**：`tools.preferred` 声明本机已有的命令（如 `rg`、`xerj`）与 MCP 服务；可用项写进环境说明（`kind: command` 只在注册了 `shell_exec` 的可写会话里列出，只读会话不列），`suga manifest` 对每项显示 `present` 与原因（包括缺失项，命令项的原因注明只读会话不列出）。优先只是排序提示：不会放行 MCP 调用、也不跳 `shell_exec` 的审批，缺失的项只是不进提示词。
 
 ## 子 agent
 
