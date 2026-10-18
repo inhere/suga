@@ -23,12 +23,20 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
-// ServerConfig describes an MCP server to connect to.
+// ServerConfig describes an MCP server to connect to. It is either a stdio
+// subprocess (Command, Args, Env) or a Streamable HTTP endpoint (URL, Headers);
+// a non-empty URL selects the HTTP transport.
 type ServerConfig struct {
 	Name    string   // logical server name
 	Command string   // executable
 	Args    []string // command arguments
 	Env     []string // extra environment variables (KEY=VALUE)
+	// URL is the Streamable HTTP endpoint of the server; when set, no
+	// subprocess is started and Headers are sent with every request.
+	URL string
+	// Headers are extra HTTP headers (for example Authorization). Values come
+	// from ${VAR} expansion in the config reader and must never be logged.
+	Headers map[string]string
 	// CallTimeout bounds one tools/call (mcp.call_timeout_sec); 0 means
 	// DefaultCallTimeout. A server that never answers must not hang the turn.
 	CallTimeout time.Duration
@@ -179,6 +187,12 @@ func (c *Client) Stop() {
 		}
 	})
 }
+
+// serverName is the name used in diagnostics and tool results.
+func (c *Client) serverName() string { return c.cfg.Name }
+
+// callTimeout is the per-call bound (0 = DefaultCallTimeout).
+func (c *Client) callTimeout() time.Duration { return c.cfg.CallTimeout }
 
 // ─── JSON-RPC internals ───────────────────────────────────────────────────────
 
@@ -351,13 +365,24 @@ type mcpTool struct {
 	InputSchema json.RawMessage `json:"inputSchema"`
 }
 
+// mcpToolAdapter exposes one MCP tool as an api.Tool. Its client is the
+// transport-neutral toolCaller, so stdio and HTTP tools behave identically.
 type mcpToolAdapter struct {
-	client *Client
+	client toolCaller
 	def    mcpTool
 }
 
+// toolCaller is what the tool adapter needs from a transport-specific client:
+// one JSON-RPC call, its server name and timeout, and the result cap.
+type toolCaller interface {
+	call(ctx context.Context, method string, params any) (json.RawMessage, error)
+	serverName() string
+	callTimeout() time.Duration
+	capRaw(s string) string
+}
+
 // MCPServer returns the configured name of the server that exposes this tool.
-func (a *mcpToolAdapter) MCPServer() string   { return a.client.cfg.Name }
+func (a *mcpToolAdapter) MCPServer() string   { return a.client.serverName() }
 func (a *mcpToolAdapter) Name() string        { return a.def.Name }
 func (a *mcpToolAdapter) Description() string { return a.def.Description }
 func (a *mcpToolAdapter) Kind() tools.Kind    { return tools.KindMCP }
@@ -372,7 +397,7 @@ func (a *mcpToolAdapter) Schema() api.ToolSchema {
 }
 
 func (a *mcpToolAdapter) Execute(ctx context.Context, call api.ToolCall) (*api.ToolResult, error) {
-	timeout := a.client.cfg.CallTimeout
+	timeout := a.client.callTimeout()
 	if timeout <= 0 {
 		timeout = DefaultCallTimeout
 	}
@@ -384,7 +409,7 @@ func (a *mcpToolAdapter) Execute(ctx context.Context, call api.ToolCall) (*api.T
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-			return nil, fmt.Errorf("mcp tool %s (server %s) did not answer within %s", a.def.Name, a.client.cfg.Name, timeout)
+			return nil, fmt.Errorf("mcp tool %s (server %s) did not answer within %s", a.def.Name, a.client.serverName(), timeout)
 		}
 		return nil, err
 	}

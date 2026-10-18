@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+### 新增
+
+- MCP 接入 Streamable HTTP：`mcp.servers` 可写 `url`、`transport: streamable_http` 与 `headers`（值支持 `${VAR}` 展开，认证值只进内存），支持 JSON 与 SSE 响应、`Mcp-Session-Id` 会话、请求取消与 session 关闭；新增独立启动超时 `mcp.startup_timeout_sec`（缺省 30 秒），stdio server 行为不变，旧 `sse` 配置明确报错。
+- ACP `session/new`、`session/load` 接受 HTTP MCP server（initialize 中声明该能力），且不从 ACP payload 展开宿主环境变量；HTTP MCP 工具的权限、`tools.deferred` 与 preferred 语义与 stdio 完全相同。
+- MCP 同名工具冲突除日志外可在运行时 manifest 的 `tool_conflicts`（`server`/`tool`/`kept_by`）中查询，仍不自动改名。
+
 ## [0.31.0] - 2026-10-18
 
 记忆检索按相关度排序（FTS5 派生索引）、交接摘要固定小节并可检索、记忆条目可标注 `applies_when`；前台长命令超时转后台任务；写工具参数按 schema 校验；`trace --web` 只读与自动刷新；run 收尾行显示上下文用量；修复只接受流式请求的网关上压缩与交接失败；新增可在 Windows 跑的 Go 版终端冒烟。
