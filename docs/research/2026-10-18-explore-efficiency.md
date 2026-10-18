@@ -258,3 +258,115 @@ issue `suag-7ih4` 的证据是“同模型同档位对比中 suga 探索阶段 9
 - 只在本 worktree 的仓库上测：`file_refs` 的误报率与大型仓库上的扫描成本没有测量（T3 只有单测里的性能断言）。
 - 运行产物已删除，报告数字来自 `tmp/exp-refs/results.json`（临时文件，本次一并删除）与 `suga trace <sid> --json` 的事件统计；未做第三方复核。
 
+## 9. 第十七批复测（file_refs 限定名与结果提示）
+
+本节是 `feat/refs-qualified` 分支（v0.33.0 + 4 个提交：`file_refs` 限定名过滤、被丢弃限定符点名、Go 结论提示）的复测，任务是 explore-compare §1.3 的 **T5**（`appconfig.ReadModelSettings` 的调用方）与 **T6**（`personal.Runner.Run` 的直接调用方），各跑 **3 次**。选这两个任务的理由：§8 里它们是 `file_refs` 唯一被主动使用、且工具调用数与输入 token 明显高于 omp 参照的两项（T5 19.5 vs 7.5、T6 33.5 vs 14.5）。
+
+### 9.1 方法与口径
+
+| 项 | 取值 |
+|---|---|
+| suga | 本 worktree 构建的 `cmd/suga`（HEAD `1030139b`，v0.33.0 + 限定名过滤 + 被丢弃限定符点名 + Go 结论提示） |
+| SUGA_HOME | 每次运行一个隔离目录 `tmp/b17q/run/<tag>/home/`，只写入非密钥配置（`model: opencode-go/deepseek-v4.1-flash`、`max_steps: 60`、`tools.allow_write: false`、`tools.approval: auto`、`memory.project.backend: files`、provider 的 `type/context_window/base_url/headers/models`）；密钥用 `api_key: "${OPENCODE_API_KEY}"` 从进程环境变量展开，**不复制 `.env`、不打印密钥值**；运行产物在本批结束删除 |
+| 模型 | `opencode-go/deepseek-v4.1-flash`（thinking high），与 §8、explore-compare、omp 参照同一模型 |
+| 运行方式 | `suga run --read-only --session-id <tag> -p <提问>`，工作目录 = 本 worktree，3 并发，6 次运行 6/6 `exit 0`；6/6 的 `turn_context` 都是 `mode=read_only`、`tools_count=15`、无 `preferred_tools`，`turn` 事件 `status=completed` |
+| 任务 | explore-compare §1.3 的 T5、T6，提问原文照抄（每任务 3 次） |
+| 口径 | 与 §8 一致：只读档 A（不接 codebase-memory-mcp、无 `tools.preferred`）；步数 = `model` 事件数，工具调用 = `tool` 事件数，token = `input_tokens` 之和（另给 cache read），墙钟 = 进程墙钟。`file_refs` 首次出现的“第 N 步”指该调用所在的回合序号（= 调用之前已发生的 `model` 事件数 + 1；§8 写的是不加 1 的旧口径，两者只差 1、结论相同） |
+
+工具参数与结果取自 `suga export <sid>`（含 `ToolCall.Arguments` 与工具结果正文），事件计数取自 `suga trace <sid> --json` 交叉核对。
+
+### 9.2 对比表（A 档口径，deepseek-v4.1-flash，只读）
+
+| 任务 | 指标 | explore-compare A（2 次） | §8 v0.33.0（2 次） | **§9 本批（3 次）** | 本批区间 | omp（2 次） |
+|---|---|---|---|---|---|---|
+| T5 `ReadModelSettings` 调用方 | 步数 | 8.0 | 9.0 | **8.0** | 6–11 | 6.5 |
+| | 工具调用 | 17.5 | 19.5 | **23.3** | 19–26 | 7.5 |
+| | 输入 token | 131.7k | 138.9k | **129.9k** | 100.3–178.7k | – |
+| | 墙钟 | 74.5s | 64.7s | **48.3s** | 41.3–62.0s | – |
+| | 答案正确 | 2/2 | 2/2 | **3/3** | – | 抽查一致 |
+| T6 `Runner.Run` 调用方 | 步数 | 12.5 | 15.5 | **16.3** | 12–22 | 9.5 |
+| | 工具调用 | 22.0 | 33.5 | **42.7** | 26–74 | 14.5 |
+| | 输入 token | 258.1k | 375.1k | **457.7k** | 253.9–755.5k | – |
+| | 墙钟 | 104.5s | 71.2s | **101.4s** | 55.3–156.9s | – |
+| | 答案正确 | 2/2 | 2/2 | **2/3** | – | 抽查一致 |
+
+与 §8 的均值差：T5 步数 **-1.0**（噪声内）、调用 **+3.8**、token **-9.0k**、墙钟 -16.4s；T6 步数 **+0.8**、调用 **+9.2**、token **+82.6k（+22%）**、墙钟 **+30.2s**。**没有任何一项达到“超过噪声（±3–5 步）的改善”**；T6 的工具调用、token、墙钟都创了三个批次里的新高。
+
+逐次明细（token 为输入/输出，calls 为工具调用数）：
+
+| 运行 | 步数 | 工具调用 | 输入 / cache read / 输出 token | 墙钟 | 工具分布 | 工具错误 | 答案 |
+|---|---|---|---|---|---|---|---|
+| T5-1 | 7 | 19 | 110.8k / 89.5k / 5.6k | 41.7s | file_symbols×9, file_refs×6, file_read×3, file_grep×1 | 0 | ✔ 5 处生产调用 |
+| T5-2 | 6 | 26 | 100.3k / 76.8k / 5.0k | 62.0s | file_symbols×12, file_read×10, file_grep×3, file_refs×1 | 0 | ✔ 5 处 |
+| T5-3 | 11 | 25 | 178.7k / 161.7k / 4.6k | 41.3s | file_symbols×9, file_grep×6, file_read×6, file_refs×4 | 0 | ✔ 5 处 |
+| T6-1 | 12 | 26 | 253.9k / 228.5k / 4.4k | 55.3s | file_refs×9, file_read×8, file_grep×6, file_symbols×3 | 0 | ✘ **只列 4 处**（漏 `personal/subagent.go:94`） |
+| T6-2 | 15 | 28 | 363.7k / 331.8k / 7.1k | 92.1s | file_grep×13, file_read×7, file_refs×6, file_symbols×2 | 0 | ✔ 5 处（含 `subagent.go:94`） |
+| T6-3 | 22 | 74 | 755.5k / 702.2k / 16.5k | 156.9s | file_grep×56, file_read×13, file_refs×2, file_symbols×1, file_list×1, session_search×1 | 0 | ✔ 5 处（含 `subagent.go:94`） |
+
+### 9.3 `file_refs` 与多段读的使用统计
+
+| 运行 | `file_refs` 次数 | 首次出现 | 用了限定名 | 出现“去掉 N 条”提示 | 之后仍做的 file_grep / file_read | 多段/多文件读 | outline | 同一文件被读多次 |
+|---|---|---|---|---|---|---|---|---|
+| T5-1 | 6 | 第 2 步 | 0（全部无限定） | 否 | 1 / 3 | **3 次**（5、3、3 段） | 0 | – |
+| T5-2 | 1 | 第 2 步 | 0 | 否 | 3 / 10 | **1 次**（同 path 两段 `515-532,640-660`） | 0 | – |
+| T5-3 | 4 | 第 2 步 | 0 | 否 | 6 / 6 | 0 | 0 | settings_registry.go×2 |
+| T6-1 | 9 | 第 2 步 | **2**（`Runner.Run`、`acpserver.Serve`） | 是 | 6 / 8 | 0 | 0 | – |
+| T6-2 | 6 | **第 9 步** | 0 | 否 | 3 / 4 | 0 | 0 | server.go×2、cli/run.go×2 |
+| T6-3 | 2 | 第 3 步 | **1**（`Runner.Run`） | 是 | **55 / 13** | 0 | 1 | – |
+
+- **`file_refs` 使用率 6/6（100%）**，高于 §8 的 4/6；T5 三次都在第 2 步、T6-1 第 2 步、T6-3 第 3 步，T6-2 拖到第 9 步（前 8 步 13 次 `file_grep` 自己在猜正则：`\.Run\(`、`[^t]\.Run\(`、`^[^t\n]*[^t]\.Run\(`、`Run\(ctx context.Context, req (personal\.)?RunRequest\)` 等）。
+- **限定名只出现 2/6 次运行**，且**全部在 T6**；T5 三次都直接用无限定的 `ReadModelSettings`（T5-2/T5-3 还额外加了 `include_tests: true` 一次取全部）。也就是说这次新增的限定名能力在 T5 上**完全没有被触发**。
+- **结果提示没有改变行为**：Go 结论提示写着“no file_grep needed to fill in”，T6-1 拿到限定结果后仍做 6 次 grep + 8 次读，T6-3 在第 3 步拿到 `Runner.Run` 限定结果后做了 **55 次 file_grep**。
+- **多段读仍是少数用法**：只有 T5-1（3 次，最多一次 5 段跨 5 个文件）与 T5-2（1 次）用了 `paths`/同 path 多段，其余 4 次运行的 `file_read` 全是单段。
+- **`outline` 只被用 1 次**（T6-3 读 `runner.go`），与 §7 的 0/10 同量级。
+- 6/6 次运行的**工具错误为 0**（§8 有 1 次失败的 `file_read`），这一项比 §8 干净。
+
+### 9.4 答案正确性与一次由限定名带来的漏报
+
+- **T5：3/3 正确**，三次都给出 `internal/config/providers.go:556` 的定义与 5 处生产调用（`cli/models.go:27`、`wiring/manifest.go:480`、`wiring/runtime.go:760`、`config/settings_registry.go:523`、`:649`），与标准答案一致；三次都额外把测试里的调用点逐文件列了一遍（见 9.7 候选 4）。
+- **T6：2/3 正确**。T6-2、T6-3 都恰好列出 5 个直接调用方，并主动排除了 `internal/chat/local_cmd.go:94` 的 `s.local.Run`（`local.Run` 的无限定结果里带着这一条）；**T6-1 只列了 4 处，漏掉 `internal/personal/subagent.go:94` 的 `child.Run`**，并明确写了“除此之外没有别的生产调用方……子 agent 等路径不经过 `Runner.Run`”。
+  - 这一漏报正是限定名的已知副作用：T6-1 第一步用的就是 `file_refs {name: "Runner.Run"}`，结果里 `child.Run` 因为限定符是变量 `child` 而被丢弃，而结果尾部的提示已经点名了它（`dropped 58 use(s) … (variables: child 1, cmd 7, …; 1 through imported packages; 10 unqualified or text matches) - a variable among them may still refer to Runner, so check the names you do not recognise, or search without the qualifier for all of them`）。模型没有跟进这条提示，反而用 `file_grep "personal\.RunRequest{"` 自我确认，而 `subagent.go:94` 的 `child.Run(runCtx, RunRequest{…})` 正好不在这个 grep 的命中集合里（它是 `RunRequest{`，与 `personal.` 前缀无关）。对照组 T6-2、T6-3（一次无限定 `Run`、一次先无限定再限定）都答对了。
+  - 结论：**“被丢弃限定符点名”这条提示目前不足以让模型回头补一次无限定检索**，而它恰好是限定名唯一的正确性保险。
+
+### 9.5 结论（含负面结果）
+
+1. **工具被用上：达成且比 §8 更稳**（6/6 次运行、其中 5 次在第 2–3 步），答案 5/6 正确，0 次工具错误。
+2. **步数/token 未改善，T6 反而更差**：T5 只是调用数涨了（+3.8）、token 微降；T6 三项主指标全面上升（调用 +9.2、token +22%、墙钟 +30s），并且出现本批最差单次（T6-3：22 步 / 74 调用 / 755k 输入 token，其中 56 次是 `file_grep`）。按 §8.4 的建议改用“工具调用数、输入 token”作为指标后，结论更清楚：**本批没有缩小与 omp（T5 7.5、T6 14.5 调用）的差距，T6 反而拉开了**。
+3. **限定名能力：用得少（2/6），没有收益，且带来一次漏报。** 它唯一被触发的场景是 T6 的“按类型找调用方”，而两次触发里一次（T6-1）直接漏掉了标准答案的 1/5；T5 这类“按包限定找调用方”的问题模型根本没用限定名（因为解析不到包名关系：T5-1 还专门 grep 求证 `appconfig` 是 `internal/config` 的别名）。
+4. **结果提示（Go 结论 + 丢弃名单）没有改变行为**：拿到了“不需要再 grep 补齐”的结论提示后，模型仍在 T6-1/T6-3 靠 grep 复核（6 次、55 次）。
+5. **多段读与 outline 仍是被动能力**：多段读只在 T5 的两次运行出现（方向正确：T5 的问题正好是“一次看 5 个调用点”），outline 只 1 次；都还不足以改变“逐文件、逐窗口读”的主体行为。
+6. **T6 的方差被进一步放大**：12/15/22 步、26/28/74 调用，单次噪声远超 ±3–5 步；用它当验收指标不可靠（与 §8.4 第 3 条一致），T5 是更稳定的观察面。
+
+### 9.6 局限
+
+- 每任务 3 次，单次噪声 ±3–5 步（T6 实测 12–22 步）；只采信方向一致的信号。
+- 只测了档 A（只读、无 `tools.preferred`），未测有 shell 的档位；只测了一个模型（`opencode-go/deepseek-v4.1-flash`）。
+- 与 §8 相隔的 4 个提交里除了限定名过滤还有“被丢弃限定符点名”和“Go 结论提示”两条结果文案改动，步数/调用数的变化不能只归给限定名本身。
+- T5/T6 的提问沿用 explore-compare §1.3 原文；标准答案用 `git grep` 在本 worktree 复核（`personal/subagent.go:94` 的 `child.Run(runCtx, RunRequest{…})` 等行号与 §8 一致）。
+- 运行产物（二进制、隔离 home、会话库、答案与 trace 导出）已删除，数字来自本批的 `analyze-raw.json`/`seq.txt`（临时文件，一并删除）与 `suga trace --json`；未做第三方复核。
+
+### 9.7 提示词调整候选（只写候选，不改代码与提示词）
+
+按 trace 里“模型实际在哪多走了步”的证据列 4 条，均为**候选**，收益与风险都按本批数据估计；本任务不改任何代码或提示词。
+
+1. **稳定系统提示词的只读/探索说明：给“找调用方/使用点”定一个默认第一步。**
+   - 改哪段：稳定系统提示词里只读工具的使用说明（现在是通用描述，没有点名 `file_refs`）。
+   - 证据：T6-2 前 8 步 13 次 `file_grep` 全是在猜 `.Run(` 的正则（`[^t]\.Run\(`、`^\s*[^t\n]*[^t]\.Run\(`），第 9 步才用 `file_refs`；T6-3 第 3 步拿到限定结果后又补了 55 次 grep。omp 在同一任务上一共 14.5 次调用，靠的是 `grep -rn … | grep -v _test.go` 一条管道。
+   - 预期影响：T6 的工具调用从 42.7 往 omp 的 14.5 方向收敛，步数同步下降；T5（已经是第 2 步就用）估计不变。
+   - 风险：稳定系统提示词改动会失效整段 prompt 缓存（每个会话一次重建），且“先 refs 后 grep”的硬性表述可能让模型在 `file_refs` 覆盖不到的语言/场景（md/yaml/sh）上白跑一次调用。
+2. **`file_refs` 的限定名结果：把“掉落项”从说明升级为必须回跑的指令，并写清“问的是全部调用方就别用限定名”。**
+   - 改哪段：`file_refs` 结果尾部的“dropped …”提示文字（`refs_drops.go` 的 `describe()` 与 Go 结论提示）。
+   - 证据：T6-1 用 `name: "Runner.Run"` 时结果已列出 `variables: child 1`，模型仍回答“只有 4 处、子 agent 不经过 `Runner.Run`”；同批 T6-2/T6-3 用了无限定或先无限定的搜索都答对 5 处。这是本批唯一的正确性回归。
+   - 预期影响：T6 正确率 2/3 → 3/3，代价是限定查询后多一次无限定 `file_refs`（约 1 次调用）。
+   - 风险：提示如果写成“必须再搜一次”，会削弱限定名的价值（用户/模型明确想收窄时也强制回跑），并可能诱发“限定 + 无限定”两次大扫描（每次扫描是全仓库解析，T6-1 的 9 次 `file_refs` 已经说明多次扫描的 token 代价不小）。
+3. **`file_read` 的描述：把 `paths` 多文件/多段读放成首选用法（并给一条跨文件例子），outline 的触发条件写具体。**
+   - 改哪段：`file_read` 工具描述（可选参数 `paths` / `outline` 的说明与排列）。
+   - 证据：本批只有 T5-1（3 次，一次 5 段跨 5 文件）与 T5-2 用了多段读，其余 4 次运行全是单段；T5-3 把 `internal/config/settings_registry.go` 读了两次，T6-2 把 `acpserver/server.go`、`cli/run.go` 各读 2 次。`outline` 只 1 次（§7 是 0/10），说明“可选优化参数”依旧不被触发。
+   - 预期影响：把“同一问题涉及 3–5 个文件”的场景（T5 就是）压到 1–2 次调用，重复读进一步下降。
+   - 风险：描述变长占 schema token；模型可能滥用多段读（一次要 8–10 段）导致单次结果过大触发 spill，反而多一次取回；`outline` 若默认化会改变现有窗口契约（§7.4 已列为需过设计 Gate 的方案）。
+4. **`file_symbols`（目录模式）与探索收尾说明：不要为“测试里的调用点”逐文件建清单。**
+   - 改哪段：`file_symbols` 目录模式的描述/结果提示，或稳定提示词里“回答层级”的一句（只答被问的范围，测试调用点用一次 `file_refs include_tests: true` 说明数量即可，不必逐文件列）。
+   - 证据：T5 三次运行都在第 1–2 步就拿到了 5 处生产调用方，随后把 `internal/config/*_test.go`、`internal/wiring/providers_test.go` 等逐个 `file_symbols`（T5-1 共 9 次、其中一轮 7 个；T5-2 共 12 次、全在一轮）再配对 `file_read` 展开（T5-2 的 10 次 `file_read` 里 5 次读的是测试文件），最终答案里的测试清单对提问（“列出调用方函数及文件:行”）不是必需；这部分占了 T5-1 的 3/7 步、T5-2 的 4/6 步、T5-3 的 7/11（第 3–9 步）。
+   - 预期影响：T5 步数 6–11 降到 3–5，token 从 130k 降到 60k 量级；T5 是本批唯一稳定的任务，收益可直接回归验证。
+   - 风险：会抑制“顺带列出测试调用”的有用补充，可能被用户视为答案不完整；与“全面回答”的倾向冲突，需要先确认这是期望行为（这属于答案口径的产品决定，不只是提示词措辞）。
+
