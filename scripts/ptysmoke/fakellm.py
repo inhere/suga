@@ -12,6 +12,9 @@ Modes (--mode):
   memory  every user message gets shell_exec (--command), then memory add
         (kind feedback, title "Smoke rule"), then the text --reply; a user
         message containing "直接" skips the shell_exec.
+  refs  every user message gets file_refs for --ref-name on --ref-file (one
+        file), then file_refs for the same name on --ref-dir (a directory),
+        then the text --reply: the reference-search smoke.
   empty-final  first requests file_write (--write-path/--write-body), then return an
         empty streamed completion after the tool result, including resamples.
   preferred  every user message first gets the MCP tool named by --preferred-tool,
@@ -229,6 +232,9 @@ def make_handler(args):
             memory_calls = [("shell_exec", {"command": args.command}),
                             ("memory", {"action": "add", "kind": "feedback", "title": "Smoke rule",
                                         "body": "smoke memory body"})]
+            # refs mode: the file-level call first, then the directory-level one.
+            ref_calls = [("file_refs", {"name": args.ref_name, "path": args.ref_file}),
+                         ("file_refs", {"name": args.ref_name, "path": args.ref_dir})]
             if args.mode == "adddir":
                 # 只读/只写 asks for one of the two calls only (a smoke that needs
                 # one of them to meet a question of its own first).
@@ -253,6 +259,11 @@ def make_handler(args):
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "adddir" and step < len(adddir_calls):
                 name, arguments = adddir_calls[step]
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": name, "arguments": json.dumps(arguments)}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "refs" and step < len(ref_calls):
+                name, arguments = ref_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
@@ -380,7 +391,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "adddir", "empty-final", "preferred"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")
@@ -388,6 +399,9 @@ def main():
     p.add_argument("--wide", type=int, default=0, help="text mode with --lines: pad every line to this many columns")
     p.add_argument("--chunk", type=int, default=0, help="split a streamed text reply into pieces of this many characters")
     p.add_argument("--chunk-delay", type=float, default=0.05, help="seconds between two chunks of a streamed text reply")
+    p.add_argument("--ref-name", default="Load", help="refs mode: the name file_refs searches")
+    p.add_argument("--ref-file", default="svc/svc.go", help="refs mode: the file of the first file_refs call")
+    p.add_argument("--ref-dir", default=".", help="refs mode: the directory of the second file_refs call")
     p.add_argument("--prompt-tokens", type=int, default=10)
     p.add_argument("--no-usage", action="store_true", help="omit usage from completion responses")
     p.add_argument("--background", action="store_true", help="tool mode: shell_exec with background: true")

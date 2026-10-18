@@ -43,7 +43,8 @@ func (t *FileSymbolsTool) Description() string {
 		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
 		"JavaScript/TypeScript, Python and Java are recognised from their declaration lines and marked approx " +
 		"(confirm a name with file_grep); universal-ctags is used first when it is installed and covers more " +
-		"languages. Any other file type is refused with the supported list. Paths under a read-only dependency " +
+		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
+		"Any other file type is refused with the supported list. Paths under a read-only dependency " +
 		"root (module cache, SDK sources) work too: use it there to list a dependency's API instead of reading its " +
 		"source in pieces. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d declarations.",
@@ -78,6 +79,10 @@ func (t *FileSymbolsTool) Schema() api.ToolSchema {
 					"type":        "boolean",
 					"description": "Also list *_test.go, *.test.ts, test_*.py and *Test.java (default false)",
 				},
+				"no_ignore": map[string]any{
+					"type":        "boolean",
+					"description": "Also search .gitignore matches and node_modules/vendor/dist (.git is always skipped)",
+				},
 				"limit": map[string]any{
 					"type":        "integer",
 					"description": fmt.Sprintf("Maximum declarations to list (default %d)", defaultSymbolLimit),
@@ -102,6 +107,7 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 		limit = int(n)
 	}
 	includeTests, _ := call.Arguments["include_tests"].(bool)
+	noIgnore, _ := call.Arguments["no_ignore"].(bool)
 	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), pathArg)
 	if err != nil {
 		return nil, fmt.Errorf("file_symbols: %w", err)
@@ -117,7 +123,7 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 		}
 		out.files, out.approx = 1, set.Approx
 		out.syms = filter.apply(set.Symbols)
-	} else if err := t.walkDir(ctx, target, filter, limit, includeTests, out); err != nil {
+	} else if err := t.walkDir(ctx, target, filter, limit, includeTests, noIgnore, out); err != nil {
 		return nil, fmt.Errorf("file_symbols: %w", err)
 	}
 	if out.files == 0 {
@@ -148,10 +154,10 @@ func (t *FileSymbolsTool) oneFile(target readTarget) (SymbolSet, error) {
 // walkDir collects the declarations of every supported source file under the
 // directory target, stopping one declaration past limit (the result then says
 // more matched instead of walking a whole module cache).
-func (t *FileSymbolsTool) walkDir(ctx context.Context, target readTarget, filter symbolFilter, limit int, includeTests bool, out *symbolOut) error {
+func (t *FileSymbolsTool) walkDir(ctx context.Context, target readTarget, filter symbolFilter, limit int, includeTests bool, noIgnore bool, out *symbolOut) error {
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
-	walk, err := walkWorkspace(ctx, target.base, target.abs, false, func(root *os.Root, rel string, d fs.DirEntry) error {
+	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
 		if !includeTests && isTestFileName(d.Name()) {
 			out.tests++
 			return nil

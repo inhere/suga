@@ -192,3 +192,69 @@ issue `suag-7ih4` 的证据是“同模型同档位对比中 suga 探索阶段 9
 - 只跑了档 A（每任务 2 次），未测档 B/D（外部命令）与档 C（网关不可用）；新工具在“有 shell”的档位下是否仍被使用没有数据。
 - M1 的 TS 目录含 `types.ts`（288 条导出）这类超大文件，答案的正确性用“总条数 + 抽查逐文件条数”核对，没有逐条比对 623 行。
 - 复测与基线之间还夹着 v0.32.0 的其他改动（例如新增 `internal/config/network_proxy.go` 改变了 T2 的标准答案、`file_read` 之外的工具描述也有微调），因此步数差不能全部归给本批三个新能力。
+
+## 8. 引用检索后复测（file_refs，第十六批）
+
+本节是 `docs/plans/2026-10-18-symbol-refs-plan.md` T5 的复测：内置只读工具 `file_refs`（“谁调用了 X / X 在哪被用”，Go 精确分类 `def/call/sel/ref`、其它语言词边界近似）落地后，用 `docs/research/2026-10-18-explore-compare.md` §1.3 的 **T4、T5、T6** 三个任务重跑。这三个任务正好覆盖“追调用链”（T4）与“找调用方”（T5/T6），也是 §7 与第十六批对比报告里都没有改善的一类。
+
+### 8.1 方法与口径
+
+| 项 | 取值 |
+|---|---|
+| suga | 本 worktree 构建的 `cmd/suga`（`cba48427` + 本批 T4 冒烟脚本，含 T1–T3 的 `file_refs`） |
+| SUGA_HOME | 每次运行一个隔离目录 `tmp/exp-refs/run/<tag>/home/`，只写入非密钥配置（`model: opencode-go/deepseek-v4.1-flash`、`max_steps: 60`、`tools.allow_write: false`、`tools.approval: auto`、`memory.project.backend: files`、provider 的 `type/context_window/base_url/headers/models`）；密钥用 `api_key: "${OPENCODE_API_KEY}"` 从进程环境变量展开，**不复制 `.env`、不打印密钥值**；运行产物（二进制、隔离 home、答案与 trace）在本批结束删除 |
+| 模型 | `opencode-go/deepseek-v4.1-flash`（thinking high） |
+| 运行方式 | `suga run --read-only --session-id <tag> -p <prompt>`，工作目录 = 本 worktree，3 并发，6 次运行 6/6 `exit 0` |
+| 任务 | explore-compare §1.3 的 T4（`--read-only` 到写工具被禁用的调用链）、T5（`ReadModelSettings` 的调用方）、T6（`personal.Runner.Run` 的直接调用方），提问原文照抄 |
+| 口径 | 与 explore-compare A 档一致：只读、不接 codebase-memory-mcp、无 `tools.preferred`；步数 = `trace` 的 model 事件数，工具调用 = tool 事件数，token = `input_tokens`，墙钟 = 进程墙钟 |
+
+### 8.2 前后对比（A 档口径，deepseek-v4.1-flash，只读）
+
+| 任务 | 参照基线（explore-compare A 档，2 次） | 复测 1 | 复测 2 | 复测均值 | 均值差（步数） | 答案 |
+|---|---|---|---|---|---|---|
+| T4 `--read-only` 调用链 | 19.0 步 / 36.5 调用 / 162.7s / 909.9k | 26 / 48 / 161.1s / 1.31M | 31 / 57 / 204.0s / 1.73M | **28.5** / 52.5 / 182.6s / 1.52M | **+9.5 步**，调用 +16.0 | 2/2 正确 |
+| T5 `ReadModelSettings` 调用方 | 8.0 / 17.5 / 74.5s / 131.7k | 7 / 21 / 76.9s / 115.9k | 11 / 18 / 52.4s / 162.0k | 9.0 / 19.5 / 64.7s / 138.9k | +1.0（噪声内） | 2/2 正确 |
+| T6 `Runner.Run` 调用方 | 12.5 / 22.0 / 104.5s / 258.1k | 13 / 24 / 58.6s / 283.9k | 18 / 43 / 83.8s / 466.3k | 15.5 / 33.5 / 71.2s / **375.1k** | **+3.0 步**，调用 +11.5 | 2/2 正确 |
+| §7 omp 参照（同模型，步数/调用） | – | – | – | T4 23.0 / 33.0；T5 6.5 / 7.5；T6 9.5 / 14.5 | – | 抽查一致 |
+
+工具分布与新工具使用（`file_refs` 计首次出现的步 = 该调用之前已发生的 model 事件数）：
+
+| 运行 | 工具分布 | `file_refs` 次数 | 首次出现 | 失败调用 |
+|---|---|---|---|---|
+| T4-1 | file_read×24, file_grep×21, file_list×3 | **0** | – | file_read 1 |
+| T4-2 | file_read×29, file_grep×20, file_list×6, file_symbols×1, file_find×1 | **0** | – | file_read 2 |
+| T5-1 | file_grep×9, file_symbols×7, file_read×3, **file_refs×2** | 2 | 第 1 步 | 0 |
+| T5-2 | file_grep×6, file_symbols×6, file_read×3, **file_refs×3** | 3 | 第 1 步 | 0 |
+| T6-1 | file_grep×9, **file_refs×7**, file_read×5, file_symbols×3 | 7 | 第 1 步 | file_read 1 |
+| T6-2 | file_grep×18, **file_refs×12**, file_read×10, file_symbols×2, session_search×1 | 12 | 第 2 步 | 0 |
+
+**`file_refs` 使用率：4/6 次运行（67%）**，且在 T5/T6 上是**第 1–2 步**就被叫出来；T4 两次都是 0。答案正确性：6/6 与标准答案的关键文件:行一致（T5 两次都列出生产代码 5 处并把 `providers.go:556` 的定义与大批测试调用分开说明；T6 两次都恰好列出 5 个直接调用方，没有把 `internal/chat/local_cmd.go:94` 的 `s.local.Run` 算进去）。
+
+### 8.3 结论
+
+1. **“独立工具更容易被用上”再次成立。** `file_refs` 在它覆盖的第 1 步就被叫出来（T5 2/2、T6 2/2），和 §7 的对比一致（独立工具 `file_symbols` 4/10，而 `file_read` 的可选参数 `outline` 0/10）。追调用链任务上 omp 的 `grep -rn … | grep -v _test.go` 管道，现在有一次调用的内置对应物。
+2. **但步数没有下降，token 与调用数反而上升。** T5 +1 步（噪声内）、T6 +3 步 / 调用 +11.5 / 输入 token +45%、T4 +9.5 步（且 `file_refs` 0/2）。三个任务都没有出现超过噪声（±3–5 步）的改善。
+3. **T4 是最差的一项，与 §7.4 的判断一致。** 模型仍以 file_grep + file_read 为主（两次运行 48/57 次调用里 41/49 是这两件），一次都没想到用 `file_refs` 查 `ReadOnly`/`allowWrite` 的引用位置。任务的问法是“这个选项如何一路生效”，模型的第一步选择没有因为新工具而改变。
+4. **`file_symbols` 与 `file_refs` 在 T5/T6 是被一起用的**（先 symbols 找定义或清单、再 refs 找使用点），这是设计预期的分工；`file_refs` 的结果里 Go 的 `def/call/sel/ref` 分类与命中行原文，是模型能把同名假阳性排除掉的依据（本批无法把这份“排除”归因到工具，但两次答案都没有出现第十六批 B 档图工具那种误报）。
+
+### 8.4 按计划 Gate 的处理与建议
+
+本批任务的验收口径是“T4 类任务步数下降、`file_refs` 至少被用上”：
+
+- “至少被用上”：**达成**（T5/T6 四次运行全部使用，T4 两次为 0；总体 4/6）。
+- “步数下降”：**未达成**（T5 在噪声内持平，T6 +3，T4 +9.5）。设计里的目标“T4 类 30+ 步降到 20 步内”按本批复测的 26/31 步仍不成立。
+
+按计划“回滚与恢复”与 Gate C：
+
+1. **不回滚 T3 的注册。** 新工具是被主动用上的（第 1 步），6/6 答案正确，且没有“误报把模型带偏”的证据；把它从只读运行里去掉，只会让 T5/T6 回到“多次 grep + 过滤测试文件”的老做法（omp 参照里这两项调用数并不高，正因为它的 shell 管道能做过滤）。
+2. **要动的是提示面，而不是工具本体**（与 §7.4 同向，且本批明确不改稳定提示词）：让 `file_refs` 在“追选项生效链”类任务上被想起，需要在 `file_grep`/`file_read` 的截断或结果提示里挂钩（例如同一名字在一处命中多次或结果被截断时提示“按引用检索用 `file_refs`”）。这属于设计 Q5/Q6 的范围，需另开一批并过设计 Gate。
+3. **T4 的方差大，不应作为验收指标。** 同一任务的 A 档口径在三批之间是 16–22（explore-compare）、32–35（§7 复测）、26–31（本批）。要衡量提示面批的效果，应改用在 T5/T6 上更稳定的指标（工具调用数、输入 token），而不是 T4 的步数。
+
+### 8.5 局限
+
+- 每任务只跑 2 次，单次噪声 ±3–5 步（口径同 §7 与 explore-compare）；只采信方向一致的信号。
+- 与 explore-compare A 档不同批：两次之间仓库多了 `file_refs`（T1–T3）与冒烟脚本改动。T5/T6 的标准答案行号本 worktree 与 compare 报告一致（用 grep 复核过）；T4 的答案用“关键文件:行集合”（`run.go:207` → `OpenCLI` → `runtime.go:331` → `BuildTools`，另含 `catalog.go` 跳过非只读工具）核对，未逐字节比对。
+- 只跑只读档：有 shell 的档位下 `file_refs` 是否仍被使用没有数据。
+- 只在本 worktree 的仓库上测：`file_refs` 的误报率与大型仓库上的扫描成本没有测量（T3 只有单测里的性能断言）。
+- 运行产物已删除，报告数字来自 `tmp/exp-refs/results.json`（临时文件，本次一并删除）与 `suga trace <sid> --json` 的事件统计；未做第三方复核。
+

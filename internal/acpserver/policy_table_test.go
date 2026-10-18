@@ -69,7 +69,7 @@ func policyRows() []policyRow {
 	return []policyRow{
 		allowed("file_read", acp.ToolKindRead), allowed("file_list", acp.ToolKindRead),
 		allowed("file_grep", acp.ToolKindSearch), allowed("file_find", acp.ToolKindSearch),
-		allowed("file_symbols", acp.ToolKindRead),
+		allowed("file_symbols", acp.ToolKindRead), allowed("file_refs", acp.ToolKindSearch),
 		allowed("web_search", acp.ToolKindSearch), allowed("web_fetch", acp.ToolKindFetch),
 		gated("file_write", acp.ToolKindEdit, true), gated("file_edit", acp.ToolKindEdit, true),
 		gated("shell_exec", acp.ToolKindExecute, false), gated("file_remove", acp.ToolKindDelete, false),

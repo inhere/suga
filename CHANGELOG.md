@@ -4,12 +4,19 @@
 
 ## [未发布]
 
+### 新增
+
+- 新增只读工具 `file_refs`：按名字列出使用点（“谁调用了 X、X 在哪被用”），一次调用返回 `path:line class[(qualifier)] 命中行`，按 path、line 排序。Go 用 `go/parser` + `go/ast` 精确分类 `def`/`call`/`sel`/`ref`，`call`/`sel` 带限定符且限定符是该文件 import 的包名时标 `pkg:X`；**不做类型检查**，因此同名局部变量、字段或其它包的同名符号也会命中，结果尾部固定一行说明由命中行原文判断。JavaScript/TypeScript、Python、Java 用词边界文本匹配（注释与字符串先遮蔽）并标 `approx`；参数 `name`（必填）、`path`（默认工作区根，支持文件/目录/只读 root 绝对路径）、`include_tests`（默认 false）、`limit`（默认 200）；目录扫描先用词边界正则预过滤，只有命中的 Go 文件才解析；零命中时提示名字可能只被其它包/目录使用。`file_symbols` 描述同时注明它只列声明、不列使用点。
+
 ### 变更
 
 - `file_symbols` 描述里说明它也能用于只读依赖根（模块缓存、SDK 源码）：在那里列出依赖 API 的声明，替代逐段读依赖源码。
 - `session_search` 空结果分为两种情况：该 scope 没有任何可检索历史时首行直接说明「换个词也查不到，不必重试」；有历史但没命中时提示先确认历史里确有这些词再换词。`recall` 指向不存在的会话或没有任何历史的会话时，错误信息说明本地没有这段历史、ref 应从 `session_search` 取，而不是继续猜。
 - `file_read` 被截断时，提示行里补上文件总行数、已支持语言的声明数，以及 `outline=true`（取声明清单）与 `path:start-end`（取指定行段）两种续读方式；只在确实被截断时出现，未截断的输出与之前完全一致。
+
 ### 修复
+
+- `file_symbols` 与 `file_refs`：跳过被忽略目录时结果提示“pass no_ignore: true”，但两个工具此前并不接受该参数，按提示重试也不生效；现在两者都支持 `no_ignore`（与 `file_grep`/`file_find` 一致，`.git` 始终跳过）。
 - `suga config set` 写字符串列表键（如 `tools.auto_allow`、`fallback_models`）时也接受 YAML 行内列表写法：以前 `'["a/b"]'` 被整串按逗号拆成含方括号的字面量 glob（`tools.auto_allow glob "[everything/echo]": syntax error in pattern`）。现在以 `[` 开头的值按 YAML 行内序列解析，每项必须是字符串，解析失败或项非字符串时报错退出 2 且不写文件；两种写法写进文件的结果一致（块式 YAML 列表）。
 
 ## [0.32.0] - 2026-10-18
