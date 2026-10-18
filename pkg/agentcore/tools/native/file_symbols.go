@@ -44,7 +44,7 @@ func (t *FileSymbolsTool) Description() string {
 		"JavaScript/TypeScript, Python, Java and PHP are recognised from their declaration lines and marked approx " +
 		"(confirm a name with file_grep); universal-ctags is used first when it is installed and covers more " +
 		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
-		"Any other file type is refused with the supported list. Paths under a read-only dependency " +
+		"Unsupported file types are refused with a file_grep pattern to use instead; file_read outline is unavailable for them. Paths under a read-only dependency " +
 		"root (module cache, SDK sources) work too: use it there to list a dependency's API instead of reading its " +
 		"source in pieces. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d declarations.",
@@ -113,10 +113,13 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 		return nil, fmt.Errorf("file_symbols: %w", err)
 	}
 
-	out := &symbolOut{}
+	out := &symbolOut{fallbackPattern: symbolFallbackPattern(filepath.Ext(pathArg), filter.name)}
 	// A file argument is parsed as that file: a type no extractor covers is
 	// refused with the supported list, not answered with an empty result.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
+		if !SupportsSymbols(target.abs) {
+			return nil, fmt.Errorf("file_symbols: file type %q has no declaration extractor; use file_grep with pattern: %s; file_read outline=true is unavailable", filepath.Ext(target.abs), symbolFallbackPattern(filepath.Ext(pathArg), filter.name))
+		}
 		set, err := t.oneFile(target)
 		if err != nil {
 			return nil, fmt.Errorf("file_symbols: %w", err)
@@ -130,8 +133,8 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 		if out.tests > 0 && out.unsupported == 0 {
 			return nil, fmt.Errorf("file_symbols: only test files under %s; pass include_tests: true to list them", pathArg)
 		}
-		return nil, fmt.Errorf("file_symbols: no supported source files under %s; supported: %s",
-			pathArg, SupportedSymbolLanguages())
+		return nil, fmt.Errorf("file_symbols: no declaration extractor under %s; use file_grep with pattern: %s; file_read outline=true is unavailable",
+			pathArg, symbolFallbackPattern(filepath.Ext(pathArg), filter.name))
 	}
 	return &api.ToolResult{
 		CallID:  call.CallID,
@@ -225,16 +228,17 @@ func readSymbolFile(root *os.Root, target readTarget, rel string) (symbolFile, e
 // symbolOut collects one run: the matching declarations and everything the
 // model should know about what was left out.
 type symbolOut struct {
-	syms        []Symbol
-	files       int // source files that were parsed
-	tests       int // test files left out
-	unsupported int // files of a type no extractor covers
-	tooLarge    int // files over maxSearchFileBytes
-	approx      bool
-	more        bool // the walk stopped one declaration past the limit
-	errors      []string
-	ignoreNote  string
-	timedOut    bool
+	syms            []Symbol
+	files           int // source files that were parsed
+	tests           int // test files left out
+	unsupported     int // files of a type no extractor covers
+	tooLarge        int // files over maxSearchFileBytes
+	fallbackPattern string
+	approx          bool
+	more            bool // the walk stopped one declaration past the limit
+	errors          []string
+	ignoreNote      string
+	timedOut        bool
 }
 
 // noteError records an unreadable or unparsable file; the result names the
@@ -297,8 +301,7 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, fmt.Sprintf("[skipped %d test file(s); pass include_tests: true to include them]", o.tests))
 	}
 	if o.unsupported > 0 {
-		notes = append(notes, fmt.Sprintf("[skipped %d file(s) of a type no extractor covers; supported: %s]",
-			o.unsupported, SupportedSymbolLanguages()))
+		notes = append(notes, fmt.Sprintf("[skipped %d file(s) with no declaration extractor; use file_grep with pattern: %s; file_read outline=true is unavailable for these files]", o.unsupported, o.fallbackPattern))
 	}
 	if o.tooLarge > 0 {
 		notes = append(notes, fmt.Sprintf("[skipped %d file(s) over %d bytes]", o.tooLarge, maxSearchFileBytes))
@@ -310,6 +313,18 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, fmt.Sprintf("[已超时（%s），结果不完整]", searchTimeout))
 	}
 	return notes
+}
+
+// symbolFallbackPattern gives an immediately usable file_grep expression when
+// file_symbols cannot provide declarations for a language.
+func symbolFallbackPattern(ext, name string) string {
+	if strings.TrimSpace(name) != "" {
+		return fmt.Sprintf(`"\\b%s\\b"`, regexp.QuoteMeta(strings.TrimSpace(name)))
+	}
+	if strings.EqualFold(ext, ".rs") {
+		return `"\\bfn name\\b|\\bstruct name\\b"`
+	}
+	return `"\\bname\\b"`
 }
 
 // symbolFilter is file_symbols' name and kind filter: name is a
