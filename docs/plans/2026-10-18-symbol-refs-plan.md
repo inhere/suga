@@ -1,13 +1,14 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # 符号引用检索实施计划
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 已批准实施
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `docs/design/2026-10-18-symbol-refs-design.md` Draft 0.1 与调研报告 §7 的复测证据，拆分 Go 引用提取、多语言近似匹配、`file_refs` 工具与接线、伪终端冒烟、真实模型复测五段任务；不做类型检查/调用图/cgo/LSP。 |
+| 0.2 | 2026-10-18 | 监督（Claude） | 用户批准实施（2026-10-18“批准”）：Q1–Q6 按当前倾向；A/B 实验（docs/research/2026-10-18-explore-compare.md）支持内置 file_refs 而非常驻图工具。 |
 
 ### 思考模式与范围冻结
 
