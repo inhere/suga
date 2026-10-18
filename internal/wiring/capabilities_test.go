@@ -39,7 +39,7 @@ func TestBuildDefaultCapabilities_RegistersNativeTools(t *testing.T) {
 	assert.NotNil(t, mustGetTool(t, built.Registry, "file_list"))
 	assert.NotNil(t, mustGetTool(t, built.Registry, "shell_exec"))
 
-	assertToolNamesEq(t, []string{"file_read", "file_write", "file_list", "file_grep", "file_find", "web_fetch", "file_edit", "file_remove", "shell_exec"}, built.Registry.List())
+	assertToolNamesEq(t, []string{"file_read", "file_write", "file_list", "file_grep", "file_find", "file_symbols", "web_fetch", "file_edit", "file_remove", "shell_exec"}, built.Registry.List())
 }
 
 func TestBuildDefaultCapabilities_RegistersWebSearchWhenConfigured(t *testing.T) {
@@ -56,7 +56,7 @@ func TestBuildDefaultCapabilities_RegistersWebSearchWhenConfigured(t *testing.T)
 
 	assert.NotNil(t, mustGetTool(t, built.Registry, "web_search"))
 
-	assertToolNamesEq(t, []string{"file_read", "file_write", "file_list", "file_grep", "file_find", "web_fetch", "file_edit", "file_remove", "shell_exec", "web_search"}, built.Registry.List())
+	assertToolNamesEq(t, []string{"file_read", "file_write", "file_list", "file_grep", "file_find", "file_symbols", "web_fetch", "file_edit", "file_remove", "shell_exec", "web_search"}, built.Registry.List())
 }
 
 func mustGetTool(t *testing.T, registry *tools.Registry, name string) agentcoreapi.Tool {
@@ -97,7 +97,7 @@ func TestBuildDefaultCapabilities_RegistersConfiguredMCPTools(t *testing.T) {
 
 	assert.NotNil(t, mustGetTool(t, built.Registry, "mcp_echo"))
 
-	assertToolNamesEq(t, []string{"file_read", "file_write", "file_list", "file_grep", "file_find", "web_fetch", "file_edit", "file_remove", "shell_exec", "mcp_echo"}, built.Registry.List())
+	assertToolNamesEq(t, []string{"file_read", "file_write", "file_list", "file_grep", "file_find", "file_symbols", "web_fetch", "file_edit", "file_remove", "shell_exec", "mcp_echo"}, built.Registry.List())
 }
 
 func TestPersonalCapabilitiesUseACPStdioMCPOnlyInWritableMode(t *testing.T) {

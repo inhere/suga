@@ -79,7 +79,8 @@ func approvalRows() []approvalRow {
 			cliRun: "run", cliReadOnly: "run", readOnlyRegistered: "-"}
 	}
 	return []approvalRow{
-		read("file_read"), read("file_list"), read("file_grep"), read("file_find"), read("web_fetch"), read("web_search"),
+		read("file_read"), read("file_list"), read("file_grep"), read("file_find"), read("file_symbols"),
+		read("web_fetch"), read("web_search"),
 		write("file_write"), write("file_edit"), write("shell_exec"),
 		wired("update_plan", func(*testing.T) agentcore.Tool { return native.NewUpdatePlanTool(personal.NewPlanRecorder()) }),
 		wired("tool_search", func(*testing.T) agentcore.Tool {

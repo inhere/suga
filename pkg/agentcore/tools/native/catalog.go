@@ -81,6 +81,9 @@ func Catalog() []Spec {
 		{Name: "file_find", New: func(env Env) api.Tool {
 			return &FileFindTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
+		{Name: "file_symbols", New: func(env Env) api.Tool {
+			return &FileSymbolsTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+		}},
 		{Name: "web_fetch", New: func(env Env) api.Tool {
 			t, err := NewWebFetchTool(env.FetchAllowPrivate, env.FetchProxy)
 			if err != nil {
