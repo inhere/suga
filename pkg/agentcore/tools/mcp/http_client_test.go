@@ -178,6 +178,9 @@ func TestHTTPClientStreamableHTTPServer(t *testing.T) {
 			tool := client.AsTool(defs[0])
 			assert.Eq(t, tools.KindMCP, tools.KindOf(tool))
 			assert.Eq(t, "remote", tool.(*mcpToolAdapter).MCPServer())
+			// HTTP tools are MCP tools for every permission layer, exactly like
+			// stdio ones (tools.IsMCP drives approval and ACP permissions).
+			assert.True(t, tools.IsMCP(tool))
 
 			// Every request after initialize carries the session and the
 			// configured authorization header.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -464,27 +465,72 @@ func toolKind(tool agentcore.Tool) (acp.ToolKind, bool) {
 	return kind, meta.ReadOnly
 }
 
+// mcpSettings normalizes the MCP servers of one session into the settings the
+// runtime starts. Both the stdio and the HTTP shape of the protocol are
+// accepted; a server must declare exactly one of them with a unique name.
+// Headers given by the ACP client are passed through as they are: suga expands
+// ${VAR} only for its own configuration file, so a remote client cannot read
+// the host environment through this path.
 func mcpSettings(servers []acp.McpServer) ([]mcp.ServerSettings, error) {
 	settings := make([]mcp.ServerSettings, 0, len(servers))
 	seen := make(map[string]bool)
 	for _, server := range servers {
-		if server.Stdio == nil {
-			return nil, acp.NewInvalidParams(map[string]any{"mcpServers": "only stdio transport is supported"})
-		}
-		stdio := server.Stdio
-		name, command := strings.TrimSpace(stdio.Name), strings.TrimSpace(stdio.Command)
-		if name == "" || command == "" || seen[name] {
-			return nil, acp.NewInvalidParams(map[string]any{"mcpServers": "server needs unique name and command"})
-		}
-		seen[name] = true
-		env := make(map[string]string, len(stdio.Env))
-		for _, variable := range stdio.Env {
-			if strings.TrimSpace(variable.Name) == "" {
-				return nil, acp.NewInvalidParams(map[string]any{"mcpServers": "environment variable name is required"})
+		switch {
+		case server.Stdio != nil && server.Http != nil:
+			return nil, acp.NewInvalidParams(map[string]any{"mcpServers": "server needs exactly one of stdio or http"})
+		case server.Stdio != nil:
+			setting, err := stdioMCPSetting(server.Stdio, seen)
+			if err != nil {
+				return nil, err
 			}
-			env[variable.Name] = variable.Value
+			settings = append(settings, setting)
+		case server.Http != nil:
+			setting, err := httpMCPSetting(server.Http, seen)
+			if err != nil {
+				return nil, err
+			}
+			settings = append(settings, setting)
+		default:
+			return nil, acp.NewInvalidParams(map[string]any{"mcpServers": "server needs a stdio or http transport"})
 		}
-		settings = append(settings, mcp.ServerSettings{ID: name, Command: command, Args: append([]string(nil), stdio.Args...), Env: env})
 	}
 	return settings, nil
+}
+
+// stdioMCPSetting maps the protocol's stdio server onto ServerSettings.
+func stdioMCPSetting(stdio *acp.McpServerStdio, seen map[string]bool) (mcp.ServerSettings, error) {
+	name, command := strings.TrimSpace(stdio.Name), strings.TrimSpace(stdio.Command)
+	if name == "" || command == "" || seen[name] {
+		return mcp.ServerSettings{}, acp.NewInvalidParams(map[string]any{"mcpServers": "server needs unique name and command"})
+	}
+	seen[name] = true
+	env := make(map[string]string, len(stdio.Env))
+	for _, variable := range stdio.Env {
+		if strings.TrimSpace(variable.Name) == "" {
+			return mcp.ServerSettings{}, acp.NewInvalidParams(map[string]any{"mcpServers": "environment variable name is required"})
+		}
+		env[variable.Name] = variable.Value
+	}
+	return mcp.ServerSettings{ID: name, Command: command, Args: append([]string(nil), stdio.Args...), Env: env, Transport: mcp.TransportStdio}, nil
+}
+
+// httpMCPSetting maps the protocol's HTTP server onto ServerSettings.
+func httpMCPSetting(httpServer *acp.McpServerHttpInline, seen map[string]bool) (mcp.ServerSettings, error) {
+	name, serverURL := strings.TrimSpace(httpServer.Name), strings.TrimSpace(httpServer.Url)
+	if name == "" || serverURL == "" || seen[name] {
+		return mcp.ServerSettings{}, acp.NewInvalidParams(map[string]any{"mcpServers": "server needs unique name and url"})
+	}
+	parsed, err := url.Parse(serverURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return mcp.ServerSettings{}, acp.NewInvalidParams(map[string]any{"mcpServers": "http server url needs an http or https scheme"})
+	}
+	seen[name] = true
+	headers := make(map[string]string, len(httpServer.Headers))
+	for _, header := range httpServer.Headers {
+		if strings.TrimSpace(header.Name) == "" {
+			return mcp.ServerSettings{}, acp.NewInvalidParams(map[string]any{"mcpServers": "http header name is required"})
+		}
+		headers[header.Name] = header.Value
+	}
+	return mcp.ServerSettings{ID: name, URL: serverURL, Headers: headers, Transport: mcp.TransportStreamableHTTP}, nil
 }

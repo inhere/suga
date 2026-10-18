@@ -124,7 +124,11 @@ func LoadLocalEnv(workspace string) (LocalEnv, error) {
 
 	env.Rules = loadEnvRules(parts.workspace)
 	env.Hooks = loadEnvHooks()
-	for _, s := range appconfig.ReadMCPServerSettings() {
+	configured, err := appconfig.ReadMCPServerSettings()
+	if err != nil {
+		return env, err
+	}
+	for _, s := range configured {
 		keys := make([]string, 0, len(s.Env))
 		for k := range s.Env {
 			keys = append(keys, k)

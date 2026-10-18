@@ -25,26 +25,49 @@ type capabilityToolProvider interface {
 }
 
 var mcpProviderFactory = func(ctx context.Context, settings toolsmcp.ServerSettings) (capabilityToolProvider, error) {
-	settings = withMCPCallTimeout(settings)
+	settings = withMCPTimeouts(settings)
 	if settings.RawBytes == 0 {
 		settings.RawBytes = rawOutputBytes()
 	}
 	return toolsmcp.NewProvider(ctx, settings)
 }
 
-// withMCPCallTimeout applies mcp.call_timeout_sec to a server without its own
-// timeout. Every server (config, Claude MCP files, ACP session) starts through
-// mcpProviderFactory, so this is the one place the setting is read.
-func withMCPCallTimeout(settings toolsmcp.ServerSettings) toolsmcp.ServerSettings {
+// withMCPTimeouts applies mcp.call_timeout_sec and mcp.startup_timeout_sec to a
+// server without its own timeouts. Every server (config, Claude MCP files, ACP
+// session) starts through mcpProviderFactory, so this is the one place the
+// settings are read.
+func withMCPTimeouts(settings toolsmcp.ServerSettings) toolsmcp.ServerSettings {
 	if settings.CallTimeout == 0 {
 		settings.CallTimeout = axconfig.MCPCallTimeout()
+	}
+	if settings.StartupTimeout == 0 {
+		settings.StartupTimeout = axconfig.MCPStartupTimeout()
 	}
 	return settings
 }
 
 type defaultCapabilities struct {
 	Registry *tools.Registry
-	closers  []capabilityToolProvider
+	// conflicts records the same-name tool collisions seen while registering
+	// MCP providers (first-wins, design D8); the live manifest reports them.
+	conflicts []toolsmcp.Conflict
+	closers   []capabilityToolProvider
+}
+
+// recordConflicts collects the tool-name collisions of one provider. Providers
+// that do not report conflicts (test doubles) are ignored.
+func (c *defaultCapabilities) recordConflicts(provider capabilityToolProvider) {
+	reporter, ok := provider.(interface{ Conflicts() []toolsmcp.Conflict })
+	if !ok {
+		return
+	}
+	c.conflicts = append(c.conflicts, reporter.Conflicts()...)
+}
+
+// Conflicts reports the tool-name collisions of the assembled capabilities, so
+// the runtime manifest can explain a tool that another server already owned.
+func (c defaultCapabilities) Conflicts() []toolsmcp.Conflict {
+	return append([]toolsmcp.Conflict(nil), c.conflicts...)
 }
 
 // buildDefaultCapabilities assembles native and configured MCP tools for the
@@ -62,8 +85,12 @@ func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspa
 	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter), true) {
 		registry.MustRegister(tool)
 	}
+	servers, err := axconfig.ReadMCPServerSettings()
+	if err != nil {
+		return defaultCapabilities{}, err
+	}
 	built := defaultCapabilities{Registry: registry}
-	servers := append(axconfig.ReadMCPServerSettings(), additional...)
+	servers = append(servers, additional...)
 	for _, settings := range servers {
 		provider, err := mcpProviderFactory(ctx, settings)
 		if err != nil {
@@ -75,6 +102,7 @@ func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspa
 			_ = built.Close()
 			return defaultCapabilities{}, fmt.Errorf("register mcp tools for %q: %w", settings.ID, err)
 		}
+		built.recordConflicts(provider)
 		built.closers = append(built.closers, provider)
 	}
 	return built, nil

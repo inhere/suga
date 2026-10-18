@@ -219,3 +219,24 @@ func TestListedPreferredNamesKeepsACopy(t *testing.T) {
 	got[0] = "again"
 	assert.Eq(t, []string{"rg"}, holder.get())
 }
+
+// TestResolvePreferredToolsHTTPMCPServer: an HTTP MCP server (url configured
+// when no id) is an ordinary MCP server for tools.preferred, so a successful
+// registration pins it exactly like a stdio server.
+func TestResolvePreferredToolsHTTPMCPServer(t *testing.T) {
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+	assert.NoErr(t, gkconfig.Set("tools.preferred", []map[string]any{
+		{"name": "remote", "kind": "mcp", "when": "http tools"},
+	}))
+
+	registry := tools.NewRegistry()
+	registry.Register(newServerStubTool("remote", "remote_search"))
+	got, err := ResolvePreferredTools(registry, []toolsmcp.ServerSettings{
+		{ID: "remote", URL: "https://mcp.example.test/mcp", Transport: toolsmcp.TransportStreamableHTTP},
+	})
+	assert.NoErr(t, err)
+	assert.Eq(t, []PreferredToolStatus{
+		{Name: "remote", Kind: "mcp", When: "http tools", Present: true, Reason: preferredReasonMCPConnected},
+	}, got)
+}
