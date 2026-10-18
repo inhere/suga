@@ -147,3 +147,22 @@
 
 - 任务要求“`tools.auto_allow` 只放行只读检索工具”，但 `--read-only` 下真正生效的是 `tools.read_only_allow`（`internal/wiring/runtime.go:38-40`、`docs/usage/gofer-personal-agent.md:94`）。本次两个列表都写入同一组工具；只配 `auto_allow` 会让 MCP 调用全部被拒。
 - 任务给出的放行清单未含 `get_graph_schema`（模型在 T6-B-2 调用了一次被拒，错误进入上下文并多花一步），也未含 `check_index_coverage`/`detect_changes`/`compare_graphs`。
+
+## 7. 参照组：omp（同模型 deepseek-v4.1-flash，监督补测）
+
+omp（主机 Oh My Pi，同样接 opencode-go 的 deepseek-v4.1-flash）跑同样 6 个任务各 2 次，只读提示、主检出工作区。步数取 omp 事件流的 `turn_end` 次数，工具调用取 `tool_execution_start` 次数（口径与 suga 的 model_calls / tool calls 对应）。12/12 完成，抽查 T4、T6 两份答案与 §1.3 标准答案一致（T6 同样给出 5 个直接调用方，并主动排除 `local_cmd.go:94` 假阳性）。
+
+| 任务 | suga A 步数 | omp 步数 | suga A 工具调用 | omp 工具调用 | omp 主要工具 |
+|---|---|---|---|---|---|
+| T1 | 7.0（7–7） | 5.0（5–5） | 11.0 | 7.0 | grep、read |
+| T2 | 3.5（2–5） | 3.0（2–4） | 3.5 | 3.0 | grep |
+| T3 | 6.0（6–6） | 7.0（6–8） | 9.5 | 8.5 | grep、read |
+| T4 | 19.0（16–22） | 23.0（20–26） | 36.5 | 33.0 | bash×19、read×8、grep×6 |
+| T5 | 8.0（7–9） | 6.5（5–8） | 17.5 | 7.5 | bash（grep 管道） |
+| T6 | 12.5（12–13） | 9.5（8–11） | 22.0 | 14.5 | bash（grep 管道 + sed 多段） |
+
+观察：
+
+1. **步数同一量级**：T1–T4 差别都在 ±3–5 步噪声内，T4 omp 反而多 4 步。追调用链（T4）本身就是约 20 步的任务，suga 的步数不是异常值。
+2. **差距在“找调用方”（T5/T6）的工具调用数**：omp 少一半左右（7.5 vs 17.5、14.5 vs 22）。它的 bash 一条命令就是 `grep -rn --include=*.go … | grep -v _test.go | grep -v …` 的过滤管道，或一次 `sed -n` 读多个文件的几段；suga 只读模式下没有 shell，`file_grep` 一次一个模式、`file_read` 一次一个片段，同样的信息要多次调用。
+3. 对 `file_refs` 的含义：它正好覆盖“找调用方 + 排除测试 + 按调用/引用分类”，相当于把 omp 的过滤管道做成一次调用；T5/T6 是复测时最该看到下降的任务。多片段读（一次读多个 `path:start-end`）是另一个可选方向，本批不做。
