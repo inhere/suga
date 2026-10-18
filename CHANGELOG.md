@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- `suga config set` 写字符串列表键（如 `tools.auto_allow`、`fallback_models`）时也接受 YAML 行内列表写法：以前 `'["a/b"]'` 被整串按逗号拆成含方括号的字面量 glob（`tools.auto_allow glob "[everything/echo]": syntax error in pattern`）。现在以 `[` 开头的值按 YAML 行内序列解析，每项必须是字符串，解析失败或项非字符串时报错退出 2 且不写文件；两种写法写进文件的结果一致（块式 YAML 列表）。
+
 ## [0.32.0] - 2026-10-18
 
 全局代理 `network.proxy`（名单内站点走代理）；MCP 支持 Streamable HTTP 与认证头；模型可声明 `thinking_style` 与 `stream_required`；新增多语言 `file_symbols`，`file_read` 支持声明大纲与多段范围读；只读运行不再列出命令类优先工具；修复 MCP 无参工具让网关拒绝整次请求。
