@@ -39,17 +39,45 @@ func refMaskStyle(file string) maskStyle {
 // approximation: an interpolation in a template string is masked with the rest
 // of the literal, so it is not reported.
 func ScanLineRefs(file string, src []byte, name string) []Ref {
+	refs, _ := scanLineRefs(file, src, name, "")
+	return refs
+}
+
+// scanLineRefs is ScanLineRefs with the qualified-name filter of one file_refs
+// call: with qual set (the Q of "Q.Name"), only the lines holding Q.name are
+// kept and dropped counts the lines that only held other qualifiers.
+func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops) {
 	style := refMaskStyle(file)
 	masked := newSourceLines(maskInline(maskSpans(src, style), style))
 	original := newSourceLines(src)
 	re := refWordRe(name)
 	var out []Ref
+	dropped := newRefDrops()
 	for i, line := range masked.lines {
 		if !re.MatchString(line) {
+			continue
+		}
+		if !approxQualifierMatches(line, qual, name) {
+			dropped.addText() // a text match has no parsed qualifier to name
 			continue
 		}
 		// The line is shown as it is written: the masked line is not readable.
 		out = append(out, Ref{File: file, Line: i + 1, Class: RefRef, Text: refLineText(original.at(i + 1))})
 	}
-	return out
+	return out, dropped
+}
+
+// approxQualifierMatches reports whether a masked line holds the qualified name
+// Q.name in one of the shapes the approximate languages write it: Q.name,
+// Q::name or Q and the name glued together. A text test on purpose: no parser.
+func approxQualifierMatches(line, qual, name string) bool {
+	if qual == "" {
+		return true
+	}
+	for _, sep := range []string{"", ".", "::"} {
+		if strings.Contains(line, qual+sep+name) {
+			return true
+		}
+	}
+	return false
 }
