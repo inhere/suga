@@ -81,6 +81,23 @@ fallback_models:
 - 值中的 `{{session_id}}` 替换为当前 suga 会话 ID，同一会话固定不变；没有会话 ID 时（不经过会话的调用）这类头不发送。
 - 默认带 `User-Agent: suga`，可在 `headers` 中覆盖。
 
+## 出网代理（network.proxy）
+
+模型请求、`web_fetch` 和 `web_search` 可以统一走一个全局代理。不配置时保持各自现状：`web_fetch` 忽略环境代理并检查目标 IP，模型请求与 `web_search` 跟随 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`。
+
+```yaml
+network:
+  proxy:
+    url: "${SUGA_PROXY_URL}"      # http://、https:// 或 socks5://，凭据放 .env
+    sites: ["api.openai.com", ".anthropic.com", "serpapi.com"]
+```
+
+- `network.proxy.url` 是唯一代理地址，可用 `${VAR}` 引用环境变量或 `$SUGA_HOME/.env`；引用解析不出值、scheme/host 非法或含路径时启动失败，不会静默直连。该键标记为 sensitive，`suga config get/list` 只显示掩码。
+- `network.proxy.sites` 是代理白名单：命中才走代理，未命中直连。写法为精确 `host`、子域后缀 `.example.com`（含该域本身及其子域）、`host:port` 或 `*`（全部）。空名单等于没有命中项，不是“代理全部”。
+- 配置了 url 后，这三类客户端都不再读取环境代理变量，避免同一进程里两套规则同时生效。
+- `tools.web_fetch.proxy` 是仅作用于 `web_fetch` 的旧配置，只在 `network.proxy.url` 为空时生效（已废弃，建议迁移到全局配置）。
+- `web_fetch` 的私网限制不因代理放松：走代理前仍按目标 host 做本地 DNS 检查（IP 直写也检查），每次跳转重新检查；代理自身是否为可信配置由用户负责。
+
 ## 环境变量
 
 - `${VAR}` 在 `api_key`、`base_url`、`headers` 中展开，来源为进程环境或 `$SUGA_HOME/.env`（默认 `~/.suga/.env`）。

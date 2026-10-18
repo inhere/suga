@@ -13,14 +13,19 @@ import (
 	"time"
 
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
 
 // newStreamClient returns the client of streamed requests: the wait for the
 // response headers is bounded by responseHeader, the body is not (see
-// DefaultResponseHeaderTimeout and ResponseHeaderTimeout).
-func newStreamClient(responseHeader time.Duration) *http.Client {
+// DefaultResponseHeaderTimeout and ResponseHeaderTimeout). proxy, when set,
+// replaces the environment proxies of the cloned default transport.
+func newStreamClient(responseHeader time.Duration, proxy netproxy.ProxyFunc) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = responseHeader
+	if proxy != nil {
+		transport.Proxy = proxy
+	}
 	return newProviderClient(0, transport)
 }
 

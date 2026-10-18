@@ -98,6 +98,10 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "budget.notice_ratio", Type: ConfigValueType("float"), Writable: true, Reader: "budget"},
 	{Pattern: "workspace", Type: ConfigTypeString, Writable: true},
 	{Pattern: "serpapi_key", Type: ConfigTypeString, Sensitive: true},
+	// The global outbound proxy: url is sensitive (it may embed credentials and
+	// is only ever reported masked), sites is the allowlist that opts hosts in.
+	{Pattern: "network.proxy.url", Type: ConfigTypeString, Sensitive: true, Reader: "network_proxy"},
+	{Pattern: "network.proxy.sites", Type: ConfigTypeStringList, Writable: true, Reader: "network_proxy"},
 	{Pattern: "retry.max_attempts", Type: ConfigTypeInt, Writable: true, Reader: "retry"},
 	{Pattern: "retry.base_delay", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
 	{Pattern: "retry.max_delay", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
@@ -530,6 +534,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadApprovalRulesSettings()
 	case "mcp":
 		_ = ReadMCPServerSettings()
+	case "network_proxy":
+		_, err = ReadNetworkProxy()
 	case "preferred_tools":
 		_, err = ReadPreferredTools()
 	case "rules":
@@ -754,6 +760,15 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		default:
 			return settings.Timeout, true, nil
 		}
+	case "network.proxy.url", "network.proxy.sites":
+		settings, err := ReadNetworkProxy()
+		if err != nil {
+			return nil, false, err
+		}
+		if key == "network.proxy.url" {
+			return settings.URL, settings.URL != "", nil
+		}
+		return settings.Sites, len(settings.Sites) > 0, nil
 	case "mcp.call_timeout_sec":
 		return MCPCallTimeout(), gkconfig.Get(key) != nil, nil
 	case "tools.preferred":

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
@@ -27,13 +28,28 @@ type WebSearchTool struct {
 	maxOut   int // raw result cap in bytes; 0 = DefaultRawOutputBytes
 }
 
-// NewWebSearchTool creates a WebSearchTool with the given SerpAPI key.
+// NewWebSearchTool creates a WebSearchTool with the given SerpAPI key. Its
+// client follows the environment proxies unless a network proxy is set (see
+// SetNetworkProxy).
 func NewWebSearchTool(apiKey string) *WebSearchTool {
 	return &WebSearchTool{
 		endpoint: serpAPIEndpoint,
 		apiKey:   apiKey,
 		client:   &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+// SetNetworkProxy routes web_search through the global network.proxy selector:
+// a matched host uses the proxy, every other host stays direct. A nil selector
+// (no global proxy configured) keeps the default client, which reads
+// HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
+func (t *WebSearchTool) SetNetworkProxy(selector *netproxy.Selector) {
+	if selector == nil {
+		return
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = selector.ProxyFunc()
+	t.client = &http.Client{Transport: transport, Timeout: t.client.Timeout}
 }
 
 func (t *WebSearchTool) Name() string { return "web_search" }

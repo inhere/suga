@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
 
 const defaultOpenAIBase = "https://api.openai.com/v1"
@@ -53,6 +54,9 @@ type OpenAIConfig struct {
 	// headers; zero takes DefaultResponseHeaderTimeout and NoTimeout disables
 	// the bound.
 	ResponseHeaderTimeout time.Duration
+	// Proxy routes requests through the global network.proxy selector; nil keeps
+	// the default transport, which follows the environment proxies.
+	Proxy netproxy.ProxyFunc
 }
 
 // NewOpenAIProvider creates an OpenAIProvider from cfg.
@@ -70,8 +74,8 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 		apiKey:       cfg.APIKey,
 		baseURL:      cfg.BaseURL,
 		model:        cfg.Model,
-		client:       newProviderClient(requestTimeout(cfg.RequestTimeout), nil),
-		streamClient: newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout)),
+		client:       newProviderClient(requestTimeout(cfg.RequestTimeout), proxyTransport(cfg.Proxy)),
+		streamClient: newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout), cfg.Proxy),
 		name:         cfg.Name,
 		headers:      cfg.Headers,
 

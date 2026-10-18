@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
@@ -51,8 +52,13 @@ type Env struct {
 	// (tools.web_fetch.allow_private).
 	FetchAllowPrivate bool
 	// FetchProxy routes web_fetch through a proxy (tools.web_fetch.proxy);
-	// wiring validates it at startup with ParseFetchProxy.
+	// wiring validates it at startup with ParseFetchProxy. It only applies when
+	// NetworkProxy is nil.
 	FetchProxy string
+	// NetworkProxy is the global network.proxy selector used by web_fetch and
+	// web_search; nil keeps their previous behavior (web_fetch ignores the
+	// environment proxies, web_search follows them).
+	NetworkProxy *netproxy.Selector
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -82,7 +88,7 @@ func Catalog() []Spec {
 			return &FileFindTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
 		{Name: "web_fetch", New: func(env Env) api.Tool {
-			t, err := NewWebFetchTool(env.FetchAllowPrivate, env.FetchProxy)
+			t, err := NewWebFetchToolWithSelector(env.FetchAllowPrivate, env.FetchProxy, env.NetworkProxy)
 			if err != nil {
 				return nil // invalid proxy: rejected earlier by wiring
 			}
@@ -123,6 +129,7 @@ func Catalog() []Spec {
 				return nil
 			}
 			t := NewWebSearchTool(env.SerpAPIKey)
+			t.SetNetworkProxy(env.NetworkProxy)
 			t.maxOut = env.RawBytes
 			return t
 		}},

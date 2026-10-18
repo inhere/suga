@@ -11,6 +11,7 @@ import (
 	"time"
 
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
 
 const (
@@ -98,6 +99,9 @@ type ClaudeConfig struct {
 	// headers; zero takes DefaultResponseHeaderTimeout and NoTimeout disables
 	// the bound.
 	ResponseHeaderTimeout time.Duration
+	// Proxy routes requests through the global network.proxy selector; nil keeps
+	// the default transport, which follows the environment proxies.
+	Proxy netproxy.ProxyFunc
 }
 
 // NewClaudeProvider creates a ClaudeProvider.
@@ -113,8 +117,8 @@ func NewClaudeProvider(cfg ClaudeConfig) *ClaudeProvider {
 		apiKey:       cfg.APIKey,
 		model:        cfg.Model,
 		messagesURL:  claudeMessagesURL(cfg.BaseURL),
-		client:       newProviderClient(requestTimeout(cfg.RequestTimeout), nil),
-		streamClient: newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout)),
+		client:       newProviderClient(requestTimeout(cfg.RequestTimeout), proxyTransport(cfg.Proxy)),
+		streamClient: newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout), cfg.Proxy),
 		headers:      cfg.Headers,
 		promptCache:  cfg.PromptCache,
 		thinking:     cfg.Thinking,

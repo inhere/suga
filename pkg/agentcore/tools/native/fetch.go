@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"golang.org/x/net/html/charset"
 
@@ -46,8 +47,10 @@ func publicIP(ip netip.Addr) bool {
 type WebFetchTool struct {
 	client *http.Client
 	maxOut int // raw result cap in bytes; 0 = DefaultRawOutputBytes
-	// checkTarget vets a URL before it is requested (and on every redirect)
-	// when a proxy is used; nil without a proxy, where the dial check applies.
+	// checkTarget vets a URL before it is requested (and on every redirect) when
+	// a proxy is used; nil without a proxy, where the dial check applies. With a
+	// selector in play it is set for direct requests too, so the dial check may
+	// skip the proxy's own address safely.
 	checkTarget func(ctx context.Context, u *url.URL) error
 }
 
@@ -56,30 +59,47 @@ type fetchOptions struct {
 	allow func(netip.Addr) bool
 	// proxy, when set, receives every request (tools.web_fetch.proxy).
 	proxy *url.URL
+	// selector, when set, decides per target URL whether the global proxy
+	// (network.proxy) receives the request; it takes precedence over proxy.
+	selector *netproxy.Selector
 	// lookup resolves a host name; tests replace it.
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
 }
 
-// NewWebFetchTool builds the tool. Unless allowPrivate is set, private and
-// local addresses are refused. Without a proxy every connection is checked at
-// dial time against the IP actually connected to, which also covers
-// redirects and DNS rebinding; environment proxies are ignored so the check
-// sees the real target. With proxy (http, https or socks5 URL) connections go
-// only to the proxy, and the target host is resolved and checked before the
-// request and on every redirect instead (the proxy may still resolve a name
-// differently: a weaker guarantee, accepted to reach sites that need one).
+// NewWebFetchTool builds the tool without a global proxy. Unless allowPrivate
+// is set, private and local addresses are refused. Without a proxy every
+// connection is checked at dial time against the IP actually connected to,
+// which also covers redirects and DNS rebinding; environment proxies are
+// ignored so the check sees the real target. With proxy (http, https or socks5
+// URL) connections go only to the proxy, and the target host is resolved and
+// checked before the request and on every redirect instead (the proxy may
+// still resolve a name differently: a weaker guarantee, accepted to reach
+// sites that need one).
 func NewWebFetchTool(allowPrivate bool, proxy string) (*WebFetchTool, error) {
-	opts := fetchOptions{allow: publicIP, lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
+	return NewWebFetchToolWithSelector(allowPrivate, proxy, nil)
+}
+
+// NewWebFetchToolWithSelector builds the tool with the global network proxy
+// selector (network.proxy). A non-nil selector decides per target URL between
+// the proxy and a direct connection and takes precedence over the legacy proxy
+// argument; a nil one keeps the legacy tools.web_fetch.proxy behavior
+// described in NewWebFetchTool. Because the dial check cannot tell the proxy's
+// own address from a target, a selector always checks every request by name
+// (checkHost) and keeps the dial check for direct connections.
+func NewWebFetchToolWithSelector(allowPrivate bool, proxy string, selector *netproxy.Selector) (*WebFetchTool, error) {
+	opts := fetchOptions{allow: publicIP, selector: selector, lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 		return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	}}
 	if allowPrivate {
 		opts.allow = func(netip.Addr) bool { return true }
 	}
-	u, err := ParseFetchProxy(proxy)
-	if err != nil {
-		return nil, err
+	if selector == nil {
+		u, err := ParseFetchProxy(proxy)
+		if err != nil {
+			return nil, err
+		}
+		opts.proxy = u
 	}
-	opts.proxy = u
 	return newWebFetchTool(opts), nil
 }
 
@@ -90,7 +110,8 @@ func ParseFetchProxy(proxy string) (*url.URL, error) {
 	}
 	u, err := url.Parse(proxy)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5") {
-		return nil, fmt.Errorf("tools.web_fetch.proxy must be an http://, https:// or socks5:// URL, got %q", proxy)
+		// The value is not echoed: a proxy URL may carry user:password.
+		return nil, errors.New("tools.web_fetch.proxy must be an http://, https:// or socks5:// URL")
 	}
 	return u, nil
 }
@@ -100,23 +121,26 @@ func newWebFetchTool(opts fetchOptions) *WebFetchTool {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	t := &WebFetchTool{}
 	var proxyFunc func(*http.Request) (*url.URL, error)
-	if opts.proxy == nil {
-		dialer.Control = func(_, address string, _ syscall.RawConn) error {
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				return err
-			}
-			ip, err := netip.ParseAddr(host)
-			if err != nil || !allow(ip) {
-				return fmt.Errorf("%w: %s is not a public address", errBlockedAddress, host)
-			}
-			return nil
-		}
-	} else {
+	// checkHost is the name-based target check used whenever a proxy is in play.
+	// An unproxied request is covered by the dial check instead (see
+	// NewWebFetchToolWithSelector on why both run with a selector).
+	checkTarget := func(ctx context.Context, u *url.URL) error {
+		return checkHost(ctx, u.Hostname(), allow, opts.lookup)
+	}
+	switch {
+	case opts.selector != nil:
+		// Per-URL decision: dials to the proxy itself are not target dials, so
+		// the dial check skips them; a direct dial is still checked, and every
+		// request is checked by name before it is sent.
+		dialer.Control = dialControl(allow, opts.lookup, opts.selector.URL())
+		proxyFunc = opts.selector.ProxyFunc()
+		t.checkTarget = checkTarget
+	case opts.proxy != nil:
+		// Legacy: every connection goes to the proxy, so no dial check applies.
 		proxyFunc = http.ProxyURL(opts.proxy)
-		t.checkTarget = func(ctx context.Context, u *url.URL) error {
-			return checkHost(ctx, u.Hostname(), allow, opts.lookup)
-		}
+		t.checkTarget = checkTarget
+	default:
+		dialer.Control = dialControl(allow, opts.lookup, nil)
 	}
 	transport := &http.Transport{
 		Proxy:                 proxyFunc,
@@ -143,6 +167,65 @@ func newWebFetchTool(opts fetchOptions) *WebFetchTool {
 		},
 	}
 	return t
+}
+
+// dialControl refuses a connection whose remote IP is not allowed, the check
+// that makes a direct fetch safe against DNS rebinding. own, when non-nil, is
+// the set of "host:port" addresses of a configured proxy: a dial to it is not a
+// target dial, and every request that can be proxied is checked by name before
+// it is sent anyway (see newWebFetchTool).
+func dialControl(allow func(netip.Addr) bool, lookup func(context.Context, string) ([]netip.Addr, error),
+	proxy *url.URL) func(_, address string, _ syscall.RawConn) error {
+	own := proxyDialAddrs(proxy, lookup)
+	return func(_, address string, _ syscall.RawConn) error {
+		if own[address] {
+			return nil
+		}
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		ip, err := netip.ParseAddr(host)
+		if err != nil || !allow(ip) {
+			return fmt.Errorf("%w: %s is not a public address", errBlockedAddress, host)
+		}
+		return nil
+	}
+}
+
+// proxyDialAddrs collects the "host:port" the proxy may be dialed as: the
+// configured host and, for a host name, the addresses it resolves to (the
+// transport dials the resolved IP). A failed lookup just leaves the
+// configured form, and the proxy host is a trusted configuration value.
+func proxyDialAddrs(u *url.URL, lookup func(context.Context, string) ([]netip.Addr, error)) map[string]bool {
+	if u == nil {
+		return nil
+	}
+	port := u.Port()
+	if port == "" {
+		switch u.Scheme {
+		case "https":
+			port = "443"
+		case "socks5":
+			port = "1080"
+		default:
+			port = "80"
+		}
+	}
+	own := map[string]bool{net.JoinHostPort(u.Hostname(), port): true}
+	if _, err := netip.ParseAddr(u.Hostname()); err == nil || lookup == nil {
+		return own
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	addrs, err := lookup(ctx, u.Hostname())
+	if err != nil {
+		return own
+	}
+	for _, ip := range addrs {
+		own[net.JoinHostPort(ip.String(), port)] = true
+	}
+	return own
 }
 
 // checkHost refuses host when it is, or resolves to, an address allow

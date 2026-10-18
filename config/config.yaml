@@ -194,6 +194,16 @@ workspace: ""
 # SerpAPI key for web_search tool
 serpapi_key: "" # or reference an env var, e.g. "${SERPAPI_KEY}"
 
+# Global outbound proxy for model requests, web_fetch and web_search. Optional:
+# without a url every caller keeps its previous behavior (web_fetch ignores
+# environment proxies and checks the target IP; model/search follow
+# HTTP_PROXY/HTTPS_PROXY/NO_PROXY). With a url only the sites listed below use
+# the proxy, everything else connects directly; write "*" to proxy every host.
+# network:
+#   proxy:
+#     url: "${SUGA_PROXY_URL}"   # http://, https:// or socks5://; credentials stay in .env
+#     sites: ["api.openai.com", ".anthropic.com", "serpapi.com"]
+
 # Optional MCP servers exposed as additional tool providers
 mcp:
   servers: []
