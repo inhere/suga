@@ -41,7 +41,7 @@ func (t *FileSymbolsTool) Description() string {
 	return "List the declarations of a source file, or of every source file under a directory (recursive): " +
 		"one `path:line kind name signature` line each, sorted by path and line. Use it instead of guessing " +
 		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
-		"JavaScript/TypeScript, Python and Java are recognised from their declaration lines and marked approx " +
+		"JavaScript/TypeScript, Python, Java and PHP are recognised from their declaration lines and marked approx " +
 		"(confirm a name with file_grep); universal-ctags is used first when it is installed and covers more " +
 		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
 		"Any other file type is refused with the supported list. Paths under a read-only dependency " +
@@ -287,7 +287,7 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, note+"]")
 	}
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python and Java declarations come from declaration-line "+
+		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java and PHP declarations come from declaration-line "+
 			"detection, not a parser; confirm a name with file_grep]")
 	}
 	if o.more {
