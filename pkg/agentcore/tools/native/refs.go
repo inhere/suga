@@ -260,13 +260,27 @@ func scanBareLineRefs(file string, src []byte, name, qual string, re *regexp.Reg
 		if !re.MatchString(line) {
 			continue
 		}
-		if !approxQualifierMatches(line, qual, name) {
+		if !bareQualifierMatches(line, qual, name) {
 			dropped.addText()
 			continue
 		}
 		refs = append(refs, Ref{File: file, Line: i + 1, Class: RefRef, Text: refLineText(line)})
 	}
 	return refs, dropped
+}
+
+// bareQualifierMatches follows the fallback contract: a qualified query must
+// appear as Q.name, Q::name, or Q->name in the unmasked source line.
+func bareQualifierMatches(line, qual, name string) bool {
+	if qual == "" {
+		return true
+	}
+	for _, sep := range []string{".", "::", "->"} {
+		if strings.Contains(line, qual+sep+name) {
+			return true
+		}
+	}
+	return false
 }
 
 // isRefDocumentation keeps prose files out of reference results.
