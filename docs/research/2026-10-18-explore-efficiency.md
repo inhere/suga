@@ -464,3 +464,14 @@ issue `suag-7ih4` 的证据是“同模型同档位对比中 suga 探索阶段 9
 - 提示词改动会让 provider 的前缀缓存整段失效（每会话重建一次）；本批没有单独测量这项代价。
 - 标准答案用 `git grep` 在本 worktree 复核（行号与 §8/§9 一致）；运行产物（二进制、隔离 home、会话库、答案与 trace 导出）已删除，数字来自 `tmp/b17q/metrics.json`（临时文件，一并删除）与 `suga trace --json`；未做第三方复核。
 
+
+### 10.6 补充参照：codex（gpt-6-sol，监督补测）
+
+gpt 网关恢复后用 codex（gpt-6-sol，reasoning high，有 shell）跑同样的 T5/T6 各 2 次，只读提示。工具调用取 codex 事件流里的 `exec` 次数（每次一条 pwsh 命令，多为 `rg -n --glob '*.go' …` 与 `Get-Content | Select-Object -Skip … -First …` 读片段）；token 为 gofer 记录的总量（含缓存，口径与 suga 的输入 token 不同，只作量级参考）。
+
+| 任务 | codex 命令数（2 次） | codex 总 token | 答案 |
+|---|---|---|---|
+| T5 | 11 / 10 | 90k / 70k | 2/2 列出生产调用点 |
+| T6 | 20 / 43 | 157k / 98k | 2/2 列出 5 处（含 `subagent.go:94`） |
+
+模型不同（gpt vs deepseek-v4.1-flash），不与 §10.3 直接比较步数；可以看出的是：codex 同样以“rg 搜 + 分段读”为主，T6 的方差同样大（20–43 次），T5 的 4 次调用（§10）已少于 codex 的 10–11 次。下一步用 suga 默认的 gpt 模型跑同一组任务，才能和 codex 同模型对比。
