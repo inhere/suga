@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.32.0] - 2026-10-18
+
+全局代理 `network.proxy`（名单内站点走代理）；MCP 支持 Streamable HTTP 与认证头；模型可声明 `thinking_style` 与 `stream_required`；新增多语言 `file_symbols`，`file_read` 支持声明大纲与多段范围读；只读运行不再列出命令类优先工具；修复 MCP 无参工具让网关拒绝整次请求。
+
 ### 修复
 
 - `tools.preferred` 里 `kind: command` 的优先项只在本会话注册了 `shell_exec` 时写进环境说明：只读会话不再列出模型根本不能执行的命令（`kind: mcp` 不受影响，连上的 MCP 服务照常列出）；`suga manifest` 仍报告命令已在 PATH 上（`present=true`），原因里写明只读会话不列出；`turn_context.preferred_tools` 与提示词一致，只记实际列出的名字。
@@ -751,7 +755,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.31.1...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/inhere/suga/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/inhere/suga/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/inhere/suga/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/inhere/suga/compare/v0.29.0...v0.30.0
