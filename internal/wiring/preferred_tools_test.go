@@ -170,20 +170,30 @@ func TestResolvePreferredToolsWithoutRuntime(t *testing.T) {
 }
 
 // TestListedPreferredToolNames: the environment section (and the turn_context
-// event) list the available declarations only, in configuration order.
+// event) list the available declarations only, in configuration order; a
+// command additionally needs the session's shell_exec, so a read-only session
+// leaves it out while a connected MCP server stays listed.
 func TestListedPreferredToolNames(t *testing.T) {
 	statuses := []PreferredToolStatus{
 		{Name: "rg", Kind: "command", Present: true},
 		{Name: "missing", Kind: "command"},
 		{Name: "graph", Kind: "mcp", Present: true},
 	}
-	assert.Eq(t, []string{"rg", "graph"}, listedPreferredToolNames(statuses))
-	assert.Eq(t, 0, len(listedPreferredToolNames(nil)))
+	assert.Eq(t, []string{"rg", "graph"}, listedPreferredToolNames(statuses, true))
+	assert.Eq(t, 0, len(listedPreferredToolNames(nil, true)))
+
+	t.Run("without shell_exec only MCP declarations are listed", func(t *testing.T) {
+		assert.Eq(t, []string{"graph"}, listedPreferredToolNames(statuses, false))
+		assert.Eq(t, 0, len(listedPreferredToolNames([]PreferredToolStatus{
+			{Name: "rg", Kind: "command", Present: true},
+		}, false)))
+	})
 }
 
 // TestPreferredEnvironmentSource: the runtime environment source renders the
 // available declarations and records the same names for turn_context, so the
-// prompt and the trace cannot drift apart.
+// prompt and the trace cannot drift apart; in a read-only session it records
+// the MCP declarations only, exactly like the text it renders.
 func TestPreferredEnvironmentSource(t *testing.T) {
 	resetConfig(t)
 	statuses := []PreferredToolStatus{
@@ -191,7 +201,7 @@ func TestPreferredEnvironmentSource(t *testing.T) {
 		{Name: "gone", Kind: "command", When: "never", Reason: preferredReasonMissingPath},
 	}
 	listed := &listedPreferredNames{}
-	env := newPreferredEnvironmentSource(Options{Workspace: "/w"}, listed)(statuses)
+	env := newPreferredEnvironmentSource(Options{Workspace: "/w", AllowWrite: true}, listed)(statuses)
 	assert.StrContains(t, env, "Preferred tool: rg (command) — search text")
 	assert.NotContains(t, env, "gone")
 	assert.Eq(t, []string{"rg"}, listed.get())
@@ -200,9 +210,20 @@ func TestPreferredEnvironmentSource(t *testing.T) {
 		refreshed := refreshPreferredCommands([]PreferredToolStatus{
 			{Name: "go", Kind: "command", When: "build", Reason: preferredReasonMissingPath},
 		})
-		env := newPreferredEnvironmentSource(Options{Workspace: "/w"}, listed)(refreshed)
+		env := newPreferredEnvironmentSource(Options{Workspace: "/w", AllowWrite: true}, listed)(refreshed)
 		assert.StrContains(t, env, "Preferred tool: go (command) — build")
 		assert.Eq(t, []string{"go"}, listed.get())
+	})
+
+	t.Run("a read-only session lists MCP declarations only", func(t *testing.T) {
+		readOnly := &listedPreferredNames{}
+		env := newPreferredEnvironmentSource(Options{Workspace: "/w"}, readOnly)([]PreferredToolStatus{
+			{Name: "rg", Kind: "command", When: "search text", Present: true, Reason: preferredReasonFoundPath},
+			{Name: "graph", Kind: "mcp", When: "code graph", Present: true, Reason: preferredReasonMCPConnected},
+		})
+		assert.NotContains(t, env, "Preferred tool: rg")
+		assert.StrContains(t, env, "Preferred tool: graph (mcp) — code graph")
+		assert.Eq(t, []string{"graph"}, readOnly.get())
 	})
 }
 

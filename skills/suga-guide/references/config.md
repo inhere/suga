@@ -101,7 +101,7 @@
 | `tools.approval_rules.persist_ask` | `true` | chat 的 `a`/`d` 后是否询问写回用户级/项目级规则文件 |
 | `tools.approval_rules.project_trust` | `{}` | 绝对 workspace 路径到规则文件 SHA-256；未信任项目 allow 会被忽略 |
 | `tools.deferred` | `auto` | MCP 工具 schema 延迟加载：`auto`（schema 超过上下文窗口约 10% 时延迟）、`always`、`never`；被延迟的工具用 `tool_search` 取回 |
-| `tools.preferred` | `[]` | 优先工具声明列表：每项 `name`、`kind`（`command` 的可执行文件名，或 `mcp` 的 `mcp.servers` id）、`when`（适用场景）。可用项写进环境说明，缺失项不列出；`mcp` 项不被延迟加载，但不自动放行（见 references/tools.md 的“优先工具”） |
+| `tools.preferred` | `[]` | 优先工具声明列表：每项 `name`、`kind`（`command` 的可执行文件名，或 `mcp` 的 `mcp.servers` id）、`when`（适用场景）。可用项写进环境说明，缺失项不列出；`command` 项只在本会话注册了 `shell_exec` 的可写会话里列出；`mcp` 项不被延迟加载，但不自动放行（见 references/tools.md 的“优先工具”） |
 | `tools.snapshots.enabled` | `true` | 是否为 `file_write`、`file_edit`、`file_remove` 保存写前快照；关闭只停止新快照，不删除已有快照或命令 |
 | `tools.snapshots.max_file_bytes` | `16777216`（16 MiB） | 单次调用保留的写前内容上限；超过时照常写入但标记不可恢复 |
 | `tools.snapshots.max_session_bytes` | `268435456`（256 MiB） | 一个会话的快照内容上限 |

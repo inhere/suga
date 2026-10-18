@@ -8,8 +8,14 @@ MCP tool is directly visible with ``tools.deferred: always`` (no tool_search),
 and that the ordinary approval question still appears.  It then checks the
 turn_context trace contains only the names that were listed.
 
+A second group runs the same configuration read-only (``suga run --read-only``):
+without shell_exec the environment must keep the connected MCP server and drop
+the command, which the model could not run there.
+
 Reverse verification (drop one behavior and the corresponding check fails):
 - remove the present-only prompt filter: the missing-command check fails;
+- remove the shell_exec gate of command declarations: the read-only run lists
+  the found command and that check fails;
 - remove Visibility's pinned MCP set: the fake model request omits the MCP
   schema and the MCP server receives no tools/call;
 - remove turn_context's preferred_tools attribute: the trace check fails.
@@ -39,6 +45,8 @@ MCP_NAME = "preferred-mcp"
 MCP_TOOL = "preferred_lookup"
 MCP_SECRET = "SMOKE_MCP_SECRET"
 MCP_OK = "PREFERRED_MCP_OK"
+# READONLY_PROMPT identifies the read-only run's request in the fake model's log.
+READONLY_PROMPT = "只读优先项"
 
 MCP_SERVER = r'''import json
 import sys
@@ -99,7 +107,8 @@ def manifest_checks(binary, env, cwd):
     preferred = {item.get("name"): item for item in manifest.get("preferred_tools", [])}
     checks.extend([
         ("manifest found command", preferred.get(FOUND_NAME, {}).get("present") is True
-         and preferred.get(FOUND_NAME, {}).get("reason") == "found on PATH"),
+         and preferred.get(FOUND_NAME, {}).get("reason")
+         == "found on PATH; read-only sessions do not list it"),
         ("manifest keeps missing command reason", preferred.get(MISSING_NAME, {}).get("present") is False
          and preferred.get(MISSING_NAME, {}).get("reason") == "not found on PATH"),
         ("manifest reports configured MCP without starting it",
@@ -235,6 +244,13 @@ def main():
         pty.check("MCP server was not started by manifest", methods.count("initialize") == 1)
         pty.check("denied MCP call never reached the server", "tools/call" not in methods)
 
+        # Read-only group: the same configuration without shell_exec. The fake
+        # model's requests are inspected below, after it was stopped.
+        readonly = subprocess.run([binary, "run", "--read-only", "--prompt", READONLY_PROMPT],
+                                  capture_output=True, encoding="utf-8", errors="replace",
+                                  env=env, cwd=ws, timeout=120)
+        pty.check("read-only run exits 0", readonly.returncode == 0)
+
         fake.terminate()
         fake_output, _ = fake.communicate(timeout=5)
         requests = []
@@ -254,6 +270,15 @@ def main():
         pty.check("fixed help and memory hints are listed", "--help" in listed and "memory" in listed)
         pty.check("fake model saw preferred MCP schema directly", MCP_TOOL in first_tools)
         pty.check("preferred MCP did not require tool_search", "tool_search" not in first_tools)
+
+        # The read-only run's own request: no shell_exec there, so the
+        # environment keeps the connected MCP server and drops the command.
+        readonly_requests = [row for row in requests if row.get("user") == READONLY_PROMPT]
+        readonly_listed = " ".join(readonly_requests[-1].get("preferred", [])) if readonly_requests else ""
+        pty.check("read-only run still lists the preferred MCP server",
+                  "Preferred tool: preferred-mcp (mcp) — 代码图谱" in readonly_listed)
+        pty.check("read-only run leaves the preferred command out",
+                  FOUND_NAME not in readonly_listed and MISSING_NAME not in readonly_listed)
     finally:
         if pty is not None:
             pty.close(grace=0)
