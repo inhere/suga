@@ -1,13 +1,14 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 仓库探索效率优化设计
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 待用户审批
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-18 | suga（gofer job） | 依据 `docs/research/2026-10-18-explore-efficiency.md` 的 9 次真实模型实测，只保留两个收益最大的手段：`file_read` 的声明大纲与多段范围读、Go 符号声明清单；辅助小模型（suag-5qb4）在本版暂不做。 |
+| 0.2 | 2026-10-18 | 监督（Claude） | 按用户意见改为多语言符号提取：Go 用 go/parser，TS/JS、Python、Java 用轻量声明识别器，主机有 universal-ctags 时优先；Q1 300 行、Q2 file_symbols、Q3 覆盖模块缓存；Q4 另立 suga-6gx3（见“0.2 审核修订”）。 |
 
 ### 思考模式与范围冻结
 
@@ -18,6 +19,20 @@
 - expansion_policy：DEFER_OR_REQUEST。若需要改变稳定系统提示词、工具 schema 的既有字段语义、审批语义或引入新的持久化状态，停止实现并回到设计 Gate。
 - review budget：小；两个手段都复用现有 `file_read`/`lang.go`/native 工具注册路径，不新增抽象层。
 - 停止条件：用户批准本设计和对应计划前不实施。
+
+## 0.2 审核修订（与下文冲突时以本节为准）
+
+用户问：只做 Go 符号清单，换到 TS/Java/Python 项目会退化。修订：
+
+- **符号提取是一层按语言的提取器**，`file_symbols` 与 `file_read` 的 `outline` 共用：
+  - Go：`go/parser` 精确解析（原方案）。
+  - TS/JS、Python、Java：第一版即支持，用轻量声明行识别器（TS/JS：function/class/interface/type/enum/export const|let 与类方法；Python：def/class，带缩进层级；Java：class/interface/enum/record 与方法签名），只输出 `文件:行 kind name 声明首行`，结果标注 `approx`（轻量识别），模型需要时再用 `file_grep` 核对。
+  - 主机有 `universal-ctags`（PATH 中，`--output-format=json` 可用）时优先用它覆盖更多语言；无则用内置提取器，不强制依赖。
+  - 不选 tree-sitter（cgo 或大体积纯 Go 移植，影响单二进制与 Windows）与 LSP（每语言一个服务，留给 suga-cm5e）。
+  - 不支持的语言返回明确提示（列出支持的语言），不静默空结果。
+- 工具描述与参数不再写“仅 Go”；`kind` 取值按语言映射（func/method/class/type/...）。
+- Q1 大纲阈值 300 行；Q2 工具名 `file_symbols`；Q3 覆盖依赖模块缓存（只读根内）；Q4 只读运行列出 rg 的错配另立 issue suga-6gx3 修。
+- 验证：每种语言一个夹具文件的单测；实测复跑原 4 个任务外，再加一个 TS 或 Python 仓库上的列清单任务。
 
 ## 背景与目标
 
