@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 新增只读工具 `file_symbols`：一次列出文件或目录里各语言的声明（`file:line kind name signature`），支持 `name` 子串、`kind`、`include_tests`、`limit` 过滤；Go 用 `go/parser` 精确解析（func/method/type/const/var），JavaScript/TypeScript、Python、Java 用声明行识别器并标注 `approx`，装有 universal-ctags 时优先用它；不支持的文件类型明确报错并列出支持的语言，目录递归默认跳过测试文件。
+
 ## [0.31.0] - 2026-10-18
 
 记忆检索按相关度排序（FTS5 派生索引）、交接摘要固定小节并可检索、记忆条目可标注 `applies_when`；前台长命令超时转后台任务；写工具参数按 schema 校验；`trace --web` 只读与自动刷新；run 收尾行显示上下文用量；修复只接受流式请求的网关上压缩与交接失败；新增可在 Windows 跑的 Go 版终端冒烟。
