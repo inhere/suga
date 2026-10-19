@@ -10,7 +10,7 @@
 | 0.0 | 2026-10-19 | suga（gofer job） | 建立数据治理问题域、现状盘点和 A/B 路线比较。 |
 | 0.1 | 2026-10-19 | suga（gofer job） | 针对约 1.09GB 会话库，设计在线备份/恢复、保守 GC、spill 配额与压缩，并比较 DB 内瘦身和按会话 JSONL 真相源两条路线。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 用 `entries_fts` 按 role 的实测更正 0.1 的待核对项：FTS 约 500MB 里 95% 来自 **tool 输出**（42,735 行、120MB 文本），不是 user/assistant；据此把“FTS 只索引 tool 输出开头”定为第一阶段（预计回收约 350MB，改动最小、风险最低），tool 内联阈值为第二阶段，backup/GC/spill 为第三阶段，B 路线暂缓并给出重启条件；新增按会话来源（gofer job）设保留期的问题。 |
-| 0.3 | 2026-10-19 | 监督（Claude） | 用户批准方向（P1→P2→P3、B 暂缓、非交互 30 天/交互 180 天、Q1–Q8 按倾向）。按独立审核（监督派出的独立子 agent；codex 审核因模型容量不足中断后重试中）修订：P1 由“影子表+换表”改为“FTS 原地按 rowid 分批截断 + merge”（避开触发器改名与并发写丢失）；截断改为头 512 + 尾 512 字符；改漂移测试契约；GC 会话删除的 O(会话数×FTS 行数) 问题与自动 VACUUM 纳入 P3；P2 改为先评估 tool 消息双份存储去重；会话来源用新写入的 meta.origin，历史一律按交互。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 用户批准方向（P1→P2→P3、B 暂缓、非交互 30 天/交互 180 天、Q1–Q8 按倾向）。按两份独立审核（独立子 agent、codex 重试）修订：P1 由“影子表+换表”改为“FTS 原地按 rowid 分批截断 + merge”（避开触发器改名与并发写丢失）；截断改为头 512 + 尾 512 字符；改漂移测试契约；GC 会话删除的 O(会话数×FTS 行数) 问题与自动 VACUUM 纳入 P3；P2 改为先评估 tool 消息双份存储去重；会话来源用新写入的 meta.origin，历史一律按交互。 |
 
 ### 思考模式与范围冻结
 
@@ -54,6 +54,18 @@
 ### 会话来源（保留期 30/180 天）
 
 现有数据无法区分来源（`meta_json` 只有 kind/parent、provider/model、版本、segment；id 形如 `sess_日期_…`）。新会话在入口（chat / run / ACP）写 `meta.origin`；**历史会话一律按交互处理（180 天）**；被 chat 接着用过的非交互会话按交互处理。
+
+### 0.3 补充：codex 独立审核（审的是 0.2）新增的要点
+
+codex 审核结论同为“修改后可实施”；其中影子表并发丢写入、换表顺序/触发器、测试契约等阻断项已由上面的“原地分批截断”方案化解。仍需落实的新增点：
+
+1. **截断定义写死为“字符”**：头 512 + 尾 512 个 Unicode 字符（SQLite `substr`/`length` 对 TEXT 的语义），文档与提示里不再写“1KB”；测试覆盖 ASCII、2/3/4 字节 UTF-8、emoji、截断点落在多字节字符处、trim 前后、`Content` 与 `ToolResult.Content` 相同/不同。
+2. **重建进行中的混合检索语义**：旧条目全文、新条目头尾并存；`session_search` 在维护未完成时于结果说明加一句“历史 tool 输出索引尚未瘦身完，部分旧结果仍是全文命中”。另：`recall` 渲染正文约 4,000 字节上限（`ledger.go:36-39`），4–8KB 且无 `out:` 引用的输出，其中段在 P1 后既搜不到也读不全——这是已知代价，写进 CHANGELOG。
+3. **legacy 升级边界**：未应用 `20261010` FTS 迁移的极旧库，首次 `Open` 仍会全表回填（既有行为，P1 不改变）。设计中“普通 Open 不做全表工作”限定为“P1 不新增任何启动期全表工作”。
+4. **回归测试范围**：trigram 3 字以上 MATCH、1–2 字 CJK 回退 LIKE、五种 role、retrieval 工具自身记录不进索引、`HasSearchableEntries` 与 `SearchEntries` 截断后语义一致；旧库/新写入/重建后三种状态。
+5. **VACUUM 结果与删除结果分开报告**（删除成功但 VACUUM busy 时显示 `vacuum=pending`）；VACUUM、GC apply、backup/restore、spill 压缩共用全局 `run/maintenance.lock`，并在 P3 让会话写入口尊重它（P1 的原地截断不需要该锁）。
+6. P2/P3：spill 写入改为临时文件 + Sync + rename；历史正文外移须同时更新 FTS；`.txt`/`.txt.gz` 统一流式 reader（`ledger.go:362-385`、`export.go:103-125` 目前只读 `.txt` 且整读）；P2 的输出例外（error、rereadable 工具不 spill）要写清。
+7. 回收量（约 350MB、索引降至约 100–150MB）只作 benchmark 假设，完成标准以实测为准。
 
 ## 0.2 修订：更正实测与新的优先级（本节优先于后文 0.1 的路线排序）
 
