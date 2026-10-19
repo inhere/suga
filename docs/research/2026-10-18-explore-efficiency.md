@@ -544,3 +544,123 @@ Codex 参照显示，GPT 的 T5 工具调用（5、10、9）与 Codex 命令数�
 5. **上次 job 超时及重跑处理：** 原始 job 没有给 T6 留下三次完整有效运行。`t6-2` 停在工具调用，`t6-2b` 的第一次请求是 401、第二次没有 final；在确认有效样本不足后又尝试 `t6-4`，仍因请求长时间不结束而停止。报告只使用 `t5-1/2/3`、`t6-1b`、`t6-3` 的 completed turn；没有把 b 版本或 t6-4 的部分 trace 当成有效成绩，也没有隐藏这些失败。
 
 因此，本节支持的结论是：**v0.34.0 的 suga 提示词和 `file_refs` 工具对 GPT 的“尽早检索调用方”行为有效，但 GPT 的 T5 正确性和工具可靠性明显不如 §10 的 DeepSeek；T6 只能作两次有效样本的方向性对比，不能宣称完成了三次 GPT 复测。**
+
+## 12. 第十九批复测（file_grep 新参数 + YAML/TOML 符号）
+
+本节复测两个新能力面：① `file_grep` 的新参数（`exclude`、`glob` 列表与 `!` 取反、`context`、`literal`、lookaround/backreference 的 regexp2 回退）；② `file_symbols`/`file_read outline` 对 YAML/TOML 的键路径支持。任务是 T6（explore-compare §1.3 原文，3 次）与跨语言题库的 12 道 C/F 题（每题 1 次），用来回答“新参数是否被模型主动使用、用了是否更省调用”。
+
+### 12.1 方法与口径
+
+| 项 | 取值 |
+|---|---|
+| suga | 本 worktree 构建的 `cmd/suga`（HEAD `1b00dd5a`，含 grep-power 与 yaml-toml-symbols 两个分支的合并） |
+| 模型 / 档位 | `opencode-go/deepseek-v4.1-flash`（thinking high）；`suga run --read-only`，无 shell、不接 cbm、无 `tools.preferred`，`tools_count=15` |
+| SUGA_HOME | 每次运行一个隔离目录 `tmp/b19/run/<tag>/home`，只写非密钥配置（`model`、`max_steps: 60`、`tools.allow_write: false`、`tools.approval: auto`、`memory.project.backend: files`、provider 的 `type/context_window/base_url/headers/models`）；密钥用 `api_key: "${OPENCODE_API_KEY}"` 从进程环境变量展开，**不复制 `.env`、不打印密钥值** |
+| 工作目录 | T6 = 本 worktree；C/F 题 = 该题仓库目录（`tmp/xlang/*`、`inhere.github.io`），与 xlang-eval 一致 |
+| 提问 | T6 逐字照抄 explore-compare §1.3；C/F 题逐字照抄题库 §4 的 `提问` 列，前缀“只读任务，不要修改任何文件，也不要运行构建或测试。”、后缀“请直接给出答案（文件:行）。” |
+| 运行 | 15 次运行，3 并发，单次超时 600s；**14/15 `exit 0`，T6-3 两次运行均无结果**（见 §12.7） |
+| 指标 | 步数 = trace `model` 事件数；工具调用 = trace `tool` 事件数；输入 token = `input_tokens` 之和（另列 cache read）；墙钟 = 进程墙钟；工具分布/失败取 trace 的 `name`/`status`；工具参数取 `suga export`（`ToolCall.Arguments`），工具输出取 `suga export --with-outputs` |
+
+### 12.2 T6（`personal.Runner.Run` 调用方，与 §10 对比）
+
+| 运行 | 步数 | 工具调用 | 输入 / cache / 输出 token | 墙钟 | 工具分布 | 答案 |
+|---|---:|---:|---|---:|---|---|
+| T6-1 | 12 | 19 | 272.9k / 246.3k / 5.7k | 68.4s | file_grep×11, file_refs×2, session_search×3, file_read×3 | 全对（5 处） |
+| T6-2 | 7 | 9 | 108.9k / 93.8k / 2.8k | 33.2s | file_grep×5, file_refs×3, file_read×1 | 全对（5 处） |
+| T6-3 | – | – | – | – | 两次运行都没有结果（见 §12.7） | 无答案 |
+
+| 任务 | 指标 | §10 本批（3 次） | §9 基线（3 次） | **§12 本批（T6-1/T6-2 两次有效）** | omp（2 次） |
+|---|---|---|---|---|---|
+| T6 | 步数 | 14.7 | 16.3 | **9.5** | 9.5 |
+| | 工具调用 | 26.7 | 42.7 | **14.0** | 14.5 |
+| | 输入 token | 362.2k | 457.7k | **190.9k** | – |
+| | 墙钟 | 95.5s | 101.4s | **50.8s** | – |
+| | 答案正确 | 3/3 | 2/3 | **2/2** | 抽查一致 |
+
+T6 的两次有效运行比 §10 全面下降（步数 -5.2、调用 -12.7、输入 token -47%），且**首次在 T6 上追平 omp**（9.5 步 / 14.0 调用 vs omp 9.5 / 14.5）。T6-1 仍是“先猜正则”型（11 次 `file_grep`，其中 2 次 `!*_test.go` 取反、1 次 `exclude`），但第 2 步就用了一次 5 段 `paths` 读把 5 个调用点一次看完；T6-2 是理想型（5 次 grep + 3 次 `file_refs` + 1 次 5 段读，7 步收敛）。
+
+### 12.3 C/F 12 题（每题 1 次，与 xlang-eval §3 的 suga/omp 均值逐题对比）
+
+| 题 | 语言 | 型 | 本批 步/调用/输入k/墙钟 | §18 suga 步/调用 | omp 步/调用 | 调用差(vs omp) |
+|---|---|---|---|---|---|---|
+| RQ2 | Python | C | 6/8/50k/26.4s | 4.5/5.5 | 4.5/7.0 | +1.0 |
+| RQ3 | Python | F | 6/6/73k/45.0s | 6.5/7.5 | 7.5/10.5 | -4.5 |
+| KY2 | TypeScript | C | 3/3/24k/7.7s | 3.5/4.5 | 4.0/5.0 | -2.0 |
+| KY3 | TypeScript | F | 7/9/140k/23.5s | 6.0/8.0 | 9.0/12.5 | -3.5 |
+| GS2 | Java | C | 3/4/23k/130.9s | 5.5/6.5 | 4.5/6.0 | -2.0 |
+| GS3 | Java | F | 3/3/24k/10.2s | 3.5/3.5 | 6.0/7.0 | -4.0 |
+| GZ2 | PHP | C | 5/8/48k/27.0s | 5.0/7.0 | 6.0/9.0 | -1.0 |
+| GZ3 | PHP | F | 6/11/81k/25.7s | 5.5/8.0 | 10.0/14.5 | -3.5 |
+| WD2 | Rust | C | 3/4/27k/13.4s | 4.0/5.0 | 5.5/7.0 | -3.0 |
+| WD3 | Rust | F | 7/8/110k/30.9s | 6.0/9.0 | 8.5/13.0 | -5.0 |
+| ZL2 | Zola | C | 3/4/28k/12.6s | 3.5/3.5 | 4.5/5.5 | -1.5 |
+| ZL3 | Zola | F | 9/19/132k/54.8s | 7.0/13.5 | 7.0/7.5 | **+11.5** |
+
+合计：本批 12 题 **61 步 / 87 调用 / 766k 输入 / 408.1s**，均值 **5.1 步 / 7.2 调用**；§18 的 suga cell 均值为 5.0/6.8，omp 为 6.4/8.7。
+
+方向一致、可采信的信号（单次噪声大，只看 >1 倍或 >3 步的差）：
+
+1. **调用数上只赢不输给 omp 的格局不变**：12 个 cell 里 11 个 ≤ omp，唯一例外还是 **ZL3（19 vs 7.5）**。
+2. **ZL3 是本批唯一明显退步的题**：本批 9 步/19 调用，比 §18 的 suga（7.0/13.5）还差。trace 显示 8/19 次调用把 `path` 指到 `public/`（构建产物 HTML，用 `no_ignore: true` 打开），另外有一次 `file_list dir=internal`（站点仓库没有 `internal/`）与一次 `file_find **/get_url*.rs`（Zola 的 Rust 源码不在快照里）——**3 次调用浪费在不存在的路径上**。答案仍全对，但这是“多目录站点仓库 + 没有 shell”的结构性劣势的又一次复现，与本批新参数无关（模型没有用 `file_symbols`/`outline` 去看 `config.toml`）。
+3. **Rust 题不再是“工具不可用”**：§5.1 的 4 次 `file_refs`/`file_symbols` “no supported source files” 被拒在本批没有重现——WD2 用 `file_refs`（1 次，ok）就收敛到 3 步/4 调用，比 §18 的 4.0/5.0 还好；但 **`file_symbols` 对 `.rs` 仍然直接报错**（WD3 第 2 步被拒，见 §12.5）。
+4. **墙钟不能当效率指标**：GS2 是 3 步/4 调用却花了 130.9s，因为 provider 两次网络错误重试（stderr 有 `↻ 模型请求失败（network error）`）；本批 15 次里有 3 次出现该重试。
+
+### 12.4 新参数使用统计（15 次运行，51 次 `file_grep`）
+
+| 参数/行为 | 使用次数（调用数 / 运行数） | 说明 |
+|---|---|---|
+| `glob` 列表（新） | 36 / 10 | 11 次只用单元素列表、7 次带 `!` 取反（`["*.go", "!*_test.go"]`、`["internal/**/*.go", "!**/*_test.go"]`） |
+| `glob` 字符串（旧写法） | 3 / 2 | RQ2 的 `"*.py"`、T6-2 的 `"*.go"` |
+| `glob` 取反 `!`（新） | 7 / 3 | T6-1×2、T6-2×3、KY2×1、GZ2×1 |
+| `exclude`（新） | 1 / 1 | 仅 T6-1：`exclude: "_test\\.go"` |
+| `context`（新） | 2 / 2 | RQ3 `context: 2`、GZ3 `context: 4` |
+| `literal`（新） | **0 / 0** | 一次未用 |
+| regexp2 回退（新） | **0 / 0** | 没有任何 pattern 触发 `[used regexp2 …]`，也没有超时提示 |
+| `file_read paths` 多段读 | 15 / 9 | T6-1×3、KY3×3、RQ2×2、RQ3×2、T6-2/KY2/GS2/GS3/WD3 各 1；非 Go 的 C/F 题上用得比 §10 的 Go 任务更狠 |
+| `file_read outline` | **0 / 0** | 与 §7/§9/§10/§18 一致 |
+| `file_symbols` | 3 / 3 | KY3（`source`）、GZ3（`src/Client.php`）、WD3（`src/lib.rs`，被拒）；**没有一次用在 `.yaml/.yml/.toml` 上** |
+
+结论：**新参数被用了一部分**——`glob` 列表与 `!` 取反是主力（7 次真取反，模型的写法与描述里的例子逐字一致），`context`/`exclude` 各被用到 1–2 次，`literal` 与 regexp2 回退 0 次。YAML/TOML 符号能力在本批**完全没有被触发**。
+
+为什么没被用起来（只写可能的原因）：
+
+1. **新参数的“场景”与题面不匹配**：`literal` 的卖点是“pattern 里有正则元字符”（如 `$this->request(`、`foo[0]`），而本批题面给的标识符（`isError`、`Streams.write`、`target_attribute`）转义一次就够，模型用 `->request\(` 这类转义即可；regexp2 回退需要 lookaround/backreference，本批 12 题的正确解法都是词边界类匹配，**能力没被验证≠无效**。
+2. **`glob` 取反已经覆盖了 `exclude` 的常见用途**：排除测试文件的两种写法（`glob: ["!*_test.go"]` 与 `exclude: "_test\\.go"`）里，模型 7 次选前者、1 次选后者，说明描述里把两者并列在同一个句子里时，取反更“顺手”。
+3. **YAML/TOML 符号能力只有“进工具的人”看得到**：`file_symbols` 的 YAML/TOML 段落写在**工具描述**里，模型只有在“已经决定调用 `file_symbols`”时才读到；只读环境说明与系统提示词都没提它。而 ZL3（唯一涉及 `config.toml` 的题）的题型是追链路，直接 `file_grep stylesheets`/读 `config.toml` 更快，本批没有任何一题会自然引出“列出配置文件的键”。
+
+建议（只写建议，本任务不改代码）：
+
+1. **给 `literal` 补一个“含正则元字符的真实标识符”例子**（如 `$this->request(`、`arr[0]`、`a.b(`），现在描述只有 `Match pattern as plain text` 一句，模型很难判断“什么时候该用它”。
+2. **`exclude` 补一句“按行内容排除（注释、日志、生成物）”，与 `glob` 的“按文件名排除”明确分工**；否则它会被取反长期替代。
+3. **把 YAML/TOML 键路径能力写进只读环境说明或 `file_symbols` 的一句话提示里**（现在是工具描述内部的第 5–8 句），并在下一批题库里加一道“列出 `config.toml` 的键/找某个键的定义”的 D 题（题库里的 ZL1 是 Tera 组件定义，本批只测 C/F 题，正好漏掉了它）。
+4. **regexp2 回退需要一个“必须 lookaround”的题**（如“所有不是以 `_test` 结尾的 `X(` 调用”）来验证它到底会不会被用到、以及回退提示是否让模型少走弯路；本批 0 次触发，属于“写了但没被验证”的一行。
+
+### 12.5 正确性与陷阱（按题库必中 + 陷阱判分）
+
+| 侧 | 全对 | 部分 | 错 | 陷阱被当成答案 |
+|---|---|---|---|---|
+| 本批 14 次有效作答（T6×2 + C/F×12） | **12** | **2** | 0 | **0** |
+
+- **部分 2 题（都缺必中）**：GZ3 缺 `Client.php:943`（`prepareDefaults` 合并）与 `Client.php:1004`（`assertRequestOptionTypes`），只给到“交给 handler 栈”“中间件读取”两端，顺序其余递增；WD3 缺 `lib.rs:952`（`IntoIter::pop` 弹栈），给出 4/5 必中。
+- **陷阱处置口径**：本批所有 C 题的答案都主动把陷阱位置点名成“不是/排除”（RQ2 的 `models.py:1180`/`sessions.py:509`、KY2 的 `type-guards.ts:60/82/104/131/154`、GS2 的测试行 `RuntimeTypeAdapterFactoryFunctionalTest.java:224`、GZ2 的 `ClientTrait.php:110`/`Client.php:650`、WD2 的 `lib.rs:870`/`dent.rs:191/207/224`、ZL2 的 `cards_pages.html:4`/`target_attribute.html:1`），**没有一处被当作答案**——与 §2（第十八批 36/36、陷阱 0）同型，因此本表按“被当成答案才算陷阱命中”记 0。若改按“列出即判错”的字面口径，则 KY2/GS2/GZ2/WD2/ZL2 会全部翻成“错”，两种口径的差别全部来自同一段“已排除”文字。
+
+失败调用（`status != ok`）：**只有 2 次**（§18 是 6 次）：
+
+- WD3：`file_symbols path=src/lib.rs` → `file type ".rs" has no declaration extractor; use file_grep with pattern: "\\bfn name\\b|\\bstruct name\\b"; file_read outline=true is unavailable`（`.rs` 的 `file_refs` 已退化为文本检索，但 `file_symbols` 仍硬拒）。
+- WD3：`file_read path=src/dent.rs:199` → `invalid line span "199" …; write line spans as path:start-end[,start-end]`（模型随后自己改成区间读，只多 1 步）。
+
+### 12.6 结论
+
+1. **T6 是本节最硬的正面结果**：两次有效运行 9.5 步 / 14.0 调用，比 §10 的 14.7/26.7 明显下降，并首次追平 omp 参照；两次都给出全部 5 个直接调用方。
+2. **C/F 12 题整体与 §18 持平**（5.1 步 / 7.2 调用 vs 5.0 / 6.8；12 个 cell 里 11 个调用数 ≤ omp），新参数没有带来可测的调用数下降，也没有造成退步；**唯一明显退步是 ZL3**（19 调用，8 次打在 `public/`、3 次消耗在不存在的路径上）。
+3. **新参数的实际使用集中在 `glob` 列表/`!` 取反（7 次真取反）、`context`（2 次）、`exclude`（1 次）；`literal` 与 regexp2 回退 0 次；YAML/TOML 符号 0 次**——后两类属于“本批题面没有它们的场景”，不是“用了没用”，下一批需要用针对性题目（含 lookaround 的 grep 题、列出配置键的 D 题）再验一次。
+4. **正确性没有退化**：14 次有效作答 12 全对 / 2 部分（GZ3、WD3），0 次把陷阱当答案；WD3 的 2 次失败调用（`.rs` 的 `file_symbols` 硬拒、`file_read` 单行号写法）是唯一新增的浪费点。
+
+### 12.7 局限与偏差
+
+- **T6-3 两次运行都没有结果，T6 只有 2 个有效样本**：首次 `exit 1`、0 token、墙钟 391.5s，stderr 为 `↻ 模型请求失败（network error）`×5 后 `provider error: … http2: timeout awaiting response headers`；按计划重跑，重跑在 job 时限内没有结束（3m49s 时被终止），因此它的步数/调用/token 一律缺失（表里写“–”）。两次运行都**没有产生任何模型/工具事件**，没有把任何部分 trace 当成成绩。所以 T6 的均值口径是 **T6-1/T6-2 两次**，§12.2 的均值列已注明。本批另有 GS2（重试 2 次，墙钟 130.9s）出现网络重试记录，**墙钟列因此不当作效率结论**。
+- **每题 1 次**（C/F 题），单次噪声按 §9/§18 的量级计（±3–5 步、调用数可达 ±2 倍），本节只采信方向一致且幅度 >1 倍的信号（T6 的全面下降、ZL3 的 19 vs 7.5）。
+- omp 的对照值来自 §18 的两次数值（同模型外部 agent），不是同刻复跑；token 口径仍不可直接相减（suga 的 `input_tokens` 含 cache read）。
+- 判分由 3 个子 agent 按题库 §2/§3 逐题判分，关键行号抽查了快照（RQ3 六处、T6 五处均属实）；未做第三方复核。
+- 运行产物（`tmp/b19/`：构建的二进制、15 个隔离 home、会话库、trace/export 导出、运行脚本与 `metrics.json`）在分析完成后已删除；`git status --short` 干净。
+
