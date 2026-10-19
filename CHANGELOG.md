@@ -6,6 +6,9 @@
 
 ### 新增
 
+- `suga backup --output FILE.suga-backup.zip [--include-spill]` 与 `suga restore FILE.suga-backup.zip`：使用带 `manifest.json`、SHA-256 清单和 SQLite `VACUUM INTO` 在线快照的 ZIP 归档；默认不打包 spill，`--include-spill` 显式纳入。restore 校验路径、解压比例、全部 hash 和 SQLite integrity check，取得 `run/maintenance.lock` 后以 staging 原子替换，并默认先写入 `backups/pre-restore-<时间>.suga-backup.zip`。
+- restore 的 `--dry-run` 只校验归档不修改数据；`--no-auto-backup` 必须在提示符输入 `YES` 确认。配置保留 `${VAR}` 原文，`.env` 永不进入归档；Windows rename/句柄失败时保留原数据并提示关闭 suga 后重试。
+
 - `suga gc --compress-spill [--apply]`（默认 dry-run）：报告 spill 文件数、逻辑字节（`.gz` 按压缩前字节计，即配额口径）、占用字节与是否超额，并在 dry-run 里试算“压缩后字节”；`--apply` 把 mtime 超过 `tools.spill.compress_after`（默认 7d）且会话不活跃的 `.txt` 写成同目录 `.txt.gz.tmp`，解压校验（大小与 sha256）通过后 rename，最后才删 `.txt`。`out:<session_id>:<hex>` ref 不变，`recall`/`session_search(ref)`/`export --with-outputs` 透明读两种形式（先 `.txt` 再 `.txt.gz`，gzip 流式解压，坏 gzip 报明确错误）。`--apply` 复用 `gc --vacuum` 的维护窗口（`run/maintenance.lock` + 无其他 suga 进程 + 持有会话锁），dry-run 只读、不加锁。
 - 新增 `tools.spill` 配置：`max_bytes`（默认 1GiB，0 表示不设配额，按逻辑字节计）、`max_age`（默认 90d，仅作报告/gc 候选年龄）、`compress_after`（默认 7d）、`compression`（`gzip`/`off`）、`on_quota`（仅 `refuse`）、`keep_days`（默认 0）。超额时新的 spill 返回可诊断错误（提示上限与 `suga gc --compress-spill`），输出层退回头尾片段，**不会**自动删除旧输出。
 - spill 写入改为同目录临时文件 → `Sync` → rename：写到一半失败或被中断不会留下会被当成完整输出读取的半截 `.txt`。
