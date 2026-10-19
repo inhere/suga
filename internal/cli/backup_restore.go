@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/gookit/goutil/cflag/capp"
@@ -25,16 +26,14 @@ func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version str
 		if err != nil {
 			return err
 		}
-		lock, held, err := acquireMaintenanceWindow(home)
+		// A backup is an online snapshot (VACUUM INTO): chats and runs may keep
+		// writing. It only takes the maintenance lock, so it never overlaps a
+		// VACUUM, a restore or a GC apply.
+		lock, err := acquireMaintenanceLock(home)
 		if err != nil {
 			return err
 		}
 		defer lock.Close()
-		defer func() {
-			for _, item := range held {
-				_ = item.Close()
-			}
-		}()
 		manifest, err := backup.Create(ctx, backup.Options{Home: home, Output: output, IncludeSpill: includeSpill, SugaVersion: version})
 		if err != nil {
 			return err
@@ -79,16 +78,13 @@ func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 				return fmt.Errorf("restore cancelled: --no-auto-backup requires YES")
 			}
 		}
-		lock, held, err := acquireMaintenanceWindow(home)
+		// Restore replaces the ledger: the same exclusive window as `gc --vacuum`
+		// (maintenance lock, no other suga process, every session lock held).
+		window, err := acquireMaintenanceWindow(filepath.Join(home, "run"))
 		if err != nil {
 			return err
 		}
-		defer lock.Close()
-		defer func() {
-			for _, item := range held {
-				_ = item.Close()
-			}
-		}()
+		defer window.Release()
 		auto := func(path string) error {
 			_, err := backup.Create(ctx, backup.Options{Home: home, Output: path, IncludeSpill: true, SugaVersion: version})
 			return err

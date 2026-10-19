@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -111,6 +112,28 @@ func TestRestoreRejectsActiveProcess(t *testing.T) {
 	err = newCLI(context.Background(), strings.NewReader("YES\n"), &stdout, &stderr).RunWithArgs([]string{"restore", archive, "--no-auto-backup"})
 	assert.Err(t, err)
 	assert.StrContains(t, err.Error(), "ledger is in use")
+}
+
+// TestBackupRunsWhileTheLedgerIsInUse pins that a backup is an online
+// snapshot: a running suga process does not stop it (only restore needs the
+// exclusive window).
+func TestBackupRunsWhileTheLedgerIsInUse(t *testing.T) {
+	home := shortCLIHome(t)
+	t.Setenv("SUGA_HOME", home)
+	dbPath, err := appconfig.ResolveCoreStorePath()
+	assert.NoErr(t, err)
+	repo, err := store.Open(dbPath)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.NoErr(t, repo.Close())
+	server, err := process.Start(filepath.Join(home, "run"), "active-backup", "active", t.TempDir(), func(string, string, string) (process.Delivery, error) { return process.Delivery{}, nil })
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = server.Close() })
+	var stdout, stderr bytes.Buffer
+	archive := filepath.Join(home, "online.suga-backup.zip")
+	err = newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"backup", "--output", archive})
+	assert.NoErr(t, err)
+	_, statErr := os.Stat(archive)
+	assert.NoErr(t, statErr)
 }
 
 func TestACPRejectsPositionalsWithoutWritingProtocolOutput(t *testing.T) {
