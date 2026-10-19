@@ -471,6 +471,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			noProjectRules: opts.NoProjectRules, ruleFile: ruleFile, settings: agentSettings, addDirs: dirs,
 			budget: personal.BudgetSettings{Tokens: budget.Tokens, CostUSD: budget.CostUSD, Scope: budget.Scope,
 				Estimate: budget.Estimate, EstimateFactor: budget.EstimateFactor, NoticeRatio: budget.NoticeRatio},
+			deadlineEnv:    appconfig.ReadRunDeadlineEnv(),
 			policySnapshot: approvalSnapshot})
 		if opts.Tasks != nil {
 			agentTool.SetTasks(opts.Tasks)
@@ -607,6 +608,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Visibility:   vis,
 		Price:        priceLookup(settings),
 		Budget:       personal.BudgetSettings{Tokens: budget.Tokens, CostUSD: budget.CostUSD, Scope: budget.Scope, Estimate: budget.Estimate, EstimateFactor: budget.EstimateFactor, NoticeRatio: budget.NoticeRatio},
+		// DeadlineEnv satisfies run.deadline_env (gofer sets GOFER_JOB_DEADLINE); empty = the transient deadline hint is off.
+		DeadlineEnv: appconfig.ReadRunDeadlineEnv(),
 		// Tool outputs above tools.max_output_bytes go to
 		// <SUGA_HOME>/sessions/<id>/outputs/ and the session keeps a ref.
 		InlineOutputBytes: inlineOutputBytes(),

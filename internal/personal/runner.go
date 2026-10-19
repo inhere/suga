@@ -98,8 +98,13 @@ type Config struct {
 	MaxRunTokens int
 	// Budget is the optional turn/session token and cost budget. A zero value
 	// keeps the historical unbounded behavior.
-	Budget     BudgetSettings
-	RunTimeout time.Duration
+	Budget BudgetSettings
+	// DeadlineEnv names the environment variable carrying this run's job
+	// deadline as RFC3339 (run.deadline_env; gofer sets GOFER_JOB_DEADLINE).
+	// Non-empty attaches the transient deadline hint to every model request
+	// (deadline.go); empty = off, the historical no-time-awareness path.
+	DeadlineEnv string
+	RunTimeout  time.Duration
 	// Now is the clock of the run time limit (RunTimeout): a turn's deadline is
 	// Now()+RunTimeout and the limit hook checks Now() against it after every
 	// model call. nil means time.Now. A test injects a clock because the check
@@ -319,6 +324,9 @@ type Runner struct {
 	gateMu sync.Mutex
 	gates  map[string]*gateState
 	rec    *recorder
+	// deadline is the run's job-deadline state (nil-equivalent when
+	// DeadlineEnv is empty); the deadline hint hook shares it across turns.
+	deadline *deadlineState
 }
 
 func New(cfg Config) (*Runner, error) {
@@ -351,6 +359,7 @@ func New(cfg Config) (*Runner, error) {
 	}
 	runner := &Runner{cfg: cfg, heldLocks: make(map[string]*process.SessionLock),
 		steers: make(map[string]*steerInbox), rec: rec}
+	runner.deadline = newDeadlineState(cfg.DeadlineEnv, runner.clock())
 	runner.bindVisibility()
 	return runner, nil
 }
@@ -791,6 +800,10 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 	}
 	hooks = append(hooks, denialLimitHook{denials: denials, usage: usage},
 		prefixHook{tracker: r.rec.prefix})
+	// The deadline hint goes after the prefix tracker so its appended
+	// transient message stays out of the recorded request fingerprint; see
+	// deadline.go for the message and its wording.
+	hooks = append(hooks, deadlineHook{state: r.deadline})
 	hooks = append(hooks, r.cfg.Hooks...)
 	if r.cfg.MaxRunTokens > 0 || r.cfg.RunTimeout > 0 {
 		limits := limitHook{maxTokens: r.cfg.MaxRunTokens, now: r.clock()}

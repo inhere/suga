@@ -67,6 +67,7 @@ Details: [references/config.md](skills/suga-guide/references/config.md) (every k
 - `model` is `<provider>/<model>`, precedence `--model` > `SUGA_MODEL` > config; `fallback_models` are tried in order, `compact_model` writes summaries.
 - `providers.<id>`: `type` (`openai`, `openai-responses`, `anthropic`), `base_url`, `api_key`, `headers`, plus per-model `context_window`, `max_output_tokens`, `model_id`, `price`, `thinking`.
 - Common switches: `tools.allow_write`, `tools.approval`, `mcp.servers`, `memory.*`, `hooks.*`, `chat.*`, `skills.*`, `workspace`.
+- Time awareness: `run.deadline_env` names the env var that carries this run's deadline (RFC3339; gofer injects `GOFER_JOB_DEADLINE`). When set, each model request ends with a transient hint of the current time, the deadline and the remaining minutes; under 10% of the window (or 5 minutes) it asks for an immediate wrap-up, past the deadline it reports the overrun. Empty = off.
 - All data lives in `$SUGA_HOME/db/sessions.db`.
 
 ## Tools and permissions

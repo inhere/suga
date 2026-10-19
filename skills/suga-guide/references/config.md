@@ -69,6 +69,7 @@
 | `rules.file` | `AGENTS.md` | 每级目录读取的项目规则文件名（只接受文件名，不能带路径），如 `CLAUDE.md`；`$SUGA_HOME/AGENTS.md` 始终读取 |
 | `max_steps` | `240` | 一次任务（一轮，不是整个会话）的最大 ReAct 循环步数；可被环境变量 `SUGA_MAX_STEPS` 与 `run --max-steps N` 覆盖（子 agent 用 `agents.max_steps`），到顶时要求模型收尾并在答复开头写明是步数上限 |
 | `serpapi_key` | `""` | 配置后注册 `web_search`（支持 `${VAR}`） |
+| `run.deadline_env` | `""`（关闭） | 环境变量名，值是本次运行的截止时间（RFC3339）。gofer 时限 job 注入 `GOFER_JOB_DEADLINE`，配成它即可；每次请求模型前在消息末尾临时附当前时间、截止时间与剩余时间（剩余 <10% 或 <5 分钟提示尽快收尾，已过截止说明超时）。不写库、不进稳定前缀；变量缺失或解析失败不报错只记调试日志。`run`、`chat`、ACP 及子 agent 通用 |
 | `transcripts` | 开 | 会话记录（transcript）写到 `$SUGA_HOME/transcripts`；`false` 或 `"off"` 关闭（键值接受布尔或字符串） |
 
 ## `chat.*`（仅 chat 的终端显示）

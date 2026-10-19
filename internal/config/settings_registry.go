@@ -97,6 +97,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "budget.estimate_factor", Type: ConfigTypeFloat, Writable: true, Reader: "budget"},
 	{Pattern: "budget.notice_ratio", Type: ConfigValueType("float"), Writable: true, Reader: "budget"},
 	{Pattern: "workspace", Type: ConfigTypeString, Writable: true},
+	// run.deadline_env: the env var name carrying this run's job deadline
+	// (gofer sets GOFER_JOB_DEADLINE); empty = the deadline hint is off.
+	{Pattern: "run.deadline_env", Type: ConfigTypeString, Writable: true},
 	{Pattern: "serpapi_key", Type: ConfigTypeString, Sensitive: true},
 	// The global outbound proxy: url is sensitive (it may embed credentials and
 	// is only ever reported masked), sites is the allowlist that opts hosts in.
@@ -803,6 +806,10 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.URL, settings.URL != "", nil
 		}
 		return settings.Sites, len(settings.Sites) > 0, nil
+	case "run.deadline_env":
+		// A plain config string on purpose: the deadline itself is read from the
+		// process environment per request, not resolved here.
+		return ReadRunDeadlineEnv(), gkconfig.Get(key) != nil, nil
 	case "mcp.call_timeout_sec":
 		return MCPCallTimeout(), gkconfig.Get(key) != nil, nil
 	case "mcp.startup_timeout_sec":

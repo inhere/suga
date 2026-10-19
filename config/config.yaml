@@ -83,6 +83,14 @@ providers:
 #   max_output_bytes: 67108864
 #   wake_on_exit: true      # chat: a task notice (end, watch change) starts a turn while chat waits
 
+# Job deadline (run.deadline_env): name of the env var carrying this run's
+# deadline as RFC3339. Gofer injects GOFER_JOB_DEADLINE for time-limited jobs -
+# set it to that and every model request ends with a transient time/remaining
+# hint (urgent wrap-up within the last 10% or 5 minutes; nothing is stored and
+# the stable prompt prefix stays untouched). Empty (default) = off.
+# run:
+#   deadline_env: GOFER_JOB_DEADLINE
+
 # Sub-agents: the agent tool hands a read-only exploration or research task to a
 # model run in a session of its own and gets only its report back.
 # agents:
