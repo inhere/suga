@@ -11,6 +11,10 @@
 - 图片输入上限可配置：`images.history_turns`（默认 3；fold 关闭时保留最近几个回合的图）、`images.max_request_count`（默认 8 张/请求）、`images.max_request_bytes`（默认 20MB/请求，按编码后字节计）、`images.max_side`（默认 1568，`view_image` 缩放的长边）进 settings 注册表（`suga config get/set` 可用）；非正数在启动时报错，原代码里的包级常量改为读配置。
 - `run.deadline_env`（默认空 = 关闭）：环境变量名指向本次运行的截止时间（RFC3339）。gofer 时限 job 主机配置 `run.deadline_env: GOFER_JOB_DEADLINE` 即可，每次请求模型前在消息末尾临时附一条时间提示：现在的时间、截止时间与剩余约多少分钟；剩余不足 10% 或不足 5 分钟改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”，已过截止时间说明已超时。提示只进本次请求，不写库、不进稳定系统提示前缀（前缀缓存不变）；变量缺失或解析失败时只记一行调试日志，不报错。`run`/`chat`/ACP 与子 agent 通用；`suga config get/set run.deadline_env` 可用。
 
+### 变更
+
+- tool 正文移出后留在库里的“桩”只保留 `Role`、`ToolCall{CallID, Name}`、`ToolResult{CallID, Name, IsError}` 与一份 120 字的 `Content` 预览（不再带 `ToolCall.Arguments`、`Reasoning` 和重复的 `ToolResult.Preview`）：读取路径始终从 `tools.jsonl` 取回完整 JSON，桩只给 SQL 取 CallID 用，旧形状在真实库上平均 1.5KB/条（3.3 万条约 50MB）。新增 `suga data tool-bodies --slim`：把旧版本写下的桩按 `(session_id, seq)` 分批改写成新形状，断点可续、重跑幂等，只改库内行、不动会话文件与 `body_ref`；`--status` 报告仍是旧形状的桩数量与预计回收字节。完成后执行 `suga data vacuum` 缩小库文件。
+
 ## [0.36.0] - 2026-10-19
 
 会话库数据治理：全文检索只覆盖用户与 AI 消息，tool 结果不再双份存储，大 tool 结果正文移到会话文件 `tools.jsonl`（用户真实库副本上 779MB → 308MB），并新增备份恢复、按来源的保留期与分批 GC；CLI 分组为 `suga inspect …` / `suga data …`，顶层直接接受 chat 选项；`suga run` 的 stream-json 首尾行带 `model`；`file_refs` 的 `context`；更多输出精简规则；会话 socket 路径过长时改用短的备用目录。
