@@ -11,9 +11,11 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gookit/goutil/cflag/capp"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 )
 
@@ -76,9 +78,11 @@ func runExport(ctx context.Context, stdout io.Writer, sessionID string, opts exp
 }
 
 // writeExportOutputs appends one {"kind":"output","ref",...,"content"} row per
-// file in the session's outputs directory, sorted by name. Files are read
-// through os.Root so a planted symlink cannot pull in anything outside it; a
-// session without outputs adds nothing.
+// output of the session, sorted by name. Each file is read through
+// personal.OpenOutput, which resolves the ref inside the session directory and
+// decodes a compressed .txt.gz while it is read; the plain .txt wins when both
+// forms exist, so one ref yields exactly one row. A session without outputs
+// adds nothing.
 func writeExportOutputs(w io.Writer, sessionID string) error {
 	sessionsDir, err := appconfig.ResolveSessionsDir()
 	if err != nil {
@@ -95,35 +99,143 @@ func writeExportOutputs(w io.Writer, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
 	f, err := root.Open(".")
 	if err != nil {
+		_ = root.Close()
 		return err
 	}
 	names, err := f.Readdirnames(-1)
 	_ = f.Close()
+	_ = root.Close()
 	if err != nil {
 		return err
 	}
 	sort.Strings(names)
-	enc := json.NewEncoder(w)
+	done := map[string]bool{}
 	for _, name := range names {
-		stem, isText := strings.CutSuffix(name, ".txt")
-		if !isText {
+		stem, ok := personal.OutputStem(name)
+		if !ok || done[stem] {
 			continue
 		}
-		body, err := root.ReadFile(name)
+		done[stem] = true
+		ref := "out:" + sessionID + ":" + stem
+		r, err := personal.OpenOutput(sessionsDir, ref)
 		if err != nil {
 			return fmt.Errorf("read output %s: %w", name, err)
 		}
-		if err := enc.Encode(map[string]any{
-			"kind": "output", "session_id": sessionID, "ref": "out:" + sessionID + ":" + stem,
-			"bytes": len(body), "content": string(body),
-		}); err != nil {
-			return err
+		if err := writeOutputRow(w, sessionID, ref, r); err != nil {
+			_ = r.Close()
+			return fmt.Errorf("read output %s: %w", name, err)
+		}
+		if err := r.Close(); err != nil {
+			return fmt.Errorf("read output %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+// writeOutputRow writes one output row, streaming the content through r so that
+// a large (possibly compressed) output is not held in memory as a whole; bytes
+// is the size of the decoded content, so a compressed file reports the same
+// size as its plain form did.
+func writeOutputRow(w io.Writer, sessionID, ref string, r io.Reader) error {
+	session, err := json.Marshal(sessionID)
+	if err != nil {
+		return err
+	}
+	quotedRef, err := json.Marshal(ref)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "{\"kind\":\"output\",\"session_id\":%s,\"ref\":%s,\"content\":", session, quotedRef); err != nil {
+		return err
+	}
+	n, err := writeJSONString(w, r)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, ",\"bytes\":%d}\n", n)
+	return err
+}
+
+// writeJSONString writes the bytes of r as one JSON string literal (quotes
+// included) and returns how many bytes it wrote. The stream is escaped chunk by
+// chunk and a chunk that ends in the middle of a rune holds its tail back for
+// the next one, so the content never has to be held in memory as a whole and no
+// rune is split into a replacement character.
+func writeJSONString(w io.Writer, r io.Reader) (int64, error) {
+	if _, err := w.Write([]byte{'"'}); err != nil {
+		return 0, err
+	}
+	var (
+		total   int64
+		pending []byte
+		buf     = make([]byte, 64<<10)
+	)
+	for {
+		n, readErr := r.Read(buf)
+		if n > 0 {
+			chunk := buf[:n]
+			if len(pending) > 0 {
+				// The previous chunk ended in the middle of a rune: glue it on.
+				chunk = append(append(make([]byte, 0, len(pending)+n), pending...), chunk...)
+			}
+			pending = pending[:0]
+			if cut := completeRunes(chunk); cut < len(chunk) {
+				pending = append(pending, chunk[cut:]...)
+				chunk = chunk[:cut]
+			}
+			if len(chunk) > 0 {
+				escaped, err := json.Marshal(string(chunk))
+				if err != nil {
+					return total, err
+				}
+				if _, err := w.Write(escaped[1 : len(escaped)-1]); err != nil {
+					return total, err
+				}
+				total += int64(len(chunk))
+			}
+		}
+		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				return total, readErr
+			}
+			break
+		}
+	}
+	if len(pending) > 0 {
+		escaped, err := json.Marshal(string(pending))
+		if err != nil {
+			return total, err
+		}
+		if _, err := w.Write(escaped[1 : len(escaped)-1]); err != nil {
+			return total, err
+		}
+		total += int64(len(pending))
+	}
+	if _, err := w.Write([]byte{'"'}); err != nil {
+		return total, err
+	}
+	return total, nil
+}
+
+// completeRunes returns the length of the longest prefix of b that ends on a
+// UTF-8 rune boundary; an unfinished rune at the end is left out so that
+// escaping it later cannot turn it into a replacement character.
+func completeRunes(b []byte) int {
+	if utf8.Valid(b) {
+		return len(b)
+	}
+	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
+		if !utf8.RuneStart(b[i]) {
+			continue
+		}
+		if r, size := utf8.DecodeRune(b[i:]); r == utf8.RuneError && size <= 1 {
+			return i // needs the bytes of the next chunk
+		}
+		return len(b)
+	}
+	return len(b)
 }
 
 // secretArgKeys are event attr keys that may hold tool-call arguments.

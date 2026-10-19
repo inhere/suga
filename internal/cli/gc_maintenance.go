@@ -113,36 +113,11 @@ func runGCVacuum(ctx context.Context, out io.Writer) error {
 	runDir := filepath.Join(home, "run")
 	// The maintenance lock is one of the session locks, under a name no session
 	// can have (session ids never contain a space).
-	lock, err := acquireMaintenanceLock(home)
+	window, err := acquireMaintenanceWindow(runDir)
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-
-	records, err := personalprocess.List(runDir)
-	if err != nil {
-		return err
-	}
-	if len(records) > 0 {
-		ids := make([]string, 0, len(records))
-		for _, record := range records {
-			ids = append(ids, fmt.Sprintf("%s (pid %d, %s)", record.SessionID, record.PID, record.State))
-		}
-		sort.Strings(ids)
-		return fmt.Errorf("this ledger is in use, stop these suga processes first: %s", strings.Join(ids, ", "))
-	}
-	held, busy, err := holdRunLocks(filepath.Join(runDir, "locks"))
-	if err != nil {
-		return err
-	}
-	defer func() {
-		for _, sessionLock := range held {
-			_ = sessionLock.Close()
-		}
-	}()
-	if len(busy) > 0 {
-		return fmt.Errorf("a turn is running (session lock held): %s", strings.Join(busy, ", "))
-	}
+	defer window.Release()
 
 	size := store.DatabaseFileBytes(dbPath)
 	free, err := store.FreeDiskSpace(dbPath)
@@ -187,6 +162,68 @@ func requireVacuumSpace(dbBytes int64, free uint64) error {
 			humanBytes(int64(need)), humanBytes(int64(free)))
 	}
 	return nil
+}
+
+// maintenanceWindow is the exclusive window of one ledger maintenance job: the
+// global maintenance lock under run/ (one of the session locks, under a name no
+// session can have) plus a refusal while any other suga process uses this
+// ledger, and every existing session lock held, so no turn starts inside the
+// window. It is shared by `gc --vacuum` (design 0.3) and the spill compression
+// so both use the same rule; running both at once would rewrite the same files.
+type maintenanceWindow struct {
+	lock *personalprocess.SessionLock
+	held []*personalprocess.SessionLock
+}
+
+// Release gives every lock of the window back. It is safe to call twice.
+func (w *maintenanceWindow) Release() {
+	if w == nil {
+		return
+	}
+	for _, lock := range w.held {
+		_ = lock.Close()
+	}
+	w.held = nil
+	if w.lock != nil {
+		_ = w.lock.Close()
+		w.lock = nil
+	}
+}
+
+// acquireMaintenanceWindow takes the maintenance lock, refuses while another
+// suga process (chat, ACP, run) uses this ledger or holds a session lock, and
+// keeps the session locks for the caller.
+func acquireMaintenanceWindow(runDir string) (*maintenanceWindow, error) {
+	lock, err := personalprocess.AcquireSessionLock(runDir, "maintenance job", 0)
+	if err != nil {
+		return nil, fmt.Errorf("another maintenance job is running: %w", err)
+	}
+	window := &maintenanceWindow{lock: lock}
+	records, err := personalprocess.List(runDir)
+	if err != nil {
+		window.Release()
+		return nil, err
+	}
+	if len(records) > 0 {
+		ids := make([]string, 0, len(records))
+		for _, record := range records {
+			ids = append(ids, fmt.Sprintf("%s (pid %d, %s)", record.SessionID, record.PID, record.State))
+		}
+		sort.Strings(ids)
+		window.Release()
+		return nil, fmt.Errorf("this ledger is in use, stop these suga processes first: %s", strings.Join(ids, ", "))
+	}
+	held, busy, err := holdRunLocks(filepath.Join(runDir, "locks"))
+	if err != nil {
+		window.Release()
+		return nil, err
+	}
+	if len(busy) > 0 {
+		window.Release()
+		return nil, fmt.Errorf("a turn is running (session lock held): %s", strings.Join(busy, ", "))
+	}
+	window.held = held
+	return window, nil
 }
 
 // holdRunLocks takes every existing session lock of runDir without waiting, so

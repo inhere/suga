@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"os"
@@ -181,5 +182,52 @@ func TestExportCommand(t *testing.T) {
 		assert.Eq(t, "output", row["kind"])
 		assert.Eq(t, "out:obs-1:0123456789abcdef", row["ref"])
 		assert.Eq(t, "full output\nline 2", row["content"])
+	})
+
+	t.Run("with a compressed output", func(t *testing.T) {
+		sessionsDir, err := appconfig.ResolveSessionsDir()
+		assert.Require(t, assert.NoErr(t, err))
+		dir := filepath.Join(sessionsDir, "obs-1", "outputs")
+		body, err := os.ReadFile(filepath.Join(dir, "0123456789abcdef.txt"))
+		assert.Require(t, assert.NoErr(t, err))
+		// The maintenance pass leaves the .txt.gz where the .txt was; the ref
+		// does not change and the row keeps the decoded content and size.
+		f, err := os.Create(filepath.Join(dir, "0123456789abcdef.txt.gz"))
+		assert.Require(t, assert.NoErr(t, err))
+		zw := gzip.NewWriter(f)
+		_, err = zw.Write(body)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.NoErr(t, zw.Close()))
+		assert.Require(t, assert.NoErr(t, f.Close()))
+		// An interrupted compression leaves <stem>.txt.gz.tmp behind: it is no
+		// output, so it must not show up as a ref recall could not read back.
+		assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(dir, "ffffffffffffffff.txt.gz.tmp"), []byte("half"), 0o600)))
+		assert.Require(t, assert.NoErr(t, os.Remove(filepath.Join(dir, "0123456789abcdef.txt"))))
+
+		out, err := runCLI(t, ctx, "export", "obs-1", "--with-outputs")
+		assert.NoErr(t, err)
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		assert.Eq(t, 10, len(lines))
+		var row map[string]any
+		assert.NoErr(t, json.Unmarshal([]byte(lines[len(lines)-1]), &row))
+		assert.Eq(t, "out:obs-1:0123456789abcdef", row["ref"])
+		assert.Eq(t, "full output\nline 2", row["content"])
+		assert.Eq(t, float64(len(body)), row["bytes"])
+	})
+}
+
+// TestWriteJSONString covers the streaming escaper of export --with-outputs:
+// content longer than one chunk is escaped piecewise, so a chunk boundary
+// inside a multi-byte rune must not change the decoded text.
+func TestWriteJSONString(t *testing.T) {
+	t.Run("multi-byte content across chunk boundaries round-trips", func(t *testing.T) {
+		content := strings.Repeat("a", 64<<10-1) + strings.Repeat("中文🙂", 30000) + "\ttab\nnewline \"quote\" \\slash"
+		var buf bytes.Buffer
+		n, err := writeJSONString(&buf, strings.NewReader(content))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int64(len(content)), n)
+		var got string
+		assert.Require(t, assert.NoErr(t, json.Unmarshal(buf.Bytes(), &got)))
+		assert.Eq(t, content, got)
 	})
 }

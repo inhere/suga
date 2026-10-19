@@ -19,18 +19,19 @@ import (
 
 // newGCCommand builds `suga gc`: remove sessions idle for longer than
 // --older-than, or by origin class with --retention (only reports by default;
-// --apply deletes). The same command owns the two ledger maintenance jobs of
-// data governance P1: --shrink-fts rewrites the historical tool rows of
-// entries_fts to the truncated form new rows already use, and --vacuum returns
-// the freed space to the disk. A deletion no longer VACUUMs by itself: the two
-// results are reported separately (design 0.3, P3).
+// --apply deletes). The same command owns the ledger maintenance jobs of data
+// governance: --shrink-fts rewrites the historical tool rows of entries_fts to
+// the truncated form new rows already use, --vacuum returns the freed space to
+// the disk, and --compress-spill gzips the idle spill files (dry run unless
+// --apply). A deletion no longer VACUUMs by itself: the two results are
+// reported separately (design 0.3, P3).
 func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var olderThan string
-	var apply, shrinkFTS, status, abort, vacuum, retention bool
+	var apply, shrinkFTS, status, abort, vacuum, retention, compressSpill bool
 	var batch int
-	cmd := capp.NewCmd("gc", "Remove sessions idle within --older-than or by origin class with --retention (dry run unless --apply), shrink the tool-output FTS index or VACUUM the ledger", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("gc", "Remove sessions idle within --older-than or by origin class with --retention (dry run unless --apply), shrink the tool-output FTS index, compress spill outputs or VACUUM the ledger", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga gc --older-than 30d [--apply] | suga gc --retention [--apply] | suga gc --shrink-fts [--status|--abort] | suga gc --vacuum")
+			return fmt.Errorf("usage: suga gc --older-than 30d [--apply] | suga gc --retention [--apply] | suga gc --shrink-fts [--status|--abort] | suga gc --vacuum | suga gc --compress-spill [--apply]")
 		}
 		if retention && olderThan != "" {
 			return fmt.Errorf("--retention and --older-than are two different selection rules; pass one of them")
@@ -49,6 +50,9 @@ func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 		if retention {
 			return runGCRetention(ctx, stdout, apply)
 		}
+		if compressSpill {
+			return runGCCompressSpill(ctx, stdout, apply)
+		}
 		if olderThan == "" {
 			return fmt.Errorf("usage: suga gc --older-than 30d [--apply]")
 		}
@@ -66,6 +70,7 @@ func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	cmd.BoolVar(&status, "status", false, "with --shrink-fts: report how much of the index is left to shrink")
 	cmd.BoolVar(&abort, "abort", false, "with --shrink-fts: drop the progress checkpoint so the next run starts over")
 	cmd.BoolVar(&vacuum, "vacuum", false, "rewrite the database file to return freed space (needs free disk space and no other suga process)")
+	cmd.BoolVar(&compressSpill, "compress-spill", false, "compress spill outputs older than tools.spill.compress_after (report only unless --apply)")
 	cmd.IntVar(&batch, "batch", 0, "with --shrink-fts: rows per write transaction (default 2000)")
 	return cmd
 }
