@@ -56,6 +56,8 @@ type ManifestModel struct {
 	ThinkingStyle string `json:"thinking_style,omitempty"`
 	// StreamRequired marks a model whose endpoint answers only streamed requests.
 	StreamRequired bool `json:"stream_required,omitempty"`
+	// Vision reports whether the model accepts images (see appconfig.VisionFor).
+	Vision bool `json:"vision"`
 }
 
 // ManifestModels is the effective model selection.
@@ -352,7 +354,8 @@ func projectTrustReason(loaded ApprovalRules) string {
 
 func manifestModel(s appconfig.ModelSpec) ManifestModel {
 	m := ManifestModel{Provider: s.Provider.ID, Model: s.Model, ContextWindow: appconfig.ContextWindowFor(s),
-		Thinking: s.ThinkingLevel(), ThinkingStyle: appconfig.ThinkingStyleFor(s), StreamRequired: appconfig.StreamRequiredFor(s)}
+		Thinking: s.ThinkingLevel(), ThinkingStyle: appconfig.ThinkingStyleFor(s), StreamRequired: appconfig.StreamRequiredFor(s),
+		Vision: appconfig.VisionFor(s)}
 	if id := s.APIModel(); id != s.Model {
 		m.ModelID = id
 	}

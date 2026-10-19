@@ -5,10 +5,13 @@ type RunInput struct {
 	RunID       string
 	AgentID     string
 	Instruction string
-	Metadata    map[string]any
-	Stream      StreamFunc
-	MaxSteps    int
-	ResumeMode  ResumeMode
+	// Images are pictures that go with the instruction (the user message of this
+	// run carries them); an input may be images alone, without an instruction.
+	Images     []ImagePart
+	Metadata   map[string]any
+	Stream     StreamFunc
+	MaxSteps   int
+	ResumeMode ResumeMode
 }
 
 // RunStatus describes the lifecycle state of a run.
@@ -54,6 +57,32 @@ type Message struct {
 	// UnmarshalJSON restores the result and clears the flag. It is omitted from
 	// every encoding that does not set it.
 	ResultSameAsContent bool `json:",omitempty"`
+	// Images are the pictures of this message: pictures the user attached to a
+	// user message, or the images a tool result returned (view_image). It is
+	// omitted when empty, so a plain text message encodes exactly as before.
+	Images []ImagePart `json:",omitempty"`
+}
+
+// ImagePart is one image of a message. The bytes are never stored: Data is
+// filled in memory by the host before a request (read back from Ref) and
+// cleared after the image is written to disk, so a stored message carries only
+// the reference and metadata.
+//
+// Ref is the path of the stored file relative to the session directory
+// (images/<sha256>.<ext>). SHA256 is the hex digest of the sent bytes; a read
+// back that does not match it is treated as a missing image.
+//
+// MediaType is the mime type of the sent bytes, Data (json:"-") holds those
+// bytes for the provider call only; Width and Height are their pixel size (0
+// when unknown), used for the text stand-in of an omitted image and for the
+// image token estimate.
+type ImagePart struct {
+	MediaType string `json:",omitempty"`
+	Ref       string `json:",omitempty"`
+	SHA256    string `json:",omitempty"`
+	Width     int    `json:",omitempty"`
+	Height    int    `json:",omitempty"`
+	Data      []byte `json:"-"`
 }
 
 // Artifact is a minimal portable output produced by tools or models.

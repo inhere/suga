@@ -74,7 +74,8 @@ Details: [references/config.md](skills/suga-guide/references/config.md) (every k
 
 Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 
-- **Tools**: `file_read`/`file_list`/`file_grep`/`file_find`, `web_fetch`/`web_search`, `skill`, `session_search`/`recall`, `agent`, `memory`, `file_write`/`file_edit`/`file_remove`, `shell_exec`, `task`.
+- **Tools**: `file_read`/`file_list`/`file_grep`/`file_find`, `view_image`, `web_fetch`/`web_search`, `skill`, `session_search`/`recall`, `agent`, `memory`, `file_write`/`file_edit`/`file_remove`, `shell_exec`, `task`.
+- **Images**: `view_image` reads a local picture (PNG, JPEG, GIF first frame, WebP) and hands it to a model that can see; a gofer attachment such as `[attach 1] /path/shot.png` is read the same way. The bytes are stored in `$SUGA_HOME/sessions/<id>/images/` and the database keeps only the reference; pictures older than the last history fold, or over the per-request caps (8 images, 20MB), are replaced by a text note that names the image and suggests `view_image` again.
 - **Read-only by default**: write tools need `run --allow-write`, `tools.allow_write: true` in chat, or ACP `default` mode; `--read-only` always wins.
 - **Approval**: with `tools.approval: ask` chat asks before writes and shell: `y` once, `a`/`d` allow or deny the same scope (command prefix, directory, path) for this session, optionally saved to a rules file; dangerous recursive deletes always need a typed `yes`.
 - **Undo**: `file_write`/`file_edit`/`file_remove` snapshot a file before changing it; in chat `:checkpoints` lists and `:undo [N] [force]` rolls back, from the CLI `suga undo <session>`; `shell_exec` changes are listed, not rolled back (`tools.snapshots.*`).

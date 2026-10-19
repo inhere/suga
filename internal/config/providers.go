@@ -54,6 +54,12 @@ type ModelConfig struct {
 	// explicit false overrides the provider level.
 	StreamRequired    bool
 	StreamRequiredSet bool
+	// Vision (models.<key>.vision) declares whether the model accepts images.
+	// VisionSet records that the key was written, so an explicit false overrides
+	// the provider level and an unset key falls back to the built-in list (see
+	// VisionFor).
+	Vision    bool
+	VisionSet bool
 	// Price is the optional per-million-token price used to compute cost when
 	// the provider reports none; the zero value means "no price configured".
 	Price Price
@@ -95,6 +101,11 @@ type ProviderConfig struct {
 	// this provider's models as a streamed request, summaries included: some
 	// gateways answer only stream=true.
 	StreamRequired bool
+	// Vision (providers.<id>.vision) declares whether the provider's models
+	// accept images; VisionSet records that the key was written. A gateway that
+	// rejects image parts sets it to false.
+	Vision    bool
+	VisionSet bool
 	// PromptCache (providers.<id>.prompt_cache) enables Claude cache_control
 	// breakpoints; only meaningful for type anthropic.
 	PromptCache bool
@@ -204,6 +215,7 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 		}
 		promptCache, promptCacheSet := entry["prompt_cache"].(bool)
 		streamRequired, streamRequiredSet := entry["stream_required"].(bool)
+		vision, visionSet := entry["vision"].(bool)
 		user.Compat = normalizeStringList(entry["compat"])
 
 		if err := normalizeThinking(id, &user); err != nil {
@@ -235,6 +247,9 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 		}
 		if streamRequiredSet {
 			merged.StreamRequired = streamRequired
+		}
+		if visionSet {
+			merged.Vision, merged.VisionSet = vision, true
 		}
 		if len(user.Compat) > 0 {
 			merged.Compat = user.Compat
@@ -330,6 +345,9 @@ func readModelConfigs(raw any) map[string]ModelConfig {
 			cfg.ThinkingStyle = stringValue(entry["thinking_style"])
 			if v, ok := entry["stream_required"].(bool); ok {
 				cfg.StreamRequired, cfg.StreamRequiredSet = v, true
+			}
+			if v, ok := entry["vision"].(bool); ok {
+				cfg.Vision, cfg.VisionSet = v, true
 			}
 			cfg.Price = readPrice(entry["price"])
 		}

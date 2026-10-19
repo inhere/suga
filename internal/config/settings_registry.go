@@ -115,6 +115,10 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "context.idle_min_ratio", Type: ConfigTypeFloat, Writable: true, Reader: "idle"},
 	{Pattern: "context.fold_every", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
 	{Pattern: "context.fold_keep", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
+	{Pattern: "images.history_turns", Type: ConfigTypeInt, Writable: true, Reader: "images"},
+	{Pattern: "images.max_request_count", Type: ConfigTypeInt, Writable: true, Reader: "images"},
+	{Pattern: "images.max_request_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "images"},
+	{Pattern: "images.max_side", Type: ConfigTypeInt, Writable: true, Reader: "images"},
 	{Pattern: "chat.history", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.history_size", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.markdown", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
@@ -221,6 +225,7 @@ var providerKeyDescriptors = map[string]ConfigKey{
 	"thinking":          {Pattern: "providers.<id>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"thinking_style":    {Pattern: "providers.<id>.thinking_style", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"stream_required":   {Pattern: "providers.<id>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
+	"vision":            {Pattern: "providers.<id>.vision", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"prompt_cache":      {Pattern: "providers.<id>.prompt_cache", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"compat":            {Pattern: "providers.<id>.compat", Type: ConfigTypeStringList, Writable: true, Reader: "providers"},
 }
@@ -234,6 +239,7 @@ var providerModelKeyDescriptors = map[string]ConfigKey{
 	"thinking":          {Pattern: "providers.<id>.models.<name>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"thinking_style":    {Pattern: "providers.<id>.models.<name>.thinking_style", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"stream_required":   {Pattern: "providers.<id>.models.<name>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
+	"vision":            {Pattern: "providers.<id>.models.<name>.vision", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"price":             {Pattern: "providers.<id>.models.<name>.price", Type: ConfigTypeStringMap, Writable: true, Reader: "providers"},
 }
 
@@ -546,6 +552,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadIdleSettings()
 	case "fold":
 		_, err = ReadFoldSettings()
+	case "images":
+		_, err = ReadImageSettings()
 	case "chat":
 		_, err = ReadChatSettings()
 	case "tasks":

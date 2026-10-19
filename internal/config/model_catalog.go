@@ -41,9 +41,12 @@ type ModelCatalogModel struct {
 	// heuristic), see ThinkingStyleFor.
 	ThinkingStyle string `json:"thinking_style,omitempty"`
 	// StreamRequired marks a model whose endpoint answers only streamed requests.
-	StreamRequired bool     `json:"stream_required,omitempty"`
-	Roles          []string `json:"roles"`
-	CanSwitch      bool     `json:"can_switch"`
+	StreamRequired bool `json:"stream_required,omitempty"`
+	// Vision reports whether the model accepts images (providers.<id>.models.<model>.vision,
+	// else providers.<id>.vision, else the built-in list; see VisionFor).
+	Vision    bool     `json:"vision"`
+	Roles     []string `json:"roles"`
+	CanSwitch bool     `json:"can_switch"`
 }
 
 // BuildModelCatalog projects resolved providers and model roles. The caller is
@@ -157,7 +160,8 @@ func addCatalogModel(models map[string]*ModelCatalogModel, spec ModelSpec, confi
 			ModelID: spec.APIModel(), Type: spec.Provider.Type,
 			ContextWindow: ContextWindowFor(spec), Thinking: spec.ThinkingLevel(),
 			ThinkingStyle: ThinkingStyleFor(spec), StreamRequired: StreamRequiredFor(spec),
-			Roles: []string{},
+			Vision: VisionFor(spec),
+			Roles:  []string{},
 		}
 		models[ref] = model
 	}

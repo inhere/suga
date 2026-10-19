@@ -47,9 +47,11 @@ func EncodeMessage(m api.Message) ([]byte, error) {
 			Artifacts: m.ToolResult.Artifacts,
 			IsError:   m.ToolResult.IsError,
 			Metadata:  m.ToolResult.Metadata,
+			Images:    m.ToolResult.Images,
 		},
 		Metadata:            m.Metadata,
 		Reasoning:           m.Reasoning,
+		Images:              m.Images,
 		ResultSameAsContent: true,
 	})
 }
@@ -64,6 +66,9 @@ type dedupedMessage struct {
 	ToolResult *dedupedToolResult
 	Metadata   map[string]any
 	Reasoning  string `json:",omitempty"`
+	// Images mirrors api.Message.Images; it comes before the marker so the key
+	// order still follows api.Message (the marker is appended last).
+	Images []api.ImagePart `json:",omitempty"`
 	// ResultSameAsContent tells api.Message.UnmarshalJSON to restore the result.
 	ResultSameAsContent bool
 }
@@ -77,6 +82,7 @@ type dedupedToolResult struct {
 	Artifacts []api.Artifact
 	IsError   bool
 	Metadata  map[string]any
+	Images    []api.ImagePart `json:",omitempty"`
 }
 
 // RestoreMessageJSON returns a stored entry's JSON in the shape it had before

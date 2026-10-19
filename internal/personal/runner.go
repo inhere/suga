@@ -48,6 +48,10 @@ type Config struct {
 	Model        string
 	ProviderName string
 	Tools        agentcore.ToolRegistry
+	// Vision is the live capability of the current model: view_image leaves the
+	// tool table of a model that cannot see images, and a :model switch updates
+	// this gate instead of rebuilding the tools. nil = the model can see.
+	Vision *tools.VisionGate
 	// PromptBuilder is the stable system prompt (identity and working
 	// conventions only, design D1); the runner sends it unchanged.
 	PromptBuilder agentcore.PromptBuilder
@@ -85,9 +89,13 @@ type Config struct {
 	AppendSystemPromptSet bool
 	Hooks                 []agentcore.Hook
 	TranscriptDir         string
-	LockRoot              string
-	ProcessRoot           string
-	MaxSteps              int
+	// SessionsDir is the per-session file root ($SUGA_HOME/sessions). Message
+	// images are stored below <SessionsDir>/<session_id>/images and read back
+	// from there when a request is assembled; empty disables both.
+	SessionsDir string
+	LockRoot    string
+	ProcessRoot string
+	MaxSteps    int
 	// MaxOutputTokens is the output token limit of the model's requests
 	// (appconfig.ResolveMaxOutputTokens); 0 leaves it to the provider, which
 	// applies its own default then.
@@ -119,6 +127,10 @@ type Config struct {
 	// FoldEvery/FoldKeep configure history folding of the request view
 	// (context.fold_every / context.fold_keep, see foldHistory); FoldEvery 0 = off.
 	FoldEvery, FoldKeep int
+	// ImageHistoryTurns, ImageRequestCount and ImageRequestBytes are the image
+	// input limits of the request view (images.history_turns / max_request_count /
+	// max_request_bytes); 0 uses the built-in default (appconfig.DefaultImage*).
+	ImageHistoryTurns, ImageRequestCount, ImageRequestBytes int
 	// CompactProvider/CompactModel summarize history when llm.compact_model is
 	// set; nil means the turn's own provider is used.
 	CompactProvider agentcore.Provider
@@ -246,9 +258,13 @@ type RunRequest struct {
 	CreateIfMissing bool
 	AgentID         string
 	Prompt          string
-	SystemContext   string
-	Injected        bool
-	Emit            EmitFunc
+	// Images are pictures that go with Prompt (chat :image, Alt+V paste, or a
+	// caller that hands bytes in). They travel in memory only; the turn's user
+	// message carries them and the store writes their files (no bytes in the DB).
+	Images        []agentcore.ImagePart
+	SystemContext string
+	Injected      bool
+	Emit          EmitFunc
 }
 
 type RunResult struct {
@@ -343,7 +359,7 @@ func New(cfg Config) (*Runner, error) {
 	}
 	rec := &recorder{sink: cfg.Repository, price: cfg.Price,
 		taint:  newTaintMarker(cfg.Repository, cfg.TaintTools, cfg.TaintOnSpill),
-		prefix: newPrefixTracker(), workspace: cfg.Workspace}
+		prefix: newPrefixTracker(), workspace: cfg.Workspace, vision: cfg.Vision}
 	cfg.Provider = rec.observeProvider(cfg.Provider, cfg.ProviderName, cfg.Model)
 	if cfg.Tools != nil {
 		// Stack: observe -> output -> (visibility -> approval -> base). The
@@ -432,6 +448,17 @@ func (r *Runner) ModelSettings() (provider, model string, contextWindow, maxOutp
 	r.modelMu.RLock()
 	defer r.modelMu.RUnlock()
 	return r.cfg.ProviderName, r.cfg.Model, r.cfg.ContextWindow, r.cfg.MaxOutputTokens
+}
+
+// ToolRegistry is the tool table the runtime lists at every step
+// (observe -> output -> visibility -> approval -> base), so it reflects the
+// model-scoped filtering a turn sees (e.g. view_image and the current model's
+// vision). nil when the runner was built without tools.
+func (r *Runner) ToolRegistry() agentcore.ToolRegistry {
+	if r == nil {
+		return nil
+	}
+	return r.cfg.Tools
 }
 
 // MaxSteps is this runner's per-turn step limit (0 = no limit); the CLI names
@@ -701,7 +728,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 			return emit(ctx, req.Emit, e)
 		}))
 	}
-	var storage agentcore.Storage = r.cfg.Repository.AgentStorage()
+	var storage agentcore.Storage = r.cfg.Repository.AgentStorage().WithSessionsDir(r.cfg.SessionsDir)
 	if req.Injected {
 		// Persist the existing "not typed by a person" marker on the turn's
 		// request, so a later handoff package can tell it apart (D4).
@@ -745,6 +772,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 		RunID:       result.RunID,
 		AgentID:     agentID,
 		Instruction: req.Prompt,
+		Images:      req.Images,
 		ResumeMode:  agentcore.ResumeAuto,
 		Stream:      stream,
 	})

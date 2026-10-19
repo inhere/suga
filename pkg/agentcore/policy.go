@@ -33,9 +33,9 @@ func (DefaultResumePolicy) ShouldAppendInstruction(input RunInput, _ *RunState) 
 	case ResumeWithInput:
 		return true
 	case ResumeAuto, "":
-		return strings.TrimSpace(input.Instruction) != ""
+		return strings.TrimSpace(input.Instruction) != "" || len(input.Images) > 0
 	default:
-		return strings.TrimSpace(input.Instruction) != ""
+		return strings.TrimSpace(input.Instruction) != "" || len(input.Images) > 0
 	}
 }
 

@@ -172,7 +172,13 @@ func hasReasoning(msgs []agentcoreapi.Message) bool {
 func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking bool) []map[string]any {
 	items := make([]map[string]any, 0, len(msgs))
 	inTurn := false // the last item came from the assistant
-	for _, m := range groupToolBatches(msgs) {
+	// Pictures of a tool batch go into one user item after the batch, since a
+	// function_call_output carries text only (design 0.3); the user item is
+	// generated deterministically during assembly, so a replay matches it.
+	grouped := groupToolBatches(msgs)
+	header := ""
+	var pendingImages []map[string]any
+	for i, m := range grouped {
 		switch {
 		case m.ToolResult != nil || m.Role == "tool":
 			callID, out := "", m.Content
@@ -181,9 +187,42 @@ func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking boo
 			} else if m.ToolCall != nil {
 				callID = m.ToolCall.CallID
 			}
-			items = append(items, map[string]any{"type": "function_call_output", "call_id": callID, "output": out})
+			images := messageImages(m)
+			// Three cases: a model without vision gets notes, the official endpoint
+			// takes the pictures in the function_call_output itself, a gateway gets
+			// them in a user item after the batch (design 0.3).
+			item := map[string]any{"type": "function_call_output", "call_id": callID}
+			switch {
+			case len(images) > 0 && p.noImages:
+				item["output"] = withImageNotes(out, images)
+			case len(images) > 0 && p.compat.ToolOutputImages:
+				item["output"] = responsesToolOutput(out, images)
+			case len(images) > 0:
+				send, missing := sendableImages(images)
+				if len(missing) > 0 {
+					out = withImageNotes(out, missing)
+				}
+				if len(send) > 0 && !p.noImages {
+					if header == "" {
+						header = toolImageNoteText(m)
+					}
+					for _, part := range send {
+						pendingImages = append(pendingImages, responsesImageBlock(part))
+					}
+				}
+				item["output"] = out
+			default:
+				item["output"] = out
+			}
+			items = append(items, item)
 			inTurn = false
+			if !nextIsTool(grouped, i) {
+				items = flushToolImages(items, header, pendingImages)
+				header, pendingImages = "", nil
+			}
 		case m.Role == "assistant":
+			items = flushToolImages(items, header, pendingImages)
+			header, pendingImages = "", nil
 			if !inTurn {
 				items = append(items, p.turnReasoning(m, thinking)...)
 				inTurn = true
@@ -197,18 +236,58 @@ func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking boo
 					"name": m.ToolCall.Name, "arguments": mustJSON(m.ToolCall.Arguments)})
 			}
 		default:
+			items = flushToolImages(items, header, pendingImages)
+			header, pendingImages = "", nil
 			// user, and system messages mid-conversation: gateways such as
 			// command-code reject the developer role; the system prompt
 			// itself is the instructions field.
-			if strings.TrimSpace(m.Content) == "" {
+			if strings.TrimSpace(m.Content) == "" && len(messageImages(m)) == 0 {
 				continue
 			}
-			items = append(items, map[string]any{"role": "user",
-				"content": []map[string]any{{"type": "input_text", "text": m.Content}}})
+			items = append(items, map[string]any{"role": "user", "content": responsesUserContent(m.Content, messageImages(m), p.noImages)})
 			inTurn = false
 		}
 	}
-	return items
+	return flushToolImages(items, header, pendingImages)
+}
+
+// responsesToolOutput renders a function_call_output on the official endpoint:
+// the text, then the pictures as input_image items (a picture without bytes
+// becomes a note). See FunctionCallOutputItemParam in the OpenAI OpenAPI spec:
+// output is a string or an array of input_text/input_image/input_file items.
+func responsesToolOutput(text string, images []agentcoreapi.ImagePart) []map[string]any {
+	send, missing := sendableImages(images)
+	text = withImageNotes(text, missing)
+	parts := make([]map[string]any, 0, len(send)+1)
+	if text != "" {
+		parts = append(parts, map[string]any{"type": "input_text", "text": text})
+	}
+	for _, part := range send {
+		parts = append(parts, responsesImageBlock(part))
+	}
+	return parts
+}
+
+// responsesUserContent renders a user message body: the text first, then the
+// pictures (a message may carry pictures alone, so the caller must not drop it
+// for an empty text).
+func responsesUserContent(text string, images []agentcoreapi.ImagePart, noImages bool) []map[string]any {
+	parts := make([]map[string]any, 0, len(images)+1)
+	if noImages {
+		text = withImageNotes(text, images)
+		images = nil
+	}
+	if text != "" {
+		parts = append(parts, map[string]any{"type": "input_text", "text": text})
+	}
+	send, missing := sendableImages(images)
+	for _, note := range imageNotes(missing) {
+		parts = append(parts, map[string]any{"type": "input_text", "text": note})
+	}
+	for _, part := range send {
+		parts = append(parts, responsesImageBlock(part))
+	}
+	return parts
 }
 
 // turnReasoning returns the reasoning items opening m's turn: the stored

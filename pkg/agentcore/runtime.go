@@ -122,7 +122,7 @@ func (r *DefaultRuntime) Run(ctx context.Context, input RunInput) (*RunResult, e
 	newMessages := make([]Message, 0, 2)
 	preInputState := cloneRunStateValue(state)
 	if appendInstruction {
-		userMessage := Message{Role: "user", Content: input.Instruction}
+		userMessage := Message{Role: "user", Content: input.Instruction, Images: cloneImagesValue(input.Images)}
 		state.Messages = append(state.Messages, userMessage)
 		newMessages = append(newMessages, userMessage)
 	}
@@ -625,6 +625,9 @@ func (r *DefaultRuntime) persistToolTranscript(ctx context.Context, state *RunSt
 		Content:    result.Content,
 		ToolCall:   cloneToolCallValue(&call),
 		ToolResult: cloneToolResultValue(result),
+		// Images mirrors the result so a reader of either field sees them; the
+		// stored message keeps one copy (ToolResult is written once).
+		Images: cloneImagesValue(result.Images),
 	}
 	state.Messages = append(state.Messages, assistantMessage, toolMessage)
 	if len(result.Artifacts) > 0 {

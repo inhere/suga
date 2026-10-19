@@ -462,6 +462,7 @@ func cloneMessages(messages []Message) []Message {
 			Metadata:   cloneMetadata(msg.Metadata),
 			ToolCall:   cloneToolCall(msg.ToolCall),
 			ToolResult: cloneToolResult(msg.ToolResult),
+			Images:     cloneImagesValue(msg.Images),
 		}
 	}
 	return cloned
@@ -483,5 +484,6 @@ func cloneToolResult(result *ToolResult) *ToolResult {
 	cloned := *result
 	cloned.Artifacts = append([]Artifact(nil), result.Artifacts...)
 	cloned.Metadata = cloneMetadata(result.Metadata)
+	cloned.Images = cloneImagesValue(result.Images)
 	return &cloned
 }

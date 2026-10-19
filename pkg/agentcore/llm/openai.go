@@ -33,6 +33,9 @@ type OpenAIProvider struct {
 	retry *backoff
 	// streamRequired sends every request as a streamed one (OpenAIConfig).
 	streamRequired bool
+	// noImages marks a provider or model without vision: images become a text
+	// note (OpenAIConfig.NoImages).
+	noImages bool
 }
 
 // OpenAIConfig configures an OpenAIProvider.
@@ -52,6 +55,10 @@ type OpenAIConfig struct {
 	// through Stream. Some gateways answer only stream=true requests, the
 	// internal summary requests included.
 	StreamRequired bool
+	// NoImages marks a provider or model without vision: pictures a message
+	// carries are sent as a text note instead of image parts. It is the
+	// fallback path for a model whose configuration says vision: false.
+	NoImages bool
 	// RequestTimeout bounds one non-streamed request as a whole
 	// (http.Client.Timeout); zero takes DefaultRequestTimeout and NoTimeout
 	// disables the bound. See timeouts.go.
@@ -88,6 +95,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 		reasoningEffort: cfg.ReasoningEffort,
 		retry:           newBackoff(cfg.Retry),
 		streamRequired:  cfg.StreamRequired,
+		noImages:        cfg.NoImages,
 	}
 }
 
@@ -152,20 +160,57 @@ func (p *OpenAIProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 		msgs = append(msgs, map[string]any{"role": "system", "content": system})
 	}
 
-	for _, m := range groupToolBatches(req.Messages) {
+	// grouped keeps each reply's parallel calls together; header and pendingImages
+	// hold the pictures of the tool batch being assembled, sent as one user
+	// message after the batch (an OpenAI tool message is text only).
+	grouped := groupToolBatches(req.Messages)
+	header := ""
+	var pendingImages []map[string]any
+	for i, m := range grouped {
 		// Tool messages carry both ToolCall and ToolResult in agentcore; OpenAI
 		// wants role=tool with only tool_call_id+content (no tool_calls).
 		if m.ToolResult != nil || m.Role == "tool" {
-			msg := map[string]any{"role": "tool", "content": m.Content}
+			content := m.Content
+			if m.ToolResult != nil {
+				content = m.ToolResult.Content
+			}
+			if images := messageImages(m); len(images) > 0 {
+				// An OpenAI tool message is text only (design 0.3): a model without
+				// vision gets a note in the result, a vision model gets the pictures
+				// in one user message after the whole batch (below).
+				if p.noImages {
+					content = withImageNotes(content, images)
+				} else if _, missing := sendableImages(images); len(missing) > 0 {
+					content = withImageNotes(content, missing)
+				}
+				if !p.noImages {
+					if send, _ := sendableImages(images); len(send) > 0 {
+						if header == "" {
+							header = toolImageNoteText(m)
+						}
+						for _, part := range send {
+							pendingImages = append(pendingImages, openAIImageBlock(part))
+						}
+					}
+				}
+			}
+			msg := map[string]any{"role": "tool", "content": content}
 			if m.ToolResult != nil {
 				msg["tool_call_id"] = m.ToolResult.CallID
-				msg["content"] = m.ToolResult.Content
 			} else if m.ToolCall != nil {
 				msg["tool_call_id"] = m.ToolCall.CallID
 			}
 			msgs = append(msgs, msg)
+			// The pictures of a batch go into one user message after the batch's
+			// last tool message, never between tool messages (design 0.3).
+			if !nextIsTool(grouped, i) {
+				msgs = flushToolImages(msgs, header, pendingImages)
+				header, pendingImages = "", nil
+			}
 			continue
 		}
+		msgs = flushToolImages(msgs, header, pendingImages)
+		header, pendingImages = "", nil
 		if m.ToolCall != nil {
 			call := map[string]any{
 				"id":   m.ToolCall.CallID,
@@ -194,8 +239,13 @@ func (p *OpenAIProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 		// A plain assistant answer carries no reasoning_content: thinking-mode
 		// APIs need it only on tool-call messages (DeepSeek-Reasonix does the
 		// same), and an earlier answer's reasoning would only cost input tokens.
+		if images := messageImages(m); len(images) > 0 && m.Role != "assistant" {
+			msgs = append(msgs, map[string]any{"role": m.Role, "content": openAIUserContent(m.Content, images, p.noImages)})
+			continue
+		}
 		msgs = append(msgs, map[string]any{"role": m.Role, "content": m.Content})
 	}
+	msgs = flushToolImages(msgs, header, pendingImages)
 
 	body := map[string]any{
 		"model":    model,
@@ -231,6 +281,52 @@ func (p *OpenAIProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 		body["tool_choice"] = req.ToolChoice
 	}
 	return body
+}
+
+// openAIUserContent renders a user message body that carries images: a content
+// array with the pictures, then the text (the string form is kept when there is
+// nothing to say and no picture to send).
+func openAIUserContent(text string, images []agentcoreapi.ImagePart, noImages bool) any {
+	if noImages {
+		return withImageNotes(text, images)
+	}
+	send, missing := sendableImages(images)
+	if len(send) == 0 {
+		return withImageNotes(text, missing)
+	}
+	text = withImageNotes(text, missing)
+	parts := make([]map[string]any, 0, len(send)+1)
+	if text != "" {
+		parts = append(parts, map[string]any{"type": "text", "text": text})
+	}
+	for _, part := range send {
+		parts = append(parts, openAIImageBlock(part))
+	}
+	return parts
+}
+
+// nextIsTool reports whether the grouped message after i is still a tool
+// result, i.e. whether the batch goes on.
+func nextIsTool(grouped []agentcoreapi.Message, i int) bool {
+	if i+1 >= len(grouped) {
+		return false
+	}
+	next := grouped[i+1]
+	return next.ToolResult != nil || next.Role == "tool"
+}
+
+// flushToolImages appends the user message that carries the pictures of the
+// tool batch just sent (nothing when the batch had none).
+func flushToolImages(msgs []map[string]any, header string, images []map[string]any) []map[string]any {
+	if len(images) == 0 {
+		return msgs
+	}
+	parts := make([]map[string]any, 0, len(images)+1)
+	if header != "" {
+		parts = append(parts, map[string]any{"type": "text", "text": header})
+	}
+	parts = append(parts, images...)
+	return append(msgs, map[string]any{"role": "user", "content": parts})
 }
 
 // withReasoning echoes an assistant message's reasoning as reasoning_content.

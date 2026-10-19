@@ -18,6 +18,9 @@ import (
 // first); a run id without a turn is reported as ErrTurnNotFound.
 type AgentStorage struct {
 	store *Store
+	// sessionsDir is the root of the per-session file tree; images are written
+	// below <sessionsDir>/<session_id>/images (see image_files.go).
+	sessionsDir string
 }
 
 var _ api.Storage = (*AgentStorage)(nil)
@@ -92,8 +95,14 @@ func (a *AgentStorage) AppendMessages(ctx context.Context, runID string, msgs ..
 	}
 	in := make([]NewEntry, 0, len(msgs))
 	for _, m := range msgs {
+		// Images are written to the session directory before the message is
+		// encoded: the stored message keeps a reference, never the bytes.
+		stored, err := a.storeMessageImages(turn.SessionID, m)
+		if err != nil {
+			return fmt.Errorf("store message images: %w", err)
+		}
 		// EncodeMessage stores a tool result that repeats Content once (P2).
-		raw, err := EncodeMessage(m)
+		raw, err := EncodeMessage(stored)
 		if err != nil {
 			return fmt.Errorf("encode message: %w", err)
 		}

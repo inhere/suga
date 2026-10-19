@@ -236,6 +236,7 @@ func cloneMessagesValue(messages []Message) []Message {
 			ToolCall:   cloneToolCallValue(msg.ToolCall),
 			ToolResult: cloneToolResultValue(msg.ToolResult),
 			Reasoning:  msg.Reasoning,
+			Images:     cloneImagesValue(msg.Images),
 		}
 	}
 	return cloned
@@ -268,7 +269,24 @@ func cloneToolResultValue(result *ToolResult) *ToolResult {
 	cloned := *result
 	cloned.Artifacts = cloneArtifactsValue(result.Artifacts)
 	cloned.Metadata = cloneMetadata(result.Metadata)
+	cloned.Images = cloneImagesValue(result.Images)
 	return &cloned
+}
+
+// cloneImagesValue deep-copies image parts, bytes included: a message clone
+// must not share the Data slice with the state the caller keeps.
+func cloneImagesValue(images []ImagePart) []ImagePart {
+	if len(images) == 0 {
+		return nil
+	}
+	cloned := make([]ImagePart, len(images))
+	for i, image := range images {
+		cloned[i] = image
+		if len(image.Data) > 0 {
+			cloned[i].Data = append([]byte(nil), image.Data...)
+		}
+	}
+	return cloned
 }
 
 func cloneArtifactsValue(artifacts []Artifact) []Artifact {

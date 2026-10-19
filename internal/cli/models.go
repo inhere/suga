@@ -89,6 +89,7 @@ func writeModelsText(out io.Writer, catalog appconfig.ModelCatalog) error {
 			if model.StreamRequired {
 				details = append(details, "stream_required=yes")
 			}
+			details = append(details, "vision="+yesNo(model.Vision))
 			fmt.Fprintf(tw, "  %s %s\t%s\t%s\n", marker, model.Ref, role, strings.Join(details, " "))
 		}
 		_ = tw.Flush()

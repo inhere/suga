@@ -59,6 +59,16 @@ type Env struct {
 	// web_search; nil keeps their previous behavior (web_fetch ignores the
 	// environment proxies, web_search follows them).
 	NetworkProxy *netproxy.Selector
+	// ImagesDir is the session's images directory (view_image accepts a ref to
+	// one of its files); empty = only ordinary paths.
+	ImagesDir string
+	// Vision is the live capability of the current model (nil = can see):
+	// view_image explains how to switch instead of reading a picture nobody can
+	// see. The host updates the gate on a model switch.
+	Vision *tools.VisionGate
+	// ImageMaxSide is the long side view_image scales a picture to when the call
+	// names none (images.max_side); 0 = DefaultImageMaxSide.
+	ImageMaxSide int
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -77,6 +87,10 @@ func Catalog() []Spec {
 	return []Spec{
 		{Name: "file_read", New: func(env Env) api.Tool {
 			return &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes}
+		}},
+		{Name: "view_image", New: func(env Env) api.Tool {
+			return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs,
+				imagesDir: env.ImagesDir, vision: env.Vision, maxSide: env.ImageMaxSide}
 		}},
 		{Name: "file_list", New: func(env Env) api.Tool {
 			return &FileListTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
