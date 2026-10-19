@@ -262,6 +262,33 @@ func walState(t *testing.T, dbPath string) int64 {
 	return info.Size()
 }
 
+// TestUsageFTSToolRowsSuggestShrink: a ledger whose index still holds historical
+// tool rows gets the shrink-fts command (new writes no longer index them).
+func TestUsageFTSToolRowsSuggestShrink(t *testing.T) {
+	ctx := context.Background()
+	fx := newUsageFixture(t)
+	rw, err := Open(fx.dbPath, WithSessionsDir(fx.sessionsDir))
+	assert.Require(t, assert.NoErr(t, err))
+	_, err = rw.DB().ExecContext(ctx, `INSERT INTO entries_fts(session_id, seq, role, text) VALUES ('s1', 99, 'tool', 'old tool output')`)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.NoErr(t, rw.Close())
+
+	ro := openUsageFixture(t, fx)
+	rep, err := ro.Usage(ctx, UsageOptions{Top: 5})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(1), rolesOf(rep.FTS.Roles)[EntryTool])
+	assert.Contains(t, rep.FTS.Suggestion, "suga data shrink-fts")
+}
+
+// rolesOf turns the FTS role list into a lookup for the assertions.
+func rolesOf(roles []NamedStat) map[string]int64 {
+	out := make(map[string]int64, len(roles))
+	for _, role := range roles {
+		out[role.Name] = role.Rows
+	}
+	return out
+}
+
 // TestUsageFreePagesSuggestVacuum: pages a deletion freed stay in the file, and
 // the report names the command that returns them.
 func TestUsageFreePagesSuggestVacuum(t *testing.T) {
