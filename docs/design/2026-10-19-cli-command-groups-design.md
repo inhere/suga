@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # CLI 命令分组设计
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 已批准实施
 > 日期：2026-10-19
 > 关联 issue：`suga-azgs`
 
@@ -10,6 +10,7 @@
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-19 | 监督（Claude） | 依据用户 2026-10-19 要求（常用命令留在顶层，同组或不常用的移到二级命令）与现有 18 个顶层命令、gofer 调用点、仓库内引用统计，提出 `inspect`/`data` 两个分组、旧写法的参数改写兼容与 `gc` 多开关拆分。 |
+| 0.2 | 2026-10-19 | 监督（Claude） | 用户批准（“可以”，Q1–Q5 按当前倾向）；按用户追加要求新增“顶层直接接受 chat 选项”（`suga --resume <id>` 等同 `suga chat --resume <id>`），见 D6 与“chat 选项在顶层”。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -81,6 +82,18 @@
 - 提示只打到 stderr，stdout 内容不变，脚本解析不受影响；`--output-format stream-json` 时同样只走 stderr。
 - 过渡期：两个小版本（v0.36、v0.37）；v0.38 删除改写表，旧写法得到“未知命令”与新写法提示。
 
+### chat 选项在顶层（0.2 新增）
+
+用户要求 `suga` 不写子命令时也能带 chat 的选项（如 `suga --resume <id>`、`suga -m <model>`）。现状：无参数时入口补成 `chat`（`cmd/suga/main.go:24-26`），但带选项时 `--resume` 被根命令当成未知选项报错。
+
+做法：与旧写法兼容放在同一个参数改写函数里，**在 `bootstrapExempt` 判断之前**执行：
+
+- 第一个参数以 `-` 开头，且不是根命令自己的选项（`-h`/`--help`、`-V`/`--version`）时，在最前面补 `chat`：`suga --resume x -m y` → `suga chat --resume x -m y`。
+- 第一个参数是子命令名（含 `inspect`、`data` 与旧写法）时不补。
+- 不提示（这是正式写法，不是兼容）。
+- 根帮助的示例里加 `suga --resume <session>   Resume a chat (chat options work without "chat")`。
+- 测试：`suga --resume x`、`suga -m y`、`suga --help`、`suga -V`、`suga run …`、`suga --resume x run`（第一个参数是选项，按 chat 处理，`run` 成为 chat 的多余参数并按 chat 现有规则报错）、空参数。
+
 ### 帮助
 
 - `suga --help` 只列顶层 11 个与两个分组；分组的一行说明列出其子命令名（如 `inspect  会话诊断：trace / stats / export / manifest`）。
@@ -101,6 +114,7 @@
 | D3 | 旧写法用入口参数改写兼容，而不是重复注册隐藏命令 | capp 无隐藏命令；改写集中在一处，到期一次删除。 |
 | D4 | `gc` 的维护开关拆成子命令 | 一个命令五种动作、开关互斥规则复杂；拆开后每个子命令的帮助只讲一件事。 |
 | D5 | 过渡期两个小版本 | 给脚本与文档留迁移时间；gofer 不受影响。 |
+| D6 | 顶层以选项开头时按 `suga chat` 处理 | 用户要求；`suga` 本来就默认进入 chat，选项也应直接可用。 |
 
 ## 安全、数据、运维与回滚
 
@@ -119,4 +133,4 @@
 
 ## 结论与人工计划 Gate
 
-本设计把顶层从 18 个命令减到 11 个，新增 `inspect`、`data` 两个分组，旧写法经入口参数改写兼容两个小版本，gofer 与 ACP 不受影响。用户批准 Q1–Q5 后实施（派出实现，监督审核）；批准前不改代码。
+本设计把顶层从 18 个命令减到 11 个，新增 `inspect`、`data` 两个分组，旧写法经入口参数改写兼容两个小版本，gofer 与 ACP 不受影响。用户已批准（0.2，Q1–Q5 按倾向，含 D6）；派出实施，监督审核。
