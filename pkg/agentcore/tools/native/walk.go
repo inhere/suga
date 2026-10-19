@@ -49,7 +49,11 @@ func walkWorkspace(ctx context.Context, workspace, start string, noIgnore bool, 
 			return struct{}{}, err
 		}
 		if info.Mode().IsRegular() { // a single file
-			return struct{}{}, fn(root, fsStart, fs.FileInfoToDirEntry(info))
+			err := fn(root, fsStart, fs.FileInfoToDirEntry(info))
+			if errors.Is(err, errSearchFull) {
+				return struct{}{}, nil
+			}
+			return struct{}{}, err
 		}
 		werr := fs.WalkDir(root.FS(), fsStart, func(rel string, d fs.DirEntry, err error) error {
 			if ctx.Err() != nil {
