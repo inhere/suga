@@ -129,6 +129,39 @@ func TestToolBodiesMoveUndoCheckStatus(t *testing.T) {
 	})
 }
 
+// TestToolBodiesMoveSkipsExistingStubs: a rerun from scratch (--abort then move)
+// must not move a stub again, even when the threshold is smaller than a stub: the
+// row would otherwise be replaced by a stub of a stub and lose its body.
+func TestToolBodiesMoveSkipsExistingStubs(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "db", "sessions.db")
+	inline, err := Open(path, WithToolBodyInlineBytes(0))
+	assert.Require(t, assert.NoErr(t, err))
+	createSession(t, inline, "s1", "/w")
+	appendAll(t, inline, "s1", NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
+	before := storedEntries(t, inline, "s1")
+	assert.NoErr(t, inline.Close())
+
+	tiny, err := Open(path, WithToolBodyInlineBytes(1))
+	assert.Require(t, assert.NoErr(t, err))
+	defer tiny.Close()
+	first, err := tiny.MoveToolBodies(ctx, ToolBodyMaintOptions{Batch: 10})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(1), first.Rows)
+	file := filepath.Join(tiny.sessionsDir, "s1", ToolBodyFileName)
+	info, err := os.Stat(file)
+	assert.Require(t, assert.NoErr(t, err))
+
+	assert.NoErr(t, tiny.ResetToolBodyState(ctx))
+	second, err := tiny.MoveToolBodies(ctx, ToolBodyMaintOptions{Batch: 10})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(0), second.Rows, "a stub is not a body to move")
+	again, err := os.Stat(file)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, info.Size(), again.Size(), "the file got no second record")
+	assert.Eq(t, before, storedEntries(t, tiny, "s1"))
+}
+
 // TestToolBodiesAreInvisibleToDedupe: a moved row is a stub, so the P2 passes
 // must leave it alone and must not turn its preview into a deduped row.
 func TestToolBodiesAreInvisibleToDedupe(t *testing.T) {

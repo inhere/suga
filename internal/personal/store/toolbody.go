@@ -259,13 +259,18 @@ func (w *toolBodyWriter) Close(keep bool) error {
 	}
 	w.closed = true
 	var err error
-	if !keep {
-		if truncErr := w.file.Truncate(w.size); truncErr != nil && !errors.Is(truncErr, os.ErrClosed) {
-			err = fmt.Errorf("truncate tool body file: %w", truncErr)
-		}
-	}
-	if closeErr := w.file.Close(); err == nil {
+	// The file is closed before a rollback truncates it: Windows refuses
+	// SetEndOfFile on a handle opened for append ("Access is denied"), which would
+	// silently leave the record of a rolled back transaction behind.
+	if closeErr := w.file.Close(); closeErr != nil {
 		err = closeErr
+	}
+	if !keep {
+		if truncErr := os.Truncate(w.path, w.size); truncErr != nil && !errors.Is(truncErr, os.ErrNotExist) {
+			if err == nil {
+				err = fmt.Errorf("truncate tool body file: %w", truncErr)
+			}
+		}
 	}
 	return err
 }

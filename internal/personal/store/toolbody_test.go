@@ -201,6 +201,32 @@ func TestToolBodyWriteFailureRollsBack(t *testing.T) {
 	assert.Eq(t, 0, rows, "the rolled back transaction keeps no row")
 }
 
+// TestToolBodyRecordIsTruncatedWhenTheTransactionFails: the record is written
+// into the file before the row is swapped to its stub, so a failure after that
+// write must leave no record behind (the transaction rolls back and the writer
+// truncates the file to the length it found).
+func TestToolBodyRecordIsTruncatedWhenTheTransactionFails(t *testing.T) {
+	ctx := context.Background()
+	s := openTemp(t)
+	defer s.Close()
+	createSession(t, s, "s1", "/w")
+	// The stub swap is the step after the record write: make it fail.
+	_, err := s.DB().Exec(`CREATE TRIGGER fail_stub BEFORE UPDATE ON entries
+		WHEN NEW.body_ref IS NOT NULL BEGIN SELECT RAISE(ABORT, 'boom'); END`)
+	assert.Require(t, assert.NoErr(t, err))
+
+	_, err = s.AppendEntries(ctx, "s1", NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
+	assert.True(t, err != nil, "the stub swap fails")
+	var rows int
+	assert.NoErr(t, s.db.QueryRow(`SELECT COUNT(1) FROM entries WHERE session_id = 's1'`).Scan(&rows))
+	assert.Eq(t, 0, rows, "the rolled back transaction keeps no row")
+	data, readErr := os.ReadFile(filepath.Join(s.sessionsDir, "s1", ToolBodyFileName))
+	if !errors.Is(readErr, os.ErrNotExist) {
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.Eq(t, 0, len(data), "the record was truncated again")
+	}
+}
+
 func TestToolBodyConcurrentAppendsFromTwoStores(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "db", "sessions.db")
