@@ -35,7 +35,7 @@ func TestScanSpill(t *testing.T) {
 	assert.Eq(t, 2, usage.Sessions)
 	assert.Eq(t, 3, usage.Files)
 	assert.Eq(t, 1, usage.Compressed)
-	assert.Eq(t, int64(450), usage.LogicalBytes)  // the .gz reports its uncompressed size
+	assert.Eq(t, int64(450), usage.LogicalBytes) // the .gz reports its uncompressed size
 	assert.True(t, usage.PhysicalBytes < usage.LogicalBytes, "physical %d", usage.PhysicalBytes)
 	assert.Eq(t, 3, len(files))
 	assert.Eq(t, "out:sess_1:aaaaaaaaaaaaaaaa", files[0].Ref())
