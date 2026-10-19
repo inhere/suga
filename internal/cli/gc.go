@@ -327,5 +327,8 @@ func writeRetentionReport(out io.Writer, report store.GCRetentionReport) {
 		humanBytes(report.Interactive.EstimatedBytes+report.NonInteractive.EstimatedBytes))
 	if !report.Applied {
 		fmt.Fprintln(out, "加 --apply 执行；删除本身不 VACUUM，要回收磁盘空间再运行 `suga gc --vacuum`")
+	} else {
+		// The deletion and the file rewrite are two separate reports.
+		fmt.Fprintln(out, "VACUUM 未执行：要把空间还给磁盘再运行 `suga gc --vacuum`")
 	}
 }
