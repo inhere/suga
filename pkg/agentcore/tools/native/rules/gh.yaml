@@ -14,7 +14,7 @@ rules:
       - '^Error: '
       - '^error: '
       - '^ERROR: '
-      - '^\s*(✗|×|X) '
+      - '^\s*(✗|×|X)\s+'
       - '\b(failed|failure|FAIL)\b'
       - '^HTTP [45]\d\d$'
       - '^(could not|unable to|no such) '

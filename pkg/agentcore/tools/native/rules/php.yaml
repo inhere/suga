@@ -6,9 +6,10 @@ rules:
     drop:
       - '^\[exit code: 0\]$'
       - '^PHPUnit \d+'
+      - '^Runtime: '
+      - '^Configuration: '
       - '^\s*[✔✓] '
       - '^\s*PASS\s+'
-      - '^OK \('
       - '^Time: '
       - '^Memory: '
     failure:
@@ -30,7 +31,7 @@ rules:
       - '^\[exit code: 0\]$'
       - '^\s*[✔✓] '
       - '^\s*PASS\s+'
-      - '^Tests: .*\bpassed\b'
+      - '^Duration: '
       - '^Time: '
     failure:
       - '^\s*(FAIL|⨯|✗) '

@@ -1,9 +1,12 @@
 # GNU make: recursive directory banners are repetitive; recipe output and every
-# diagnostic remain unless it is an unmistakable make progress banner.
+# diagnostic remain unless it is an unmistakable make progress banner. Like the
+# git rules the rule asks for the output shape it was written for
+# (match_output): a recursive sub-make or a make-level failure, so plain recipe
+# output - and a user rule for it - is left alone.
 rules:
   - name: make
     match: '^\s*make(?:\.exe)?(?:\s|$)'
-    match_output: '(?m)^make(?:\[\d+\])?: (Entering|Leaving) directory '
+    match_output: '(?m)^make(?:\[\d+\])?: (Entering|Leaving) directory |^make(?:\.exe)?(?:\[\d+\])?: \*\*\*'
     drop:
       - '^\[exit code: 0\]$'
       - '^make(?:\[\d+\])?: (Entering|Leaving) directory '
