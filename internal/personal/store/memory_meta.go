@@ -30,7 +30,7 @@ const tombstoneKeySep = "@"
 func (s *Store) Record(ctx context.Context, backend string, sc memory.Scope, e memory.Entry, fingerprint string) error {
 	now := formatTime(time.Now())
 	scope := sc.String()
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWriteTx(ctx)
 	if err != nil {
 		return err
 	}

@@ -37,7 +37,7 @@ type MemoryHit struct {
 // one; changed rows are deleted before insertion because FTS5 has no ordinary
 // UPDATE semantics for its UNINDEXED metadata columns.
 func (s *Store) SyncMemoryIndex(ctx context.Context, scope string, sources []MemorySource) (added, removed int, err error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWriteTx(ctx)
 	if err != nil {
 		return 0, 0, fmt.Errorf("begin memory index sync: %w", err)
 	}

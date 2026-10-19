@@ -16,7 +16,7 @@ func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEn
 	if len(in) == 0 {
 		return nil, nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWriteTx(ctx)
 	if err != nil {
 		return nil, err
 	}

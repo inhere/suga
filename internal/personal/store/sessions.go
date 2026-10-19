@@ -212,7 +212,7 @@ func (s *Store) PatchSessionMetaIfAbsent(ctx context.Context, id, guard string, 
 // patchSessionMeta merges patch into meta_json; with a non-empty guard it is a
 // no-op (false) when meta already holds that key.
 func (s *Store) patchSessionMeta(ctx context.Context, id, guard string, patch map[string]any) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWriteTx(ctx)
 	if err != nil {
 		return false, err
 	}
