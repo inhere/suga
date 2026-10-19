@@ -38,7 +38,7 @@ func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version str
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(stdout, "备份完成：%d 个文件，spill=%s，归档=%s\n", len(manifest.Files), manifest.Spill.Policy, output)
+		_, err = fmt.Fprintf(stdout, "备份完成：%d 个文件（tool 正文文件 %d 个），spill=%s，归档=%s\n", len(manifest.Files), manifest.ToolBodies.FileCount, manifest.Spill.Policy, output)
 		return err
 	})
 	cmd.SetOutput(stderr)
@@ -93,8 +93,27 @@ func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(stdout, "恢复完成：备份创建时间 %s\n", when)
-		return err
+		if _, err := fmt.Fprintf(stdout, "恢复完成：备份创建时间 %s\n", when); err != nil {
+			return err
+		}
+		// The session files hold the only copy of a moved tool body, so verify them
+		// against the restored ledger before the command reports success.
+		report, err := backup.ToolBodyCheck(ctx, home)
+		if err != nil {
+			return fmt.Errorf("恢复已完成，但 tool 正文校验未能运行: %w", err)
+		}
+		if _, err := fmt.Fprintf(stdout, "tool 正文校验：检查 %d 条，缺失 %d 条，无引用的记录 %d 条（%d 字节）\n",
+			report.Checked, report.Missing, report.OrphanRecords, report.OrphanBytes); err != nil {
+			return err
+		}
+		if !report.OK() {
+			for _, problem := range report.Problems {
+				if _, err := fmt.Fprintf(stderr, "缺少 tool 正文: %s\n", problem); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
 	})
 	cmd.SetOutput(stderr)
 	cmd.AddArg("archive", "the .suga-backup.zip archive", true)
