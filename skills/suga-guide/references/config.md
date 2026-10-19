@@ -332,6 +332,7 @@ suga inspect export <session> [--redact] [-o <file>]
 suga data gc --older-than 30d [--apply]
 suga data gc --retention [--apply]
 suga data shrink-fts [--status|--abort]
+suga data dedupe-tool-results [--status|--abort|--undo]
 suga data vacuum
 suga inspect manifest [--json] [--model <p/m>] [--thinking <level>]
 suga version
