@@ -254,7 +254,19 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		ShellTimeoutMax: time.Duration(gkconfig.Int("tools.shell_timeout_max",
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,
 		ShellBackgroundAfter: shellBackgroundAfter(),
+		ImageMaxSide:         imageMaxSide(),
 	}
+}
+
+// imageMaxSide is view_image's default long side (images.max_side). Open
+// validates the section at startup, so an invalid value keeps the built-in
+// default here instead of failing tool construction.
+func imageMaxSide() int {
+	settings, err := axconfig.ReadImageSettings()
+	if err != nil {
+		return axconfig.DefaultImageMaxSide
+	}
+	return settings.MaxSide
 }
 
 // configuredNetworkProxy resolves network.proxy for the native tools. Open()

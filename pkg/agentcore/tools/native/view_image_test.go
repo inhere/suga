@@ -104,6 +104,31 @@ func TestViewImageRefuses(t *testing.T) {
 	})
 }
 
+// TestViewImageMaxSide pins images.max_side: the configured long side is the
+// default of a call that names none, and the call's own argument still wins.
+func TestViewImageMaxSide(t *testing.T) {
+	dir := t.TempDir()
+	assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(dir, "big.png"), encodeTestPNG(t, 40, 20), 0o600)))
+	tool := NewViewImageTool(dir, nil, nil, "")
+	tool.maxSide = 10
+
+	t.Run("the configured side is the default", func(t *testing.T) {
+		res, err := tool.Execute(context.Background(), api.ToolCall{Arguments: map[string]any{"path": "big.png"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 10, res.Images[0].Width)
+		assert.Eq(t, 5, res.Images[0].Height)
+		assert.Contains(t, tool.Description(), "10 px")
+	})
+	t.Run("the call argument wins", func(t *testing.T) {
+		res, err := tool.Execute(context.Background(), api.ToolCall{Arguments: map[string]any{"path": "big.png", "max_side": 20}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 20, res.Images[0].Width)
+	})
+	t.Run("no configured side keeps the built-in default", func(t *testing.T) {
+		assert.Contains(t, NewViewImageTool(dir, nil, nil, "").Description(), "1568 px")
+	})
+}
+
 // TestViewImageGIFFirstFrame pins the GIF path: the first frame is sent.
 func TestViewImageGIFFirstFrame(t *testing.T) {
 	dir := t.TempDir()

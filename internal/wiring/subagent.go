@@ -135,6 +135,10 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	images, err := appconfig.ReadImageSettings()
+	if err != nil {
+		return nil, nil, err
+	}
 	registry := tools.NewRegistry()
 	for _, tool := range native.BuildTools(nativeEnv(s.workspace, s.addDirs), false) {
 		for _, name := range subAgentTools[kind] {
@@ -164,6 +168,8 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 		Price:         priceLookup(rs.models),
 		Workspace:     s.workspace, Version: buildVersion, Mode: runMode(false),
 		TaintTools: rs.taintTools, TaintOnSpill: rs.taintOnSpill,
+		ImageHistoryTurns: images.HistoryTurns, ImageRequestCount: images.MaxRequestCount,
+		ImageRequestBytes: images.MaxRequestBytes,
 		InlineOutputBytes: inlineOutputBytes(), Spiller: personal.NewSessionSpiller(rs.sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
 		SessionsDir:    rs.sessionsDir,
 		MinimizeOutput: minimizeOutput(s.workspace), PrefetchTools: prefetchTools(registry),

@@ -122,6 +122,10 @@ type Config struct {
 	// FoldEvery/FoldKeep configure history folding of the request view
 	// (context.fold_every / context.fold_keep, see foldHistory); FoldEvery 0 = off.
 	FoldEvery, FoldKeep int
+	// ImageHistoryTurns, ImageRequestCount and ImageRequestBytes are the image
+	// input limits of the request view (images.history_turns / max_request_count /
+	// max_request_bytes); 0 uses the built-in default (appconfig.DefaultImage*).
+	ImageHistoryTurns, ImageRequestCount, ImageRequestBytes int
 	// CompactProvider/CompactModel summarize history when llm.compact_model is
 	// set; nil means the turn's own provider is used.
 	CompactProvider agentcore.Provider

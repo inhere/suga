@@ -420,6 +420,12 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 
 	settings, taintTools, taintOnSpill := rs.models, rs.taintTools, rs.taintOnSpill
 	memSetup, memPolicy, sessionsDir := rs.memSetup, rs.memPolicy, rs.sessionsDir
+	// Picture limits of one request (images.*): a bad value is a startup error
+	// rather than a silently missing cap.
+	images, err := appconfig.ReadImageSettings()
+	if err != nil {
+		return nil, err
+	}
 	// One live vision gate per runtime: the main model builds the tool set with
 	// it, and :model moves it (view_image is filtered per current model).
 	visionGate := tools.NewVisionGate(appconfig.VisionFor(settings.Main))
@@ -594,16 +600,18 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Tasks:         taskNotices,
 		ContextWindow: contextWindow,
 		// History folding of the request view (context.fold_every/fold_keep).
-		FoldEvery:       rs.fold.Every,
-		FoldKeep:        rs.fold.Keep,
-		CompactProvider: compactProvider,
-		CompactModel:    compactModel,
-		Plans:           plans,
-		Ledger:          ledger,
-		MemoryIndex:     mem.index,
-		Workspace:       workspace,
-		Version:         buildVersion,
-		Mode:            runMode(allowWrite),
+		FoldEvery:         rs.fold.Every,
+		FoldKeep:          rs.fold.Keep,
+		ImageHistoryTurns: images.HistoryTurns, ImageRequestCount: images.MaxRequestCount,
+		ImageRequestBytes: images.MaxRequestBytes,
+		CompactProvider:   compactProvider,
+		CompactModel:      compactModel,
+		Plans:             plans,
+		Ledger:            ledger,
+		MemoryIndex:       mem.index,
+		Workspace:         workspace,
+		Version:           buildVersion,
+		Mode:              runMode(allowWrite),
 		// chat shows what a file tool changed (chat.diff): its tool_call events then
 		// carry the change on disk (internal/diffview). run, ACP and stream-json keep
 		// file text out of their events; ACP builds its own diff for its client.

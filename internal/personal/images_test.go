@@ -10,6 +10,7 @@ import (
 
 	"github.com/gookit/goutil/x/assert"
 
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/pkg/agentcore"
 )
 
@@ -111,7 +112,7 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		part := writeTestImage(t, sessionsDir, "s1", []byte("x"))
 		b := imageTestBuilder(sessionsDir, "s1", 0, 0)
 		var view []agentcore.Message
-		for i := 0; i < ImageRequestCount+2; i++ {
+		for i := 0; i < appconfig.DefaultImageRequestCount+2; i++ {
 			view = append(view, agentcore.Message{Role: "user", Content: "m", Images: []agentcore.ImagePart{part}})
 		}
 		out := b.prepareImages(view)
@@ -119,7 +120,7 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		for _, m := range out {
 			kept += len(m.Images)
 		}
-		assert.Eq(t, ImageRequestCount, kept)
+		assert.Eq(t, appconfig.DefaultImageRequestCount, kept)
 		assert.True(t, strings.Contains(out[0].Content, "超出单请求图片上限"))
 		assert.Eq(t, 1, len(out[len(out)-1].Images), "the newest image stays")
 	})
@@ -135,6 +136,27 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		out := limitRequestImages(view, 8, 3)
 		assert.Eq(t, 0, len(out[0].Images))
 		assert.Eq(t, 1, len(out[1].Images))
+	})
+
+	t.Run("images.history_turns keeps the pictures of the newest steps", func(t *testing.T) {
+		// Folding off (every = 0): the images of the last `turns` assistant steps
+		// stay, an older one becomes a note (images.history_turns).
+		sessionsDir := t.TempDir()
+		part := writeTestImage(t, sessionsDir, "s1", []byte("png-bytes"))
+		view := []agentcore.Message{
+			{Role: "user", Content: "old", Images: []agentcore.ImagePart{part}},
+			{Role: "assistant", Content: "step 1"},
+			{Role: "assistant", Content: "step 2"},
+			{Role: "assistant", Content: "step 3"},
+			{Role: "assistant", Content: "step 4"},
+			{Role: "user", Content: "new", Images: []agentcore.ImagePart{part}},
+		}
+		b := imageTestBuilder(sessionsDir, "s1", 0, 0)
+		b.r.cfg.ImageHistoryTurns = 2
+		out := b.prepareImages(view)
+		assert.Eq(t, 0, len(out[0].Images))
+		assert.Contains(t, out[0].Content, "已省略")
+		assert.Eq(t, 1, len(out[5].Images))
 	})
 }
 

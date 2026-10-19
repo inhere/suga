@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 )
@@ -24,16 +25,12 @@ import (
 //     last history fold boundary; older images are replaced by a text note (the
 //     boundary moves once per batch, so the request prefix stays cacheable), and
 //     the model can re-read one with view_image <ref>;
-//   - one request carries at most ImageRequestCount images and
-//     ImageRequestBytes encoded bytes; the oldest ones are replaced by a note;
+//   - one request carries at most images.max_request_count images and
+//     images.max_request_bytes encoded bytes; the oldest ones are replaced by a
+//     note;
 //   - an image whose file is missing or does not match its sha256 is replaced
 //     by a note instead of failing the turn.
 const (
-	// ImageRequestCount is the number of images one request may carry.
-	ImageRequestCount = 8
-	// ImageRequestBytes is the encoded-size budget of the images of one request,
-	// below the ~32MB a single Claude request allows.
-	ImageRequestBytes = 20 << 20
 	// maxImageFileBytes bounds what is read back for one image (a stored file is
 	// already limited when written; this catches a corrupt one).
 	maxImageFileBytes = 20 << 20
@@ -136,13 +133,25 @@ func (b *contextBuilder) prepareImages(view []agentcore.Message) []agentcore.Mes
 		return view
 	}
 	loader := newImageLoader(b.r.cfg.SessionsDir, b.sessionID)
-	cut := imageHistoryCut(view, b.r.cfg.FoldEvery, b.r.cfg.FoldKeep)
+	// The limits come from the images.* section; a runner built without them (a
+	// test) keeps the built-in defaults.
+	turns, count, bytes := b.r.cfg.ImageHistoryTurns, b.r.cfg.ImageRequestCount, b.r.cfg.ImageRequestBytes
+	if turns <= 0 {
+		turns = appconfig.DefaultImageHistoryTurns
+	}
+	if count <= 0 {
+		count = appconfig.DefaultImageRequestCount
+	}
+	if bytes <= 0 {
+		bytes = appconfig.DefaultImageRequestBytes
+	}
+	cut := imageHistoryCut(view, b.r.cfg.FoldEvery, b.r.cfg.FoldKeep, turns)
 	out := make([]agentcore.Message, len(view))
 	for i, m := range view {
 		trimmed := i < cut
 		out[i] = b.resolveMessageImages(m, loader, trimmed)
 	}
-	return limitRequestImages(out, ImageRequestCount, ImageRequestBytes)
+	return limitRequestImages(out, count, bytes)
 }
 
 // hasImages reports whether any message of msgs carries an image.
@@ -156,24 +165,29 @@ func hasImages(msgs []agentcore.Message) bool {
 }
 
 // imageHistoryCut returns the index of the first message whose images stay in
-// the request: the messages from the last fold boundary on, or 0 when folding
-// is off. A message belongs to the step that follows it (a user message asks
+// the request: the messages from the last fold boundary on, or, with folding
+// off, the messages of the last `turns` assistant steps (images.history_turns).
+// A message belongs to the step that follows it (a user message asks
 // for it, a tool message answers it), so the cut is the first message after
 // `boundary` assistant steps. It uses the same step boundary as foldHistory,
 // so trimming pictures happens on the batch cadence that already invalidates
 // the cached prefix.
-func imageHistoryCut(msgs []agentcore.Message, every, keep int) int {
-	boundary, _ := foldBoundary(msgs, every, keep)
+func imageHistoryCut(msgs []agentcore.Message, every, keep, turns int) int {
+	boundary, steps := foldBoundary(msgs, every, keep)
+	if boundary == 0 && every <= 0 {
+		// No folding: keep the pictures of the newest `turns` steps.
+		boundary = max(steps-turns, 0)
+	}
 	if boundary == 0 {
 		return 0
 	}
-	steps := 0
+	seen := 0
 	for i, m := range msgs {
-		if steps >= boundary {
+		if seen >= boundary {
 			return i
 		}
 		if m.Role == "assistant" {
-			steps++
+			seen++
 		}
 	}
 	return len(msgs)

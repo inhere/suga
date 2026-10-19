@@ -59,6 +59,9 @@ type ViewImageTool struct {
 	// updates it); a model that cannot see is told how to switch instead of
 	// receiving bytes nobody reads. nil = can see.
 	vision *tools.VisionGate
+	// maxSide is the default long side a picture is scaled to (images.max_side);
+	// 0 = DefaultImageMaxSide.
+	maxSide int
 }
 
 // NewViewImageTool returns the tool for a workspace and the session's images
@@ -75,11 +78,21 @@ func (t *ViewImageTool) SetVision(gate *tools.VisionGate) *ViewImageTool {
 }
 
 func (t *ViewImageTool) Name() string { return "view_image" }
+
+// defaultMaxSide is the long side a picture is scaled to when the call names
+// none: images.max_side, else DefaultImageMaxSide.
+func (t *ViewImageTool) defaultMaxSide() int {
+	if t.maxSide > 0 {
+		return t.maxSide
+	}
+	return DefaultImageMaxSide
+}
+
 func (t *ViewImageTool) Description() string {
 	return fmt.Sprintf("Look at a local picture and hand it to you as an image (PNG, JPEG, GIF first frame or "+
 		"WebP). The path follows the file tools (workspace, read-only roots, added directories); a session "+
 		"image ref such as images/<sha256>.png works too. The picture is scaled down to %d px on its long "+
-		"side, so very large screenshots stay cheap. Read text files with file_read.", DefaultImageMaxSide)
+		"side, so very large screenshots stay cheap. Read text files with file_read.", t.defaultMaxSide())
 }
 
 // ToolMeta marks the tool as a read-only read. It is not Prefetchable: its
@@ -101,7 +114,7 @@ func (t *ViewImageTool) Schema() api.ToolSchema {
 				},
 				"max_side": map[string]any{
 					"type":        "integer",
-					"description": fmt.Sprintf("Long side to scale the picture down to (default %d)", DefaultImageMaxSide),
+					"description": fmt.Sprintf("Long side to scale the picture down to (default %d)", t.defaultMaxSide()),
 				},
 			},
 			"required": []any{"path"},
@@ -118,7 +131,7 @@ func (t *ViewImageTool) Execute(_ context.Context, call api.ToolCall) (*api.Tool
 	if !t.vision.CanSee() {
 		return nil, fmt.Errorf("current model cannot see images: switch to a model with vision (chat: :model)")
 	}
-	maxSide := DefaultImageMaxSide
+	maxSide := t.defaultMaxSide()
 	if n, ok := numberArg(call.Arguments["max_side"]); ok && n > 0 {
 		maxSide = int(n)
 	}
