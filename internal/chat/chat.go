@@ -139,6 +139,16 @@ type Options struct {
 	Local *native.LocalCommand
 }
 
+// markInteractivelyUsed records that this chat continued a session a
+// non-interactive entry point created, which moves that session into the
+// interactive retention class of `suga gc --retention`. A failure is reported
+// and never fatal: the session is usable either way.
+func markInteractivelyUsed(stderr io.Writer, runner *personal.Runner, sessionID string) {
+	if err := runner.MarkSessionUsedInteractively(context.WithoutCancel(context.Background()), sessionID); err != nil {
+		fmt.Fprintf(stderr, "warning: record interactive use of %s: %v\n", sessionID, err)
+	}
+}
+
 // Run drives the interactive chat REPL on top of runner; hooks may be nil.
 func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Reader, stdout, stderr io.Writer, hooks sugahooks.Client) error {
 	hooks = recordHooks(hooks, runner)
@@ -150,7 +160,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	source := "startup"
 	createdAtStartup := false
 	if opts.FromID != "" {
-		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: "New chat"})
+		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: "New chat", Origin: personal.OriginChat})
 		if err != nil {
 			return personal.SessionNotFound(err, opts.FromID)
 		}
@@ -162,14 +172,16 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			return personal.SessionNotFound(err, opts.ResumeID)
 		}
 		sessionID, startupTitle = model.ID, model.Title
+		markInteractivelyUsed(stderr, runner, model.ID)
 	} else if opts.SessionID != "" {
 		model, err := runner.LoadSession(ctx, opts.SessionID)
 		if err == nil {
 			// Opening an existing session by --session-id continues it: report resume, like claude.
 			sessionID, startupTitle = model.ID, model.Title
 			source = "resume"
+			markInteractivelyUsed(stderr, runner, model.ID)
 		} else if errors.Is(err, personal.ErrSessionNotFound) {
-			model, err = runner.NewSession(ctx, opts.SessionID, "New chat")
+			model, err = runner.NewSessionFor(ctx, opts.SessionID, "New chat", personal.OriginChat)
 			if err != nil {
 				return err
 			}
@@ -178,7 +190,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			return err
 		}
 	} else {
-		model, err := runner.NewSession(ctx, "", "New chat")
+		model, err := runner.NewSessionFor(ctx, "", "New chat", personal.OriginChat)
 		if err != nil {
 			return err
 		}

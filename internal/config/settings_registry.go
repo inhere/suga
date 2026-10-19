@@ -192,6 +192,8 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.approval_rules.always_prefix_tokens", Type: ConfigTypeInt, Writable: true, Reader: "approval_rules"},
 	{Pattern: "tools.approval_rules.persist_ask", Type: ConfigTypeBool, Writable: true, Reader: "approval_rules"},
 	{Pattern: "tools.approval_rules.project_trust", Type: ConfigTypeStringMap, Writable: true, Reader: "approval_rules"},
+	{Pattern: "gc.retention.interactive", Type: ConfigTypeDuration, Writable: true, Reader: "gc_retention"},
+	{Pattern: "gc.retention.noninteractive", Type: ConfigTypeDuration, Writable: true, Reader: "gc_retention"},
 }
 
 var (
@@ -545,6 +547,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadSnapshotSettings()
 	case "approval_rules":
 		_, err = ReadApprovalRulesSettings()
+	case "gc_retention":
+		_, err = ReadGCRetentionSettings()
 	case "mcp":
 		_, err = ReadMCPServerSettings()
 	case "network_proxy":
@@ -668,6 +672,15 @@ func effectiveConfigValue(key string) (any, bool, error) {
 	case "max_steps":
 		value, err := ReadMaxSteps(0)
 		return value, true, err
+	case "gc.retention.interactive", "gc.retention.noninteractive":
+		settings, err := ReadGCRetentionSettings()
+		if err != nil {
+			return nil, false, err
+		}
+		if key == "gc.retention.interactive" {
+			return settings.Interactive, true, nil
+		}
+		return settings.NonInteractive, true, nil
 	case "budget.tokens", "budget.cost_usd", "budget.scope", "budget.estimate", "budget.estimate_factor", "budget.notice_ratio":
 		settings, err := ReadBudgetSettings(BudgetFlags{})
 		if err != nil {
