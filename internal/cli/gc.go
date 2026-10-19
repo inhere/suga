@@ -18,12 +18,30 @@ import (
 )
 
 // newGCCommand builds `suga gc`: remove sessions idle for longer than
-// --older-than. It only reports by default; --apply deletes.
+// --older-than (only reports by default; --apply deletes). The same command
+// owns the two ledger maintenance jobs of data governance P1: --shrink-fts
+// rewrites the historical tool rows of entries_fts to the truncated form new
+// rows already use, and --vacuum returns the freed space to the disk.
 func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var olderThan string
-	var apply bool
-	cmd := capp.NewCmd("gc", "Remove sessions (and their events) not updated within --older-than; dry run unless --apply", func(c *capp.Cmd) error {
-		if len(c.RemainArgs()) > 0 || olderThan == "" {
+	var apply, shrinkFTS, status, abort, vacuum bool
+	var batch int
+	cmd := capp.NewCmd("gc", "Remove sessions idle within --older-than (dry run unless --apply), shrink the tool-output FTS index or VACUUM the ledger", func(c *capp.Cmd) error {
+		if len(c.RemainArgs()) > 0 {
+			return fmt.Errorf("usage: suga gc --older-than 30d [--apply] | suga gc --shrink-fts [--status|--abort] | suga gc --vacuum")
+		}
+		if status || abort {
+			if !shrinkFTS {
+				return fmt.Errorf("--status and --abort belong to --shrink-fts: suga gc --shrink-fts [--status|--abort]")
+			}
+		}
+		if shrinkFTS {
+			return runShrinkFTS(ctx, stdout, status, abort, batch)
+		}
+		if vacuum {
+			return runGCVacuum(ctx, stdout)
+		}
+		if olderThan == "" {
 			return fmt.Errorf("usage: suga gc --older-than 30d [--apply]")
 		}
 		age, err := parseSince(olderThan)
@@ -35,6 +53,11 @@ func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	cmd.SetOutput(stderr)
 	cmd.StringVar(&olderThan, "older-than", "", "remove sessions not updated within this age, e.g. 30d or 12h")
 	cmd.BoolVar(&apply, "apply", false, "delete for real (default: only list what would be removed)")
+	cmd.BoolVar(&shrinkFTS, "shrink-fts", false, "rewrite old tool-output FTS rows to the truncated index form (resumable, Ctrl-C keeps the progress)")
+	cmd.BoolVar(&status, "status", false, "with --shrink-fts: report how much of the index is left to shrink")
+	cmd.BoolVar(&abort, "abort", false, "with --shrink-fts: drop the progress checkpoint so the next run starts over")
+	cmd.BoolVar(&vacuum, "vacuum", false, "rewrite the database file to return freed space (needs free disk space and no other suga process)")
+	cmd.IntVar(&batch, "batch", 0, "with --shrink-fts: rows per write transaction (default 2000)")
 	return cmd
 }
 

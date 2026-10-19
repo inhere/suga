@@ -109,7 +109,9 @@ func (t *SessionSearchTool) Description() string {
 		"cursor restarts from the beginning. For Chinese, prefer terms of two or more characters. With " +
 		"ref=out:<session>:<hex> it searches saved output lines (case-insensitive); ref cannot combine with " +
 		"cursor, kind or time filters. When the result says the scope holds no stored history, stop searching " +
-		"rather than trying other words."
+		"rather than trying other words. Tool results are indexed as their first and last 512 characters only; " +
+		"the middle of a long result is not searchable - read the whole result with recall(ref) or, for a spilled " +
+		"output, with the out:... ref."
 }
 
 // ToolMeta: read-only search; results are external content (taint).

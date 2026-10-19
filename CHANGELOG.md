@@ -6,6 +6,13 @@
 
 ### 新增
 
+- `suga gc --shrink-fts [--status|--abort|--batch N]`：把历史 tool 输出的 FTS 索引改成新写入用的截断形式（头/尾各 512 字符，中间 ` … `），按 `entries_fts` 自己的 rowid 每批 2,000 行原地重写（每批一个短写事务，走 `BEGIN IMMEDIATE` + 忙重试），完成后分批 `merge` 回收段空间；断点存在命令自建的小表 `fts_shrink_state`（不进迁移），Ctrl-C 中断后重跑从断点续上，`--status` 报待处理行数/字符数与估算回收量，`--abort` 清断点重来。执行期间可正常 chat/写会话（新写入本来就已截断）；不换表、不动触发器。
+- `suga gc --vacuum`：先检查剩余磁盘空间（≥ 库大小 × 2）与是否有其他 suga 进程在用这个库（进程登记 + run/locks 会话锁 + run/maintenance.lock），之后执行 `VACUUM` 并 `PRAGMA wal_checkpoint(TRUNCATE)`，打印前后大小；失败时原库不动并提示重试。
+
+### 变更
+
+- **FTS 只索引 tool 输出的开头与结尾各 512 字符**（`length > 1024` 时取头 512 + ` … ` + 尾 512；按字符计，不会切坏 UTF-8；user/assistant/compaction/handoff 不变）。代价：4–8KB 且没有 `out:` 引用的 tool 输出（spill 阈值 8000 字节，占多数）中段在瘦身后搜不到，`recall` 的正文渲染又有约 4,000 字节上限，这类输出的中段既搜不到也读不全——需要正文时用 `recall(ref)` 或 `out:` 引用读原文。`session_search` 的描述与结果说明会写明这一点：重建未完成时提示“历史 tool 输出的索引尚未瘦身完，部分旧结果仍是全文命中”。
+- `suga gc` 除会话清理外还负责上面两项 ledger 维护，`--older-than` 与 `--apply` 语义不变；`gc --apply` 现有的自动 VACUUM 本批未改（属 P3）。
 - `file_refs` 新增 `context` 参数（0–5，默认 0 时输出逐字不变）：命中行前后各带 N 行**原始源码**（遮蔽前的行；YAML/TOML 与退化文本匹配也是如此），格式与 `file_grep` 的 `context` 一致——命中行仍是 `path:line class[(qualifier)] text`，上下文行是 `path-line- text`，块之间 `--`，同一文件里相邻/重叠的块合并；每个文件只为上下文读一次，上下文行不计入 `limit`，整体仍受现有结果字节上限与截断规则约束，限定名的“maybe also”组同样带上下文。需要看调用点附近代码时加 `context: 3`（如 `file_refs name=Runner.Run context=3`），省去逐个 `file_read`。
 - 输出最小化规则补齐 TypeScript/ESLint、Ruff/Mypy、Go build/vet、Docker/Compose、make、gh 只读命令与 PHPUnit/Pest：成功输出折叠为摘要，失败保留错误定位、断言 diff 与构建诊断。
 
