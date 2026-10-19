@@ -33,6 +33,8 @@ func TestChatKeepsRunningWithoutProcessRegistration(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		base = filepath.Join(base, strings.Repeat("fall-segment-", 3))
 	}
+	// TMPDIR also feeds t.TempDir on Unix, so the directory has to exist.
+	assert.Require(t, assert.NoErr(t, os.MkdirAll(base, 0o700)))
 	if runtime.GOOS == "windows" {
 		t.Setenv("LOCALAPPDATA", base)
 	} else {

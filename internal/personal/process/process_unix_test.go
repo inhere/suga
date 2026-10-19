@@ -83,7 +83,7 @@ func TestStartFailsWhenFallbackDirIsUnusable(t *testing.T) {
 	assert.ErrSubMsg(t, err, "too long")
 	assert.ErrSubMsg(t, err, "not usable")
 	assert.ErrSubMsg(t, err, "too open")
-	assert.Eq(t, "0755", strconv.FormatInt(int64(mustPerm(t, fallbackDirPath())), 8))
+	assert.Eq(t, "755", strconv.FormatInt(int64(mustPerm(t, fallbackDirPath())), 8))
 }
 
 // mustPerm reads dir's octal permission bits.
