@@ -664,3 +664,94 @@ T6 的两次有效运行比 §10 全面下降（步数 -5.2、调用 -12.7、输
 - 判分由 3 个子 agent 按题库 §2/§3 逐题判分，关键行号抽查了快照（RQ3 六处、T6 五处均属实）；未做第三方复核。
 - 运行产物（`tmp/b19/`：构建的二进制、15 个隔离 home、会话库、trace/export 导出、运行脚本与 `metrics.json`）在分析完成后已删除；`git status --short` 干净。
 
+## 13. 第二十批复测（`file_refs` 的 `context` 参数）
+
+本节复测 `file_refs` 新增的 `context` 参数（0.2 修订的 C1）：它是否被模型主动使用、用了是否免掉调用点附近的 `file_read`，以及默认输出不变的前提下有没有副作用。任务是 T6（explore-compare §1.3 原文，2 次）与跨语言题库的 6 道 C 题（RQ2、KY2、GS2、GZ2、WD2、ZL2，每题 2 次），共 14 次运行。
+
+### 13.1 方法与口径
+
+| 项 | 取值 |
+|---|---|
+| suga | 本 worktree 构建的 `cmd/suga`（HEAD `2b0e16c9`，含 `file_refs` 的 `context` 参数） |
+| 模型 / 档位 | `opencode-go/deepseek-v4.1-flash`（`--thinking high`）；`suga run --read-only`，无 shell、不接 MCP、`tools_count=15`，与 §12.1 同口径 |
+| SUGA_HOME | 每次运行一个隔离目录 `tmp/b20/runs/<tag>-r<i>/home`，只写非密钥配置（`model`、`max_steps: 60`、`tools.allow_write: false`、`tools.approval: auto`、`memory.project.backend: files`、provider 的 `type/context_window/base_url/headers/models`）；密钥用 `api_key: "${OPENCODE_API_KEY}"` 从进程环境变量展开，**不复制 `.env`、不打印密钥值** |
+| 工作目录 | T6 = 本 worktree；C 题 = 该题仓库快照（`tmp/xlang/requests`、`ky`、`gson`、`guzzle`、`walkdir`、`inhere.github.io`），与 §12.1 一致 |
+| 提问 | T6 逐字照抄 explore-compare §1.3；C 题逐字照抄题库 §4 的 `提问` 列，前缀“只读任务，不要修改任何文件，也不要运行构建或测试。”、后缀“请直接给出答案（文件:行）。” |
+| 运行 | 14 次运行，3 并发，单次超时 600s；**14/14 `exit 0`**，无超时、无网络重试记录；单次墙钟 6.3–61.7s |
+| 指标 | 步数 = `export` 里 `event_kind=model` 的事件数；工具调用 = `event_kind=tool` 的事件数；token = model 事件的 `input/cache_read/output_tokens` 之和；工具参数取 `export` 的会话 entry（`ToolCall.Arguments`，`trace --json` 事件的 `attrs.arg` 会漏掉部分参数，不能用于统计 `context`）；墙钟 = 进程墙钟 |
+| 工具产物 | 运行脚本 `tmp/b20/run.py`、指标 `tmp/b20/metrics.py` → `metrics.json`、判分 `tmp/b20/score.py` → `score.json`、14 个隔离 home 与 `export.jsonl`；分析完成后连同 `tmp/b20/` 一起删除 |
+
+### 13.2 T6（`personal.Runner.Run` 调用方，与 §12.2 对比）
+
+| 运行 | 步数 | 工具调用 | 输入 / cache / 输出 token | 墙钟 | 工具分布 | `file_refs` 带 context | 答案 |
+|---|---:|---:|---|---:|---|---|---|
+| T6-1 | 12 | 21 | 267.2k / 196.0k / 5.2k | 61.7s | file_refs×8, file_read×7, file_grep×5, file_find×1 | 1 次（`Run` + `path=internal/acpserver` + `context: 2`） | 全对（5 处） |
+| T6-2 | 10 | 15 | 172.2k / 146.0k / – | 37.7s | file_refs×6, file_read×4, file_grep×4, file_find×1 | 2 次（`Runner.Run`+`context: 3`、`Runner`+`internal/acpserver`+`context: 4`） | 全对（5 处） |
+
+| 任务 | 指标 | §10 本批（3 次） | §12 本批（2 次） | **§13 本批（2 次）** | omp（§12 参照） |
+|---|---|---|---|---|---|
+| T6 | 步数 | 14.7 | 9.5 | **11.0** | 9.5 |
+| | 工具调用 | 26.7 | 14.0 | **18.0** | 14.5 |
+| | 输入 token | 362.2k | 190.9k | **219.7k** | – |
+| | 墙钟 | 95.5s | 50.8s | **49.7s** | – |
+| | `file_read` 次数 | – | 2.0（T6-1/T6-2 各 3/1） | **5.5** | – |
+| | `file_refs` 之后的 `file_read` | – | – | **5.5** | – |
+| | 答案正确 | 3/3 | 2/2 | **2/2** | 抽查一致 |
+
+两次都给出全部 5 个直接调用方，并主动点出不是调用方的近名项（`main.go:35/43` 的 agentcore `Runtime.Run`、`local_cmd.go:94` 的 `LocalCommand.Run`）；质量与 §12 一致。效率上比 §12 回退：步数 +1.5、调用 +4.0（+29%）、输入 token +15%，但仍优于 §10（-3.7 步 / -8.7 调用）。`context` 确实被用到了（3 次，都在 T6），但两次的 `file_read` 都没有减少：T6-1 的 7 次 `file_read` 全部发生在第一次 `file_refs` 之后（那一次带 `context: 2`，模型随后仍逐个调用方读区间），T6-2 的 4 次同理。T6-1 的浪费形态与 §12.2 的 T6-1 同型——8 次 `file_refs` 按包逐个查（`Runner.Run`、`Runner`、`Run` + 各包 path），步数先花在“把调用方枚举完”上。
+
+### 13.3 跨语言 C 题 6 道（每题 2 次，与 §12.3/§18 逐题对比）
+
+| 题 | 语言 | 本批 步/调用/输入k（两次） | 均值 步/调用 | §12 步/调用 | §18 suga 步/调用 | omp 步/调用 |
+|---|---|---|---|---|---|---|
+| RQ2 | Python | 5/6/40.6k、5/7/43.0k | 5.0/6.5 | 6/8 | 4.5/5.5 | 4.5/7.0 |
+| KY2 | TypeScript | 3/3/23.6k、2/2/14.8k | 2.5/2.5 | 3/3 | 3.5/4.5 | 4.0/5.0 |
+| GS2 | Java | 3/3/23.3k、4/4/32.4k | 3.5/3.5 | 3/4 | 5.5/6.5 | 4.5/6.0 |
+| GZ2 | PHP | 5/7/67.4k、6/8/119.1k | 5.5/7.5 | 5/8 | 5.0/7.0 | 6.0/9.0 |
+| WD2 | Rust | 3/3/23.8k、3/3/23.6k | 3.0/3.0 | 3/4 | 4.0/5.0 | 5.5/7.0 |
+| ZL2 | Zola | 2/2/18.1k、3/3/27.3k | 2.5/2.5 | 3/4 | 3.5/3.5 | 4.5/5.5 |
+
+合计：12 次 **44 步 / 51 调用 / 716k 输入**，均值 **3.7 步 / 4.25 调用**；§12 的 12 次为 61 步 / 87 调用（5.1/7.2），§18 suga 为 5.0/6.8，omp 为 6.4/8.7。6 个 cell 里 6 个调用数 ≤ omp，全部 ≤ §12。
+
+- **Rust 题（WD2）两次都是 3 步/3 调用**：`file_list` + `file_refs`（退化文本匹配，1 次 ok）+ 1 次 `file_read`，没有 §12.3 里那次 `file_symbols` 对 `.rs` 的硬拒——那处浪费来自 `file_symbols`，本批模型没有触发。
+- **ZL2 两次都拿到站点覆盖副本 `templates/partials/cards_pages.html:16`**（§12.3 的 ZL3 曾因搜 `public/` 构建产物浪费 8 次调用）；本批 ZL2 只用了 2–3 次调用，且 0 次打到 `public/`。
+- **GZ2 是本节最慢的 C 题**（5.5 步/7.5 调用、93k 输入）：两次都用 `file_find` + 4–5 次 `file_grep` 找 `ClientTrait.php` 的六个动词别名，与 §12 的 5/8 基本持平。
+
+### 13.4 `context` 使用统计（14 次运行，21 次 `file_refs`、31 次 `file_grep`）
+
+| 参数/行为 | 使用次数（调用数 / 运行数） | 说明 |
+|---|---|---|
+| `file_refs context`（本批新增） | **3 / 2** | 全在 T6：T6-1 一次 `Run`+`path=internal/acpserver`+`context: 2`；T6-2 两次 `Runner.Run`+`context: 3`、`Runner`+`path=internal/acpserver`+`context: 4` |
+| `file_grep context`（§12 新增） | 0 / 0 | §12 用过 2 次，本批 0 次 |
+| `file_refs` | 21 / 9 次运行 | T6（14 次）、KY2（2）、WD2（2）、GS2（1）、RQ2（1）、ZL2（1） |
+| `file_refs` 之后的 `file_read` | 17 / 7 次运行 | T6 占 11 次（7+4）——**带 `context` 的调用之后模型仍逐个读区间** |
+| `file_read paths` 多段读 | 12 / 9 次运行 | T6-1（5–6 段）、T6-2、KY2-r1、WD2-r1/r2 等 |
+| `file_symbols` | 2 / 2 | GS2-1、GZ2-2，都成功（本批没有失败调用） |
+
+结论：**`context` 被用到，但用得少（3/21 次 `file_refs` 调用、2/14 次运行），且没有换掉任何一次 `file_read`**。按 C2 的完成标准（0 次使用则调整一次描述再测）不触发调整：3 次 ≥ 1。模型用它时的写法是“裸名字 + 包目录 + context”（`Run` + `internal/acpserver`），而不是限定名——说明参数名直观、无需解释，但也说明它只被当成“看一处周围”的廉价补充，而不是替代后续读取。
+
+### 13.5 正确性与陷阱（按题库必中 + 陷阱判分）
+
+| 侧 | 全对 | 部分 | 错 | 陷阱被当成答案 |
+|---|---|---|---|---|
+| 本批 14 次运行（T6×2 + C 题 12 次） | **14** | 0 | 0 | **0** |
+
+- 每题 2 次全部给全必中（RQ2 3 处、KY2 5 处、GS2 4 处、GZ2 6 处、WD2 3 处、ZL2 5 处含站点覆盖副本、T6 5 处）。
+- 陷阱口径与 §12.5 相同（“被当成答案才算”）：自动化匹配命中的陷阱行经逐条人工复核，全部写成“不是调用点/定义/别的对象”——例如 WD2 写“其余 `file_type()` 命中都不是对它的调用：`src/lib.rs:870` 是 `std::fs::Metadata`、`src/dent.rs:191/207/224` 是 `std::fs::DirEntry`”，GZ2 写“`src/Client.php:650` 只是 trait 中抽象方法的具体实现，并不是调用点”，GS2 把测试行标为“补充：另有 1 处在测试代码里”。没有任何一处陷阱被列为答案。
+- 失败调用 0 次（§12 有 2 次）、写工具调用 0 次（`--read-only` 生效，`git status` 干净）。
+
+### 13.6 结论
+
+1. **`file_refs` 的 `context` 可用、未破坏默认行为，但没有可测的收益**：3 次使用、2/14 次运行，且 `file_refs` 之后的 `file_read` 一次未减（T6 两次共 11 次）。
+2. **T6 相对 §12 回退（11.0 步 / 18.0 调用 vs 9.5 / 14.0），相对 §10 仍明显更好**；两次样本、单次噪声按 §9/§18 量级（±3–5 步、调用数可达 ±2 倍）计，这一批次不足以判定 `context` 导致了回退——T6-1 的 8 次 `file_refs` 与 §12.2 的 T6-1 同型，仍是“按包逐个枚举调用方”的旧形态。
+3. **C 题 6 道比 §12 全面更好**（均值 3.7/4.25 vs 5.1/7.2），且全部 ≤ omp；但 C 题 0 次使用 `context`，改进只能归给运行方差与题面难度，不能归给本批改动。
+4. **正确性零退化**：14/14 全对、0 陷阱、0 失败调用。
+5. 因此本轮**不能支持“`context` 替换了逐次 `file_read`”的收益假设**（设计的重启条件 (a)/(c) 仍未被触发，DAG 继续暂缓的理由不变）。
+
+### 13.7 局限与偏差
+
+- **每题 2 次、共 14 次**（C2 的指定口径），比 §12 的 15 次少；T6 只有 2 次样本。所有对比都是“与 §12/§18 的历史数值对比”，不是同刻复跑（omp 数值来自 §18/§12 的记录）。
+- **`context` 使用次数由 `export` 的 `ToolCall.Arguments` 统计**：`trace --json` 事件的 `attrs.arg` 摘要会漏掉 `context`，若只用 trace 会误判为 0 次（本次第一版统计就是这样，已改为读 export）。
+- 判分为“必中清单字符串匹配 + 陷阱行人工复核”，不是 §12.5 的 3 个子 agent 逐题判分；必中清单按题库 §2 原样抄写，未做第三方复核。
+- token 口径与 §12 一致（含 cache read），与 omp 不可直接相减。
+- 运行产物（`tmp/b20/`：构建的二进制、14 个隔离 home、`export.jsonl`、三个脚本与 `metrics.json`/`score.json`）在分析完成后已删除；`git status --short` 干净。

@@ -20,6 +20,7 @@
 
 - 新增 YAML（`.yaml`/`.yml`）与 TOML（`.toml`）的符号支持：`file_symbols` 与 `file_read outline` 把配置键当成声明列出，名字是完整点分键路径（`server.http.port`），序列/表数组里的映射用 `[]` 标记（`services[].name`），同一路径只列首次出现的行并在签名里给出现次数（`api ×2`）；映射/表节点为 kind `section`（与 PHP namespace 记 `type` 同理：它命名一个作用域，也是模型问“这份配置有哪些表/段”时筛选的对象），叶子键为 `key`；签名列给值的简短预览（标量截断到 60 字节，表写 `{…}`、数组写 `[…]`）。YAML 用仓库已有的 `goccy/go-yaml` 解析（AST 带行号，结果非 approx），解析失败时退回缩进 + `key:` 的行识别并标 approx、在结果说明里写清原因；多文档按 `doc1.`、`doc2.` 前缀；锚点/别名不展开（别名的键只列在锚点处）。TOML 不新增依赖、按行识别 `[table]`、`[[array.of.tables]]`、`key = value`、点分键，跳过注释与 `"""`/`'''` 多行字符串，内联表只列外层键。两种格式都默认最多 4 层键、每文件最多 300 条，超出时在结果里各给一条说明（`file_grep` 补查更深/更多的键），`file_symbols` 的 `limit` 仍按条数截断最终列表。
 - `file_refs` 在 YAML/TOML 文件里把定义被查名字作为键的行（`key:`、`- key:`、`key =`）标为 `def`，使“这个配置键在哪定义”一眼可见；这两种格式其余仍走 v0.35.0 的退化文本匹配（注释已遮蔽、字符串值保持可见，因为配置文件本身就是用值来引用别处的名字），不做跨语言键映射。
+- `file_refs` 新增 `context` 参数（0–5，默认 0 时输出逐字不变）：命中行前后各带 N 行**原始源码**（遮蔽前的行；YAML/TOML 与退化文本匹配也是如此），格式与 `file_grep` 的 `context` 一致——命中行仍是 `path:line class[(qualifier)] text`，上下文行是 `path-line- text`，块之间 `--`，同一文件里相邻/重叠的块合并；每个文件只为上下文读一次，上下文行不计入 `limit`，整体仍受现有结果字节上限与截断规则约束，限定名的“maybe also”组同样带上下文。需要看调用点附近代码时加 `context: 3`（如 `file_refs name=Runner.Run context=3`），省去逐个 `file_read`。
 
 ### 变更
 

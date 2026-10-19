@@ -42,6 +42,7 @@ func (t *FileRefsTool) Description() string {
 	return "Find where a name is used: who calls X, who uses X, where is X referenced. " +
 		"Searches a file, a directory (recursive) or the workspace and answers one `path:line class[(qualifier)] text` " +
 		"line each, sorted by path and line. Use it instead of guessing file_grep patterns for a call chain. " +
+		"Pass context: 3 to also show the source lines around each match, so a call site can be read without a file_read. " +
 		"A qualified name narrows the result to the uses of that type or package: name: \"Runner.Run\" keeps the " +
 		"definitions of type Runner and the Runner.x / pkg.Run uses, and a longer path such as s.runner.Run keeps " +
 		"its last segment. " +
@@ -85,7 +86,13 @@ func (t *FileRefsTool) Schema() api.ToolSchema {
 				},
 				"limit": map[string]any{
 					"type":        "integer",
-					"description": fmt.Sprintf("Maximum matches to list (default %d)", defaultRefLimit),
+					"description": fmt.Sprintf("Maximum matches to list (default %d); context lines do not count", defaultRefLimit),
+				},
+				"context": map[string]any{
+					"type":        "integer",
+					"minimum":     0,
+					"maximum":     maxRefContext,
+					"description": "Include this many source lines before and after each match (raw source, blocks merged)",
 				},
 			},
 			"required": []any{"name"},
@@ -110,6 +117,12 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	limit := defaultRefLimit
 	if n, ok := numberArg(call.Arguments["limit"]); ok && n >= 1 {
 		limit = int(n)
+	}
+	// context is clamped like file_grep's: a radius over the cap would bury the
+	// matches, and a negative one is a plain 0.
+	contextLines := 0
+	if n, ok := numberArg(call.Arguments["context"]); ok {
+		contextLines = min(max(int(n), 0), maxRefContext)
 	}
 	includeTests, _ := call.Arguments["include_tests"].(bool)
 	noIgnore, _ := call.Arguments["no_ignore"].(bool)
@@ -148,7 +161,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	return &api.ToolResult{
 		CallID:  call.CallID,
 		Name:    t.Name(),
-		Content: TruncateHeadTail(out.render(displayName, pathArg, limit), rawLimit(t.maxOut)),
+		Content: TruncateHeadTail(out.render(displayName, pathArg, limit, contextLines, target), rawLimit(t.maxOut)),
 	}, nil
 }
 
@@ -428,8 +441,9 @@ type refOut struct {
 func (o *refOut) noteError(msg string) { o.errors = append(o.errors, msg) }
 
 // render formats the result: the matches, a line per thing that was left out,
-// and the notes the walk produced.
-func (o *refOut) render(name, pathArg string, limit int) string {
+// and the notes the walk produced. contextLines > 0 adds the source lines around
+// each match, read from target's files.
+func (o *refOut) render(name, pathArg string, limit, contextLines int, target readTarget) string {
 	if len(o.refs) > limit {
 		o.more = true // one file alone can hold more matches than the limit
 	}
@@ -444,12 +458,14 @@ func (o *refOut) render(name, pathArg string, limit int) string {
 		shown = shown[:limit]
 	}
 	lines := make([]string, 0, len(shown)+1)
+	var src *refSourceCache
+	if contextLines > 0 {
+		src = newRefSourceCache(target)
+	}
 	if len(shown) == 0 {
 		lines = append(lines, fmt.Sprintf("no references to %q in %s (%d source file(s) searched)", name, pathArg, o.files))
 	} else {
-		for _, r := range shown {
-			lines = append(lines, fmt.Sprintf("%s:%d %s %s", r.File, r.Line, refClass(r), r.Text))
-		}
+		lines = append(lines, refGroupLines(shown, contextLines, src)...)
 	}
 	if o.qual != "" {
 		// Rare variable qualifiers are shown as lines of their own group: the
@@ -458,9 +474,7 @@ func (o *refOut) render(name, pathArg string, limit int) string {
 			lines = append(lines, fmt.Sprintf("[maybe also %s: unqualified uses (a call inside the defining package "+
 				"needs no qualifier) and uses through variables whose type the filter cannot tell (names used at "+
 				"most %d times) - check each line]", o.qual, rareDropUses))
-			for _, r := range rare {
-				lines = append(lines, fmt.Sprintf("%s:%d %s %s", r.File, r.Line, refClass(r), r.Text))
-			}
+			lines = append(lines, refGroupLines(rare, contextLines, src)...)
 			if more > 0 {
 				lines = append(lines, fmt.Sprintf("[and %d more such line(s)]", more))
 			}
