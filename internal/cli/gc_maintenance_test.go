@@ -17,8 +17,8 @@ import (
 
 // TestGCMaintenanceCommand covers `suga data shrink-fts` and `suga data vacuum`
 // through the CLI (data governance P1). The ledger is isolated in a temp
-// SUGA_HOME, and the FTS row is put into its pre-P1 state by hand: the
-// migration only backfills entries that exist when it runs.
+// SUGA_HOME, and the historical tool row is put into the index by hand: the
+// write path no longer indexes tool results, only the old backfill did.
 func TestGCMaintenanceCommand(t *testing.T) {
 	home := shortCLIHome(t)
 	t.Setenv("SUGA_HOME", home)
@@ -27,8 +27,8 @@ func TestGCMaintenanceCommand(t *testing.T) {
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	assert.Require(t, assert.NoErr(t, err))
 
-	// One tool entry whose indexed text is the full result, as a ledger written
-	// before P1 holds it.
+	// One tool entry the old backfill indexed in full, as a ledger written before
+	// tool results left the index holds it.
 	repo, err := store.Open(dbPath)
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.CreateSession(ctx, store.Session{ID: "s1", Title: "s1", Cwd: "/w"}))
@@ -36,7 +36,7 @@ func TestGCMaintenanceCommand(t *testing.T) {
 	_, err = repo.AppendEntries(ctx, "s1", store.NewEntry{Type: store.EntryTool, JSON: []byte(body)})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.Close())
-	setFTSText(t, dbPath, "s1", 1, strings.Repeat("中", 3000))
+	insertFTSToolRow(t, dbPath, "s1", 1, strings.Repeat("中", 3000))
 
 	t.Run("maintenance flags need their own subcommand", func(t *testing.T) {
 		_, err := runCLI(t, ctx, "data", "gc", "--status")
@@ -49,21 +49,26 @@ func TestGCMaintenanceCommand(t *testing.T) {
 		out, err := runCLI(t, ctx, "data", "shrink-fts", "--status")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "未开始")
-		assert.StrContains(t, out, "待处理 tool 行：1")
+		assert.StrContains(t, out, "剩余 tool 行：1")
 	})
 
-	t.Run("shrink rewrites the row and status turns complete", func(t *testing.T) {
+	t.Run("shrink deletes the row and status turns complete", func(t *testing.T) {
 		out, err := runCLI(t, ctx, "data", "shrink-fts")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "瘦身完成")
-		assert.StrContains(t, out, "重写 1 行")
+		assert.StrContains(t, out, "删除 1 行")
 		assert.StrContains(t, out, "suga data vacuum")
-		assert.Eq(t, store.FTSToolMaxChars+3, len([]rune(ftsText(t, dbPath, "s1", 1))))
+		assert.Eq(t, 0, ftsRowCount(t, dbPath, "s1"))
 
 		out, err = runCLI(t, ctx, "data", "shrink-fts", "--status")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "已完成")
-		assert.StrContains(t, out, "待处理 tool 行：0")
+		assert.StrContains(t, out, "剩余 tool 行：0")
+
+		// A second run has nothing left to delete.
+		out, err = runCLI(t, ctx, "data", "shrink-fts")
+		assert.NoErr(t, err)
+		assert.StrContains(t, out, "无需瘦身")
 	})
 
 	t.Run("abort clears the checkpoint", func(t *testing.T) {
@@ -116,24 +121,25 @@ func TestVacuumSpaceCheck(t *testing.T) {
 	})
 }
 
-// setFTSText overwrites the indexed text of one entry, the pre-P1 state.
-func setFTSText(t *testing.T, dbPath, sessionID string, seq int64, text string) {
+// insertFTSToolRow indexes one tool entry the way the historical backfill did.
+func insertFTSToolRow(t *testing.T, dbPath, sessionID string, seq int64, text string) {
 	t.Helper()
 	db, err := sql.Open("sqlite", dbPath)
 	assert.Require(t, assert.NoErr(t, err))
 	defer db.Close()
-	_, err = db.Exec(`UPDATE entries_fts SET text = ? WHERE session_id = ? AND seq = ?`, text, sessionID, seq)
+	_, err = db.Exec(`INSERT INTO entries_fts(session_id, seq, role, text) VALUES (?, ?, 'tool', ?)`,
+		sessionID, seq, text)
 	assert.Require(t, assert.NoErr(t, err))
 }
 
-// ftsText reads the indexed text of one entry.
-func ftsText(t *testing.T, dbPath, sessionID string, seq int64) string {
+// ftsRowCount counts the index rows of one session.
+func ftsRowCount(t *testing.T, dbPath, sessionID string) int {
 	t.Helper()
 	db, err := sql.Open("sqlite", dbPath)
 	assert.Require(t, assert.NoErr(t, err))
 	defer db.Close()
-	var text string
+	var n int
 	assert.Require(t, assert.NoErr(t, db.QueryRow(
-		`SELECT text FROM entries_fts WHERE session_id = ? AND seq = ?`, sessionID, seq).Scan(&text)))
-	return text
+		`SELECT COUNT(*) FROM entries_fts WHERE session_id = ?`, sessionID).Scan(&n)))
+	return n
 }

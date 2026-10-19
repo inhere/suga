@@ -13,21 +13,21 @@ import (
 // mutually exclusive flags. The work itself stays in runShrinkFTS (gc_maintenance.go)
 // and runGCCompressSpill (gc_spill.go).
 
-// newShrinkFTSCommand builds `suga data shrink-fts`: rewrite the historical
-// tool rows of entries_fts to the truncated form new rows already use.
+// newShrinkFTSCommand builds `suga data shrink-fts`: delete the historical tool
+// rows of entries_fts (tool results are no longer indexed).
 func newShrinkFTSCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var status, abort bool
 	var batch int
-	cmd := capp.NewCmd("shrink-fts", "Rewrite old tool-output FTS rows to the truncated index form (resumable, Ctrl-C keeps the progress)", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("shrink-fts", "Delete the historical tool-output FTS rows (resumable, Ctrl-C keeps the progress)", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
 			return fmt.Errorf("usage: suga data shrink-fts [--status|--abort] [--batch N]")
 		}
 		return runShrinkFTS(ctx, stdout, status, abort, batch)
 	})
 	cmd.SetOutput(stderr)
-	cmd.BoolVar(&status, "status", false, "report how much of the index is left to shrink")
+	cmd.BoolVar(&status, "status", false, "report how many tool rows the index still holds")
 	cmd.BoolVar(&abort, "abort", false, "drop the progress checkpoint so the next run starts over")
-	cmd.IntVar(&batch, "batch", 0, "rows per write transaction (default 2000)")
+	cmd.IntVar(&batch, "batch", 0, "rows deleted per write transaction (default 2000)")
 	return cmd
 }
 

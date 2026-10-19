@@ -101,17 +101,16 @@ func NewSessionSearchTool(searcher LedgerSearcher) *SessionSearchTool {
 
 func (t *SessionSearchTool) Name() string { return "session_search" }
 func (t *SessionSearchTool) Description() string {
-	return "Full-text search of earlier conversation history (messages, tool results and compaction/handoff summaries). " +
+	return "Full-text search of earlier conversation history (user and assistant messages, compaction/handoff summaries; " +
+		"tool outputs are not indexed - read them with recall(ref) or, for a spilled output, with the out:... ref). " +
 		"Every whitespace-separated word must occur; words are matched literally. scope: workspace (default), " +
 		"current or all. Each hit is `<ref>  <role>  <snippet>`; read it with recall(ref). " +
-		"kind is comma-separated user, assistant, tool, compaction or handoff; since is inclusive and until exclusive " +
+		"kind is comma-separated user, assistant, compaction or handoff; since is inclusive and until exclusive " +
 		"(7d/36h, date or RFC3339). When results include next_cursor, pass it back verbatim as cursor; a stale " +
 		"cursor restarts from the beginning. For Chinese, prefer terms of two or more characters. With " +
 		"ref=out:<session>:<hex> it searches saved output lines (case-insensitive); ref cannot combine with " +
 		"cursor, kind or time filters. When the result says the scope holds no stored history, stop searching " +
-		"rather than trying other words. Tool results are indexed as their first and last 512 characters only; " +
-		"the middle of a long result is not searchable - read the whole result with recall(ref) or, for a spilled " +
-		"output, with the out:... ref."
+		"rather than trying other words."
 }
 
 // ToolMeta: read-only search; results are external content (taint).
@@ -132,7 +131,7 @@ func (t *SessionSearchTool) Schema() api.ToolSchema {
 				"ref":    map[string]any{"type": "string", "description": "Optional out:<session>:<hex> ref: search inside that saved output"},
 				"limit":  map[string]any{"type": "integer", "description": "Max hits (default 20, at most 100)"},
 				"cursor": map[string]any{"type": "string", "description": "Value from a previous next_cursor; pass it back verbatim"},
-				"kind":   map[string]any{"type": "string", "description": "Comma-separated entry kinds: user, assistant, tool, compaction, handoff"},
+				"kind":   map[string]any{"type": "string", "description": "Comma-separated entry kinds: user, assistant, compaction, handoff"},
 				"since":  map[string]any{"type": "string", "description": "Inclusive lower time bound: 7d, 36h, date or RFC3339"},
 				"until":  map[string]any{"type": "string", "description": "Exclusive upper time bound: 7d, 36h, date or RFC3339"},
 			},

@@ -5,34 +5,35 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 )
 
-// FTS shrink maintenance (data governance P1, design 0.3).
+// FTS shrink maintenance (data governance, design 0.3).
 //
-// Tool results were ~96% of entries_fts (42,735 rows, 120MB of text, ~500MB of
-// index+content on the 2026-10-19 ledger). New rows are indexed truncated
-// (ftsTextExpr); the rows written before that are rewritten in place here,
-// batch by batch, because a 500MB FTS table cannot be rebuilt in one
-// transaction (and shadow-table swaps break the delete trigger).
+// Tool results are no longer indexed (ftsIndexedTypes), yet they were ~96% of
+// entries_fts (42,735 rows, 120MB of text, ~500MB of index+content on the
+// 2026-10-19 ledger). This pass removes those historical rows: batch by batch,
+// because a 500MB FTS table cannot be rebuilt in one transaction (and
+// shadow-table swaps break the delete trigger).
 //
 // The command keeps its own rowid checkpoint in a small table it creates, NOT
 // in a migration: opening a ledger must never start full-table work
 // (v0.31.0 hung that way). Batches walk entries_fts' OWN rowid, never the
-// entries' implicit rowid, which VACUUM renumbers.
+// entries' implicit rowid, which VACUUM renumbers. The checkpoint table and its
+// columns keep their P1 names, so a pass interrupted by the truncating version
+// of the command continues from the same rowid.
 const (
-	// ftsShrinkBatchRows is the default batch: 2,000 rows of an UPDATE on one
+	// ftsShrinkBatchRows is the default batch: 2,000 rows of a DELETE on one
 	// FTS table stay well below the busy timeout of a concurrent writer.
 	ftsShrinkBatchRows = 2000
 	// ftsShrinkMaxBatch caps what a caller (or a --batch flag) may ask for.
 	ftsShrinkMaxBatch = 20000
-	// ftsShrinkIndexRatio is how the estimate of --status relates the characters
-	// a rewrite removes to the bytes the file gives back: the trigram index plus
-	// the content copy of entries_fts, measured as 79.9MB less entries_fts_data
-	// (and the same amount less content) for 79.45M characters removed by the
-	// 20,000-row benchmark. It only sizes the estimate -- the real number comes
-	// from entries_fts_data (the command prints both).
+	// ftsShrinkIndexRatio relates the characters a deleted row held to the bytes
+	// the file gives back: entries_fts keeps a content copy plus the trigram
+	// index, measured as 79.9MB less entries_fts_data (and the same amount less
+	// content) for 79.45M characters removed by the 20,000-row benchmark. It only
+	// sizes the estimate -- the real number comes from entries_fts_data (the
+	// command prints both).
 	ftsShrinkIndexRatio = 2
 )
 
@@ -46,12 +47,10 @@ const ftsShrinkStateDDL = `CREATE TABLE IF NOT EXISTS fts_shrink_state (
     updated_at    TEXT
 )`
 
-// ftsShrinkUpdateSQL rewrites the text of up to one batch of tool rows: the
-// rows whose text is longer than ftsToolMaxChars are replaced by exactly the
-// expression AppendEntries applies to a new tool result (ftsTruncateExpr over
-// the text column of entries_fts).
-var ftsShrinkUpdateSQL = `UPDATE entries_fts SET text = ` + ftsTruncateExpr("text") +
-	` WHERE rowid > ? AND rowid <= ? AND role = 'tool' AND length(text) > ` + strconv.Itoa(ftsToolShrinkMinChars)
+// ftsShrinkDeleteSQL deletes up to one batch of tool rows: the pass removes
+// every row the old write path indexed for a tool result, so a search only
+// covers user and assistant messages and the compaction/handoff summaries.
+const ftsShrinkDeleteSQL = `DELETE FROM entries_fts WHERE rowid > ? AND rowid <= ? AND role = 'tool'`
 
 // FTSShrinkProgress is one finished batch, for progress output.
 type FTSShrinkProgress struct {
@@ -60,7 +59,7 @@ type FTSShrinkProgress struct {
 	ScannedRowID int64
 	// HighWater is the highest rowid this pass walks.
 	HighWater int64
-	// Rows is the number of rows actually rewritten in this pass so far.
+	// Rows is the number of tool rows actually deleted in this pass so far.
 	Rows int64
 }
 
@@ -73,7 +72,7 @@ type FTSShrinkOptions struct {
 
 // FTSShrinkReport describes what one pass did.
 type FTSShrinkReport struct {
-	// Rows rewritten, and the number of batches (write transactions) they took.
+	// Rows deleted, and the number of batches (write transactions) they took.
 	Rows    int64
 	Batches int
 	// ScannedRowID and HighWater are the checkpoint reached and the rowid the
@@ -82,11 +81,14 @@ type FTSShrinkReport struct {
 	ScannedRowID int64
 	HighWater    int64
 	// BytesBefore and BytesAfter measure entries_fts_data (its own pages), the
-	// figure that matters for the file size; the merge passes run in between.
+	// figure that matters for the file size; the optimize pass runs in between.
 	BytesBefore int64
 	BytesAfter  int64
-	// Merges is the number of 'merge' passes before the index stopped shrinking.
-	Merges int
+	// Optimized reports whether the pass merged the index once at its end. It
+	// does so only when it deleted rows: on a large index a bounded 'merge'
+	// pass raises the size instead of lowering it (P1 measured it), so the one
+	// documented "merge everything" command, 'optimize', is the whole merge.
+	Optimized bool
 }
 
 // FTSShrinkStatus is what --status reports: how much shrinking is left.
@@ -96,8 +98,8 @@ type FTSShrinkStatus struct {
 	// Complete is true when the last pass reached its high-water rowid.
 	Complete     bool
 	ScannedRowID int64
-	// PendingRows and PendingChars count the tool rows still holding more than
-	// ftsToolShrinkMinChars characters and their text length.
+	// PendingRows and PendingChars count the tool rows still held by the index
+	// (all of them: the pass deletes every tool row) and their text length.
 	PendingRows  int64
 	PendingChars int64
 	// EstimatedReclaimBytes is the space the remaining rows are expected to
@@ -106,19 +108,15 @@ type FTSShrinkStatus struct {
 }
 
 // Remaining reports whether the ledger still holds tool rows that a shrink
-// pass would rewrite.
+// pass would delete.
 func (st FTSShrinkStatus) Remaining() bool { return st.PendingRows > 0 }
 
-// FTSToolMaxChars is the length at or below which a tool result is indexed as
-// it is (see ftsToolMaxChars); the CLI reports it to the user.
-const FTSToolMaxChars = ftsToolMaxChars
-
-// ShrinkFTSToolOutputs rewrites the tool rows of entries_fts to the truncated
-// form, at most Batch rows per write transaction, resumable through a rowid
-// checkpoint. A cancelled context stops between batches and keeps the
-// checkpoint of the last committed one; the next call continues there. Rows
-// written concurrently are already truncated and are skipped (their text is
-// short), rows deleted concurrently (session removed) simply match nothing.
+// ShrinkFTSToolOutputs deletes the tool rows of entries_fts, at most Batch rows
+// per write transaction, resumable through a rowid checkpoint. A cancelled
+// context stops between batches and keeps the checkpoint of the last committed
+// one; the next call continues there. Rows deleted concurrently (session
+// removed) simply match nothing; entries appended concurrently are never tool
+// rows, so they cannot enter the pass.
 func (s *Store) ShrinkFTSToolOutputs(ctx context.Context, opts FTSShrinkOptions) (FTSShrinkReport, error) {
 	batch := opts.Batch
 	if batch <= 0 {
@@ -129,14 +127,20 @@ func (s *Store) ShrinkFTSToolOutputs(ctx context.Context, opts FTSShrinkOptions)
 		return FTSShrinkReport{}, err
 	}
 	// The high-water mark is fixed when the pass starts: rows created later are
-	// written by the truncating code path and do not belong to this pass.
+	// written without tool results and do not belong to this pass.
 	highWater, err := s.maxFTSRowID(ctx)
 	if err != nil {
 		return FTSShrinkReport{}, err
 	}
-	last, err := s.shrinkRowID(ctx)
+	last, complete, err := s.shrinkCheckpoint(ctx)
 	if err != nil {
 		return FTSShrinkReport{}, err
+	}
+	// A complete checkpoint comes from the P1 pass that TRUNCATED tool rows
+	// instead of deleting them: those rows are still below the old high-water
+	// mark, so the pass has to start over from the first rowid.
+	if complete {
+		last = 0
 	}
 	if last > highWater {
 		last = highWater
@@ -146,7 +150,7 @@ func (s *Store) ShrinkFTSToolOutputs(ctx context.Context, opts FTSShrinkOptions)
 	if err != nil {
 		return report, err
 	}
-	if err := s.markShrinkStarted(ctx); err != nil {
+	if err := s.markShrinkStarted(ctx, last); err != nil {
 		return report, err
 	}
 	for last < highWater {
@@ -169,26 +173,28 @@ func (s *Store) ShrinkFTSToolOutputs(ctx context.Context, opts FTSShrinkOptions)
 	if err := s.markShrinkComplete(ctx, report.Rows); err != nil {
 		return report, err
 	}
-	report.Merges, err = s.mergeFTS(ctx)
-	if err != nil {
-		return report, err
+	if report.Rows > 0 {
+		if err := s.optimizeFTS(ctx); err != nil {
+			return report, err
+		}
+		report.Optimized = true
 	}
 	report.BytesAfter, err = s.ftsDataBytes(ctx)
 	return report, err
 }
 
-// shrinkBatch runs one batch in its own write transaction (BEGIN IMMEDIATE with
-// the store's busy retry) and commits the checkpoint with it: the checkpoint
-// never runs ahead of the rows it describes.
+// shrinkBatch deletes one batch in its own write transaction (BEGIN IMMEDIATE
+// with the store's busy retry) and commits the checkpoint with it: the
+// checkpoint never runs ahead of the rows it describes.
 func (s *Store) shrinkBatch(ctx context.Context, from, to int64) (int64, error) {
 	tx, err := s.beginWriteTx(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op after Commit
-	result, err := tx.ExecContext(ctx, ftsShrinkUpdateSQL, from, to)
+	result, err := tx.ExecContext(ctx, ftsShrinkDeleteSQL, from, to)
 	if err != nil {
-		return 0, fmt.Errorf("shrink entries_fts rows (%d, %d]: %w", from, to, err)
+		return 0, fmt.Errorf("delete entries_fts rows (%d, %d]: %w", from, to, err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
@@ -204,29 +210,30 @@ func (s *Store) shrinkBatch(ctx context.Context, from, to int64) (int64, error) 
 	return rows, nil
 }
 
-// mergeFTS folds the segments the rewrites left behind into one, which is what
-// actually frees the text of the old rows: an UPDATE only marks the old terms
-// deleted, the space comes back when their segments are rebuilt without them.
+// optimizeFTS folds the segments a DELETE left behind into one, which is what
+// actually frees the text of the removed rows: a DELETE only marks the old
+// terms deleted, the space comes back when their segments are rebuilt without
+// them.
 //
-// It runs FTS5's 'optimize' (one full merge) instead of the design's repeated
+// It runs FTS5's 'optimize' (one full merge) instead of repeated
 // `('merge', 500)`: a merge pass only consolidates a bounded number of pages,
 // and on the 20,000-row benchmark a 500-page pass did not reduce
 // entries_fts_data at all (107.9MB -> 116.7MB) -- reclaiming a 27,000-page
 // index that way would need hundreds of passes. 'optimize' is the documented
 // "merge everything" command and stays one bounded pass; a caller that wants
 // gentler passes can rerun the command later.
-func (s *Store) mergeFTS(ctx context.Context) (int, error) {
+func (s *Store) optimizeFTS(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return err
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO entries_fts(entries_fts) VALUES('optimize')`); err != nil {
-		return 0, fmt.Errorf("optimize entries_fts: %w", err)
+		return fmt.Errorf("optimize entries_fts: %w", err)
 	}
-	return 1, nil
+	return nil
 }
 
-// FTSShrinkStatus reports how much shrinking is left. It reads two counters
-// over entries_fts (only tool rows longer than the limit qualify).
+// FTSShrinkStatus reports how much shrinking is left. It counts the tool rows
+// entries_fts still holds.
 func (s *Store) FTSShrinkStatus(ctx context.Context) (FTSShrinkStatus, error) {
 	var status FTSShrinkStatus
 	exists, err := s.tableExists(ctx, "fts_shrink_state")
@@ -247,42 +254,29 @@ func (s *Store) FTSShrinkStatus(ctx context.Context) (FTSShrinkStatus, error) {
 	}
 	status.PendingRows = 0
 	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(length(text)), 0) FROM entries_fts
-        WHERE role = 'tool' AND length(text) > `+strconv.Itoa(ftsToolShrinkMinChars)).
+        WHERE role = 'tool'`).
 		Scan(&status.PendingRows, &status.PendingChars)
 	if err != nil {
-		return status, fmt.Errorf("count unshrunk tool rows: %w", err)
+		return status, fmt.Errorf("count tool rows in entries_fts: %w", err)
 	}
-	// Each remaining row keeps at most ftsToolMaxChars characters plus the
-	// ellipsis (three characters), so everything above that is what the rewrite
-	// removes from the content copy; the index shrinks with it.
-	removed := status.PendingChars - status.PendingRows*int64(ftsToolShrinkMinChars)
-	if removed > 0 {
-		status.EstimatedReclaimBytes = removed * ftsShrinkIndexRatio
-	}
+	// Deleting a row frees its text from the content copy and its trigrams from
+	// the index (see ftsShrinkIndexRatio).
+	status.EstimatedReclaimBytes = status.PendingChars * ftsShrinkIndexRatio
 	return status, nil
 }
 
-// FTSShrinkPending reports whether the ledger holds tool rows the shrink
-// command has not rewritten yet: the search notice tells the model that old
-// hits may still be full-text matches. It is asked once per store handle (see
-// noteShrinkPending) and answers from the checkpoint when a pass already
-// completed, so the expensive count is not run on every search.
+// FTSShrinkPending reports whether the ledger still holds tool rows in the
+// index: the search notice tells the model that a search covers user and AI
+// messages only after the maintenance command ran. It is asked once per store
+// handle (see noteShrinkPending), so the row scan is not run on every search.
 func (s *Store) FTSShrinkPending(ctx context.Context) (bool, error) {
-	status, err := s.FTSShrinkStatus(ctx)
-	if err != nil {
-		return false, err
-	}
-	if status.Complete {
-		return false, nil
-	}
 	var one int
-	err = s.db.QueryRowContext(ctx, `SELECT 1 FROM entries_fts
-        WHERE role = 'tool' AND length(text) > `+strconv.Itoa(ftsToolShrinkMinChars)+` LIMIT 1`).Scan(&one)
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM entries_fts WHERE role = 'tool' LIMIT 1`).Scan(&one)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return false, nil // nothing to shrink: a fresh or already short ledger
+		return false, nil // no tool row left: a fresh ledger or a finished pass
 	case err != nil:
-		return false, fmt.Errorf("check unshrunk tool rows: %w", err)
+		return false, fmt.Errorf("check tool rows in entries_fts: %w", err)
 	}
 	return true, nil
 }
@@ -307,25 +301,32 @@ func (s *Store) ensureShrinkState(ctx context.Context) error {
 	return nil
 }
 
-// shrinkRowID returns the checkpointed rowid (0 when there is none).
-func (s *Store) shrinkRowID(ctx context.Context) (int64, error) {
-	var rowid int64
-	err := s.db.QueryRowContext(ctx, `SELECT scanned_rowid FROM fts_shrink_state WHERE id = 1`).Scan(&rowid)
+// shrinkCheckpoint returns the checkpointed rowid (0 when there is none) and
+// whether the last pass marked itself complete.
+func (s *Store) shrinkCheckpoint(ctx context.Context) (int64, bool, error) {
+	var (
+		rowid    int64
+		complete bool
+	)
+	err := s.db.QueryRowContext(ctx, `SELECT scanned_rowid, complete FROM fts_shrink_state WHERE id = 1`).
+		Scan(&rowid, &complete)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return 0, nil
+		return 0, false, nil
 	case err != nil:
-		return 0, fmt.Errorf("read fts shrink checkpoint: %w", err)
+		return 0, false, fmt.Errorf("read fts shrink checkpoint: %w", err)
 	}
-	return rowid, nil
+	return rowid, complete, nil
 }
 
-// markShrinkStarted writes the checkpoint row as an unfinished pass.
-func (s *Store) markShrinkStarted(ctx context.Context) error {
+// markShrinkStarted writes the checkpoint row as an unfinished pass starting at
+// from, so a crash before the first batch resumes at the right rowid.
+func (s *Store) markShrinkStarted(ctx context.Context, from int64) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO fts_shrink_state(id, scanned_rowid, complete, shrunk_rows, started_at, updated_at)
-        VALUES(1, 0, 0, 0, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET complete = 0, shrunk_rows = 0, started_at = excluded.started_at, updated_at = excluded.updated_at`,
-		formatTime(time.Now()), formatTime(time.Now()))
+        VALUES(1, ?, 0, 0, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET scanned_rowid = excluded.scanned_rowid, complete = 0, shrunk_rows = 0,
+        started_at = excluded.started_at, updated_at = excluded.updated_at`,
+		from, formatTime(time.Now()), formatTime(time.Now()))
 	if err != nil {
 		return fmt.Errorf("start fts shrink: %w", err)
 	}
@@ -362,17 +363,17 @@ func (s *Store) ftsDataBytes(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-// FTSShrinkPendingNotice is the note a search result carries while old tool
-// outputs are still indexed in full: a hit in the middle of such a result is a
-// real match that a later re-index would not find, which the model should know
-// before it reads "not found" as "not stored".
-const FTSShrinkPendingNotice = "historical tool outputs are not shrunk yet: some older results still match their full text"
+// FTSShrinkPendingNotice is the note a search result carries while the ledger
+// still holds tool rows in the index: until the maintenance command deletes
+// them, a search also matches tool output that the new index no longer covers,
+// so "not found" would be read too strongly.
+const FTSShrinkPendingNotice = "历史 tool 输出仍在索引中，执行 suga data shrink-fts 后检索只覆盖用户与 AI 消息"
 
-// noteShrinkPending returns FTSShrinkPendingNotice while the ledger holds
-// unshrunk tool rows, plain text after a completed pass or on a ledger that
-// never had a long tool result. The answer is computed once per store handle:
-// only another process's maintenance command can change it, and a search must
-// not pay for the check every time.
+// noteShrinkPending returns FTSShrinkPendingNotice while entries_fts still
+// holds tool rows, plain text after a completed pass or on a ledger that never
+// indexed one. The answer is computed once per store handle: only another
+// process's maintenance command can change it, and a search must not pay for
+// the check every time.
 func (s *Store) noteShrinkPending(ctx context.Context) string {
 	s.shrinkMu.Lock()
 	defer s.shrinkMu.Unlock()
