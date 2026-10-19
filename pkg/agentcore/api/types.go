@@ -49,6 +49,11 @@ type Message struct {
 	// OpenAI-compatible reasoning_content). It is persisted with the message so
 	// providers whose APIs require it can send it back on later requests.
 	Reasoning string `json:",omitempty"`
+	// ResultSameAsContent is a storage marker, never set in memory: the store
+	// writes it when it keeps ToolResult.Content once (it equals Content), and
+	// UnmarshalJSON restores the result and clears the flag. It is omitted from
+	// every encoding that does not set it.
+	ResultSameAsContent bool `json:",omitempty"`
 }
 
 // Artifact is a minimal portable output produced by tools or models.

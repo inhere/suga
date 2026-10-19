@@ -229,7 +229,7 @@ func (r *Runner) writeInterruptionNote(ctx context.Context, sessionID, turnID, s
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(interruptionNoteMessage(interruptionNoteText(status, reason, calls, dropped)))
+	raw, err := store.EncodeMessage(interruptionNoteMessage(interruptionNoteText(status, reason, calls, dropped)))
 	if err != nil {
 		return fmt.Errorf("encode the interruption note: %w", err)
 	}

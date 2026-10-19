@@ -2,7 +2,6 @@ package personal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -122,7 +121,8 @@ func (b *contextBuilder) takeTaskNotices(ctx context.Context, state *agentcore.R
 	}
 	msg := TaskNoticeMessage(infos)
 	notice := turnInjected{at: len(state.Messages), msg: msg}
-	raw, err := json.Marshal(msg)
+	// EncodeMessage as everywhere entries are written (store.EncodeMessage).
+	raw, err := store.EncodeMessage(msg)
 	if err == nil {
 		var entries []store.Entry
 		entries, err = b.r.cfg.Repository.AppendEntries(context.WithoutCancel(ctx), b.sessionID,
