@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -105,6 +107,32 @@ func TestCollectGarbageByRetention(t *testing.T) {
 		assert.Empty(t, report.Interactive.Sessions)
 		assert.Eq(t, 1, len(report.NonInteractive.Sessions))
 	})
+}
+
+// TestRetentionBytesIncludeToolBodyFiles: a moved tool body is not in the row, so
+// the reclaimable bytes of a class also count the session's tools.jsonl.
+func TestRetentionBytesIncludeToolBodyFiles(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	at := now.Add(-40 * 24 * time.Hour)
+	s := openTemp(t)
+	defer s.Close()
+	assert.Require(t, assert.NoErr(t, s.CreateSession(ctx, Session{ID: "run-tool", CreatedAt: at, UpdatedAt: at,
+		Meta: map[string]any{MetaOrigin: OriginRun}})))
+	appended := appendAll(t, s, "run-tool", NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
+	assert.True(t, appended[0].JSON != nil)
+	_, err := s.DB().ExecContext(ctx, `UPDATE sessions SET updated_at = ? WHERE id = ?`, formatTime(at), "run-tool")
+	assert.Require(t, assert.NoErr(t, err))
+	info, err := os.Stat(filepath.Join(s.sessionsDir, "run-tool", ToolBodyFileName))
+	assert.Require(t, assert.NoErr(t, err))
+
+	var entries, entryBytes, metaBytes int64
+	assert.NoErr(t, s.DB().QueryRow(`SELECT COUNT(*), COALESCE(SUM(length(COALESCE(json, ''))), 0) FROM entries WHERE session_id = 'run-tool'`).Scan(&entries, &entryBytes))
+	assert.NoErr(t, s.DB().QueryRow(`SELECT COALESCE(SUM(length(COALESCE(meta_json, ''))), 0) FROM sessions WHERE id = 'run-tool'`).Scan(&metaBytes))
+	report, err := s.CollectGarbageByRetention(ctx, now, GCRetentionPolicy{NonInteractive: 30 * 24 * time.Hour}, nil, false)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, 1, len(report.NonInteractive.Sessions))
+	assert.Eq(t, entryBytes+metaBytes+info.Size(), report.NonInteractive.EstimatedBytes)
 }
 
 // TestSessionOriginHelpers: meta.origin is the entry point, and a session from
