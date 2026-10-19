@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
@@ -76,4 +77,25 @@ type dedupedToolResult struct {
 	Artifacts []api.Artifact
 	IsError   bool
 	Metadata  map[string]any
+}
+
+// RestoreMessageJSON returns a stored entry's JSON in the shape it had before
+// the tool-result dedupe: an entry carrying the ResultSameAsContent marker is
+// decoded (which restores ToolResult.Content) and encoded again the plain way;
+// any other entry is returned as it is. Readers that hand stored JSON to the
+// outside, such as `suga inspect export`, use it so the dedupe stays a storage
+// detail.
+func RestoreMessageJSON(raw []byte) []byte {
+	if !bytes.Contains(raw, []byte(`"`+ResultSameAsContentKey+`"`)) {
+		return raw
+	}
+	var m api.Message
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
 }

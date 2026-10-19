@@ -182,3 +182,25 @@ func TestDecodeMessageRestoresToolResult(t *testing.T) {
 		assert.False(t, m.ResultSameAsContent)
 	})
 }
+
+// TestRestoreMessageJSON pins the export view of a deduped tool entry: the
+// bytes the plain json.Marshal gave before the dedupe, and every other entry
+// untouched.
+func TestRestoreMessageJSON(t *testing.T) {
+	msg := api.Message{Role: "tool", Content: "a <b> & c\nlong output",
+		ToolResult: &api.ToolResult{CallID: "c1", Name: "shell_exec", Content: "a <b> & c\nlong output"}}
+	plain, err := json.Marshal(msg)
+	assert.Require(t, assert.NoErr(t, err))
+	stored, err := EncodeMessage(msg)
+	assert.Require(t, assert.NoErr(t, err))
+
+	t.Run("a deduped tool entry gets its plain encoding back", func(t *testing.T) {
+		assert.NotEq(t, string(plain), string(stored))
+		assert.Eq(t, string(plain), string(RestoreMessageJSON(stored)))
+	})
+	t.Run("an entry without the marker is returned as it is", func(t *testing.T) {
+		assert.Eq(t, string(plain), string(RestoreMessageJSON(plain)))
+		raw := []byte(`{"summary":"x"}`)
+		assert.Eq(t, string(raw), string(RestoreMessageJSON(raw)))
+	})
+}

@@ -251,7 +251,9 @@ func writeExport(w io.Writer, entries []store.Entry, events []store.Event, redac
 		if j >= len(events) || (i < len(entries) && !entries[i].CreatedAt.After(events[j].StartedAt)) {
 			e := entries[i]
 			i++
-			body := e.JSON
+			// The export shows each message as suga uses it: a tool result
+			// stored once (dedupe) gets its ToolResult.Content back.
+			body := json.RawMessage(store.RestoreMessageJSON(e.JSON))
 			if redact {
 				body = redactEntryJSON(body)
 			}
