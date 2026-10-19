@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.36.0] - 2026-10-19
+
+会话库数据治理：全文检索只覆盖用户与 AI 消息，tool 结果不再双份存储，大 tool 结果正文移到会话文件 `tools.jsonl`（用户真实库副本上 779MB → 308MB），并新增备份恢复、按来源的保留期与分批 GC；CLI 分组为 `suga inspect …` / `suga data …`，顶层直接接受 chat 选项；`suga run` 的 stream-json 首尾行带 `model`；`file_refs` 的 `context`；更多输出精简规则；会话 socket 路径过长时改用短的备用目录。
+
 ### 新增
 
 - `suga data tool-bodies [--status|--move|--undo|--check|--remove-files] [--batch N]`：把历史 tool 结果正文分批移出数据库，写进 `$SUGA_HOME/sessions/<id>/tools.jsonl`（每批 ≤ 2,000 行 / 8MB，断点存命令自建的小表 `tool_body_state`，Ctrl-C 后重跑从断点续上）；`--status` 报待移出与已移出的条数/字节，`--undo` 分批把正文写回库（逐字节还原，并关掉“新写入也移出”的开关），`--check` 逐条校验桩的文件位置与 sha256 并统计无引用的记录，`--remove-files` 只在 `--undo` 之后删除已无桩指向的会话文件。阈值由 `store.tool_body_inline_bytes` 决定（默认 1,024 字节，`0` 不移出）。
@@ -854,7 +858,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.35.1...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/inhere/suga/compare/v0.35.1...v0.36.0
 [0.35.1]: https://github.com/inhere/suga/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/inhere/suga/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/inhere/suga/compare/v0.33.0...v0.34.0
