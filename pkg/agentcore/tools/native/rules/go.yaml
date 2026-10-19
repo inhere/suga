@@ -1,5 +1,44 @@
-# Go: `go test` output (see README.md for the fields and the file layout).
+# Go: build, vet and test output (see README.md for the fields).
 rules:
+  # go build is quiet on success; the rule mainly removes module-download and
+  # compiler progress lines while retaining every source location on failure.
+  - name: go-build
+    match: '\bgo\s+build\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^go: downloading '
+      - '^go: added '
+    failure:
+      - '^#\s+\S+'
+      - '^\S+\.go:\d+(?::\d+)?: '
+      - '^undefined: '
+      - '^build constraints exclude all Go files'
+      - '^cannot load '
+      - '^package .* is not in std'
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'go build: succeeded'
+
+  # go vet emits compiler-style locations on failure. It is deliberately a
+  # separate rule from go-test: go test may invoke vet, but its own package and
+  # per-test summary must remain governed by go-test below.
+  - name: go-vet
+    match: '\bgo\s+vet\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^go: downloading '
+      - '^go: added '
+    failure:
+      - '^#\s+\S+'
+      - '^\S+\.go:\d+(?::\d+)?: '
+      - '^vet: '
+      - '^found packages '
+      - '^cannot find module '
+      - '^go: errors parsing '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'go vet: succeeded'
+
   - name: go-test
     match: '\bgo test\b'
     drop:

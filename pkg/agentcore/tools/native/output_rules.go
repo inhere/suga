@@ -21,9 +21,10 @@ var builtinRuleFiles embed.FS
 
 // builtinRuleFileOrder is the order the rule files are read in: it is the order
 // the rules had when they lived in one output_rules.yaml (go, rust, js, python,
-// java, whose file holds maven and gradle), with the tool rules (git, grep)
-// appended. The order matters - every rule whose match matches the command is
-// applied in turn, so it decides the result on a command several rules match -
+// java, whose file holds maven and gradle), with git/grep and the later tool
+// families (docker, make, gh and PHP test runners) appended. The order matters -
+// every rule whose match matches the command is applied in turn, so it decides
+// the result on a command several rules match -
 // and the loader's test keeps this list and the embedded files in step.
 var builtinRuleFileOrder = []string{
 	"rules/go.yaml",
@@ -33,6 +34,10 @@ var builtinRuleFileOrder = []string{
 	"rules/java.yaml",
 	"rules/git.yaml",
 	"rules/grep.yaml",
+	"rules/docker.yaml",
+	"rules/make.yaml",
+	"rules/gh.yaml",
+	"rules/php.yaml",
 }
 
 // OutputRule tidies the output of the shell commands it matches; see
@@ -128,8 +133,9 @@ type outputRuleFile struct {
 	Rules []OutputRule `yaml:"rules"`
 }
 
-// DefaultOutputRules returns the built-in rules (go test, cargo test, jest and
-// vitest, pytest, maven, gradle), read from the embedded rule files in
+// DefaultOutputRules returns the built-in rules (go build/vet/test, cargo test,
+// TypeScript/ESLint, Ruff/Mypy, Jest/Vitest, pytest, maven, gradle and the
+// command-line tool families), read from the embedded rule files in
 // builtinRuleFileOrder. A rule file that does not parse is a build error: the
 // rules ship with the binary.
 func DefaultOutputRules() []OutputRule {

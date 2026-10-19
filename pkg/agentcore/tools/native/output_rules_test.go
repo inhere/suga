@@ -306,7 +306,7 @@ func TestBuiltinRuleFiles(t *testing.T) {
 	listed := append([]string(nil), builtinRuleFileOrder...)
 	sort.Strings(listed)
 	assert.Eq(t, embedded, listed)
-	assert.Eq(t, []string{"rules/go.yaml", "rules/rust.yaml", "rules/js.yaml", "rules/python.yaml", "rules/java.yaml", "rules/git.yaml", "rules/grep.yaml"}, builtinRuleFileOrder)
+	assert.Eq(t, []string{"rules/go.yaml", "rules/rust.yaml", "rules/js.yaml", "rules/python.yaml", "rules/java.yaml", "rules/git.yaml", "rules/grep.yaml", "rules/docker.yaml", "rules/make.yaml", "rules/gh.yaml", "rules/php.yaml"}, builtinRuleFileOrder)
 }
 
 // TestDefaultOutputRuleFields locks the built-in rules' names, their match
@@ -318,9 +318,15 @@ func TestDefaultOutputRuleFields(t *testing.T) {
 		got = append(got, rule.Name+" | "+rule.Match+" | "+rule.Summary)
 	}
 	assert.Eq(t, []string{
+		`go-build | \bgo\s+build\b | go build: succeeded`,
+		`go-vet | \bgo\s+vet\b | go vet: succeeded`,
 		`go-test | \bgo test\b | go test: {packages} package(s) ok[, {passed} test(s) passed]`,
 		`cargo-test | \bcargo (test|nextest)\b | cargo test: {passed} test(s) passed`,
+		`tsc | \b(tsc)\b | tsc: succeeded`,
+		`eslint | \beslint\b | eslint: succeeded`,
 		`js-test | \b(jest|vitest|mocha)\b|\b(npm|pnpm|yarn|bun) (run )?test\b | tests: {passed} passed`,
+		`ruff-check | \bruff\s+check\b | ruff check: succeeded`,
+		`mypy | \bmypy\b | mypy: succeeded`,
 		`pytest | \bpytest\b|\bpython3? -m pytest\b | pytest: {passed} test(s) passed`,
 		`maven | \bmvnw?\b | maven: [Tests run {tests}, Failures: {failures}, Errors: {errors}, Skipped: {skipped}; ]BUILD SUCCESS`,
 		`gradle | \bgradlew?\b | gradle: {passed} test(s) passed`,
@@ -328,6 +334,13 @@ func TestDefaultOutputRuleFields(t *testing.T) {
 		`git-diff | ^\s*git\s+(diff|show)\b | `,
 		`git-status | ^\s*git\s+status\b | `,
 		`grep | ^\s*(rg|grep)\b | `,
+		`docker-build | \bdocker\s+(build|buildx\s+build)\b | docker build: succeeded`,
+		`docker-compose-build | \bdocker(?:-compose|\s+compose)\s+build\b | docker compose build: succeeded`,
+		`docker-compose-up | \bdocker(?:-compose|\s+compose)\s+up\b | docker compose up: succeeded`,
+		`make | ^\s*make(?:\.exe)?(?:\s|$) | make: succeeded`,
+		`gh-readonly | ^\s*gh\s+(run\s+(view|list)|pr\s+(checks|view)|issue\s+view|repo\s+view)\b | gh: succeeded`,
+		`phpunit | \bphpunit\b | phpunit: succeeded`,
+		`pest | \bpest\b | pest: succeeded`,
 	}, got)
 }
 
@@ -342,7 +355,7 @@ func TestLoadOutputRules(t *testing.T) {
 	t.Run("built-in only", func(t *testing.T) {
 		rules, errs := LoadOutputRules(filepath.Join(t.TempDir(), "missing.yaml"))
 		assert.Empty(t, errs)
-		assert.Eq(t, "go-test,cargo-test,js-test,pytest,maven,gradle,git-log,git-diff,git-status,grep", names(rules))
+		assert.Eq(t, "go-build,go-vet,go-test,cargo-test,tsc,eslint,js-test,ruff-check,mypy,pytest,maven,gradle,git-log,git-diff,git-status,grep,docker-build,docker-compose-build,docker-compose-up,make,gh-readonly,phpunit,pest", names(rules))
 	})
 	t.Run("user then project: override, add, switch off", func(t *testing.T) {
 		dir := t.TempDir()
@@ -367,7 +380,7 @@ rules:
 `), 0o644))
 		rules, errs := LoadOutputRules(user, project)
 		assert.Empty(t, errs)
-		assert.Eq(t, "go-test,cargo-test,js-test,pytest,gradle,git-log,git-diff,git-status,grep,make-check", names(rules))
+		assert.Eq(t, "go-build,go-vet,go-test,cargo-test,tsc,eslint,js-test,ruff-check,mypy,pytest,gradle,git-log,git-diff,git-status,grep,docker-build,docker-compose-build,docker-compose-up,make,gh-readonly,phpunit,pest,make-check", names(rules))
 
 		m := NewOutputMinimizer(rules)
 		tidy, ok := m.Minimize(shellCall("make check"), repeatLines(40, "CHECK OK item %d")+"[exit code: 0]")
@@ -383,7 +396,7 @@ rules:
 		rules, errs := LoadOutputRules(bad)
 		assert.Require(t, assert.Len(t, errs, 1))
 		assert.StrContains(t, errs[0].Error(), "bad.yaml: rule x:")
-		assert.Eq(t, "go-test,cargo-test,js-test,pytest,maven,gradle,git-log,git-diff,git-status,grep", names(rules))
+		assert.Eq(t, "go-build,go-vet,go-test,cargo-test,tsc,eslint,js-test,ruff-check,mypy,pytest,maven,gradle,git-log,git-diff,git-status,grep,docker-build,docker-compose-build,docker-compose-up,make,gh-readonly,phpunit,pest", names(rules))
 
 		assert.NoErr(t, os.WriteFile(bad, []byte("rules:\n  - match: 'x'\n"), 0o644))
 		_, errs = LoadOutputRules(bad)

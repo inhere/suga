@@ -1,0 +1,17 @@
+# GNU make: recursive directory banners are repetitive; recipe output and every
+# diagnostic remain unless it is an unmistakable make progress banner.
+rules:
+  - name: make
+    match: '^\s*make(?:\.exe)?(?:\s|$)'
+    match_output: '(?m)^make(?:\[\d+\])?: (Entering|Leaving) directory '
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^make(?:\[\d+\])?: (Entering|Leaving) directory '
+    failure:
+      - '^make(?:\[\d+\])?: \*\*\*'
+      - '^make(?:\.exe)?(?:\[\d+\])?: \*\*\*'
+      - '^Error \d+'
+      - ': \*\*\*'
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'make: succeeded'

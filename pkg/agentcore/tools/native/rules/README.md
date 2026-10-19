@@ -14,13 +14,17 @@ order listed there:
 
 | file | rules |
 | --- | --- |
-| `go.yaml` | `go-test` |
+| `go.yaml` | `go-build`, `go-vet`, `go-test` |
 | `rust.yaml` | `cargo-test` |
-| `js.yaml` | `js-test` (jest, vitest, mocha, the package managers' test scripts) |
-| `python.yaml` | `pytest` |
+| `js.yaml` | `tsc`, `eslint`, `js-test` (jest, vitest, mocha, the package managers' test scripts) |
+| `python.yaml` | `ruff-check`, `mypy`, `pytest` |
 | `java.yaml` | `maven`, `gradle` |
 | `git.yaml` | `git-log`, `git-diff`, `git-status` |
 | `grep.yaml` | `grep` (rg and grep hits) |
+| `docker.yaml` | `docker-build`, `docker-compose-build`, `docker-compose-up` |
+| `make.yaml` | `make` |
+| `gh.yaml` | `gh-readonly` |
+| `php.yaml` | `phpunit`, `pest` |
 
 The order matters: every rule whose `match` matches the command is applied in
 turn, so it is kept as it was when all rules lived in one `output_rules.yaml`

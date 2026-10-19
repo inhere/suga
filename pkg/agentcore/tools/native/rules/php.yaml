@@ -1,0 +1,45 @@
+# PHP test runners: PHPUnit and Pest. Passing case progress is noise; failed
+# locations, assertion messages and Expected/Actual diffs are retained.
+rules:
+  - name: phpunit
+    match: '\bphpunit\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^PHPUnit \d+'
+      - '^\s*[✔✓] '
+      - '^\s*PASS\s+'
+      - '^OK \('
+      - '^Time: '
+      - '^Memory: '
+    failure:
+      - '^FAILURES!$'
+      - '^ERRORS!$'
+      - '^There (was|were) '
+      - '^\s*\d+\) '
+      - '^\s*Failed asserting'
+      - '^\S+\.php:\d+'
+      - '^Tests: .*\bfailed\b'
+      - '^Failures: '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'phpunit: succeeded'
+
+  - name: pest
+    match: '\bpest\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^\s*[✔✓] '
+      - '^\s*PASS\s+'
+      - '^Tests: .*\bpassed\b'
+      - '^Time: '
+    failure:
+      - '^\s*(FAIL|⨯|✗) '
+      - '^\s*Failed asserting'
+      - '^\S+\.php:\d+'
+      - '^Expected: '
+      - '^Received: '
+      - '^Tests: .*\bfailed\b'
+      - '^Failures: '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'pest: succeeded'
