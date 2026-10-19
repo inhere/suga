@@ -208,6 +208,16 @@ func prepareImage(data []byte, name string, maxSide int) (api.ImagePart, string,
 		return api.ImagePart{}, "", err
 	}
 	width, height := config.Width, config.Height
+	// A JPEG may store the sensor orientation in EXIF instead of rotating the
+	// pixels: turn it upright before scaling, so the model sees it as the
+	// person did and the size matches the picture.
+	orientation := exifOrientation(data)
+	if orientation != 1 {
+		img = applyOrientation(img, orientation)
+		if orientation >= 5 {
+			width, height = height, width
+		}
+	}
 	if maxSide > 0 && (width > maxSide || height > maxSide) {
 		img, width, height = scaleImage(img, maxSide)
 	}
@@ -229,6 +239,9 @@ func prepareImage(data []byte, name string, maxSide int) (api.ImagePart, string,
 	part := api.ImagePart{MediaType: mediaType, Width: width, Height: height, Data: encoded}
 	text := fmt.Sprintf("%s: %s %d×%d (sent as %s %d×%d, %d bytes)", name, format,
 		config.Width, config.Height, mediaType, width, height, len(encoded))
+	if orientation != 1 {
+		text += fmt.Sprintf(", EXIF orientation %d applied", orientation)
+	}
 	return part, text, nil
 }
 
