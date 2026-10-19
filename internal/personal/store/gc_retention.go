@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -155,6 +156,17 @@ func (s *Store) fillRetentionStats(ctx context.Context, class *GCRetentionClassR
 		}
 		class.Entries += entries
 		class.EstimatedBytes += entryBytes + metaBytes
+		// A moved tool body lives in the session file, not in the row: the stub
+		// alone would understate what removing the class frees.
+		for _, id := range ids[start:end] {
+			path, ok := s.toolBodyPath(id)
+			if !ok {
+				continue
+			}
+			if info, err := os.Stat(path); err == nil {
+				class.EstimatedBytes += info.Size()
+			}
+		}
 	}
 	return nil
 }

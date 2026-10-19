@@ -137,6 +137,10 @@ type Entry struct {
 	Type      string
 	JSON      json.RawMessage
 	CreatedAt time.Time
+
+	// bodyRef is the entries.body_ref column of a row whose body moved to the
+	// session file; it is internal on purpose, JSON is always the restored body.
+	bodyRef string
 }
 
 // NewEntry is the input form of Entry for AppendEntries.

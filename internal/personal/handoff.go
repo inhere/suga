@@ -90,6 +90,7 @@ func (r *Runner) Handoff(ctx context.Context, req HandoffRequest) (Session, erro
 	if err := r.writeHandoff(ctx, model, rec); err != nil {
 		// Release the id: a session without its handoff entry must never be resumed.
 		_ = r.cfg.Repository.DeleteSession(context.WithoutCancel(ctx), model.ID)
+		_ = r.cfg.Repository.DeleteSessionFiles(model.ID)
 		return Session{}, fmt.Errorf("handoff from %q: %w", src.ID, err)
 	}
 	return r.LoadSession(ctx, model.ID)

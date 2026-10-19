@@ -12,6 +12,12 @@ import (
 
 // AppendEntries appends a batch to the session log in one transaction and
 // returns the stored entries with their assigned seq (contiguous, per session).
+//
+// A tool entry whose body is larger than store.tool_body_inline_bytes moves into
+// the session's tools.jsonl inside this transaction (design 0.3): the row, the
+// record and the swap to the stub commit together, and a failure of the file
+// write rolls the transaction back after truncating the file to the length it
+// had. The returned entries keep the full body.
 func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEntry) ([]Entry, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -21,6 +27,18 @@ func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEn
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// One file per session: the transaction opens it once, syncs once, and drops
+	// what it wrote if anything fails.
+	var writer *toolBodyWriter
+	committed := false
+	defer func() {
+		if !committed {
+			_ = writer.Close(false)
+		}
+	}()
+	var moved []toolBodyMove
+	moveChecked, moveEnabled := false, false
 
 	now := time.Now()
 	// Write first: takes the write lock before MAX(seq) is read, so two
@@ -54,11 +72,75 @@ func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEn
 			return nil, fmt.Errorf("index entry: %w", err)
 		}
 		out = append(out, Entry{SessionID: sessionID, Seq: seq, TurnID: e.TurnID, Type: e.Type, JSON: body, CreatedAt: now.UTC()})
+		if !s.toolBodyCandidate(e.Type, body) {
+			continue
+		}
+		if !moveChecked {
+			// The persistent switch is read inside the transaction, so a concurrent
+			// `data tool-bodies --undo` (which holds the same write lock) is honored.
+			if moveEnabled, err = toolBodyMoveEnabled(ctx, tx); err != nil {
+				return nil, err
+			}
+			moveChecked = true
+		}
+		if !moveEnabled {
+			continue
+		}
+		stub, ok, err := buildToolBodyStub(body)
+		if err != nil {
+			return nil, fmt.Errorf("build tool body stub: %w", err)
+		}
+		if !ok {
+			continue // an undecodable row keeps its body inline
+		}
+		if writer == nil {
+			if writer, err = s.openToolBodyWriter(sessionID); err != nil {
+				return nil, err
+			}
+		}
+		ref, err := writer.WriteRecord(seq, body)
+		if err != nil {
+			return nil, err
+		}
+		moved = append(moved, toolBodyMove{seq: seq, stub: stub, ref: ref})
+	}
+	if writer != nil {
+		// The records must be durable before the transaction that points at them
+		// commits; the swap to the stubs happens after the sync.
+		if err := writer.Synced(); err != nil {
+			return nil, err
+		}
+		for _, m := range moved {
+			if _, err := tx.ExecContext(ctx, `UPDATE entries SET json = ?, body_ref = ? WHERE session_id = ? AND seq = ?`,
+				string(m.stub), m.ref.String(), sessionID, m.seq); err != nil {
+				return nil, fmt.Errorf("store tool body stub: %w", err)
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	committed = true
+	_ = writer.Close(true)
 	return out, nil
+}
+
+// toolBodyCandidate reports whether an entry is one the store moves out: a tool
+// entry above the threshold, with moving enabled and a session id that can own a
+// file.
+func (s *Store) toolBodyCandidate(typ string, body []byte) bool {
+	if s.toolBodyInlineBytes <= 0 || typ != EntryTool || int64(len(body)) <= s.toolBodyInlineBytes {
+		return false
+	}
+	return true
+}
+
+// toolBodyMove is one record written in a transaction, waiting for the swap of
+// its row to the stub.
+type toolBodyMove struct {
+	seq  int64
+	stub []byte
+	ref  BodyRef
 }
 
 func scanEntry(r rowScanner) (Entry, error) {
@@ -66,15 +148,16 @@ func scanEntry(r rowScanner) (Entry, error) {
 		e       Entry
 		body    string
 		created string
+		bodyRef sql.NullString
 	)
-	if err := r.Scan(&e.SessionID, &e.Seq, &e.TurnID, &e.Type, &body, &created); err != nil {
+	if err := r.Scan(&e.SessionID, &e.Seq, &e.TurnID, &e.Type, &body, &created, &bodyRef); err != nil {
 		return Entry{}, err
 	}
-	e.JSON, e.CreatedAt = json.RawMessage(body), parseTime(created)
+	e.JSON, e.CreatedAt, e.bodyRef = json.RawMessage(body), parseTime(created), bodyRef.String
 	return e, nil
 }
 
-const entryCols = `session_id, seq, turn_id, type, json, created_at`
+const entryCols = `session_id, seq, turn_id, type, json, created_at, COALESCE(body_ref, '')`
 
 // ListEntries returns entries ordered by seq, narrowed by f.
 func (s *Store) ListEntries(ctx context.Context, sessionID string, f EntryFilter) ([]Entry, error) {
@@ -107,7 +190,15 @@ func (s *Store) ListEntries(ctx context.Context, sessionID string, f EntryFilter
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Moved bodies come back from the session file, one open per call (no file is
+	// touched when no row of the result carries a stub, e.g. Types without tool).
+	if err := s.restoreToolBodies(sessionID, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ListEntryRefs returns the link fields of every entry of a session, oldest
@@ -151,7 +242,11 @@ func (s *Store) LatestEntry(ctx context.Context, sessionID, typ string) (*Entry,
 	if err != nil {
 		return nil, err
 	}
-	return &e, nil
+	out := []Entry{e}
+	if err := s.restoreToolBodies(sessionID, out); err != nil {
+		return nil, err
+	}
+	return &out[0], nil
 }
 
 func placeholders(n int) string {

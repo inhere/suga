@@ -53,9 +53,11 @@ const toolDedupeStateDDL = `CREATE TABLE IF NOT EXISTS tool_dedupe_state (
 
 // toolEntryWindowSQL reads one batch of tool entries after the (session_id, seq)
 // cursor. Only tool entries can be rewritten, so the cursor walks them and a
-// batch is at most one index range of the primary key.
+// batch is at most one index range of the primary key. Rows whose body moved to
+// a tool body file (body_ref set) are skipped: their JSON is a stub and the P2
+// rewrites must never touch it (design 0.3).
 const toolEntryWindowSQL = `SELECT session_id, seq, json FROM entries
-    WHERE type = 'tool' AND (session_id > ? OR (session_id = ? AND seq > ?))
+    WHERE type = 'tool' AND COALESCE(body_ref, '') = '' AND (session_id > ? OR (session_id = ? AND seq > ?))
     ORDER BY session_id ASC, seq ASC LIMIT ?`
 
 // toolEntryRow is one tool entry body of a batch.

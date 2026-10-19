@@ -36,11 +36,17 @@ type Options struct {
 }
 
 type File struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	SHA256 string `json:"sha256"`
-	Source string `json:"-"`
+	Path string `json:"path"`
+	// Category marks the files that are not ordinary data trees; tool body files
+	// carry categoryToolBodies so the spill accounting can leave them out.
+	Category string `json:"category,omitempty"`
+	Size     int64  `json:"size"`
+	SHA256   string `json:"sha256"`
+	Source   string `json:"-"`
 }
+
+// categoryToolBodies is the manifest category of sessions/<id>/tools.jsonl.
+const categoryToolBodies = "tool_bodies"
 
 type Manifest struct {
 	FormatVersion int       `json:"format_version"`
@@ -48,6 +54,15 @@ type Manifest struct {
 	SugaVersion   string    `json:"suga_version"`
 	Files         []File    `json:"files"`
 	Spill         SpillInfo `json:"spill"`
+	// ToolBodies counts the session files that hold moved tool result bodies.
+	// They are always included, unlike spill: a stub in the ledger only names an
+	// offset in its file, so the file is the only copy of the body.
+	ToolBodies ToolBodiesInfo `json:"tool_bodies"`
+}
+
+type ToolBodiesInfo struct {
+	FileCount int   `json:"file_count"`
+	Bytes     int64 `json:"bytes"`
 }
 
 type SpillInfo struct {
@@ -145,13 +160,19 @@ func Create(ctx context.Context, opts Options) (Manifest, error) {
 	if err := scanSymlinks(filepath.Join(home, "sessions")); err != nil {
 		return Manifest{}, err
 	}
+	// Invariant: the snapshot above is taken first and the files are collected
+	// afterwards, so the files are a superset of what the snapshot points at and
+	// every stub in the snapshot finds its record on disk.
+	if err := collectToolBodies(&manifest, home, filepath.Join(home, "sessions")); err != nil {
+		return Manifest{}, err
+	}
 	if opts.IncludeSpill {
 		if err := collectSpill(&manifest, home, filepath.Join(home, "sessions")); err != nil {
 			return Manifest{}, err
 		}
 		manifest.Spill.Policy = "included"
 		for _, f := range manifest.Files {
-			if strings.HasPrefix(f.Path, "sessions/") {
+			if strings.HasPrefix(f.Path, "sessions/") && f.Category != categoryToolBodies {
 				manifest.Spill.FileCount++
 				manifest.Spill.Bytes += f.Size
 			}
@@ -171,7 +192,8 @@ func writeArchive(output, snapshot, home string, manifest Manifest) (Manifest, e
 		return Manifest{}, err
 	}
 	zw := zip.NewWriter(file)
-	for _, item := range manifest.Files {
+	for i := range manifest.Files {
+		item := &manifest.Files[i]
 		var src string
 		if item.Path == "db/sessions.db" {
 			src = snapshot
@@ -189,7 +211,7 @@ func writeArchive(output, snapshot, home string, manifest Manifest) (Manifest, e
 		}
 		out, err := zw.Create(item.Path)
 		if err == nil {
-			_, err = io.Copy(out, in)
+			err = copyRecordedBytes(out, in, item)
 		}
 		_ = in.Close()
 		if err != nil {
@@ -214,6 +236,21 @@ func writeArchive(output, snapshot, home string, manifest Manifest) (Manifest, e
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+// copyRecordedBytes writes at most item.Size bytes of src into dst and hashes
+// exactly the bytes it wrote, then records that length and hash on the item. An
+// append to the source between the size scan and this copy (a live session file)
+// therefore cannot make the manifest hash disagree with the archive entry.
+func copyRecordedBytes(dst io.Writer, src io.Reader, item *File) error {
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(dst, h), io.LimitReader(src, item.Size))
+	if err != nil {
+		return err
+	}
+	item.Size = n
+	item.SHA256 = hex.EncodeToString(h.Sum(nil))
+	return nil
 }
 
 func writeZipFile(zw *zip.Writer, name string, data []byte) (int, error) {
@@ -424,7 +461,11 @@ func replaceData(staging, home string, manifest Manifest) error {
 		}
 		installed = append(installed, rel)
 	}
-	// Spill files are intentionally merged rather than replacing the whole sessions root.
+	// Spill files are intentionally merged rather than replacing the whole
+	// sessions root. A tool body file (sessions/<id>/tools.jsonl) is installed the
+	// same way, but it may already exist: Windows cannot rename over an existing
+	// file, so the old copy moves into the rollback directory first and restore()
+	// puts it back if the install fails.
 	for _, f := range manifest.Files {
 		if !strings.HasPrefix(f.Path, "sessions/") {
 			continue
@@ -435,13 +476,38 @@ func replaceData(staging, home string, manifest Manifest) error {
 			restore()
 			return err
 		}
+		if _, err := os.Lstat(dst); err == nil {
+			backup := filepath.Join(rollback, filepath.FromSlash(f.Path))
+			if err := os.MkdirAll(filepath.Dir(backup), 0o700); err != nil {
+				restore()
+				return err
+			}
+			if err := os.Rename(dst, backup); err != nil {
+				restore()
+				return fmt.Errorf("replace %s (close suga handles and retry): %w", f.Path, err)
+			}
+			moved = append(moved, f.Path)
+		}
 		if err := os.Rename(src, dst); err != nil {
 			restore()
-			return fmt.Errorf("restore spill %s: %w", f.Path, err)
+			return fmt.Errorf("restore session file %s (Windows may still have an open handle): %w", f.Path, err)
 		}
 		installed = append(installed, f.Path)
 	}
 	return nil
+}
+
+// ToolBodyCheck verifies the installed session files against the installed
+// ledger, the same check as `suga data tool-bodies --check`, so a restore that
+// did not bring a tool body file back is reported right away.
+func ToolBodyCheck(ctx context.Context, home string) (store.ToolBodyCheckReport, error) {
+	dbPath := filepath.Join(home, "db", "sessions.db")
+	repo, err := store.OpenReadOnly(dbPath)
+	if err != nil {
+		return store.ToolBodyCheckReport{}, err
+	}
+	defer repo.Close()
+	return repo.ToolBodyCheck(ctx)
 }
 
 func readZip(f *zip.File) ([]byte, error) {
@@ -469,12 +535,17 @@ func absoluteHome(home string) (string, error) {
 	return filepath.Abs(home)
 }
 func addExternal(m *Manifest, path, zipPath string) error {
-	body, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256(body)
-	m.Files = append(m.Files, File{Path: zipPath, Size: int64(len(body)), SHA256: hex.EncodeToString(sum[:]), Source: path})
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("backup source %s is not a regular file", path)
+	}
+	// The hash is computed while the bytes are copied into the archive, over the
+	// length recorded here (see copyRecordedBytes); reading the file twice could
+	// disagree with a file that grows in between.
+	m.Files = append(m.Files, File{Path: zipPath, Size: info.Size(), Source: path})
 	return nil
 }
 func addHomeFile(m *Manifest, home, path, zipPath string) error {
@@ -515,6 +586,52 @@ func collectTree(m *Manifest, home, root, zipRoot, source string) error {
 		return addHomeFile(m, home, path, zipPath)
 	})
 }
+
+// collectToolBodies adds the tool body files (sessions/<id>/tools.jsonl) to
+// every backup, with or without --include-spill: the stub in the ledger only
+// names an offset in this file, so it is the single copy of the tool result.
+func collectToolBodies(m *Manifest, home, root string) error {
+	info, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing symlink %s", root)
+	}
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing symlink %s", path)
+		}
+		if info.IsDir() || info.Name() != store.ToolBodyFileName {
+			return nil
+		}
+		rel, err := filepath.Rel(home, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		// Only sessions/<id>/tools.jsonl is a tool body file; a deeper or
+		// differently placed file of the same name is left to the spill pass.
+		if parts := strings.Split(rel, "/"); len(parts) != 3 || parts[0] != "sessions" {
+			return nil
+		}
+		before := len(m.Files)
+		if err := addHomeFile(m, home, path, rel); err != nil {
+			return err
+		}
+		m.Files[before].Category = categoryToolBodies
+		m.ToolBodies.FileCount++
+		m.ToolBodies.Bytes += m.Files[before].Size
+		return nil
+	})
+}
+
 func collectSpill(m *Manifest, home, root string) error {
 	info, err := os.Lstat(root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -594,6 +711,9 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f PB", value/1024)
 }
 
+// treeBytes is the size --include-spill would have added (the files under an
+// outputs/ directory). Tool body files are always in the archive, so they are
+// not part of the omitted spill bytes.
 func treeBytes(root string) int64 {
 	var total int64
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
