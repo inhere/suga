@@ -1,6 +1,41 @@
-# JavaScript/TypeScript: jest, vitest and the package managers' test scripts
-# (see README.md).
+# JavaScript/TypeScript: tsc, eslint, jest, vitest and package-manager test scripts.
 rules:
+  # tsc --noEmit and plain tsc are quiet when successful. Keep compiler source
+  # locations and the diagnostic text when a build fails.
+  - name: tsc
+    match: '\b(tsc)\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^Version \d+'
+      - '^Found 0 errors?$'
+      - '^TSFILE: '
+    failure:
+      - '(^|\s)error TS\d+'
+      - '^\S+\.tsx?:\d+:\d+ - error'
+      - '^\S+\.tsx?\(\d+,\d+\): error'
+      - '^Found [1-9]\d* errors?$'
+      - '^error TS\d+'
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'tsc: succeeded'
+
+  # ESLint's passing check marks are noise; diagnostic locations and the final
+  # error count remain on a failing run. Warnings are intentionally retained.
+  - name: eslint
+    match: '\beslint\b'
+    drop:
+      - '^\s*✔ '
+      - '^Linted \d+ files?'
+      - '^\s*\d+ files? checked,? 0 errors?$'
+    failure:
+      - '^\S.*:\d+:\d+:\s+error\b'
+      - '^\s*✖ .*\berrors?\b'
+      - '^\s*\d+ errors?\b'
+      - '^ESLint found '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'eslint: succeeded'
+
   - name: js-test
     match: '\b(jest|vitest|mocha)\b|\b(npm|pnpm|yarn|bun) (run )?test\b'
     drop:

@@ -1,0 +1,60 @@
+# Docker build and Compose progress output. BuildKit's step/progress lines are
+# noise on success, while ERROR/Dockerfile locations and daemon messages stay.
+rules:
+  - name: docker-build
+    match: '\bdocker\s+(build|buildx\s+build)\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^ => \[(internal|[0-9]+/[0-9]+|exporting|auth)'
+      - '^ => => '
+      - '^#[0-9]+ \[(internal|[0-9]+/[0-9]+|exporting|auth)'
+      - '^#[0-9]+ (transferring|CACHED|DONE)'
+    failure:
+      - '^ => ERROR'
+      - '^#[0-9]+ ERROR'
+      - '^ERROR: '
+      - '^failed to solve'
+      - '^\s*Dockerfile:\d+'
+      - '^\s*>\s*\d+\s*\|'
+      - '^error response from daemon'
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'docker build: succeeded'
+
+  - name: docker-compose-build
+    match: '\bdocker(?:-compose|\s+compose)\s+build\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^ => \[(internal|[0-9]+/[0-9]+|exporting|auth)'
+      - '^ => => '
+      - '^#[0-9]+ \[(internal|[0-9]+/[0-9]+|exporting|auth)'
+      - '^#[0-9]+ (transferring|CACHED|DONE)'
+    failure:
+      - '^ => ERROR'
+      - '^#[0-9]+ ERROR'
+      - '^ERROR: '
+      - '^failed to solve'
+      - '^\s*Dockerfile:\d+'
+      - '^\s*>\s*\d+\s*\|'
+      - '^error response from daemon'
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'docker compose build: succeeded'
+
+  - name: docker-compose-up
+    match: '\bdocker(?:-compose|\s+compose)\s+up\b'
+    drop:
+      - '^\s*[✔✓] '
+      - '^\[\+\] Running '
+      - '^\s*Container .* (Started|Running|Healthy)$'
+      - '^\s*Network .* (Created|Running)$'
+    failure:
+      - '^Error response from daemon'
+      - '^error response from daemon'
+      - '^ERROR: '
+      - '^\s*(failed|failure|error)\b'
+      - '^\s*\S+ exited with code [1-9]'
+      - '^unable to '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'docker compose up: succeeded'

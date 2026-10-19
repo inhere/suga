@@ -1,5 +1,37 @@
-# Python: pytest output (see README.md).
+# Python: ruff, mypy and pytest output (see README.md for the fields).
 rules:
+  - name: ruff-check
+    match: '\bruff\s+check\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^All checks passed!$'
+      - '^Found 0 errors?\.$'
+      - '^\S+\.py$'
+    failure:
+      - '^\S+\.py:\d+:\d+:\s+[A-Z]\d+\b'
+      - '^Found [1-9]\d* errors?\.$'
+      - '^error:\s'
+      - '^ruff failed'
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'ruff check: succeeded'
+
+  - name: mypy
+    match: '\bmypy\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^LOG: '
+      - '^Success: no issues found in \d+ source files?$'
+      - '^Found 0 errors? in \d+ source files?$'
+    failure:
+      - '^\S+\.py:\d+(?::\d+)?: error:'
+      - '^Found [1-9]\d* errors? in '
+      - '^mypy: error:'
+      - '^error: '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'mypy: succeeded'
+
   - name: pytest
     match: '\bpytest\b|\bpython3? -m pytest\b'
     drop:

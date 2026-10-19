@@ -1,0 +1,23 @@
+# GitHub CLI read-only commands. Keep check results and failed-run logs; only
+# repeated transport/help/progress boilerplate is removed.
+rules:
+  - name: gh-readonly
+    match: '^\s*gh\s+(run\s+(view|list)|pr\s+(checks|view)|issue\s+view|repo\s+view)\b'
+    drop:
+      - '^\[exit code: 0\]$'
+      - '^\s*(Fetching|Refreshing) '
+      - '^HTTP [23]\d\d$'
+      - '^View this run on GitHub: '
+      - '^For more information, see '
+      - '^To see more, '
+    failure:
+      - '^Error: '
+      - '^error: '
+      - '^ERROR: '
+      - '^\s*(✗|×|X)\s+'
+      - '\b(failed|failure|FAIL)\b'
+      - '^HTTP [45]\d\d$'
+      - '^(could not|unable to|no such) '
+    count:
+      success: '^\[exit code: 0\]$'
+    summary: 'gh: succeeded'
