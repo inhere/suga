@@ -133,7 +133,7 @@ func globalBytes(handle uintptr) ([]byte, error) {
 	}
 	buf := make([]byte, r)
 	var read uintptr
-	current, _ := windows.GetCurrentProcess()
+	current := windows.CurrentProcess()
 	r, _, _ = procReadProcessMemory.Call(uintptr(current), handle,
 		uintptr(unsafe.Pointer(&buf[0])), r, uintptr(unsafe.Pointer(&read)))
 	if r == 0 {
