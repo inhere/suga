@@ -181,9 +181,6 @@ type toolBodyWriter struct {
 	pos    int64 // length after the records written so far
 	dirty  bool
 	closed bool
-	// created is true when this writer made the file, so the directory entry
-	// needs the fsync of close (Linux; a no-op on Windows).
-	created bool
 }
 
 // openToolBodyWriter opens (creating) the session file for appending.
