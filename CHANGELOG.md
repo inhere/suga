@@ -16,6 +16,10 @@
 - 符号提取层的语言注册新增 YAML、TOML（拒绝文案与工具描述随之列出）；`file_refs` 改为按“该语言是否有语法解析”选择匹配方式（原来按 approx 标志推断），除 Go 之外所有已注册语言都用词边界文本匹配。
 - `file_grep` 支持 `exclude`、glob 列表与 `!` 取反、上下文行、字面量匹配，并在 lookaround/backreference 等 RE2 不支持的正则上安全回退到带超时的 regexp2。
 
+### 修复
+
+- `file_read` 的 `path:N`（只写一个行号，rg/`file_grep`/堆栈的写法）从第 N 行起读 40 行，不再报 invalid line span。
+
 ## [0.35.0] - 2026-10-18
 
 支持 PHP（`file_symbols`、`file_refs`、`phpunit`/`pest`）；`file_refs` 对没有提取器的文本文件（Rust、模板、TOML 等）退化为词边界文本匹配而不再拒绝，`file_symbols` 改为给出可执行的 `file_grep` 用法；限定名查询不再漏掉定义包内的裸调用。

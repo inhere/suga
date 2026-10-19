@@ -364,8 +364,17 @@ func TestSplitReadItem(t *testing.T) {
 		assert.Eq(t, "10-20, 30-40", rangesText(item.ranges))
 		assert.Eq(t, `D:\src\a.go:10-20,30-40`, item.arg)
 	})
+	t.Run("a bare line number reads a window from that line", func(t *testing.T) {
+		item, err := splitReadItem("src/dent.rs:199")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "src/dent.rs", item.path)
+		assert.Eq(t, "199-238", rangesText(item.ranges))
+		item, err = splitReadItem("a.go:5,10-12")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "5-44, 10-12", rangesText(item.ranges))
+	})
 	t.Run("malformed spans", func(t *testing.T) {
-		for _, arg := range []string{"a.go:2-1", "a.go:1", "a.go:1--2"} {
+		for _, arg := range []string{"a.go:2-1", "a.go:0", "a.go:1--2", "a.go:1x"} {
 			_, err := splitReadItem(arg)
 			assert.ErrMsgContains(t, err, "invalid line span")
 			assert.ErrMsgContains(t, err, fmt.Sprintf("in %q", arg))
