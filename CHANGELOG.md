@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- `run.deadline_env`（默认空 = 关闭）：环境变量名指向本次运行的截止时间（RFC3339）。gofer 时限 job 主机配置 `run.deadline_env: GOFER_JOB_DEADLINE` 即可，每次请求模型前在消息末尾临时附一条时间提示：现在的时间、截止时间与剩余约多少分钟；剩余不足 10% 或不足 5 分钟改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”，已过截止时间说明已超时。提示只进本次请求，不写库、不进稳定系统提示前缀（前缀缓存不变）；变量缺失或解析失败时只记一行调试日志，不报错。`run`/`chat`/ACP 与子 agent 通用；`suga config get/set run.deadline_env` 可用。
+
 ## [0.36.0] - 2026-10-19
 
 会话库数据治理：全文检索只覆盖用户与 AI 消息，tool 结果不再双份存储，大 tool 结果正文移到会话文件 `tools.jsonl`（用户真实库副本上 779MB → 308MB），并新增备份恢复、按来源的保留期与分批 GC；CLI 分组为 `suga inspect …` / `suga data …`，顶层直接接受 chat 选项；`suga run` 的 stream-json 首尾行带 `model`；`file_refs` 的 `context`；更多输出精简规则；会话 socket 路径过长时改用短的备用目录。
@@ -12,7 +16,6 @@
 
 - `suga data tool-bodies [--status|--move|--undo|--check|--remove-files] [--batch N]`：把历史 tool 结果正文分批移出数据库，写进 `$SUGA_HOME/sessions/<id>/tools.jsonl`（每批 ≤ 2,000 行 / 8MB，断点存命令自建的小表 `tool_body_state`，Ctrl-C 后重跑从断点续上）；`--status` 报待移出与已移出的条数/字节，`--undo` 分批把正文写回库（逐字节还原，并关掉“新写入也移出”的开关），`--check` 逐条校验桩的文件位置与 sha256 并统计无引用的记录，`--remove-files` 只在 `--undo` 之后删除已无桩指向的会话文件。阈值由 `store.tool_body_inline_bytes` 决定（默认 1,024 字节，`0` 不移出）。
 - `suga data backup` 现在**始终**包含 `sessions/*/tools.jsonl`（与 `--include-spill` 无关，manifest 记类别 `tool_bodies`），因为桩只记录文件里的偏移，文件是正文的唯一副本；归档拷贝按 manifest 记录的 Size 用 `LimitReader` 并在拷贝时算 hash，备份期间文件被追加也不会 hash 不符；`suga data restore` 会安装这些会话文件（目标已存在时先把旧文件移入回滚目录再替换，Windows 上 rename 不能覆盖），恢复后自动跑一次 `tool-bodies --check` 并报告缺失条数。
-- `run.deadline_env`（默认空 = 关闭）：环境变量名指向本次运行的截止时间（RFC3339）。gofer 时限 job 主机配置 `run.deadline_env: GOFER_JOB_DEADLINE` 即可，每次请求模型前在消息末尾临时附一条时间提示：现在的时间、截止时间与剩余约多少分钟；剩余不足 10% 或不足 5 分钟改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”，已过截止时间说明已超时。提示只进本次请求，不写库、不进稳定系统提示前缀（前缀缓存不变）；变量缺失或解析失败时只记一行调试日志，不报错。`run`/`chat`/ACP 与子 agent 通用；`suga config get/set run.deadline_env` 可用。
 - 顶层命令分组：新增 `suga inspect`（会话诊断：`trace`、`stats`、`export`、`manifest`）与 `suga data`（数据维护：`gc`、`shrink-fts`、`vacuum`、`compress-spill`、`backup`、`restore`）两个分组命令，顶层只留 `chat`、`run`、`send`、`ps`、`sessions`、`undo`、`config`、`models`、`init`、`version`、`acp`；分组的一行说明列出其子命令名，单独执行 `suga inspect`（或 `suga data`）时打印子命令列表。原 `suga gc` 的维护开关拆成独立子命令：`suga data shrink-fts [--status|--abort|--batch N]`、`suga data vacuum`、`suga data compress-spill [--apply]`，`suga data gc` 只保留 `--older-than` / `--retention` 与 `--apply`。命令行为、参数名与输出格式均未改变。
 - 顶层直接接受 chat 选项：`suga --resume <session>`、`suga -m <model>` 等同 `suga chat --resume <session>`（第一个参数是选项时自动视为 chat，`-h`/`--help`/`-V`/`--version` 除外）。
 - `suga data backup --output FILE.suga-backup.zip [--include-spill]` 与 `suga data restore FILE.suga-backup.zip`：使用带 `manifest.json`、SHA-256 清单和 SQLite `VACUUM INTO` 在线快照的 ZIP 归档；默认不打包 spill，`--include-spill` 显式纳入。restore 校验路径、解压比例、全部 hash 和 SQLite integrity check，取得 `run/maintenance.lock` 后以 staging 原子替换，并默认先写入 `backups/pre-restore-<时间>.suga-backup.zip`。
