@@ -553,7 +553,15 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	lockRoot := filepath.Join(home, "run", "locks")
 	processRoot := filepath.Join(home, "run")
-	repo, err := store.Open(dbPath)
+	// store.tool_body_inline_bytes: a tool result body above this many bytes moves
+	// to sessions/<id>/tools.jsonl (0 keeps every body in the ledger). chat, run
+	// and ACP all open the store here.
+	toolBody, err := appconfig.ReadToolBodySettings()
+	if err != nil {
+		_ = capabilities.Close()
+		return nil, err
+	}
+	repo, err := store.Open(dbPath, store.WithToolBodyInlineBytes(toolBody.InlineBytes))
 	if err != nil {
 		_ = capabilities.Close()
 		return nil, err
