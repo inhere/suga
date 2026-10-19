@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # tool 结果正文移到会话文件设计
 
-> 状态：Draft 0.2 / 已批准（待独立审核后实施）
+> 状态：Draft 0.3 / 已批准，按独立审核修订后可实施（“0.3 修订”优先于后文）
 > 日期：2026-10-19
 > 关联：数据治理设计 `docs/design/2026-10-19-data-governance-design.md`（“B 路线”的收窄版本）、issue `suga-zy9f`
 
@@ -11,8 +11,59 @@
 |---|---|---|---|
 | 0.1 | 2026-10-19 | 监督（Claude） | 用户 2026-10-19：“tool 输出基本不是那么重要，搜索主要看 AI 和用户的消息，这部分能否移到 jsonl 文件，需要时才去看”，并要求先出设计。只把 tool 结果正文移出数据库，读取在 store 层透明取回；用户/AI 消息、元数据、events、FTS 仍在库里。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 用户批准（“B 的设计按推荐来”）：Q1 阈值 1,024 字节、Q2 命令 `suga data tool-bodies`、Q3 新写入立即生效、Q4 校验失败报错、Q5 不压缩、Q6 实施前独立审核。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 按独立审核（独立子 agent，结论“修改后可实施”；codex 审核两次因模型连接中断未产出）修订：--move 改在写事务内；restore 必须安装 tools.jsonl、备份拷贝按记录长度并边拷边算 hash；桩不带 P2 标记且 P2 两个改写跳过桩；用 entries.body_ref 列识别桩；原始字节写文件；失败截断与目录 fsync；--remove-files 竞态；Store 需要知道 sessions 目录；A、P2 为硬前置（均已合并）。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
+
+## 0.3 修订：独立审核后的定稿要点（本节优先于后文）
+
+前置：A（tool 不进 FTS，`a0647875`）与 P2（写存储去重，`4947dcab`）已合入 main。A 是硬前置：否则 FTS 回填/维护会读到桩里的预览。
+
+### 写入与迁移都在写事务内（阻断 B1、S6）
+
+- 新写入：保持 0.2 的“插入行 → 追加并 Sync → 改桩 → 提交”。同一事务里同一会话的多条 tool 只打开文件一次、Sync 一次。
+- `--move` 也必须在写事务内：每批 `BEGIN IMMEDIATE` → 读这一批行 → 按会话追加并 Sync → 改桩 → 写断点 → 提交；批次小（≤100 行或 ≤8MB），控制持锁时间。这样“写前偏移”在锁内计算，和在线写入不会交错；同一行不会被追加两次（已是桩的行跳过）。
+- 网络盘不支持（SQLite WAL 本来就要求本地文件系统），在文档里写明。
+
+### 文件格式与校验（S3、S4）
+
+- 每行记录：`{"seq":N,"sha256":"…","json":` + **条目 JSON 的原始字节** + `}\n`。`BodyRef.off/len` 指向原始字节那一段，`sha256` 对这段原始字节计算；取回时 `ReadAt` 直接得到原始字节，逐字节相同不依赖再编码。
+- 追加写失败：`Truncate` 回写前长度，再回滚事务。Linux 上首次创建文件后 fsync 所在目录。
+
+### 桩的识别：新增列，而不是嗅探 JSON（建议采纳）
+
+- 迁移：`ALTER TABLE entries ADD COLUMN body_ref TEXT`（O(1)，不是全表工作），桩行 `body_ref` 非空（存 `off,len,sha256`），`json` 存短桩（不含 `BodyRef` 键）。
+- 读取路径只看 `body_ref` 列；`--status`、GC 估算、`--check` 都可直接用 SQL；`Types` 不含 tool 的读取零文件 IO。
+
+### 与 P2 的交互（阻断 B4）
+
+- 桩不带 `ResultSameAsContent` 标记。
+- P2 的 `dedupe-tool-results` 与 `--undo` 都跳过 `body_ref` 非空的行（补测试）。
+- 回滚顺序：先 `suga data tool-bodies --undo`，再 `suga data dedupe-tool-results --undo`，再回退版本（CHANGELOG 写明）。
+
+### 备份与恢复（阻断 B2、B3）
+
+- `restore` 必须安装 `sessions/*/tools.jsonl`（`internal/personal/backup/backup.go:387` 的 `replaceData` 目前只装 db、config、memory、projects）。
+- 不变量：备份先做 DB 快照，后采集文件（`backup.go:107` 与 `:145` 起），所以文件是快照的超集，快照里的桩都有效。写进设计与代码注释。
+- 归档拷贝按 manifest 记录的 Size 用 `LimitReader`，边拷边算 hash，避免两步之间文件被追加导致 hash 不符（`addExternal` `:471` 与 `writeArchive` `:178`）。
+- `treeBytes(sessions)`（`:162`）不把 `tools.jsonl` 算作“省略的 spill”。
+- 恢复后自动跑一次 `--check`，报告结果。
+
+### `--undo --remove-files` 的竞态（S1）
+
+- 用库内持久开关（例如 meta 表里一行）控制“新写入是否移出”，在写事务里读取；`--undo` 先关开关再还原。
+- 删除某会话文件前，在写锁内确认该会话已没有 `body_ref` 行。
+- `--check` 只报告孤儿记录，不清理；清理需要重写文件（改变偏移），必须在写锁内连同桩一起更新，本版不做。
+
+### Store 需要知道 sessions 目录（S2）
+
+- `store.Open` 增加可选参数（会话文件根目录）；未传时从库路径推导 `<db 所在目录>/../sessions`，并保证 restore 的 staging 库与 `inspect trace` 的 `OpenReadOnly` 下也成立。
+- `sessionDir` 不接受的会话 id（`internal/cli/data_gc.go:136` 的校验）不移出。
+
+### 与代码事实的更正（S5）
+
+- 删除会话目录在 `internal/cli/data_gc.go:173-184`，不在 store 的 `gc*.go`；`handoff.go:92`、`runner.go:483` 调 `DeleteSession` 不删目录，会留下孤儿文件——实施时让这两处也清理 `tools.jsonl`（或交给 `--check` 报告）。
+- 实际读取点约 15 处，不是 20 处。
 
 ## 思考模式与范围冻结
 
