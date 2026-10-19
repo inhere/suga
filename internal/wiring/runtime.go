@@ -13,6 +13,7 @@ import (
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/inhere/suga/internal/adddir"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/clipboardimage"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -257,6 +258,24 @@ func (rt *Runtime) ReadImage(path string) (agentcore.ImagePart, string, error) {
 func (rt *Runtime) VisionGate() *tools.VisionGate {
 	return rt.vision
 }
+// PasteImageCallback wires chat's Alt+V (design 0.3): the platform clipboard
+// reader plus the view_image pipeline (the same checks and scaling), so a
+// paste and a :image path end up identical for the model.
+func (rt *Runtime) PasteImageCallback() func() (agentcore.ImagePart, string, error) {
+	if rt == nil || rt.sessionDirs == nil {
+		return nil
+	}
+	read := clipboardimage.Reader()
+	maxSide := imageMaxSide()
+	return func() (agentcore.ImagePart, string, error) {
+		data, name, err := read()
+		if err != nil {
+			return agentcore.ImagePart{}, "", err
+		}
+		return native.PrepareImage(data, name, maxSide)
+	}
+}
+
 // SessionModelReference reads the last main model of a persisted session before
 // runtime assembly. Chat uses it so --resume follows :model unless --model was
 // explicitly supplied on the command line.

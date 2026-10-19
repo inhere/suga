@@ -152,6 +152,11 @@ type Terminal struct {
 	// AutoCompleteCallback), so it may write to the terminal; an empty line always
 	// keeps Up's usual meaning.
 	WithdrawCallback func() (string, bool)
+	// PasteImageCallback, when non-nil, runs on Alt+V (design 0.3): the chat
+	// appends the clipboard's picture to its pending queue and prints the
+	// "[已附图 …]" note above the input line. Called with the terminal lock
+	// released (like WithdrawCallback), so it may write to the terminal.
+	PasteImageCallback func()
 	// ctrlCClearsLine is set by SetCtrlCClearsLine: a Ctrl-C on a non-empty line
 	// drops what was typed and the read goes on, instead of ending it with
 	// ErrInterrupt. An empty line always ends the read.

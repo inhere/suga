@@ -72,6 +72,7 @@ type chatState struct {
 	// pendingImages are the pictures waiting to ride with the next message
 	// (chat :image / Alt+V, design 0.3).
 	readImage     func(string) (agentcore.ImagePart, string, error)
+	readClip      func() (agentcore.ImagePart, string, error)
 	vision        *tools.VisionGate
 	pendingImages []agentcore.ImagePart
 	tasks    *tasks.Manager

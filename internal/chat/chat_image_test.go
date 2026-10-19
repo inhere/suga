@@ -8,6 +8,7 @@ import (
 
 	"github.com/gookit/goutil/x/assert"
 
+	"github.com/inhere/suga/internal/clipboardimage"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 )
@@ -76,8 +77,52 @@ func TestChatImageCommand(t *testing.T) {
 	})
 }
 
-// TestChatImageTakePending: the turn takes the queue, and a later message
-// without new images sends none again.
+// fakeClipReader wraps a read function in the chat-side type (the real one is
+// built by wiring over internal/clipboardimage).
+func fakeClipReader(read func() (agentcore.ImagePart, string, error)) func() (agentcore.ImagePart, string, error) {
+	return read
+}
+
+// clipboardChatState builds a chatState with a clipboard loader and no loader
+// for paths.
+func clipboardChatState(read func() (agentcore.ImagePart, string, error), vision bool) (*chatState, *bytes.Buffer) {
+	s, buf := imageChatState(nil, vision)
+	s.readClip = read
+	return s, buf
+}
+
+// TestChatPasteClipboard covers Alt+V's chat half through real ReadLine binding
+// (the key path is covered by the lineedit tests and the ptysmoke scenario).
+func TestChatPasteClipboard(t *testing.T) {
+	good := func() (agentcore.ImagePart, string, error) {
+		return agentcore.ImagePart{MediaType: "image/png", Width: 4, Height: 2}, "剪贴板", nil
+	}
+	t.Run("pastes into the same queue as :image", func(t *testing.T) {
+		s, buf := clipboardChatState(good, true)
+		s.attachFromClipboard()
+		assert.Contains(t, buf.String(), "[已附图 1：4×2 image/png]")
+		assert.Eq(t, 1, len(s.pendingImages))
+	})
+	t.Run("no picture says so", func(t *testing.T) {
+		s, buf := clipboardChatState(fakeClipReader(func() (agentcore.ImagePart, string, error) {
+			return agentcore.ImagePart{}, "", clipboardimage.ErrNoClipboardImage
+		}), true)
+		s.attachFromClipboard()
+		assert.Eq(t, 0, len(s.pendingImages))
+		assert.Contains(t, buf.String(), "剪贴板里没有图片")
+	})
+	t.Run("a model without vision is refused", func(t *testing.T) {
+		s, buf := clipboardChatState(good, false)
+		s.attachFromClipboard()
+		assert.Eq(t, 0, len(s.pendingImages))
+		assert.Contains(t, buf.String(), ":model")
+	})
+	t.Run("without a reader the key says so", func(t *testing.T) {
+		s, buf := clipboardChatState(nil, true)
+		s.attachFromClipboard()
+		assert.Contains(t, buf.String(), "不可用")
+	})
+}
 func TestChatImageTakePending(t *testing.T) {
 	s, _ := imageChatState(fakeReadImage(), true)
 	assert.Nil(t, s.takePendingImages())

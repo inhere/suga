@@ -78,6 +78,8 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		// :image / Alt+V (design 0.3): the view_image pipeline and the live vision
 		// gate of the runtime, so a refusal follows a :model switch.
 		ReadImage: runtime.ReadImage, Vision: runtime.VisionGate(),
+		// Alt+V (design 0.3): the same pipeline behind :image, over the clipboard.
+		PasteImage: runtime.PasteImageCallback(),
 		// The local commands of the prompt (!cmd / !!cmd): the same shell and
 		// workspace the shell tools use, and no turn of their own.
 		Local: runtime.LocalCommands(),

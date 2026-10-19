@@ -95,6 +95,33 @@ func (s *chatState) attachImage(arg string) {
 		len(s.pendingImages), part.Width, part.Height, part.MediaType)
 }
 
+// attachFromClipboard is the Alt+V paste (design 0.3): one clipboard picture
+// on the same queue as :image. The reader speaks for itself — no picture
+// reports "剪贴板里没有图片", a missing reader says what to install.
+func (s *chatState) attachFromClipboard() {
+	out := s.errWriter()
+	if s.readClip == nil {
+		fmt.Fprintln(out, "Alt+V 贴图在本进程不可用")
+		return
+	}
+	if !s.canSeeImages() {
+		fmt.Fprintf(out, "当前模型 %s 不支持看图，无法附图；请用 :model 切换到支持看图的模型\n", s.modelInfo.Ref())
+		return
+	}
+	if len(s.pendingImages) >= maxPendingImages {
+		fmt.Fprintf(out, "待发图片已达上限（%d 张），请先发送或 :image clear\n", maxPendingImages)
+		return
+	}
+	part, _, err := s.readClip()
+	if err != nil {
+		fmt.Fprintln(out, "Alt+V："+err.Error())
+		return
+	}
+	s.pendingImages = append(s.pendingImages, part)
+	fmt.Fprintf(out, "[已附图 %d：%d×%d %s] 将随下一条消息发送\n",
+		len(s.pendingImages), part.Width, part.Height, part.MediaType)
+}
+
 // takePendingImages hands the queued images to the message being sent and
 // clears the queue.
 func (s *chatState) takePendingImages() []agentcore.ImagePart {

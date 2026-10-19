@@ -130,6 +130,10 @@ type Options struct {
 	// the view_image rules (design 0.3); the CLI builds it over the session's
 	// workspace. ReadImage nil leaves both unavailable.
 	ReadImage func(path string) (agentcore.ImagePart, string, error)
+	// PasteImage reads one picture from the system clipboard for Alt+V (the
+	// same queue as :image); the CLI builds it per-platform with the view_image
+	// pipeline. PasteImage nil leaves the binding out.
+	PasteImage func() (agentcore.ImagePart, string, error)
 	// Vision is the live "the current model can see images" gate (nil = can
 	// see), the same one the runtime moves on a :model switch.
 	Vision *tools.VisionGate
@@ -353,8 +357,13 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		createdAtStartup: createdAtStartup, dirs: opts.Dirs,
 		modelOptions: opts.ModelOptions, modelSwitch: opts.ModelSwitch,
 		modelInfo: ModelOption{Provider: provider, Model: model, Thinking: opts.Thinking, ContextWindow: contextWindow, MaxOutputTokens: maxOutputTokens},
-		readImage: opts.ReadImage, vision: opts.Vision,
+		readImage: opts.ReadImage, vision: opts.Vision, readClip: opts.PasteImage,
 		steering:  steering, local: opts.Local, tasks: opts.Tasks, notifier: newChatNotifier(opts.Notify, opts.NotifyAfter, stdout, inputSource.terminal != nil),
+	}
+	if inputSource.terminal != nil && opts.PasteImage != nil {
+		// Alt+V reads the clipboard's picture into the pending queue (design 0.3);
+		// without a reader the key stays without meaning.
+		inputSource.terminal.SetPasteImageCallback(state.attachFromClipboard)
 	}
 	if runner.ProcessRoot() != "" {
 		// The delivery endpoint is the chat state's own method: `suga send --steer`
