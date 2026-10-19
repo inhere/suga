@@ -20,6 +20,15 @@ const (
 	// parsed: it is masked like code, so an apostrophe in it can blank the rest
 	// of that line - never more than one line, and the design accepts it.
 	maskPhp
+	// maskHash is YAML and TOML for the reference search: "#" line comments.
+	// String literals stay visible on purpose (see maskInline): a configuration
+	// file names things by their values (stylesheets = "target.css"), and the two
+	// formats keep the degraded text match they had before they had an extractor,
+	// so masking a value would hide the reference the model asked for.
+	maskHash
+	// maskToml is TOML for the declaration recogniser: "#" line comments and the
+	// multi-line strings (""" and ''') whose body must not read as a key.
+	maskToml
 )
 
 // maskLineComment reports whether a line comment starts at i: // for the brace
@@ -34,6 +43,8 @@ func maskLineComment(src []byte, i int, style maskStyle) bool {
 		return src[i] == '#'
 	case maskPhp:
 		return hasAt("//") || src[i] == '#' && !hasAt("#[")
+	case maskHash, maskToml:
+		return src[i] == '#'
 	default:
 		return hasAt("//")
 	}
@@ -121,6 +132,33 @@ func maskSpans(src []byte, style maskStyle) []byte {
 				blank(i+3, end-3)
 				i = end - 1
 			case c == '"' || c == '\'':
+				for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
+					if src[j] == '\\' {
+						j++
+						continue
+					}
+					if src[j] == c {
+						i = j
+						break
+					}
+				}
+			}
+		case maskHash, maskToml:
+			switch {
+			case maskLineComment(src, i, style):
+				end := i
+				for end < len(src) && src[end] != '\n' {
+					end++
+				}
+				blank(i, end)
+				i = end - 1
+			case style == maskToml && (hasAt(i, `"""`) || hasAt(i, "'''")):
+				quote := string(src[i : i+3])
+				end := closing(i+3, quote, true)
+				blank(i+3, end-3)
+				i = end - 1
+			case style == maskToml && (c == '"' || c == '\''):
+				// A one-line string: skipped so a # inside it opens no comment.
 				for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
 					if src[j] == '\\' {
 						j++
@@ -268,6 +306,12 @@ func maskInline(src []byte, style maskStyle) []byte {
 			end := lineEnd(i)
 			blank(i, end)
 			i = end - 1
+			continue
+		}
+		if style == maskHash {
+			// A configuration file's value is how it names things, and these two
+			// formats keep the degraded text match they had before they had an
+			// extractor: their string literals stay visible here.
 			continue
 		}
 		if c != '"' && c != '\'' {

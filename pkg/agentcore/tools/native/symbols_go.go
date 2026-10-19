@@ -6,13 +6,15 @@ import (
 	"go/token"
 )
 
-// goSymbolLanguage is Go: it gets the one exact extractor, go/parser.
+// goSymbolLanguage is Go: it gets the one exact extractor, go/parser, and the
+// one reference search that classifies by a syntax parse.
 var goSymbolLanguage = symbolLanguage{
-	name:          "Go",
-	exts:          []string{".go"},
-	source:        sourceGoParser,
-	ctagsLanguage: map[string]string{".go": "Go"},
-	extract:       goSymbols,
+	name:            "Go",
+	exts:            []string{".go"},
+	source:          sourceGoParser,
+	ctagsLanguage:   map[string]string{".go": "Go"},
+	referenceParser: true,
+	extract:         goSymbols,
 }
 
 // goSymbols parses one Go file's declarations with go/parser: functions and

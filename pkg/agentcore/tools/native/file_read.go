@@ -408,6 +408,11 @@ func renderOutline(name string, lines sourceLines, lineCount int, set SymbolSet,
 		sb.WriteString("[approx: the declarations come from declaration-line detection, not a parser; " +
 			"confirm a name with file_grep]\n")
 	}
+	// The extractor's own notes (a configuration file's caps, why a YAML file fell
+	// back to its lines) belong to this outline: they explain what is listed.
+	for _, note := range set.Notes {
+		sb.WriteString(note + "\n")
+	}
 	text := strings.TrimRight(sb.String(), "\n")
 	if len(text) > maxBytes {
 		text = text[:utf8Cut(text, maxBytes)]
