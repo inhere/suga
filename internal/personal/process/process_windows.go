@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"unicode/utf16"
 
 	"golang.org/x/sys/windows"
@@ -33,6 +35,33 @@ func processExists(pid int) bool {
 
 func processErrorMeansDead(err error) bool {
 	return errors.Is(err, windows.ERROR_INVALID_PARAMETER)
+}
+
+// fallbackDirPath names the shared per-user fallback socket directory:
+// %LOCALAPPDATA%\suga\run, a short, current-user location (under the temp dir
+// when LOCALAPPDATA is unset). It only computes the path (used by
+// trustedSocketPaths too); security of the directory itself is enforced by
+// ensureFallbackDir when the fallback is actually taken.
+func fallbackDirPath() string {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "suga", "run")
+}
+
+// ensureFallbackDir creates the fallback directory and locks it down with the
+// same protected DACL secureDir puts on the run root, so an existing directory
+// with inherited or wide access is tightened before a socket lands in it.
+func ensureFallbackDir() error {
+	dir := fallbackDirPath()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := secureDir(dir); err != nil {
+		return fmt.Errorf("secure %s: %w", dir, err)
+	}
+	return nil
 }
 
 func validateSocketPath(path string) error {

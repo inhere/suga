@@ -2,6 +2,8 @@ package process
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -120,6 +122,66 @@ func Start(root, sessionID, name, cwd string, deliver DeliverFunc) (*Server, err
 // files created inside later get the same restriction.
 func SecureDir(dir string) error { return secureDir(dir) }
 
+// preferredSocketPath is root/<pid>.sock, the only location a short SUGA_HOME
+// needs and the location every record this version and before wrote.
+func preferredSocketPath(root string, pid int) string {
+	return filepath.Join(root, fmt.Sprintf("%d.sock", pid))
+}
+
+// socketHash is the first 12 hex chars of the SHA-256 of the cleaned root. It
+// names a SUGA_HOME inside the shared fallback directory, so two different
+// homes never collide even when their PIDs happen to match.
+func socketHash(root string) string {
+	sum := sha256.Sum256([]byte(filepath.Clean(root)))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+// fallbackSocketPath computes the per-user fallback location of the socket,
+// <fallback dir>/<hash>-<pid>.sock, without touching the filesystem; whether
+// the fallback directory itself is safe to use is enforceFallbackDir's job.
+func fallbackSocketPath(root string, pid int) string {
+	return filepath.Join(fallbackDirPath(), fmt.Sprintf("%s-%d.sock", socketHash(root), pid))
+}
+
+// sessionSocketPath picks where the socket lives: the run root, or the per-user
+// fallback directory when the preferred path is too long for AF_UNIX. It keeps
+// the original length error and annotates it with the fallback's own failure so
+// chat still prints one actionable message.
+func sessionSocketPath(root string, pid int) (string, error) {
+	preferred := preferredSocketPath(root, pid)
+	err := validateSocketPath(preferred)
+	if err == nil {
+		return preferred, nil
+	}
+	fallback := fallbackSocketPath(root, pid)
+	if dirErr := ensureFallbackDir(); dirErr != nil {
+		return "", fmt.Errorf("%w (the per-user fallback directory is not usable: %v)", err, dirErr)
+	}
+	if lenErr := validateSocketPath(fallback); lenErr != nil {
+		return "", fmt.Errorf("%w (the fallback path %s is too long as well: %v)", err, fallback, lenErr)
+	}
+	return fallback, nil
+}
+
+// trustedSocketPaths lists the socket paths a record may claim: the preferred
+// run-root path, or the fallback path computed with the exact algorithm Start
+// used. Any other path is rejected, so a forged record can never point the
+// send/ps machinery (or dead-record cleanup) at an arbitrary file.
+func trustedSocketPaths(root string, pid int) []string {
+	return []string{preferredSocketPath(root, pid), fallbackSocketPath(root, pid)}
+}
+
+// trustedSocket reports whether a recorded socket path is one a record of this
+// root and PID may name (see trustedSocketPaths).
+func trustedSocket(socket, root string, pid int) bool {
+	for _, trusted := range trustedSocketPaths(root, pid) {
+		if filepath.Clean(socket) == filepath.Clean(trusted) {
+			return true
+		}
+	}
+	return false
+}
+
 func StartWait(root, sessionID, name, cwd string, deliver DeliverWaitFunc) (*Server, error) {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(sessionID) == "" {
 		return nil, fmt.Errorf("process registration requires root and session ID")
@@ -132,8 +194,8 @@ func StartWait(root, sessionID, name, cwd string, deliver DeliverWaitFunc) (*Ser
 		return nil, fmt.Errorf("secure %s: %w", root, err)
 	}
 	pid := os.Getpid()
-	socket := filepath.Join(root, fmt.Sprintf("%d.sock", pid))
-	if err := validateSocketPath(socket); err != nil {
+	socket, err := sessionSocketPath(root, pid)
+	if err != nil {
 		return nil, err
 	}
 	procStart := processStartID(pid)
@@ -313,12 +375,16 @@ func List(root string) ([]Record, error) {
 			continue
 		}
 		var record Record
-		if json.Unmarshal(data, &record) != nil || record.PID <= 0 || filepath.Base(entry.Name()) != fmt.Sprintf("%d.json", record.PID) || filepath.Clean(record.Socket) != filepath.Clean(filepath.Join(root, fmt.Sprintf("%d.sock", record.PID))) {
+		if json.Unmarshal(data, &record) != nil || record.PID <= 0 || filepath.Base(entry.Name()) != fmt.Sprintf("%d.json", record.PID) || !trustedSocket(record.Socket, root, record.PID) {
 			continue
 		}
 		if !processAlive(record.PID, record.ProcStart) {
+			// Both candidate locations are removed: whichever the record
+			// named, only a dead owner can have left either behind.
 			_ = os.Remove(path)
-			_ = os.Remove(filepath.Join(root, fmt.Sprintf("%d.sock", record.PID)))
+			for _, trusted := range trustedSocketPaths(root, record.PID) {
+				_ = os.Remove(trusted)
+			}
 			continue
 		}
 		records = append(records, record)
