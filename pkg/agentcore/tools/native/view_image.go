@@ -83,7 +83,7 @@ func (t *ViewImageTool) Description() string {
 // ToolMeta marks the tool as a read-only read. It is not Prefetchable: its
 // bytes would be stored even when the step is cut away (design 0.3).
 func (*ViewImageTool) ToolMeta() tools.Meta {
-	return tools.Meta{Category: tools.CategoryRead, ReadOnly: true, Rereadable: true}
+	return tools.Meta{Category: tools.CategoryRead, ReadOnly: true}
 }
 
 func (t *ViewImageTool) Schema() api.ToolSchema {

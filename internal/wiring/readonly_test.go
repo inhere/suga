@@ -21,7 +21,7 @@ func TestPersonalReadOnlyToolsCannotWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Eq(t, 7, len(schemas)) // file_read, file_list, file_grep, file_find, file_symbols, file_refs, web_fetch
+	assert.Eq(t, 8, len(schemas)) // file_read, file_list, file_grep, file_find, file_symbols, file_refs, view_image, web_fetch
 	_, err = capabilities.Registry.ExecuteTool(context.Background(), agentcore.ToolCall{
 		CallID: "write", Name: "file_write", Arguments: map[string]any{"path": "blocked.txt", "content": "secret"},
 	})
