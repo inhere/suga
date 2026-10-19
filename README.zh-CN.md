@@ -141,6 +141,7 @@ suga trace <session> --analyze | --web            # 循环分析 / 本机网页
 suga sessions [关键词] [--since 7d] [--agents]     # 会话列表
 suga stats [--session <id>] [--json]              # 调用次数、耗时、token、缓存、成本
 suga export <session> | suga gc --older-than 30d  # 导出 / 清理
+suga gc --retention [--apply]                     # 按来源清理：chat 180 天 / run+ACP 30 天
 suga ps | suga manifest                           # 运行中的 chat / 能力清单
 ```
 

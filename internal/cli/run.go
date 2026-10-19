@@ -287,7 +287,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	var encoder *json.Encoder
 	if opts.OutputFormat == "stream-json" {
 		encoder = json.NewEncoder(stdout)
-		if err := encoder.Encode(output.SessionLine(sessionID)); err != nil {
+		if err := encoder.Encode(output.WithModel(output.SessionLine(sessionID), runModelRef(runner))); err != nil {
 			return err
 		}
 	} else {
@@ -347,13 +347,13 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	}
 	if err != nil {
 		if encoder != nil {
-			_ = encoder.Encode(output.ErrorLine(sessionID, err, result, budget))
+			_ = encoder.Encode(output.WithModel(output.ErrorLine(sessionID, err, result, budget), runModelRef(runner)))
 		}
 		return err
 	}
 	if result.Status == agentcore.RunYielded {
 		if encoder != nil {
-			_ = encoder.Encode(output.YieldedLine(sessionID, result, budget))
+			_ = encoder.Encode(output.WithModel(output.YieldedLine(sessionID, result, budget), runModelRef(runner)))
 		}
 		return ErrInputRequired
 	}
@@ -361,12 +361,12 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	// model worked around the refusal: the caller still learns authorization
 	// was missing. denied_tools is the only field added to the line.
 	if len(result.DeniedTools) > 0 && encoder != nil {
-		if err := encoder.Encode(output.DeniedLine(sessionID, result, budget)); err != nil {
+		if err := encoder.Encode(output.WithModel(output.DeniedLine(sessionID, result, budget), runModelRef(runner))); err != nil {
 			return err
 		}
 	}
 	if encoder != nil {
-		return encoder.Encode(output.ResultLineWithContext(sessionID, result, window, budget))
+		return encoder.Encode(output.WithModel(output.ResultLineWithContext(sessionID, result, window, budget), runModelRef(runner)))
 	}
 	if streamed {
 		return nil
@@ -378,7 +378,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 func openRequestedSession(ctx context.Context, runner *personal.Runner, opts personalOptions) (string, error) {
 	if opts.FromID != "" {
 		// --session-id names the new session; an existing one is rejected by Handoff.
-		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: opts.Prompt})
+		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: opts.Prompt, Origin: personal.OriginRun})
 		if err != nil {
 			return "", personal.SessionNotFound(err, opts.FromID)
 		}
@@ -399,13 +399,13 @@ func openRequestedSession(ctx context.Context, runner *personal.Runner, opts per
 		if !errors.Is(err, personal.ErrSessionNotFound) {
 			return "", err
 		}
-		model, err = runner.NewSession(ctx, opts.SessionID, opts.Prompt)
+		model, err = runner.NewSessionFor(ctx, opts.SessionID, opts.Prompt, personal.OriginRun)
 		if err != nil {
 			return "", err
 		}
 		return model.ID, nil
 	}
-	model, err := runner.NewSession(ctx, "", opts.Prompt)
+	model, err := runner.NewSessionFor(ctx, "", opts.Prompt, personal.OriginRun)
 	if err != nil {
 		return "", err
 	}
@@ -454,4 +454,11 @@ func finishBackgroundTasks(ctx context.Context, runner *personal.Runner, m *task
 		fmt.Fprintln(stderr, "killed background task at exit: "+tasks.Describe(info))
 	}
 	return result, nil
+}
+
+// runModelRef is the "provider/model" a run's stream-json lines carry: the
+// first (session) line says which model the run starts with, and the closing
+// line which model answered (a /model switch or a fallback can change it).
+func runModelRef(runner *personal.Runner) string {
+	return chat.ModelLabel(runner.ProviderName(), runner.Model())
 }

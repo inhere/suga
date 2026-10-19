@@ -111,6 +111,12 @@
 | `tools.snapshots.on_error` | `deny` | `deny` 在快照存储、清理或状态不确定时在文件 I/O 前拒绝；`continue` 允许写入但标记不可恢复 |
 | `tools.max_output_bytes` | `8000` | 单次工具结果内联进会话的上限；超出时脱敏原文存 `$SUGA_HOME/sessions/<id>/outputs/`，会话只留 ref 与头尾各 2000 字节 |
 | `tools.max_spill_bytes` | `1048576`（1 MiB） | 单次工具（含 MCP）原始输出上限 |
+| `tools.spill.max_bytes` | `1073741824`（1 GiB） | `$SUGA_HOME/sessions/**/outputs` 的逻辑字节配额（`.gz` 按压缩前字节计）；超额时新的 spill 返回错误并只保留头尾，**不会**自动删旧输出；`0` 不设配额 |
+| `tools.spill.max_age` | `90d` | 可淘汰年龄（只作报告/gc 候选，不在写入路径删文件） |
+| `tools.spill.compress_after` | `7d` | `suga gc --compress-spill` 压缩 mtime 超过此时长且会话不活跃的 `.txt`（先写 `.txt.gz.tmp`、解压校验后 rename、最后删 `.txt`；ref 不变） |
+| `tools.spill.compression` | `gzip` | `off` 关闭压缩；读取端始终兼容 `.txt`/`.txt.gz` |
+| `tools.spill.on_quota` | `refuse` | 超配额时拒写新输出（仅支持 `refuse`） |
+| `tools.spill.keep_days` | `0` | 额外的按天淘汰规则；`0` 只用 `max_age` |
 | `tools.parallel_reads` | `true` | 同一次回复里的多个本地读调用（file_read/list/grep/find）并发执行 |
 | `tools.read_page_bytes` | `32768` | `file_read` 每页字节数（它自己分页，不受 `max_output_bytes` 限制） |
 | `tools.minimize_output` | `true` | shell 结果进上下文前整理（去色、折叠重复行、按输出规则裁剪测试/构建/git/grep 输出），原文留 ref |
@@ -135,6 +141,15 @@ allow 命令按实际 sh/bash、PowerShell 或 cmd 做 ASCII 字符、配对引�
 chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区分的会话规则；`persist_ask` 开启时，随后用 `u` 写用户级，`p` 只写项目级 deny，回车保留本会话。ACP 的 `allow_always`/`reject_always` 只保存在当前进程会话状态，不写规则文件。`suga manifest --json` 显示路径、生效条数、hash/信任与忽略原因；`suga trace <session> --json` 显示 `approval_rule`、`approval_scope` 与 `approval_rule_persist`。`enabled: false` 可回退旧路径。
 
 输出规则：内置规则按语言/工具分文件（`go`、`rust`、`js`、`python`、`java`、`git`、`grep`）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。一条规则可按命令（可加 `match_output` 再按输出）匹配，然后丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），并用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果永远不短于原文时不交给模型。字段与执行顺序见 `pkg/agentcore/tools/native/rules/README.md`。
+
+## `gc.*`
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `gc.retention.interactive` | `180d` | `suga gc --retention` 对交互会话的保留期：chat 创建、被 chat 接续过（`used_interactively`）以及没有 `meta.origin` 的历史会话。`0` 表示该类不清理 |
+| `gc.retention.noninteractive` | `30d` | 同上，适用于非交互入口（`meta.origin` 为 `run`、`acp`、`agent`）创建的会话。`0` 表示该类不清理 |
+
+时长接受天数（`180d`、`30d`）、Go 时长（`4320h`）或秒数。`suga gc --retention` 默认只报告（每类的会话数、条目数、预计字节），`--apply` 才删除；活跃会话、run 登记与持锁会话始终跳过，删除本身不 VACUUM（要回收磁盘空间再跑 `suga gc --vacuum`）。
 
 ## `mcp.*`
 
@@ -315,6 +330,9 @@ suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]
 suga stats [--session <id>] [--since 7d] [--json]
 suga export <session> [--redact] [-o <file>]
 suga gc --older-than 30d [--apply]
+suga gc --retention [--apply]
+suga gc --shrink-fts [--status|--abort]
+suga gc --vacuum
 suga manifest [--json] [--model <p/m>] [--thinking <level>]
 suga version
 ```

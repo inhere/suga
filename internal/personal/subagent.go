@@ -78,7 +78,8 @@ func RunChild(ctx context.Context, child *Runner, req ChildRequest) (ChildResult
 	start := time.Now()
 	sess, err := child.NewSessionWithMeta(ctx, "", req.Description, map[string]any{
 		store.MetaKind: store.KindAgent, store.MetaParentSession: req.ParentSession,
-		metaAgentType: req.Type, metaParentTurn: req.ParentTurn, metaParentCall: req.ParentCall,
+		store.MetaOrigin: store.OriginAgent,
+		metaAgentType:    req.Type, metaParentTurn: req.ParentTurn, metaParentCall: req.ParentCall,
 	})
 	if err != nil {
 		return ChildResult{}, fmt.Errorf("sub-agent session: %w", err)

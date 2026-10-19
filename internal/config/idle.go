@@ -50,7 +50,7 @@ func ReadIdleSettings() (IdleSettings, error) {
 	return out, nil
 }
 
-// parseIdleDuration accepts a duration ("2s", "15m") or bare seconds ("0", "90").
+// parseIdleDuration accepts a duration ("2s", "15m"), a day count ("30d") or bare seconds ("0", "90").
 func parseIdleDuration(raw string) (time.Duration, error) {
 	if raw == "" {
 		return 0, fmt.Errorf("empty value")
@@ -61,9 +61,16 @@ func parseIdleDuration(raw string) (time.Duration, error) {
 		}
 		return time.Duration(secs * float64(time.Second)), nil
 	}
+	if days, err := strconv.ParseFloat(strings.TrimSuffix(raw, "d"), 64); err == nil && strings.HasSuffix(raw, "d") {
+		if days < 0 {
+			return 0, fmt.Errorf("must not be negative, got %q", raw)
+		}
+		// A day count such as "30d": retention periods are documented in days.
+		return time.Duration(days * float64(24*time.Hour)), nil
+	}
 	d, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, fmt.Errorf("want a duration like \"30s\" or \"15m\", got %q", raw)
+		return 0, fmt.Errorf("want a duration like \"30s\", \"15m\" or \"30d\", got %q", raw)
 	}
 	if d < 0 {
 		return 0, fmt.Errorf("must not be negative, got %q", raw)

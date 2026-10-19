@@ -30,6 +30,10 @@ type HandoffRequest struct {
 	// NewID is the id of the new session ("" = generate). It must not exist.
 	NewID string
 	Title string
+	// Origin names the entry point creating the new session (personal.OriginChat
+	// from chat, personal.OriginRun from run); it is stored as the new session's
+	// meta.origin.
+	Origin string
 }
 
 // handoffMessage renders the record as the first user message of the new
@@ -79,7 +83,7 @@ func (r *Runner) Handoff(ctx context.Context, req HandoffRequest) (Session, erro
 	if strings.TrimSpace(title) == "" {
 		title = "Handoff from " + src.ID
 	}
-	model, err := r.NewSession(ctx, newID, title)
+	model, err := r.NewSessionFor(ctx, newID, title, req.Origin)
 	if err != nil {
 		return Session{}, err
 	}
