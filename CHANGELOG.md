@@ -6,6 +6,7 @@
 
 ### 新增
 
+- `run.deadline_env`（默认空 = 关闭）：环境变量名指向本次运行的截止时间（RFC3339）。gofer 时限 job 主机配置 `run.deadline_env: GOFER_JOB_DEADLINE` 即可，每次请求模型前在消息末尾临时附一条时间提示：现在的时间、截止时间与剩余约多少分钟；剩余不足 10% 或不足 5 分钟改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”，已过截止时间说明已超时。提示只进本次请求，不写库、不进稳定系统提示前缀（前缀缓存不变）；变量缺失或解析失败时只记一行调试日志，不报错。`run`/`chat`/ACP 与子 agent 通用；`suga config get/set run.deadline_env` 可用。
 - 顶层命令分组：新增 `suga inspect`（会话诊断：`trace`、`stats`、`export`、`manifest`）与 `suga data`（数据维护：`gc`、`shrink-fts`、`vacuum`、`compress-spill`、`backup`、`restore`）两个分组命令，顶层只留 `chat`、`run`、`send`、`ps`、`sessions`、`undo`、`config`、`models`、`init`、`version`、`acp`；分组的一行说明列出其子命令名，单独执行 `suga inspect`（或 `suga data`）时打印子命令列表。原 `suga gc` 的维护开关拆成独立子命令：`suga data shrink-fts [--status|--abort|--batch N]`、`suga data vacuum`、`suga data compress-spill [--apply]`，`suga data gc` 只保留 `--older-than` / `--retention` 与 `--apply`。命令行为、参数名与输出格式均未改变。
 - 顶层直接接受 chat 选项：`suga --resume <session>`、`suga -m <model>` 等同 `suga chat --resume <session>`（第一个参数是选项时自动视为 chat，`-h`/`--help`/`-V`/`--version` 除外）。
 - `suga data backup --output FILE.suga-backup.zip [--include-spill]` 与 `suga data restore FILE.suga-backup.zip`：使用带 `manifest.json`、SHA-256 清单和 SQLite `VACUUM INTO` 在线快照的 ZIP 归档；默认不打包 spill，`--include-spill` 显式纳入。restore 校验路径、解压比例、全部 hash 和 SQLite integrity check，取得 `run/maintenance.lock` 后以 staging 原子替换，并默认先写入 `backups/pre-restore-<时间>.suga-backup.zip`。

@@ -278,6 +278,15 @@ Suga 的预算是软阈值：普通回合在一次模型请求完成、观察到
 
 Gofer 的 `--max-tokens`/`--max-cost` 是进程外的硬熔断，可能在 Suga 软收尾前直接终止 job，终止时不保证有完整答复或 trace 收尾事件。运维应根据历史缓存命中比例，把 `SUGA_BUDGET_TOKENS`/`SUGA_BUDGET_COST_USD`（或对应 flag）设在 Gofer 硬上限之前，并持续复测；Gofer 的硬上限优先于 Suga 的软收尾。默认给 Gofer job 使用 `scope: turn`，需要限制整个会话生命周期时才选择 `session`。
 
+### Gofer job 的截止时间提示（run.deadline_env）
+
+Gofer 给有时限的 job 注入环境变量 `GOFER_JOB_DEADLINE`（RFC3339，如 `2026-10-19T23:22:11+08:00`）。把配置键 `run.deadline_env` 设为该变量名（子 agent 也会沿用），每次请求模型前就在消息列表末尾临时附一条时间提示：当前时间与剩余约多少分钟；剩余不足 10%（相对本次运行观察到的最早请求时刻）或不足 5 分钟时改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”；已过截止时间则说明已超时。该提示只进本次请求（不写库、不进稳定系统提示前缀，前缀缓存不受影响）。配置为空（默认）时不附任何提示；变量不存在或无法按 RFC3339 解析时不报错，只在调试日志记一行。`run`、`chat`、ACP 都读进程环境，主机配置示例：
+
+```yaml
+run:
+  deadline_env: GOFER_JOB_DEADLINE
+```
+
 ## ACP 常驻与审批
 
 ```powershell
