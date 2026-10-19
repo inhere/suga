@@ -34,7 +34,6 @@
 - **`suga data gc --apply` 不再自动 VACUUM**：会话按每批 ≤ 50 个的短写事务删除，批之间会上锁/释放，所以 Ctrl-C 中断时已提交的批次保留、重跑接着删；结束时只提示“再运行 `suga data vacuum`”，删除结果与 VACUUM 结果分开报告。批量路径先用**一次扫描**收集该批会话的 `entries_fts` rowid 再按 rowid 删除，并在批事务内临时挂起逐会话删除触发器（提交前从 `sqlite_master` 原样恢复），避免每个会话都对 UNINDEXED 的 `session_id` 做一次全表扫描；单个 `DeleteSession` 与其它进程仍走触发器。`gc --apply` 与 `gc --vacuum` 共用 `run/maintenance.lock`。
 - 新会话在入口写 `meta.origin`（`chat`/`run`/`acp`，子 agent 为 `agent`；`--from` 交接出的新会话按调用入口记）；resume 不改写 origin；被 chat 接着用过的 `run`/ACP 会话记 `meta.used_interactively: true`，之后按交互会话保留。历史会话没有 origin，一律按交互处理（保守方向）。
 - 已删除会话的孤儿 events 随 `gc --retention --apply` 按 30 天清理（会话级 events TTL 本批不做，仍随会话一起删）。
-- **FTS 只索引 tool 输出的开头与结尾各 512 字符**（`length > 1024` 时取头 512 + ` … ` + 尾 512；按字符计，不会切坏 UTF-8；user/assistant/compaction/handoff 不变）。代价：4–8KB 且没有 `out:` 引用的 tool 输出（spill 阈值 8000 字节，占多数）中段在瘦身后搜不到，`recall` 的正文渲染又有约 4,000 字节上限，这类输出的中段既搜不到也读不全——需要正文时用 `recall(ref)` 或 `out:` 引用读原文。`session_search` 的描述与结果说明会写明这一点：重建未完成时提示“历史 tool 输出的索引尚未瘦身完，部分旧结果仍是全文命中”。
 - `suga data gc` 除会话清理外还负责上面两项 ledger 维护，`--older-than` 与 `--apply` 语义不变。
 - 会话库（SQLite）在大库上更快、并发写不再报 `database is locked`：新增迁移补 `entries(type)`、`events(turn_id)` 两个索引（依据 EXPLAIN QUERY PLAN 实测，`events(kind)` 实测使 `stats` 与用量统计变慢，故不加）；`suga inspect stats` 改成在 SQL 里 GROUP BY/COUNT/SUM 加窗口函数算分位数，不再把整库事件拉进内存并逐条解析 attrs，输出与之前逐字一致；所有写事务改为 `BEGIN IMMEDIATE`（连接参数 `_txlock=immediate`），配合 `busy_timeout`，在事务开始处对 `SQLITE_BUSY` 做有上限的指数退避重试（只重试 BEGIN，不重放已执行的事务）。
 
