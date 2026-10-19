@@ -342,6 +342,7 @@ suga data shrink-fts [--status|--abort]
 suga data dedupe-tool-results [--status|--abort|--undo]
 suga data tool-bodies [--status|--move|--undo|--check|--remove-files]
 suga data vacuum
+suga data usage [--json] [--top N]
 suga inspect manifest [--json] [--model <p/m>] [--thinking <level>]
 suga version
 ```

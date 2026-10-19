@@ -13,6 +13,7 @@ suga inspect stats [--session <id>] [--since 7d] [--json] # 调用次数、耗�
 suga inspect export <session> [--redact] [-o <file>]      # 以 jsonl 导出会话内容与事件
 suga data gc --older-than 30d [--apply]                   # 列出（默认）或删除长期未活动的会话
 suga data gc --retention [--apply]                        # 按来源套用保留期（chat 180 天 / run+ACP 30 天，默认只报告）
+suga data usage [--json] [--top N]                        # 只读：库文件/空闲页/WAL、entries 与 events 的字节构成、全文索引、会话目录
 suga ps                                                   # 正在运行的 chat 进程（含短名称）
 suga inspect manifest [--json] [--model <p/m>]            # 模型、工具、MCP、skills、记忆后端、输出上限
 ```
