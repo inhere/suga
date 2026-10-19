@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # 批量工具调用 DSL 实施计划
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 待用户审批（0.2 起本批只实施 `file_refs` 的 `context`，T0–T6 的 DAG 波次暂缓）
 > 日期：2026-10-19
 > 对应设计：`docs/design/2026-10-19-batch-tool-calls-design.md`
 > 关联 issue：`suag-2p3u`
@@ -11,8 +11,29 @@
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-19 | suga（gofer job） | 将方案①拆为前置 Gate、受限只读 DSL/投影、DAG 调度、完整工具管线接入、接线与冒烟、真实模型评测六个波次；明确不做写工具、shell、MCP、网络工具、脚本沙箱与递归。 |
+| 0.2 | 2026-10-19 | 监督（Claude） | 跟随设计 0.2：暂缓 DAG DSL 的 T0–T6 波次；新增本批任务 C1（`file_refs` 的 `context` 参数）与 C2（复测），作为当前唯一授权实施范围。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
+
+## 0.2 本批任务（本节优先于后文 T0–T6；T0–T6 暂缓，重启条件见设计“0.2 修订”）
+
+### C1 `file_refs` 的 `context` 参数
+
+- 文件：`pkg/agentcore/tools/native/refs.go`（schema、Execute、render）、必要时新开 `refs_context.go`；测试 `refs_context_test.go`；`CHANGELOG.md`。
+- 动作：
+  1. schema 加 `context`（integer，0–5，默认 0）；默认输出逐字不变。
+  2. 命中行前后各取 N 行：Go/近似语言/退化文本匹配的结果都用**原始源码行**（不是遮蔽后的行）；按文件分组读一次文件，不为每个命中重复读。
+  3. 渲染与 `file_grep` 的 `context` 一致：命中行保持现有 `path:line class[(qualifier)] text`，上下文行 `path-line- text`，块之间 `--`，同一文件里相邻/重叠的块合并；限定名的 “maybe also” 组同样带上下文。
+  4. 上下文行不计入 `limit`；整体字节仍走现有 `TruncateHeadTail(rawLimit)`；结果说明里加一行“context=N”不必要，保持说明不变。
+  5. 描述加一句：需要看调用点附近代码时加 `context`（例如 `context: 3`），省去逐个 `file_read`。
+- 验证：默认输出的旧测试原样通过；新测试覆盖合并、文件头尾边界、`limit` 与 context 的关系、限定名 maybe 组、PHP/JS 近似与 Rust 退化文本、单文件参数；反向验证：去掉上下文渲染后新测试失败。`gofmt`、`go vet`、`go test -race ./pkg/agentcore/tools/native/`。
+- 完成标准：以上测试通过且反向验证有记录；一个或两个提交。
+
+### C2 复测
+
+- 用本分支构建的 suga，`opencode-go/deepseek-v4.1-flash`、只读档、隔离 SUGA_HOME，T6（explore-compare §1.3）2 次 + 跨语言 C 题 RQ2/KY2/GS2/GZ2/WD2/ZL2 各 2 次。
+- 记录：正确率、步数、工具调用、`context` 使用次数、`file_refs` 之后的 `file_read` 次数；与 explore-efficiency §12 对比，写入新节 §13。
+- 完成标准：正确率不下降；如 `context` 0 次使用，调整一次描述再测，仍为 0 则如实记录。
 
 ## 思考模式与范围冻结
 
