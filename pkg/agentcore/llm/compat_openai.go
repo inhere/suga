@@ -10,6 +10,9 @@ func init() {
 		apply: func(c *Compat) {
 			c.ReasoningSummary = true
 			c.EncryptedReasoning = true
+			// The official Responses API takes a tool result's pictures in the
+			// function_call_output itself (output: text and input_image items).
+			c.ToolOutputImages = true
 		},
 	})
 }

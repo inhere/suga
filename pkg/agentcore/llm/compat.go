@@ -33,6 +33,11 @@ type Compat struct {
 	// CacheHitField names a usage field with the cached prompt tokens, read
 	// when the standard one is missing or 0.
 	CacheHitField string
+	// ToolOutputImages sends a tool result's pictures inside the Responses
+	// function_call_output (the API accepts an array of input_text and
+	// input_image there). Without it the pictures follow in a user item after
+	// the tool batch, which is what the gateways accept.
+	ToolOutputImages bool
 }
 
 // compatAdapter is one registered adapter (see the compat_*.go files).

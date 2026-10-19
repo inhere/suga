@@ -187,24 +187,34 @@ func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking boo
 			} else if m.ToolCall != nil {
 				callID = m.ToolCall.CallID
 			}
-			if images := messageImages(m); len(images) > 0 {
-				if p.noImages {
-					out = withImageNotes(out, images)
-				} else if _, missing := sendableImages(images); len(missing) > 0 {
+			images := messageImages(m)
+			// Three cases: a model without vision gets notes, the official endpoint
+			// takes the pictures in the function_call_output itself, a gateway gets
+			// them in a user item after the batch (design 0.3).
+			item := map[string]any{"type": "function_call_output", "call_id": callID}
+			switch {
+			case len(images) > 0 && p.noImages:
+				item["output"] = withImageNotes(out, images)
+			case len(images) > 0 && p.compat.ToolOutputImages:
+				item["output"] = responsesToolOutput(out, images)
+			case len(images) > 0:
+				send, missing := sendableImages(images)
+				if len(missing) > 0 {
 					out = withImageNotes(out, missing)
 				}
-				if !p.noImages {
-					if send, _ := sendableImages(images); len(send) > 0 {
-						if header == "" {
-							header = toolImageNoteText(m)
-						}
-						for _, part := range send {
-							pendingImages = append(pendingImages, responsesImageBlock(part))
-						}
+				if len(send) > 0 && !p.noImages {
+					if header == "" {
+						header = toolImageNoteText(m)
+					}
+					for _, part := range send {
+						pendingImages = append(pendingImages, responsesImageBlock(part))
 					}
 				}
+				item["output"] = out
+			default:
+				item["output"] = out
 			}
-			items = append(items, map[string]any{"type": "function_call_output", "call_id": callID, "output": out})
+			items = append(items, item)
 			inTurn = false
 			if !nextIsTool(grouped, i) {
 				items = flushToolImages(items, header, pendingImages)
@@ -239,6 +249,23 @@ func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking boo
 		}
 	}
 	return flushToolImages(items, header, pendingImages)
+}
+
+// responsesToolOutput renders a function_call_output on the official endpoint:
+// the text, then the pictures as input_image items (a picture without bytes
+// becomes a note). See FunctionCallOutputItemParam in the OpenAI OpenAPI spec:
+// output is a string or an array of input_text/input_image/input_file items.
+func responsesToolOutput(text string, images []agentcoreapi.ImagePart) []map[string]any {
+	send, missing := sendableImages(images)
+	text = withImageNotes(text, missing)
+	parts := make([]map[string]any, 0, len(send)+1)
+	if text != "" {
+		parts = append(parts, map[string]any{"type": "input_text", "text": text})
+	}
+	for _, part := range send {
+		parts = append(parts, responsesImageBlock(part))
+	}
+	return parts
 }
 
 // responsesUserContent renders a user message body: the text first, then the

@@ -32,7 +32,7 @@
 ### provider 映射修正
 
 - **OpenAI Chat**：追加的 user 消息插在 `groupToolBatches`（`pkg/agentcore/llm/tool_batch.go:13`）分组之后、整组 tool 消息之后，不逐条插；单调用按对插入。
-- **Responses**：实施时先按当前官方文档核实 `function_call_output` 是否支持 `input_image` 数组；加 compat 开关——官方端用原生方式，网关端回退为追加 user 消息。`buildInput` 对空文本 user 消息直接跳过（`responses.go:201`），纯图消息会丢，必须改。
+- **Responses**：实施时先按当前官方文档核实 `function_call_output` 是否支持 `input_image` 数组；加 compat 开关——官方端用原生方式，网关端回退为追加 user 消息。`buildInput` 对空文本 user 消息直接跳过（`responses.go:201`），纯图消息会丢，必须改。（2026-10-19 核实：官方 OpenAPI 的 `FunctionCallOutputItemParam.output` 是字符串或 `input_text`/`input_image`/`input_file` 数组，原生支持；实现为官方端把图片放进 `function_call_output` 的 `output` 数组，网关端仍追加 user 消息，由 compat 适配器 `openai`（`api.openai.com`）打开 `Compat.ToolOutputImages`。）
 - **Claude**：图片块放在文字之前；总像素按当前文档建议控制（约 1.15MP 内效果最佳）。
 - 所有追加消息在组装时确定性生成，回放稳定。
 

@@ -105,7 +105,10 @@ func TestResponsesImageMapping(t *testing.T) {
 		assert.Eq(t, "input_image", parts[0]["type"])
 	})
 	t.Run("the tool pictures follow the batch in a user item", func(t *testing.T) {
-		items := p.buildInput(imageTestMessages(), false)
+		// A gateway does not necessarily accept input_image inside
+		// function_call_output, so there the pictures follow in a user item.
+		items := NewResponsesProvider(ResponsesConfig{OpenAIConfig: OpenAIConfig{
+			BaseURL: "https://gw.example/v1", Model: "gpt-5"}}).buildInput(imageTestMessages(), false)
 		assert.Require(t, assert.Eq(t, 4, len(items)))
 		assert.Eq(t, "function_call_output", items[2]["type"])
 		assert.Eq(t, "image ok", items[2]["output"])
@@ -120,5 +123,30 @@ func TestResponsesImageMapping(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.False(t, strings.Contains(string(raw), "data:image/png;base64"))
 		assert.True(t, strings.Contains(string(raw), "当前模型不支持看图"))
+	})
+	t.Run("the official endpoint carries the pictures in the tool output", func(t *testing.T) {
+		// The OpenAI OpenAPI spec allows function_call_output.output to be an array
+		// of input_text/input_image items (FunctionCallOutputItemParam), so the
+		// official endpoint needs no extra user item.
+		official := NewResponsesProvider(ResponsesConfig{OpenAIConfig: OpenAIConfig{
+			BaseURL: "https://api.openai.com/v1", Model: "gpt-5"}})
+		assert.True(t, official.Compat().ToolOutputImages)
+		items := official.buildInput(imageTestMessages(), false)
+		assert.Require(t, assert.Eq(t, 3, len(items)), "no picture item follows the batch")
+		assert.Eq(t, "function_call_output", items[2]["type"])
+		output, ok := items[2]["output"].([]map[string]any)
+		assert.Require(t, assert.True(t, ok))
+		assert.Require(t, assert.Eq(t, 2, len(output)))
+		assert.Eq(t, "input_text", output[0]["type"])
+		assert.Eq(t, "image ok", output[0]["text"])
+		assert.Eq(t, "input_image", output[1]["type"])
+	})
+	t.Run("a gateway keeps the pictures in a following user item", func(t *testing.T) {
+		gateway := NewResponsesProvider(ResponsesConfig{OpenAIConfig: OpenAIConfig{
+			BaseURL: "https://gw.example/v1", Model: "gpt-5"}})
+		assert.False(t, gateway.Compat().ToolOutputImages)
+		items := gateway.buildInput(imageTestMessages(), false)
+		assert.Require(t, assert.Eq(t, 4, len(items)))
+		assert.Eq(t, "image ok", items[2]["output"])
 	})
 }
