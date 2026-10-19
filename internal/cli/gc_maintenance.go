@@ -23,8 +23,8 @@ import (
 // "one maintenance job at a time" rule simple.
 
 // runShrinkFTS runs `suga data shrink-fts`: --status only reports, --abort
-// drops the checkpoint, and the plain form rewrites the historical tool rows
-// of entries_fts in batches.
+// drops the checkpoint, and the plain form deletes the historical tool rows of
+// entries_fts in batches (tool results are no longer indexed).
 func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch int) error {
 	repo, err := openCoreStore()
 	if err != nil {
@@ -43,7 +43,7 @@ func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch 
 		if err := repo.ResetFTSShrink(ctx); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "已清除 FTS 瘦身断点；下次 --shrink-fts 会从头开始")
+		fmt.Fprintln(out, "已清除 FTS 瘦身断点；下次 `suga data shrink-fts` 会从头开始")
 		return nil
 	}
 
@@ -52,32 +52,36 @@ func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch 
 		return err
 	}
 	if !before.Remaining() {
-		fmt.Fprintf(out, "FTS 无需瘦身：tool 输出索引中没有超过 %d 字符的行\n", store.FTSToolMaxChars)
+		fmt.Fprintln(out, "FTS 无需瘦身：索引中没有 tool 输出行")
 		return nil
 	}
-	fmt.Fprintf(out, "开始瘦身：%d 行 tool 输出待处理（%d 字符文本），预计可回收约 %s；Ctrl-C 可中断，重跑续上\n",
+	fmt.Fprintf(out, "开始瘦身：删除 %d 行 tool 输出索引（%d 字符文本），预计可回收约 %s；Ctrl-C 可中断，重跑续上\n",
 		before.PendingRows, before.PendingChars, humanBytes(before.EstimatedReclaimBytes))
 	report, err := repo.ShrinkFTSToolOutputs(ctx, store.FTSShrinkOptions{
 		Batch: batch,
 		OnBatch: func(p store.FTSShrinkProgress) {
-			fmt.Fprintf(out, "  已扫到 rowid %d/%d，重写 %d 行\n", p.ScannedRowID, p.HighWater, p.Rows)
+			fmt.Fprintf(out, "  已扫到 rowid %d/%d，删除 %d 行\n", p.ScannedRowID, p.HighWater, p.Rows)
 		},
 	})
 	if err != nil {
 		// The checkpoint of the last committed batch stands: say what is done
 		// and how to continue instead of only reporting the interruption.
-		fmt.Fprintf(out, "中断于 rowid %d/%d（已重写 %d 行）；重跑 `suga data shrink-fts` 从这里续上：%v\n",
+		fmt.Fprintf(out, "中断于 rowid %d/%d（已删除 %d 行）；重跑 `suga data shrink-fts` 从这里续上：%v\n",
 			report.ScannedRowID, report.HighWater, report.Rows, err)
 		return err
 	}
-	fmt.Fprintf(out, "瘦身完成：重写 %d 行，%d 个写事务，merge %d 次；entries_fts_data %s → %s\n",
-		report.Rows, report.Batches, report.Merges, humanBytes(report.BytesBefore), humanBytes(report.BytesAfter))
+	optimized := "无需 optimize"
+	if report.Optimized {
+		optimized = "optimize 1 次"
+	}
+	fmt.Fprintf(out, "瘦身完成：删除 %d 行，%d 个写事务，%s；entries_fts_data %s → %s\n",
+		report.Rows, report.Batches, optimized, humanBytes(report.BytesBefore), humanBytes(report.BytesAfter))
 	after, err := repo.FTSShrinkStatus(ctx)
 	if err != nil {
 		return err
 	}
 	if after.Remaining() {
-		fmt.Fprintf(out, "仍有 %d 行待处理（并发写入或 --batch 之外的边界）；可再跑一次\n", after.PendingRows)
+		fmt.Fprintf(out, "仍有 %d 行 tool 输出在索引中（并发写入已不再产生新的）；可再跑一次\n", after.PendingRows)
 	}
 	fmt.Fprintln(out, "文件大小要等 `suga data vacuum` 才回落")
 	return nil
@@ -93,7 +97,7 @@ func writeShrinkStatus(out io.Writer, report store.FTSShrinkStatus) error {
 		state = "进行中"
 	}
 	fmt.Fprintf(out, "FTS 瘦身状态：%s（断点 rowid=%d）\n", state, report.ScannedRowID)
-	fmt.Fprintf(out, "待处理 tool 行：%d（%d 字符文本），预计可回收约 %s\n",
+	fmt.Fprintf(out, "剩余 tool 行：%d（%d 字符文本），预计可回收约 %s\n",
 		report.PendingRows, report.PendingChars, humanBytes(report.EstimatedReclaimBytes))
 	return nil
 }

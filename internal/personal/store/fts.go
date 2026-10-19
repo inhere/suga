@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -22,91 +21,53 @@ import (
 //
 //   - AppendEntries, for every new entry, using the constants below;
 //   - the maintenance command `suga data shrink-fts` (fts_shrink.go), which
-//     rewrites the text of the rows written before tool results were truncated.
+//     deletes the tool rows written before tool results left the index.
 //
-// The truncation of tool results (ftsTruncateExpr) lives in ONE expression that
-// AppendEntries and the maintenance command share, so a rewritten row holds
-// exactly what a new row holds; TestFTSExpressionsMatchMigration fails when the
-// two uses drift.
+// Tool results are NOT indexed any more: they were ~96% of the index (~130MB on
+// the 2026-10-19 ledger) while searches mostly look at user and assistant
+// messages, and the full text still lives in entries for recall to read.
+// ftsIndexedTypes is the single source of that decision, so the write path and
+// the maintenance command cannot drift apart.
 //
 // This expression is deliberately NOT copied into a new migration: the old
 // backfill migration (20261010) stays as it was applied, it indexed tool
-// results in full, and the shrink command is what brings those rows in line.
+// results in full, and the shrink command is what deletes those rows.
 // A new startup backfill would be the very full-table work on Open that
-// v0.31.0 turned into a hang, and P1 adds none (design 0.3, 补充第 3 条).
+// v0.31.0 turned into a hang, and this change adds none (design 0.3, 补充第 3 条).
 const (
 	// ftsIndexedTypes lists the entry types worth searching: conversation
-	// messages (EntryUser, EntryAssistant, EntryTool) and the summaries that
-	// outlive their raw context (EntryCompaction, EntryHandoff). Plan and
-	// context_update records are structured state, not prose.
-	ftsIndexedTypes = `'user', 'assistant', 'tool', 'compaction', 'handoff'`
+	// messages (EntryUser, EntryAssistant) and the summaries that outlive their
+	// raw context (EntryCompaction, EntryHandoff). Tool results are read with
+	// recall instead (see above); plan and context_update records are structured
+	// state, not prose.
+	ftsIndexedTypes = `'user', 'assistant', 'compaction', 'handoff'`
 
 	// ftsRoleExpr stores the entry type as the role.
 	ftsRoleExpr = `type`
 
-	// ftsToolHeadChars and ftsToolTailChars are how much of a long tool result
-	// the index keeps (characters, the unit of SQLite substr/length on TEXT: a
-	// multi-byte character is never cut in half). P1 shrinks the index this way
-	// because tool results are ~96% of it; the price is that the middle of a
-	// 1-8KB result is not searchable (the full text is still in entries and, for
-	// spilled results, behind the out:... ref).
-	ftsToolHeadChars = 512
-	ftsToolTailChars = 512
-	// ftsToolMaxChars is the length at or below which a tool result is indexed
-	// as it is.
-	ftsToolMaxChars = ftsToolHeadChars + ftsToolTailChars
-	// ftsToolShrinkMinChars is the length a row must EXCEED to be a shrink
-	// candidate. It is one ellipsis longer than the limit: a truncated row holds
-	// ftsToolHeadChars + the ellipsis + ftsToolTailChars = 1027 characters, so a
-	// threshold of 1024 would match rows that are already truncated and the pass
-	// (and its --status) would never be done. The stored text therefore stays
-	// within 1027 characters instead of 1024.
-	ftsToolShrinkMinChars = ftsToolMaxChars + 3
-	// ftsTextHeadSQL is the head/tail join of a truncated tool result.
-	ftsTextHeadSQL = `' … '`
-
 	// ftsTrimBodySQL is the body of a conversation entry (api.Message JSON):
-	// Content, plus ToolResult.Content when it adds something. A tool message
-	// carries the same stored result in both fields, so equal values are kept
-	// once. json_extract on invalid JSON would raise; the caller checks first.
+	// Content, plus ToolResult.Content when it adds something. A stored tool
+	// message repeats the result in both fields, so equal values are kept once;
+	// tool entries themselves are no longer indexed, so this join only matters
+	// for a non-tool entry that carries a tool result. json_extract on invalid
+	// JSON would raise; the caller checks first.
 	ftsTrimBodySQL = `trim(coalesce(json_extract(json, '$.Content'), '') ||
                 CASE WHEN coalesce(json_extract(json, '$.ToolResult.Content'), '') IN ('', coalesce(json_extract(json, '$.Content'), ''))
                     THEN '' ELSE char(10) || json_extract(json, '$.ToolResult.Content') END, char(32, 9, 10, 13))`
 )
 
-// ftsToolEllipsis is the Go spelling of the SQL literal ftsToolEllipsisSQL; it
-// joins head and tail in messages about the index.
-const ftsToolEllipsis = " … "
-
 // ftsTextExpr extracts the searchable text from entries.json:
 //   - invalid JSON yields ” (json_extract would raise and fail the write);
 //   - compaction and handoff records ({"summary": ...}) index their summary:
 //     both are the text that stands for a stretch of past work;
-//   - tool results are truncated (ftsTruncateExpr): the index keeps the head and
-//     the tail of a long result, the rest stays only in entries;
 //   - every other indexed type indexes its body as it is.
 //
 // Surrounding whitespace is trimmed; rows whose text ends up ” are skipped.
-// It is a var, not a const, because the tool branch is built by ftsTruncateExpr
-// so that the write path and the shrink command cannot drift apart.
-var ftsTextExpr = `CASE
+const ftsTextExpr = `CASE
             WHEN NOT json_valid(json) THEN ''
             WHEN type IN ('compaction', 'handoff') THEN trim(coalesce(json_extract(json, '$.summary'), ''), char(32, 9, 10, 13))
-            WHEN type = 'tool' THEN ` + ftsTruncateExpr(ftsTrimBodySQL) + `
             ELSE ` + ftsTrimBodySQL + `
         END`
-
-// ftsTruncateExpr wraps one text expression (a column such as `text`, or
-// ftsTrimBodySQL) into the tool-result truncation: at most ftsToolShrinkMinChars
-// characters, the first ftsToolHeadChars and the last ftsToolTailChars joined
-// by ftsToolEllipsis; anything shorter passes through unchanged. Both users of
-// the expression call this one function, which is what the drift test checks.
-func ftsTruncateExpr(body string) string {
-	return `CASE WHEN length(` + body + `) > ` + strconv.Itoa(ftsToolMaxChars) +
-		` THEN substr(` + body + `, 1, ` + strconv.Itoa(ftsToolHeadChars) + `) || ` + ftsTextHeadSQL +
-		` || substr(` + body + `, length(` + body + `) - ` + strconv.Itoa(ftsToolTailChars-1) + `, ` + strconv.Itoa(ftsToolTailChars) + `)` +
-		` ELSE ` + body + ` END`
-}
 
 // ftsSourceSelect selects (session_id, seq, role, text) of the indexable
 // entries; extra is appended to the inner WHERE (e.g. " AND seq = ?").
@@ -155,7 +116,8 @@ type EntrySearch struct {
 	IncludeAgents bool
 	// Kinds restricts results to indexed entry roles. An empty slice means all
 	// indexed roles; values must be user, assistant, tool, compaction or
-	// handoff.
+	// handoff. tool only matches rows an older index left behind (tool results
+	// are no longer indexed).
 	Kinds []string
 	// Since is an inclusive lower bound on entry creation time. Zero means no
 	// lower bound.
