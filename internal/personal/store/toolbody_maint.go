@@ -21,8 +21,8 @@ import (
 //
 // --move, --slim and --undo walk the entries by (session_id, seq) in small
 // batches, each one a single write transaction that also records its
-// checkpoint, so a cancelled run resumes where it stopped. The batch of both
-// jobs is capped by rows and by bytes: the write lock is held while the file is
+// checkpoint, so a cancelled run resumes where it stopped. The batch of every
+// pass is capped by rows and by bytes: the write lock is held while the file is
 // appended, so it must stay short even when the rows are large tool outputs.
 const (
 	// toolBodyBatchRows is the default batch of both passes (100 rows keeps the
@@ -43,7 +43,7 @@ const (
 	toolBodySlimJob = "slim"
 )
 
-// toolBodyStateDDL is the checkpoint table of both passes: one row per job.
+// toolBodyStateDDL is the checkpoint table of the passes: one row per job.
 const toolBodyStateDDL = `CREATE TABLE IF NOT EXISTS tool_body_state (
     job             TEXT PRIMARY KEY,
     scanned_session TEXT NOT NULL DEFAULT '',
