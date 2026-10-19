@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 数据治理设计：备份恢复、GC 与输出配额
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 待用户审批（0.2 更正 FTS 实测并调整优先级：先做 FTS 瘦身）
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.0 | 2026-10-19 | suga（gofer job） | 建立数据治理问题域、现状盘点和 A/B 路线比较。 |
 | 0.1 | 2026-10-19 | suga（gofer job） | 针对约 1.09GB 会话库，设计在线备份/恢复、保守 GC、spill 配额与压缩，并比较 DB 内瘦身和按会话 JSONL 真相源两条路线。 |
+| 0.2 | 2026-10-19 | 监督（Claude） | 用 `entries_fts` 按 role 的实测更正 0.1 的待核对项：FTS 约 500MB 里 95% 来自 **tool 输出**（42,735 行、120MB 文本），不是 user/assistant；据此把“FTS 只索引 tool 输出开头”定为第一阶段（预计回收约 350MB，改动最小、风险最低），tool 内联阈值为第二阶段，backup/GC/spill 为第三阶段，B 路线暂缓并给出重启条件；新增按会话来源（gofer job）设保留期的问题。 |
 
 ### 思考模式与范围冻结
 
@@ -19,6 +20,36 @@
 - expansion_policy：若要改变会话写入语义、恢复时覆盖正在运行实例、或把配置/密钥备份格式改成跨产品兼容协议，先回到用户确认 Gate。
 - review budget：中。优先交付可逆的治理命令；文件为真相源是后续分阶段迁移，不作为本批隐式实现。
 - stop condition：用户批准本设计和计划前，不添加命令、配置、迁移或数据重写代码。
+
+## 0.2 修订：更正实测与新的优先级（本节优先于后文 0.1 的路线排序）
+
+### 实测更正（2026-10-19，只读统计用户主机 `~/.suga/db/sessions.db`）
+
+`SELECT role, COUNT(*), SUM(LENGTH(text)) FROM entries_fts GROUP BY role`：
+
+| role | 行数 | 文本 |
+|---|---:|---:|
+| tool | **42,735** | **120.6MB** |
+| user | 975 | 2.5MB |
+| assistant | 2,314 | 2.3MB（43,516 条 assistant 里只有带正文的进索引） |
+| compaction | 3 | 0.03MB |
+
+即代码里的 `ftsIndexedTypes` 与库一致：**tool 输出是 FTS 的绝对主体**。trigram 索引（387MB）与内容副本（约 125MB）合计约 500MB，其中约 96% 来自 tool 输出全文。0.1 中“FTS 只索引 user/assistant”的表述（来自监督早先的口径）是错的，以本表为准。
+
+### 新的阶段顺序
+
+| 阶段 | 内容 | 预计回收（本机库） | 风险 |
+|---|---|---|---|
+| **P1 FTS 瘦身（先做）** | tool 输出只把**开头 1KB**（命令/首行结果，按 UTF-8 边界截断）写入 FTS 文本；user/assistant/compaction/handoff 不变。新写入立即生效；历史数据用显式维护命令分批重建 FTS（影子表 + 每批 2,000 行 + 断点，可中断），**不进启动迁移**；重建后提示用户执行 `VACUUM` 才能真正缩小文件。 | 约 **350MB**（索引 387MB→约 100MB、内容副本 125MB→约 45MB 的量级，以 benchmark 为准） | 低：派生表可重建；`session_search` 对 tool 输出深处的文本不再命中（可用 `recall` 的 `out:` ref 或 `file_grep` 补）。 |
+| P2 tool 内联阈值 | 新写入的 tool 结果超过 4KB 时 DB 只留头尾预览 + spill 引用；历史数据按需显式迁移（先写 spill 并 fsync 再改 DB） | 约 100–180MB | 中：涉及读路径与 spill 可靠性 |
+| P3 backup/restore、GC 扩展、spill 配额与 gzip | 即 0.1 的 §备份格式、§GC、§Spill | 视 TTL 而定 | 中：删除类操作，默认 dry-run |
+| B 文件为真相 | **暂缓** | — | 高 |
+
+P1+P2 后本机库预计从 1.09GB 降到约 0.55–0.65GB（VACUUM 后），之后的增长速度约为现在的一半。B 路线（会话正文改为 JSONL）复杂度高（写入顺序、跨进程锁、所有读路径、1GB 迁移），在 P1/P2 之后收益不足以覆盖风险，暂缓；重启条件：P1/P2 后库仍 >1GB 且增长主要来自正文，或出现多进程同时写同一会话的真实需求。
+
+### 增长来源与保留期
+
+日增量峰值来自 gofer 派给 suga 的实施/评测 job（它们使用真实 `~/.suga`）。`sessions` 表没有来源列，但 gofer 拉起的会话可从 `meta_json`/会话 id 形态或 ACP/CLI 入口区分（实施前核对）。新增问题 Q9：是否给“非交互（gofer job / `suga run`）会话”单独的、更短的保留期（例如 30 天），交互 chat 会话保留更久（例如 180 天）。
 
 ## 背景与目标
 
@@ -309,6 +340,7 @@ q3jy 正在实施 `entries(type)`、`events(kind)`、`events(turn_id)` 等索引
 
 | ID | 问题 | 倾向 |
 |---|---|---|
+| Q0 | （0.2）是否同意按 P1（FTS 只索引 tool 输出开头 1KB）→ P2 → P3 的顺序推进，B 暂缓？ | 倾向同意；P1 改动最小、回收最大。 |
 | Q1 | backup 是否默认纳入 spill？ | 倾向不纳入，完整恢复时显式 `--include-spill`；归档必须记录 excluded。 |
 | Q2 | 是否启用事件 TTL 默认值？ | 倾向默认 off，审批后以 180d 为保守默认；先只清已删 session 的 30d orphan events。 |
 | Q3 | spill 达到配额时是否自动删除 oldest？ | 倾向 refuse；只在 `gc --apply` 明确确认后淘汰，并逐 ref 报告。 |
@@ -316,6 +348,7 @@ q3jy 正在实施 `entries(type)`、`events(kind)`、`events(turn_id)` 等索引
 | Q5 | FTS 是否改 contentless + unicode61/CJK 二元组？ | 倾向先 benchmark；目标是去掉约 113MB content copy，不能牺牲现有 CJK 命中契约。 |
 | Q6 | tool 正文内联阈值是否从 8KiB 降到 2–4KiB？ | 倾向 4KiB，保留头尾可回放；先以历史数据迁移 benchmark 验证回收量。 |
 | Q7 | 是否批准 B 路线进入后续版本？ | 倾向批准“新 session 先文件化、旧数据按需迁移”，不批准一次性启动迁移。 |
+| Q9 | （0.2）非交互会话（gofer job / `suga run`）是否单独设更短保留期？ | 倾向是：非交互 30 天、交互 180 天，均只在显式 `gc --apply` 时生效。 |
 | Q8 | restore 是否允许 `--no-auto-backup`？ | 倾向保留但仅显式 flag + 交互确认；普通命令不允许跳过。 |
 
 ## 测试与验证要求
@@ -339,4 +372,4 @@ q3jy 正在实施 `entries(type)`、`events(kind)`、`events(turn_id)` 等索引
 
 ## 结论与人工计划 Gate
 
-推荐先实施“在线备份/安全恢复 + dry-run GC + spill 配额/透明 gzip”，再实施 A 的 FTS/tool 瘦身；B 仅先接新会话和读路径兼容层。本文为 **Draft 0.1 / 待用户审批**，审批前不修改 `internal/personal/store`、不新增 migration、不增加 CLI。
+**0.2 结论**：先实施 P1（FTS 只索引 tool 输出开头，显式分批重建），再 P2（tool 内联阈值），再 P3（备份/GC/spill）；B 暂缓。以下为 0.1 结论原文：推荐先实施“在线备份/安全恢复 + dry-run GC + spill 配额/透明 gzip”，再实施 A 的 FTS/tool 瘦身；B 仅先接新会话和读路径兼容层。本文为 **Draft 0.1 / 待用户审批**，审批前不修改 `internal/personal/store`、不新增 migration、不增加 CLI。
