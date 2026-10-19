@@ -225,16 +225,6 @@ func grepFile(root *os.Root, rel, name string, re, exclude grepMatcher, filesOnl
 	return formatGrepContext(name, lines, contextLines), hits, false, nil
 }
 
-func countGrepHits(lines []grepLine) int {
-	n := 0
-	for _, line := range lines {
-		if line.hit {
-			n++
-		}
-	}
-	return n
-}
-
 func formatGrepLine(name string, line grepLine, hit bool) string {
 	text := line.text
 	if len(text) > maxGrepLineBytes {
