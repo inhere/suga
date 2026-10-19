@@ -212,6 +212,11 @@ func TestCollectGarbageDoesNotVacuum(t *testing.T) {
 // O(sessions x index rows)). The bound is the reverse-verification gate: the
 // single transaction, per-session-trigger version of v0.31.x exceeds it.
 func TestGCLargeLedgerDeleteDuration(t *testing.T) {
+	if raceEnabled {
+		// The race detector makes the 20k-entry fixture alone take ~40s; the
+		// timing budget is checked by the plain test run instead.
+		t.Skip("wall-clock budget is not meaningful under -race")
+	}
 	ctx := context.Background()
 	s := openTemp(t)
 	defer s.Close()
