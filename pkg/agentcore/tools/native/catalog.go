@@ -59,6 +59,12 @@ type Env struct {
 	// web_search; nil keeps their previous behavior (web_fetch ignores the
 	// environment proxies, web_search follows them).
 	NetworkProxy *netproxy.Selector
+	// ImagesDir is the session's images directory (view_image accepts a ref to
+	// one of its files); empty = only ordinary paths.
+	ImagesDir string
+	// NoVision marks a model without vision: view_image then explains how to
+	// switch instead of reading a picture nobody can see.
+	NoVision bool
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -77,6 +83,10 @@ func Catalog() []Spec {
 	return []Spec{
 		{Name: "file_read", New: func(env Env) api.Tool {
 			return &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes}
+		}},
+		{Name: "view_image", New: func(env Env) api.Tool {
+			return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs,
+				imagesDir: env.ImagesDir, noVision: env.NoVision}
 		}},
 		{Name: "file_list", New: func(env Env) api.Tool {
 			return &FileListTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
