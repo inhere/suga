@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -182,11 +180,11 @@ func messageRef(sessionID string, seq int64) string {
 // an output ref (out:<session_id>:<hex>).
 func (l *Ledger) Fetch(ctx context.Context, ref string, offset, limit int) (string, error) {
 	if strings.HasPrefix(ref, outputRefPrefix) {
-		sid, name, err := parseOutputRef(ref)
+		sid, _, err := parseOutputRef(ref)
 		if err != nil {
 			return "", err
 		}
-		text, err := l.readOutputLines(ctx, ref, sid, name, offset, limit)
+		text, err := l.readOutputLines(ctx, ref, sid, offset, limit)
 		return redact.Clean(text), err
 	}
 	sid, seq, err := parseMessageRef(ref)
@@ -359,31 +357,6 @@ func capText(s string, limit int) string {
 	return s[:cut] + fmt.Sprintf(" …[%d more bytes truncated]", len(s)-cut)
 }
 
-// openOutput opens one externalised output through an os.Root on the
-// session's outputs directory, so neither the file name nor a symlink can
-// lead the read outside it.
-func (l *Ledger) openOutput(ref, sessionID, name string) (*os.File, error) {
-	if strings.TrimSpace(l.dir) == "" {
-		return nil, errors.New("no sessions directory configured")
-	}
-	root, err := os.OpenRoot(SessionOutputsDir(l.dir, sessionID))
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("output %s not found (session %q has no saved outputs)", ref, sessionID)
-		}
-		return nil, err
-	}
-	defer root.Close()
-	f, err := root.Open(name + ".txt")
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("output %s not found", ref)
-		}
-		return nil, err
-	}
-	return f, nil
-}
-
 // forEachLine calls fn with each line (1-based number, without the line
 // break) until fn returns false. Lines of any length are handled.
 func forEachLine(r io.Reader, fn func(n int, line string) bool) error {
@@ -410,11 +383,11 @@ func forEachLine(r io.Reader, fn func(n int, line string) bool) error {
 
 // readOutputLines renders lines [offset, offset+limit) of an output with
 // their numbers, plus a hint when more lines follow.
-func (l *Ledger) readOutputLines(ctx context.Context, ref, sessionID, name string, offset, limit int) (string, error) {
+func (l *Ledger) readOutputLines(ctx context.Context, ref, sessionID string, offset, limit int) (string, error) {
 	if err := l.requireSession(ctx, sessionID); err != nil {
 		return "", err
 	}
-	f, err := l.openOutput(ref, sessionID, name)
+	f, err := OpenOutput(l.dir, ref)
 	if err != nil {
 		return "", err
 	}
@@ -454,7 +427,7 @@ func (l *Ledger) readOutputLines(ctx context.Context, ref, sessionID, name strin
 // searchOutput scans one externalised output line by line: every query term
 // must occur in the line (case-insensitive substring match).
 func (l *Ledger) searchOutput(ctx context.Context, q native.LedgerQuery) ([]native.LedgerHit, error) {
-	sid, name, err := parseOutputRef(q.Ref)
+	sid, _, err := parseOutputRef(q.Ref)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +438,7 @@ func (l *Ledger) searchOutput(ctx context.Context, q native.LedgerQuery) ([]nati
 	if err := l.requireSession(ctx, sid); err != nil {
 		return nil, err
 	}
-	f, err := l.openOutput(q.Ref, sid, name)
+	f, err := OpenOutput(l.dir, q.Ref)
 	if err != nil {
 		return nil, err
 	}
