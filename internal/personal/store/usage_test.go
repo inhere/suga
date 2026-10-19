@@ -262,6 +262,25 @@ func walState(t *testing.T, dbPath string) int64 {
 	return info.Size()
 }
 
+// TestUsageFreePagesSuggestVacuum: pages a deletion freed stay in the file, and
+// the report names the command that returns them.
+func TestUsageFreePagesSuggestVacuum(t *testing.T) {
+	ctx := context.Background()
+	fx := newUsageFixture(t)
+	rw, err := Open(fx.dbPath, WithSessionsDir(fx.sessionsDir))
+	assert.Require(t, assert.NoErr(t, err))
+	_, err = rw.DB().ExecContext(ctx, `DELETE FROM entries WHERE session_id = 's1'`)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.NoErr(t, rw.Close())
+
+	ro := openUsageFixture(t, fx)
+	rep, err := ro.Usage(ctx, UsageOptions{Top: 5})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.True(t, rep.File.FreePages > 0, "the deleted rows left free pages")
+	assert.Eq(t, rep.File.FreePages*rep.File.PageSize, rep.File.FreeBytes)
+	assert.Contains(t, rep.File.Suggestion, "suga data vacuum")
+}
+
 // TestUsageOlderStore: a store written before the body_ref column and the FTS
 // index existed still reports (no dbstat-style surprises, no error): every tool
 // row counts as inline and the index section stays empty.
