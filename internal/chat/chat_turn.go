@@ -67,7 +67,7 @@ type chatState struct {
 	modelInfo    ModelOption
 	// local is the runner of the local commands (Options.Local): a "!cmd" line
 	// typed at the prompt runs through it; nil leaves them ordinary messages.
-	local    *native.LocalCommand
+	local *native.LocalCommand
 	// readImage and vision carry the :image wiring (Options.ReadImage/Vision);
 	// pendingImages are the pictures waiting to ride with the next message
 	// (chat :image / Alt+V, design 0.3).
@@ -75,8 +75,8 @@ type chatState struct {
 	readClip      func() (agentcore.ImagePart, string, error)
 	vision        *tools.VisionGate
 	pendingImages []agentcore.ImagePart
-	tasks    *tasks.Manager
-	notifier chatNotifier
+	tasks         *tasks.Manager
+	notifier      chatNotifier
 	// localContext holds what the "!!" commands of this chat collected for the
 	// model (local_cmd.go): it is handed over with the next turn's context and
 	// dropped when chat ends without a message.
@@ -201,7 +201,7 @@ func (s *chatState) runOneTurn(line string, injected bool) (*steerTurn, error) {
 		Prompt:    line,
 		// The pictures queued at the prompt (:image, Alt+V) ride with this
 		// message; the store writes their files and keeps the message text clean.
-		Images:    s.takePendingImages(),
+		Images: s.takePendingImages(),
 		// What the person's own local commands ("!!") produced comes first, so the
 		// model reads it as context of this message; the hook context follows.
 		SystemContext: localSystemContext(s.localContext, s.pendingContext),

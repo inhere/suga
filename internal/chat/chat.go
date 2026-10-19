@@ -358,7 +358,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		modelOptions: opts.ModelOptions, modelSwitch: opts.ModelSwitch,
 		modelInfo: ModelOption{Provider: provider, Model: model, Thinking: opts.Thinking, ContextWindow: contextWindow, MaxOutputTokens: maxOutputTokens},
 		readImage: opts.ReadImage, vision: opts.Vision, readClip: opts.PasteImage,
-		steering:  steering, local: opts.Local, tasks: opts.Tasks, notifier: newChatNotifier(opts.Notify, opts.NotifyAfter, stdout, inputSource.terminal != nil),
+		steering: steering, local: opts.Local, tasks: opts.Tasks, notifier: newChatNotifier(opts.Notify, opts.NotifyAfter, stdout, inputSource.terminal != nil),
 	}
 	if inputSource.terminal != nil && opts.PasteImage != nil {
 		// Alt+V reads the clipboard's picture into the pending queue (design 0.3);

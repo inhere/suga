@@ -12,8 +12,8 @@ import (
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/inhere/suga/internal/adddir"
-	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/clipboardimage"
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -238,7 +238,6 @@ func (p *Runtime) Close() error {
 	return errors.Join(p.repo.Close(), p.capabilities.Close())
 }
 
-
 // ReadImage loads a picture for chat's :image / the Alt+V clipboard paste with
 // the view_image rules (design 0.3): the same path resolution, input limits
 // and scaling, so both sides hand the model identical pictures.
@@ -258,6 +257,7 @@ func (rt *Runtime) ReadImage(path string) (agentcore.ImagePart, string, error) {
 func (rt *Runtime) VisionGate() *tools.VisionGate {
 	return rt.vision
 }
+
 // PasteImageCallback wires chat's Alt+V (design 0.3): the platform clipboard
 // reader plus the view_image pipeline (the same checks and scaling), so a
 // paste and a :image path end up identical for the model.

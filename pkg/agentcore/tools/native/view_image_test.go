@@ -116,9 +116,9 @@ func TestViewImageSessionRefByResolver(t *testing.T) {
 	sid := "s1"
 	tool := NewViewImageTool(sessions, nil, nil, "").SetImagesDirResolver(func() string {
 		if sid == "" {
-				return ""
-			}
-			return filepath.Join(sessions, sid, "images")
+			return ""
+		}
+		return filepath.Join(sessions, sid, "images")
 	})
 	t.Run("a ref reads from the resolved directory", func(t *testing.T) {
 		res, err := tool.Execute(context.Background(), api.ToolCall{Arguments: map[string]any{"path": "images/ab12.png"}})
