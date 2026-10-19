@@ -56,6 +56,11 @@ type Store struct {
 	searchMu        sync.Mutex
 	searchSnapshots map[string]*searchSnapshot
 	searchSnapshotN uint64
+
+	// shrinkMu guards shrinkPending, the memoized answer to "does this ledger
+	// still hold tool rows the shrink command has not rewritten".
+	shrinkMu      sync.Mutex
+	shrinkPending *bool
 }
 
 // fileURI is the file: URI of a store path, well-formed on Windows too. It is

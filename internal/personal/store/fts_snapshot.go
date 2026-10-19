@@ -70,6 +70,13 @@ func (s *Store) SearchEntriesPage(ctx context.Context, q EntrySearch) (SearchRes
 	if truncated {
 		first.Notice = joinSearchNotice(first.Notice, searchSnapshotNotice)
 	}
+	// While the maintenance command has not shrunk the historical tool rows,
+	// some hits are full-text matches that the shrunk index would not have. The
+	// note is attached once per snapshot (not to a continuation page) and is
+	// memoized in the store.
+	if note := s.noteShrinkPending(ctx); note != "" {
+		first.Notice = joinSearchNotice(first.Notice, note)
+	}
 	return first, nil
 }
 

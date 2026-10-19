@@ -423,19 +423,35 @@ func normalizeSQL(s string) string {
 	return strings.Join(strings.Fields(regexp.MustCompile(`\s*([(),|])\s*`).ReplaceAllString(s, " $1 ")), " ")
 }
 
-// TestFTSExpressionsMatchMigration guards the copies of the role/text
-// expressions (each backfill migration's literal and the fts.go constants)
-// against drift: the newest migration that backfills entries_fts must agree
-// with the constants in use now.
+// TestFTSExpressionsMatchMigration guards the P1 contract (design 0.3), which
+// replaced the "every migration backfills the new expression" contract: the
+// truncation a NEW tool result is indexed with and the one the maintenance
+// command applies to the rows already in the index come from the same
+// expression (ftsTruncateExpr), while no migration backfills entries_fts any
+// more. A new startup backfill is the full-table work that hung v0.31.0, and
+// the two historical backfills stay as they were applied: they indexed tool
+// results in full, and `suga gc --shrink-fts` is what reconciles those rows.
 func TestFTSExpressionsMatchMigration(t *testing.T) {
-	t.Run("the newest backfill contains the constants", func(t *testing.T) {
+	t.Run("only the two historical backfills touch entries_fts", func(t *testing.T) {
 		backfills := ftsBackfillMigrations(t)
-		assert.Require(t, assert.NotEmpty(t, backfills))
-		mig := normalizeSQL(backfills[len(backfills)-1])
-		assert.StrContains(t, mig, normalizeSQL(ftsRoleExpr+` AS role,`+ftsTextExpr+` AS text FROM entries WHERE type IN (`+ftsIndexedTypes+`)`))
-		assert.StrContains(t, mig, normalizeSQL(`) WHERE text <> ''`))
+		// 20261010 (conversation types) and 20261017 (handoff summaries). A new
+		// one must fail here and be justified as "not a startup full-table job".
+		assert.Eq(t, 2, len(backfills))
+		for _, mig := range backfills {
+			assert.False(t, strings.Contains(normalizeSQL(mig), normalizeSQL(ftsTruncateExpr("text"))))
+		}
 	})
 
+	t.Run("write path and shrink command share the truncation", func(t *testing.T) {
+		assert.StrContains(t, normalizeSQL(ftsTextExpr),
+			normalizeSQL(`WHEN type = 'tool' THEN `+ftsTruncateExpr(ftsTrimBodySQL)))
+		assert.StrContains(t, normalizeSQL(ftsShrinkUpdateSQL),
+			normalizeSQL(`SET text = `+ftsTruncateExpr("text")))
+	})
+
+	// Sub-limit bodies index identically whether the backfill or AppendEntries
+	// wrote them; only bodies above the limit differ, and TestFTSShrinkMatchesWritePath
+	// covers that difference.
 	t.Run("backfill and AppendEntries index the same rows", func(t *testing.T) {
 		ctx := context.Background()
 		s, _ := openAtCoreSchema(t)
