@@ -6,6 +6,9 @@
 
 ### 新增
 
+- `suga gc --compress-spill [--apply]`（默认 dry-run）：报告 spill 文件数、逻辑字节（`.gz` 按压缩前字节计，即配额口径）、占用字节与是否超额，并在 dry-run 里试算“压缩后字节”；`--apply` 把 mtime 超过 `tools.spill.compress_after`（默认 7d）且会话不活跃的 `.txt` 写成同目录 `.txt.gz.tmp`，解压校验（大小与 sha256）通过后 rename，最后才删 `.txt`。`out:<session_id>:<hex>` ref 不变，`recall`/`session_search(ref)`/`export --with-outputs` 透明读两种形式（先 `.txt` 再 `.txt.gz`，gzip 流式解压，坏 gzip 报明确错误）。`--apply` 复用 `gc --vacuum` 的维护窗口（`run/maintenance.lock` + 无其他 suga 进程 + 持有会话锁），dry-run 只读、不加锁。
+- 新增 `tools.spill` 配置：`max_bytes`（默认 1GiB，0 表示不设配额，按逻辑字节计）、`max_age`（默认 90d，仅作报告/gc 候选年龄）、`compress_after`（默认 7d）、`compression`（`gzip`/`off`）、`on_quota`（仅 `refuse`）、`keep_days`（默认 0）。超额时新的 spill 返回可诊断错误（提示上限与 `suga gc --compress-spill`），输出层退回头尾片段，**不会**自动删除旧输出。
+- spill 写入改为同目录临时文件 → `Sync` → rename：写到一半失败或被中断不会留下会被当成完整输出读取的半截 `.txt`。
 - `suga gc --shrink-fts [--status|--abort|--batch N]`：把历史 tool 输出的 FTS 索引改成新写入用的截断形式（头/尾各 512 字符，中间 ` … `），按 `entries_fts` 自己的 rowid 每批 2,000 行原地重写（每批一个短写事务，走 `BEGIN IMMEDIATE` + 忙重试），完成后分批 `merge` 回收段空间；断点存在命令自建的小表 `fts_shrink_state`（不进迁移），Ctrl-C 中断后重跑从断点续上，`--status` 报待处理行数/字符数与估算回收量，`--abort` 清断点重来。执行期间可正常 chat/写会话（新写入本来就已截断）；不换表、不动触发器。
 - `suga gc --vacuum`：先检查剩余磁盘空间（≥ 库大小 × 2）与是否有其他 suga 进程在用这个库（进程登记 + run/locks 会话锁 + run/maintenance.lock），之后执行 `VACUUM` 并 `PRAGMA wal_checkpoint(TRUNCATE)`，打印前后大小；失败时原库不动并提示重试。
 - `file_refs` 新增 `context` 参数（0–5，默认 0 时输出逐字不变）：命中行前后各带 N 行**原始源码**（遮蔽前的行；YAML/TOML 与退化文本匹配也是如此），格式与 `file_grep` 的 `context` 一致——命中行仍是 `path:line class[(qualifier)] text`，上下文行是 `path-line- text`，块之间 `--`，同一文件里相邻/重叠的块合并；每个文件只为上下文读一次，上下文行不计入 `limit`，整体仍受现有结果字节上限与截断规则约束，限定名的“maybe also”组同样带上下文。需要看调用点附近代码时加 `context: 3`（如 `file_refs name=Runner.Run context=3`），省去逐个 `file_read`。

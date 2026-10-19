@@ -130,6 +130,30 @@ func TestSessionSpiller(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.Eq(t, 1, len(files)) // the temp file is gone
 	})
+	t.Run("an output over tools.spill.max_bytes is refused", func(t *testing.T) {
+		dir := shortTempDir(t)
+		ctx := withObserveScope(context.Background(), "sess_5", "turn_1")
+		// Room for the first output only: the second one must be refused and the
+		// first file must stay untouched (no silent eviction of older output).
+		sp := NewSessionSpiller(dir).WithQuota(50)
+		ref, err := sp.Spill(ctx, agentcore.ToolCall{CallID: "c1"}, strings.Repeat("x", 40))
+		assert.Require(t, assert.NoErr(t, err))
+		_, err = sp.Spill(ctx, agentcore.ToolCall{CallID: "c2"}, strings.Repeat("y", 40))
+		assert.ErrMsgContains(t, err, "tools.spill.max_bytes")
+		assert.ErrMsgContains(t, err, "suga gc --compress-spill")
+		files, err := os.ReadDir(SessionOutputsDir(dir, "sess_5"))
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, len(files))
+		got, err := os.ReadFile(filepath.Join(SessionOutputsDir(dir, "sess_5"),
+			strings.TrimPrefix(ref, "out:sess_5:")+".txt"))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, strings.Repeat("x", 40), string(got))
+
+		// Without a quota (0) the same write succeeds: the limit is the only
+		// reason the output was refused.
+		_, err = NewSessionSpiller(dir).Spill(ctx, agentcore.ToolCall{CallID: "c2"}, strings.Repeat("y", 40))
+		assert.NoErr(t, err)
+	})
 }
 
 // bigMCP is an MCP stub returning fixed content.
