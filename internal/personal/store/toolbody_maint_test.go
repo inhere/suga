@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -153,6 +154,23 @@ func TestToolBodiesAreInvisibleToDedupe(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, int64(9), check.Checked)
 	assert.True(t, check.OK())
+}
+
+// TestDeleteSessionFilesRemovesTheSessionDirectory: a deleted session must not
+// leave its tools.jsonl behind (the catalogs call this after DeleteSession, data
+// gc removes the whole directory itself).
+func TestDeleteSessionFilesRemovesTheSessionDirectory(t *testing.T) {
+	s := openTemp(t)
+	createSession(t, s, "s1", "/w")
+	appendAll(t, s, "s1", NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
+	dir := filepath.Join(s.sessionsDir, "s1")
+	_, err := os.Stat(filepath.Join(dir, ToolBodyFileName))
+	assert.Require(t, assert.NoErr(t, err))
+	assert.NoErr(t, s.DeleteSessionFiles("s1"))
+	_, err = os.Stat(dir)
+	assert.True(t, os.IsNotExist(err), "the session directory is gone")
+	// An id that cannot name a directory is skipped, not an error.
+	assert.NoErr(t, s.DeleteSessionFiles("../escape"))
 }
 
 // TestToolBodiesResumeAfterInterrupt: a cancelled pass keeps its checkpoint, the
