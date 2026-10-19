@@ -262,6 +262,30 @@ func walState(t *testing.T, dbPath string) int64 {
 	return info.Size()
 }
 
+// TestUsageOlderStore: a store written before the body_ref column and the FTS
+// index existed still reports (no dbstat-style surprises, no error): every tool
+// row counts as inline and the index section stays empty.
+func TestUsageOlderStore(t *testing.T) {
+	ctx := context.Background()
+	s, path := openAtCoreSchema(t)
+	writeHistory(t, s, "old", []NewEntry{
+		{Type: EntryUser, JSON: []byte(`{"Role":"user","Content":"hello"}`)},
+		{Type: EntryTool, JSON: []byte(`{"Role":"tool","ToolResult":{"CallID":"c1","Name":"bash","Content":"ok"}}`)},
+	})
+	assert.NoErr(t, s.Close())
+
+	ro, err := OpenReadOnly(path)
+	assert.Require(t, assert.NoErr(t, err))
+	defer ro.Close()
+	rep, err := ro.Usage(ctx, UsageOptions{Top: 5})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(2), rep.Entries.Rows)
+	assert.Eq(t, int64(1), rep.Entries.Tool.Inline.Rows)
+	assert.Eq(t, int64(0), rep.Entries.Tool.Stub.Rows)
+	assert.Eq(t, int64(0), rep.FTS.Rows, "this store has no entries_fts")
+	assert.Eq(t, int64(0), rep.Sessions.Dirs, "the derived sessions root does not exist")
+}
+
 // TestUsageTablesFromDBStat covers the dbstat section: either this SQLite build
 // has the virtual table and reports page usage, or the report says it does not.
 func TestUsageTablesFromDBStat(t *testing.T) {
