@@ -485,16 +485,28 @@ func splitReadItem(arg string) (readItem, error) {
 	return item, nil
 }
 
-// parseRanges reads "start-end[,start-end...]": both ends are required, start is
-// at least 1 and start is not past end. A malformed span is an error - a span the
-// model got wrong must not look like a read that happens to be short.
+// lineSpanWindow is how many lines a bare "path:N" reads from line N: the
+// file:line a search result points at (rg, file_grep, a stack trace) is
+// written that way, and the batch-19 re-measure had the model send
+// src/dent.rs:199 and get an error for it.
+const lineSpanWindow = 40
+
+// parseRanges reads "start-end[,start-end...]": start is at least 1 and start is
+// not past end; a bare line number N reads lineSpanWindow lines from N. A
+// malformed span is an error - a span the model got wrong must not look like a
+// read that happens to be short.
 func parseRanges(text string) ([]readRange, error) {
 	parts := strings.Split(text, ",")
 	out := make([]readRange, 0, len(parts))
 	for _, part := range parts {
 		startText, endText, ok := strings.Cut(strings.TrimSpace(part), "-")
 		if !ok {
-			return nil, fmt.Errorf("invalid line span %q", part)
+			n, err := strconv.Atoi(strings.TrimSpace(part))
+			if err != nil || n < 1 {
+				return nil, fmt.Errorf("invalid line span %q", part)
+			}
+			out = append(out, readRange{start: n, end: n + lineSpanWindow - 1})
+			continue
 		}
 		start, startErr := strconv.Atoi(strings.TrimSpace(startText))
 		end, endErr := strconv.Atoi(strings.TrimSpace(endText))
