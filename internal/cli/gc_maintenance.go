@@ -109,39 +109,16 @@ func runGCVacuum(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	runDir := filepath.Join(home, "run")
-	// The maintenance lock is one of the session locks, under a name no session
-	// can have (session ids never contain a space).
-	lock, err := personalprocess.AcquireSessionLock(runDir, "maintenance job", 0)
+	lock, held, err := acquireMaintenanceWindow(home)
 	if err != nil {
-		return fmt.Errorf("another maintenance job is running: %w", err)
+		return err
 	}
 	defer lock.Close()
-
-	records, err := personalprocess.List(runDir)
-	if err != nil {
-		return err
-	}
-	if len(records) > 0 {
-		ids := make([]string, 0, len(records))
-		for _, record := range records {
-			ids = append(ids, fmt.Sprintf("%s (pid %d, %s)", record.SessionID, record.PID, record.State))
-		}
-		sort.Strings(ids)
-		return fmt.Errorf("this ledger is in use, stop these suga processes first: %s", strings.Join(ids, ", "))
-	}
-	held, busy, err := holdRunLocks(filepath.Join(runDir, "locks"))
-	if err != nil {
-		return err
-	}
 	defer func() {
 		for _, sessionLock := range held {
 			_ = sessionLock.Close()
 		}
 	}()
-	if len(busy) > 0 {
-		return fmt.Errorf("a turn is running (session lock held): %s", strings.Join(busy, ", "))
-	}
 
 	size := store.DatabaseFileBytes(dbPath)
 	free, err := store.FreeDiskSpace(dbPath)
@@ -174,6 +151,43 @@ func runGCVacuum(ctx context.Context, out io.Writer) error {
 			humanBytes(result.BytesBefore), humanBytes(result.BytesAfter))
 	}
 	return nil
+}
+
+// acquireMaintenanceWindow is the shared gate for destructive maintenance:
+// it owns the maintenance lock and verifies registered processes and turn locks.
+func acquireMaintenanceWindow(home string) (*personalprocess.SessionLock, []*personalprocess.SessionLock, error) {
+	runDir := filepath.Join(home, "run")
+	lock, err := personalprocess.AcquireSessionLock(runDir, "maintenance job", 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("another maintenance job is running: %w", err)
+	}
+	records, err := personalprocess.List(runDir)
+	if err != nil {
+		_ = lock.Close()
+		return nil, nil, err
+	}
+	if len(records) > 0 {
+		ids := make([]string, 0, len(records))
+		for _, record := range records {
+			ids = append(ids, fmt.Sprintf("%s (pid %d, %s)", record.SessionID, record.PID, record.State))
+		}
+		sort.Strings(ids)
+		_ = lock.Close()
+		return nil, nil, fmt.Errorf("this ledger is in use, stop these suga processes first: %s", strings.Join(ids, ", "))
+	}
+	held, busy, err := holdRunLocks(filepath.Join(runDir, "locks"))
+	if err != nil {
+		_ = lock.Close()
+		return nil, nil, err
+	}
+	if len(busy) > 0 {
+		for _, item := range held {
+			_ = item.Close()
+		}
+		_ = lock.Close()
+		return nil, nil, fmt.Errorf("a turn is running (session lock held): %s", strings.Join(busy, ", "))
+	}
+	return lock, held, nil
 }
 
 // requireVacuumSpace is the free-space gate of `gc --vacuum`: a VACUUM writes

@@ -143,6 +143,9 @@ suga stats [--session <id>] [--json]              # calls, latency, tokens, cach
 suga export <session> | suga gc --older-than 30d  # export / clean up
 suga gc --shrink-fts [--status|--abort]          # shrink the tool-output FTS index
 suga gc --vacuum                                 # rewrite the db file, truncate the WAL
+suga backup --output <file>.suga-backup.zip       # verified online backup; spill excluded by default
+suga restore <file>.suga-backup.zip --dry-run     # validate without changing the home
+suga restore <file>.suga-backup.zip               # staged restore with a pre-restore backup
 suga ps | suga manifest                           # running chats / capability manifest
 ```
 

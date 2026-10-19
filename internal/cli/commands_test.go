@@ -14,6 +14,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/internal/personal/backup"
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore/testutil"
@@ -23,7 +24,7 @@ func TestCLIRegistersPersonalCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"--help"})
 	assert.NoErr(t, err)
-	for _, name := range []string{"run", "chat", "acp"} {
+	for _, name := range []string{"run", "chat", "acp", "backup", "restore"} {
 		assert.Eq(t, true, strings.Contains(stdout.String(), name))
 	}
 }
@@ -90,6 +91,26 @@ func TestCLIRegistersProcessCommandsAndSendExitCodes(t *testing.T) {
 func shortCLIHome(t *testing.T) string {
 	t.Helper()
 	return testutil.Dir(t)
+}
+
+func TestRestoreRejectsActiveProcess(t *testing.T) {
+	home := shortCLIHome(t)
+	t.Setenv("SUGA_HOME", home)
+	dbPath, err := appconfig.ResolveCoreStorePath()
+	assert.NoErr(t, err)
+	repo, err := store.Open(dbPath)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.NoErr(t, repo.Close())
+	archive := filepath.Join(home, "restore.zip")
+	_, err = backup.Create(context.Background(), backup.Options{Home: home, Output: archive})
+	assert.Require(t, assert.NoErr(t, err))
+	server, err := process.Start(filepath.Join(home, "run"), "active-restore", "active", t.TempDir(), func(string, string, string) (process.Delivery, error) { return process.Delivery{}, nil })
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = server.Close() })
+	var stdout, stderr bytes.Buffer
+	err = newCLI(context.Background(), strings.NewReader("YES\n"), &stdout, &stderr).RunWithArgs([]string{"restore", archive, "--no-auto-backup"})
+	assert.Err(t, err)
+	assert.StrContains(t, err.Error(), "ledger is in use")
 }
 
 func TestACPRejectsPositionalsWithoutWritingProtocolOutput(t *testing.T) {

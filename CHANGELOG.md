@@ -6,6 +6,9 @@
 
 ### 新增
 
+- `suga backup --output FILE.suga-backup.zip [--include-spill]` 与 `suga restore FILE.suga-backup.zip`：使用带 `manifest.json`、SHA-256 清单和 SQLite `VACUUM INTO` 在线快照的 ZIP 归档；默认不打包 spill，`--include-spill` 显式纳入。restore 校验路径、解压比例、全部 hash 和 SQLite integrity check，取得 `run/maintenance.lock` 后以 staging 原子替换，并默认先写入 `backups/pre-restore-<时间>.suga-backup.zip`。
+- restore 的 `--dry-run` 只校验归档不修改数据；`--no-auto-backup` 必须在提示符输入 `YES` 确认。配置保留 `${VAR}` 原文，`.env` 永不进入归档；Windows rename/句柄失败时保留原数据并提示关闭 suga 后重试。
+
 - `suga gc --shrink-fts [--status|--abort|--batch N]`：把历史 tool 输出的 FTS 索引改成新写入用的截断形式（头/尾各 512 字符，中间 ` … `），按 `entries_fts` 自己的 rowid 每批 2,000 行原地重写（每批一个短写事务，走 `BEGIN IMMEDIATE` + 忙重试），完成后分批 `merge` 回收段空间；断点存在命令自建的小表 `fts_shrink_state`（不进迁移），Ctrl-C 中断后重跑从断点续上，`--status` 报待处理行数/字符数与估算回收量，`--abort` 清断点重来。执行期间可正常 chat/写会话（新写入本来就已截断）；不换表、不动触发器。
 - `suga gc --vacuum`：先检查剩余磁盘空间（≥ 库大小 × 2）与是否有其他 suga 进程在用这个库（进程登记 + run/locks 会话锁 + run/maintenance.lock），之后执行 `VACUUM` 并 `PRAGMA wal_checkpoint(TRUNCATE)`，打印前后大小；失败时原库不动并提示重试。
 - `file_refs` 新增 `context` 参数（0–5，默认 0 时输出逐字不变）：命中行前后各带 N 行**原始源码**（遮蔽前的行；YAML/TOML 与退化文本匹配也是如此），格式与 `file_grep` 的 `context` 一致——命中行仍是 `path:line class[(qualifier)] text`，上下文行是 `path-line- text`，块之间 `--`，同一文件里相邻/重叠的块合并；每个文件只为上下文读一次，上下文行不计入 `limit`，整体仍受现有结果字节上限与截断规则约束，限定名的“maybe also”组同样带上下文。需要看调用点附近代码时加 `context: 3`（如 `file_refs name=Runner.Run context=3`），省去逐个 `file_read`。

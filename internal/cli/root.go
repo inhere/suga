@@ -64,6 +64,8 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 		newStatsCommand(ctx, stdout, stderr),
 		newManifestCommand(ctx, stdout, stderr),
 		newGCCommand(ctx, stdout, stderr),
+		newBackupCommand(ctx, stdout, stderr, build.Version),
+		newRestoreCommand(ctx, stdin, stdout, stderr, build.Version),
 		newUndoCommand(ctx, stdin, stdout, stderr),
 		newExportCommand(ctx, stdout, stderr),
 	)
