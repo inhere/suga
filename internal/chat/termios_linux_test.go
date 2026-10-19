@@ -19,9 +19,16 @@ import (
 // its 80-column default). Without a terminal at all there is nothing to read.
 func TestTerminalSizeFD(t *testing.T) {
 	t.Run("a pty is a terminal on either end", func(t *testing.T) {
-		slaveFD := openTestPTY(t)
-		slave := os.NewFile(uintptr(slaveFD), "pty")
-		assert.Eq(t, slaveFD, terminalSizeFD(slave, slave))
+		// The *os.File gets a dup of the slave: an os.File closes its fd when it
+		// is closed or garbage collected, and openTestPTY's cleanup closes the
+		// slave already. Wrapping the same number twice closed it twice; by the
+		// second close (a GC finalizer) the number had been reused, once by the
+		// coverage writer, which failed CI with "bad file descriptor" (suga-f3e7).
+		dup, err := unix.Dup(openTestPTY(t))
+		assert.Require(t, assert.NoErr(t, err))
+		slave := os.NewFile(uintptr(dup), "pty")
+		t.Cleanup(func() { _ = slave.Close() })
+		assert.Eq(t, dup, terminalSizeFD(slave, slave))
 	})
 
 	t.Run("a pipe is not a terminal", func(t *testing.T) {
