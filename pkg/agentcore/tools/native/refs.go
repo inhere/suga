@@ -533,7 +533,7 @@ func (o *refOut) notes(limit int) []string {
 	notes = append(notes, "[no type resolution: a match may be another object with the same name "+
 		"(a local, a field, another package's symbol); the shown line decides]")
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java, PHP and TOML matches come from word-boundary "+
+		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary "+
 			"text matching with comments masked (a config file's string values stay visible: that is how a config names "+
 			"things), not a parser; confirm with file_grep]")
 	}
