@@ -241,10 +241,10 @@ func (s *Store) readUsageEntries(ctx context.Context, top int, e *UsageEntries, 
 	// One scan: the byte total of every row, the assistant field sums, the
 	// type totals and the tool stub split all come from this grouping.
 	q := `SELECT session_id, type, length(CAST(json AS BLOB)),
-		CASE WHEN type = 'assistant' AND json_valid(json) THEN length(CAST(json_extract(json, '$.Content') AS BLOB)) ELSE 0 END,
-		CASE WHEN type = 'assistant' AND json_valid(json) THEN length(CAST(json_extract(json, '$.Reasoning') AS BLOB)) ELSE 0 END,
-		CASE WHEN type = 'assistant' AND json_valid(json) THEN length(CAST(json_extract(json, '$.Metadata') AS BLOB)) ELSE 0 END,
-		CASE WHEN type = 'assistant' AND json_valid(json) THEN length(CAST(json_extract(json, '$.ToolCall.Arguments') AS BLOB)) ELSE 0 END,
+		CASE WHEN type = 'assistant' AND json_valid(json) THEN COALESCE(length(CAST(json_extract(json, '$.Content') AS BLOB)), 0) ELSE 0 END,
+		CASE WHEN type = 'assistant' AND json_valid(json) THEN COALESCE(length(CAST(json_extract(json, '$.Reasoning') AS BLOB)), 0) ELSE 0 END,
+		CASE WHEN type = 'assistant' AND json_valid(json) THEN COALESCE(length(CAST(json_extract(json, '$.Metadata') AS BLOB)), 0) ELSE 0 END,
+		CASE WHEN type = 'assistant' AND json_valid(json) THEN COALESCE(length(CAST(json_extract(json, '$.ToolCall.Arguments') AS BLOB)), 0) ELSE 0 END,
 		CASE WHEN ` + bodyRefExpr + ` <> '' THEN 1 ELSE 0 END
 		FROM entries`
 	rows, err := s.db.QueryContext(ctx, q)
@@ -318,7 +318,7 @@ func addUsageField(fields *[]NamedStat, name string, bytes int64) {
 // usageMetadataKeys ranks the keys of the assistant metadata maps by the bytes
 // their values take (suga.responses_reasoning is the usual first one).
 func (s *Store) usageMetadataKeys(ctx context.Context, top int) ([]NamedStat, error) {
-	q := `SELECT je.key, SUM(length(CAST(je.value AS BLOB)))
+	q := `SELECT je.key, COALESCE(SUM(length(CAST(je.value AS BLOB))), 0)
 		FROM entries, json_each(json_extract(entries.json, '$.Metadata')) AS je
 		WHERE entries.type = ? AND json_valid(entries.json)
 		GROUP BY je.key ORDER BY 2 DESC, 1 LIMIT ?`
@@ -341,7 +341,7 @@ func (s *Store) usageMetadataKeys(ctx context.Context, top int) ([]NamedStat, er
 // usageToolArguments ranks the tools by the bytes of their call arguments.
 func (s *Store) usageToolArguments(ctx context.Context, top int) ([]NamedStat, error) {
 	q := `SELECT COALESCE(json_extract(json, '$.ToolCall.Name'), ''), COUNT(1),
-		SUM(length(CAST(json_extract(json, '$.ToolCall.Arguments') AS BLOB)))
+		COALESCE(SUM(length(CAST(json_extract(json, '$.ToolCall.Arguments') AS BLOB))), 0)
 		FROM entries WHERE type = ? AND json_valid(json)
 		AND json_extract(json, '$.ToolCall.Name') IS NOT NULL
 		GROUP BY 1 ORDER BY 3 DESC, 1 LIMIT ?`

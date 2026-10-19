@@ -60,12 +60,12 @@ func runDataUsage(ctx context.Context, out io.Writer, asJSON bool, top int) erro
 }
 
 // writeDataUsage prints the report as the sectioned table the other data
-// commands use: one block per question, with the command that acts on it.
+// commands use: one block per question, with the command that acts on it. The
+// file path stands on its own line so a long home does not stretch the table.
 func writeDataUsage(out io.Writer, rep store.UsageReport) error {
+	fmt.Fprintf(out, "库文件 %s（%s）\n", rep.File.Path, humanBytes(rep.File.Bytes))
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	// 库文件
-	fmt.Fprintf(tw, "库文件\t%s\t%s\n", rep.File.Path, humanBytes(rep.File.Bytes))
-	fmt.Fprintf(tw, "  页\t%s × %d 页\t\n", humanBytes(rep.File.PageSize), rep.File.Pages)
+	fmt.Fprintf(tw, "  页\t%d × %d 页\t\n", rep.File.PageSize, rep.File.Pages)
 	fmt.Fprintf(tw, "  空闲页\t%d 页\t%s\n", rep.File.FreePages, humanBytes(rep.File.FreeBytes))
 	fmt.Fprintf(tw, "  WAL\t\t%s\n", humanBytes(rep.File.WALBytes))
 	// entries
@@ -116,16 +116,6 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	if rep.Sessions.Other.Files > 0 {
 		fmt.Fprintf(tw, "  其他\t%d 个文件\t%s\n", rep.Sessions.Other.Files, humanBytes(rep.Sessions.Other.Bytes))
 	}
-	if len(rep.Sessions.Top) > 0 {
-		fmt.Fprintln(tw, "最大的会话\t库内\t目录")
-		for _, session := range rep.Sessions.Top {
-			title := session.Title
-			if title == "" {
-				title = "-"
-			}
-			fmt.Fprintf(tw, "  %s  %s\t%s\t%s\n", session.ID, truncateTitle(title), humanBytes(session.DBBytes), humanBytes(session.DirBytes))
-		}
-	}
 	// dbstat: the real page usage of each table and index.
 	if rep.DBStat {
 		fmt.Fprintln(tw, "表/索引（dbstat）\t\t")
@@ -136,6 +126,11 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
+	// The largest sessions get a table of their own: a long id/title in the main
+	// table would widen every other row.
+	if err := writeUsageTopSessions(out, rep.Sessions.Top); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "合计 %s：库文件 %s + 会话目录 %s\n", humanBytes(rep.TotalBytes),
 		humanBytes(rep.File.Bytes), humanBytes(rep.TotalBytes-rep.File.Bytes))
 	if !rep.DBStat {
@@ -143,6 +138,25 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	}
 	writeUsageSuggestions(out, rep)
 	return nil
+}
+
+// writeUsageTopSessions prints the largest sessions: ledger bytes, directory
+// bytes and the title, one line each.
+func writeUsageTopSessions(out io.Writer, sessions []store.UsageSession) error {
+	if len(sessions) == 0 {
+		return nil
+	}
+	fmt.Fprintln(out, "最大的会话（库内 + 目录）：")
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, session := range sessions {
+		title := session.Title
+		if title == "" {
+			title = "-"
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", session.ID, humanBytes(session.DBBytes),
+			humanBytes(session.DirBytes), truncateTitle(title))
+	}
+	return tw.Flush()
 }
 
 // truncateTitle keeps a session title on one line of the table.
