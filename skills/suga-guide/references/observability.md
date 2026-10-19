@@ -12,6 +12,7 @@ suga trace <session> --web [--addr 127.0.0.1:0]  # 本机网页：时间线（�
 suga stats [--session <id>] [--since 7d] [--json] # 调用次数、耗时、token、缓存命中
 suga export <session> [--redact] [-o <file>]      # 以 jsonl 导出会话内容与事件
 suga gc --older-than 30d [--apply]                # 列出（默认）或删除长期未活动的会话
+suga gc --retention [--apply]                     # 按来源套用保留期（chat 180 天 / run+ACP 30 天，默认只报告）
 suga ps                                           # 正在运行的 chat 进程（含短名称）
 suga manifest [--json] [--model <p/m>]            # 模型、工具、MCP、skills、记忆后端、输出上限
 ```

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	appconfig "github.com/inhere/suga/internal/config"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
@@ -112,9 +113,9 @@ func runGCVacuum(ctx context.Context, out io.Writer) error {
 	runDir := filepath.Join(home, "run")
 	// The maintenance lock is one of the session locks, under a name no session
 	// can have (session ids never contain a space).
-	lock, err := personalprocess.AcquireSessionLock(runDir, "maintenance job", 0)
+	lock, err := acquireMaintenanceLock(home)
 	if err != nil {
-		return fmt.Errorf("another maintenance job is running: %w", err)
+		return err
 	}
 	defer lock.Close()
 
@@ -212,6 +213,28 @@ func holdRunLocks(runDir string) (held []*personalprocess.SessionLock, busy []st
 	}
 	sort.Strings(busy)
 	return held, busy, nil
+}
+
+// acquireMaintenanceLock takes the run/maintenance.lock that every heavy
+// maintenance job of data governance shares (gc --apply, gc --vacuum, and the
+// backup/restore and spill compaction of the sibling tasks): two of them must
+// never rewrite the same ledger at once. The lock is one of the session locks,
+// under a name no session can have (session ids never contain a space).
+func acquireMaintenanceLock(home string) (*personalprocess.SessionLock, error) {
+	lock, err := personalprocess.AcquireSessionLock(filepath.Join(home, "run"), "maintenance job", 0)
+	if err != nil {
+		return nil, fmt.Errorf("another maintenance job is running: %w", err)
+	}
+	return lock, nil
+}
+
+// humanDuration renders a retention period in days when it is a whole number of
+// days, and as a Go duration otherwise.
+func humanDuration(d time.Duration) string {
+	if d > 0 && d%(24*time.Hour) == 0 {
+		return fmt.Sprintf("%dd", d/(24*time.Hour))
+	}
+	return d.String()
 }
 
 // humanBytes formats a byte count for the maintenance report.
