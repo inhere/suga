@@ -36,7 +36,7 @@
 3. **不改 `api.Message` 的编码**（不加 `MarshalJSON`）：`prefix.go` 用默认编码算前缀哈希、hooks/export 等对外 JSON 也保持原样，provider 请求字节不变，前缀缓存不受影响。
 4. **SQL 侧**：FTS 表达式已用 `coalesce(json_extract(json,'$.ToolResult.Content'),'')`，缺失时只取 `Content`，结果不变；实施时 grep 所有 `json_extract(…ToolResult` 的 SQL 并确认。
 5. **历史数据**：显式维护命令 `suga data dedupe-tool-results [--status|--abort]`：按 entries 主键（`session_id, seq`）游标分批 2,000 行，`UPDATE entries SET json = json_set(json_remove(json,'$.ToolResult.Content'),'$.ResultSameAsContent',json('true')) WHERE type='tool' AND json_extract(json,'$.Content') = json_extract(json,'$.ToolResult.Content') AND …批次条件`，短写事务（复用 tx.go），断点表、可中断续跑；不进启动迁移；完成后提示 `suga data vacuum`。因为解码会还原，改写前后读出的消息逐字节相同，恢复会话与 provider 缓存都不受影响（这推翻了 0.3 里“改写历史会让回放不同”的担心）。
-6. **旧版本二进制**读到新格式时 `ToolResult.Content` 为空（工具结果只剩 `Content`），模型仍能看到结果文本（多数 provider 映射用 `ToolResult.Content`——实施时核对，若某 provider 只读 `ToolResult.Content`，则旧版本回滚后历史工具结果会变空；在 CHANGELOG 写明“去重后不要回退到旧版本”，或维护命令提供 `--undo` 还原）。
+6. **回退旧版本的风险（已核对）**：claude、openai、responses 三个 provider 映射工具结果都只读 `ToolResult.Content`（`pkg/agentcore/llm/claude.go:231`、`openai.go:162`、`responses.go:180`）。旧版本二进制读到去重后的条目会把工具结果发成空。因此：维护命令必须提供 `--undo`（对所有带 `ResultSameAsContent` 标记的行，用 `json_set(json_remove(json,'$.ResultSameAsContent'),'$.ToolResult.Content',json_extract(json,'$.Content'))` 分批还原，**也覆盖新版本新写入的行**）；CHANGELOG 写明“回退到旧版本前先执行 `suga data dedupe-tool-results --undo`”。
 
 ### 验证
 
