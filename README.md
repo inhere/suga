@@ -149,6 +149,7 @@ suga data shrink-fts [--status|--abort]                        # delete the hist
 suga data dedupe-tool-results [--status|--undo]                 # store old tool results once (--undo restores them)
 suga data tool-bodies [--status|--move|--undo|--check]           # move tool result bodies to sessions/<id>/tools.jsonl
 suga data vacuum                                               # rewrite the db file, truncate the WAL
+suga data usage [--json] [--top N]                             # read-only: where the db file, entries, events, FTS and session dirs hold their bytes
 suga data backup --output <file>.suga-backup.zip               # verified online backup; spill excluded by default
 suga data restore <file>.suga-backup.zip --dry-run             # validate without changing the home
 suga data restore <file>.suga-backup.zip                       # staged restore with a pre-restore backup
