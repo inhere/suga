@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 数据治理设计：备份恢复、GC 与输出配额
 
-> 状态：Draft 0.2 / 待用户审批（0.2 更正 FTS 实测并调整优先级：先做 FTS 瘦身）
+> 状态：Draft 0.3 / 已批准方向，按独立审核修订（P1 改为原地分批截断；本节“0.3 修订”优先于 0.2 与 0.1）
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.0 | 2026-10-19 | suga（gofer job） | 建立数据治理问题域、现状盘点和 A/B 路线比较。 |
 | 0.1 | 2026-10-19 | suga（gofer job） | 针对约 1.09GB 会话库，设计在线备份/恢复、保守 GC、spill 配额与压缩，并比较 DB 内瘦身和按会话 JSONL 真相源两条路线。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 用 `entries_fts` 按 role 的实测更正 0.1 的待核对项：FTS 约 500MB 里 95% 来自 **tool 输出**（42,735 行、120MB 文本），不是 user/assistant；据此把“FTS 只索引 tool 输出开头”定为第一阶段（预计回收约 350MB，改动最小、风险最低），tool 内联阈值为第二阶段，backup/GC/spill 为第三阶段，B 路线暂缓并给出重启条件；新增按会话来源（gofer job）设保留期的问题。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 用户批准方向（P1→P2→P3、B 暂缓、非交互 30 天/交互 180 天、Q1–Q8 按倾向）。按独立审核（监督派出的独立子 agent；codex 审核因模型容量不足中断后重试中）修订：P1 由“影子表+换表”改为“FTS 原地按 rowid 分批截断 + merge”（避开触发器改名与并发写丢失）；截断改为头 512 + 尾 512 字符；改漂移测试契约；GC 会话删除的 O(会话数×FTS 行数) 问题与自动 VACUUM 纳入 P3；P2 改为先评估 tool 消息双份存储去重；会话来源用新写入的 meta.origin，历史一律按交互。 |
 
 ### 思考模式与范围冻结
 
@@ -20,6 +21,39 @@
 - expansion_policy：若要改变会话写入语义、恢复时覆盖正在运行实例、或把配置/密钥备份格式改成跨产品兼容协议，先回到用户确认 Gate。
 - review budget：中。优先交付可逆的治理命令；文件为真相源是后续分阶段迁移，不作为本批隐式实现。
 - stop condition：用户批准本设计和计划前，不添加命令、配置、迁移或数据重写代码。
+
+## 0.3 修订：独立审核后的定稿要点（本节优先于后文）
+
+独立审核结论“修改后可实施”。已核对的事实与据此的修改：
+
+### P1 改为原地分批截断（替代 0.2 的影子表 + 换表）
+
+- **原因**：触发器 `entries_fts_session_delete`（`migrations/20261010-234359-add-ledger-fts-memory-meta.sql:23-26`）正文写死表名 `entries_fts`，新版 SQLite 默认 `legacy_alter_table=OFF`，换表改名会让触发器跟着指向旧表，DROP 后删会话就报错；DROP 约 500MB 的 FTS 表还会长时间占写锁；影子表重建期间并发写入的新条目和被删会话会漏/留孤儿。
+- **做法**：
+  1. 新写入：`ftsTextExpr` 的 tool 分支改为“trim 之后取头 512 + 尾 512 字符”（中间用 ` … ` 连接；长度 ≤1024 字符时原样）。SQLite 的 `substr`/`length` 对 TEXT 按字符计，不会切坏 UTF-8；CJK 输出最多约 3KB。
+  2. 历史数据：显式维护命令按 **FTS 自己的 rowid** 分批（每批 2,000 行，短事务）执行 `UPDATE entries_fts SET text = <同一截断表达式> WHERE rowid > ? AND rowid <= ? AND role = 'tool' AND length(text) > 1024`；断点只记 FTS rowid（不用 entries 的隐式 rowid，VACUUM 会重编号）；结束后按批 `INSERT INTO entries_fts(entries_fts, rank) VALUES('merge', N)` 回收段空间。与并发写入共存（新写入本来就已截断），不需要换表、不动触发器。
+  3. 命令带 `--status`（已处理/剩余/预计回收）与 `--abort`；可 Ctrl-C，重跑从断点续。
+  4. **不新增回填迁移**；把 `TestFTSExpressionsMatchMigration` 的契约改为“维护命令与 `AppendEntries` 共用 `ftsSourceSelect`/同一截断表达式”，旧迁移文件不动（`fts.go:25-28` 的注释同步改写）。
+- **检索影响如实写进 `session_search` 结果说明**：tool 输出只索引开头与结尾各 512 字符；1KB–8KB 的输出（平均约 2.8KB，占多数）没有 `out:` 引用（spill 阈值 8000 字节，`pkg/agentcore/tools/output.go:19`），截断后其中段不可检索——这是 P1 的明确代价。命令参数从未进 FTS（只索引结果），0.2 里“开头是命令”的说法删除。
+- 回收量以截断前后的长度直方图实测为准（审核估计索引降到约 150MB 量级，而非 0.2 写的约 100MB）。
+
+### VACUUM（P1 之后由用户显式执行）
+
+执行前检查剩余空间（WAL 模式下峰值可能接近库大小的 2 倍）、持有 `run/maintenance.lock` 且无其他 suga 进程（chat/ACP/run）在用这个库，否则拒绝；结束后 `PRAGMA wal_checkpoint(TRUNCATE)`。Windows 上失败（句柄占用、杀毒）时保持原库不动并提示重试。
+
+### P3 新增：GC 删会话本身会卡
+
+- 现状：`gc.go:85-93` 在一个事务里删掉所有过期会话，每删一个会话触发器都会对 FTS 的 UNINDEXED `session_id` 全表扫一遍（O(会话数 × FTS 行数)），事务结束后还**自动 VACUUM**。按 30 天保留期一次删几百个会话会重演 v0.31.0 式卡死。
+- 修改：会话分小批删除；FTS 行改为一次扫描收集 rowid 后按 rowid 删除（批量删会话时临时绕过逐会话触发器，或改触发器为按 rowid 集合）；`gc --apply` 不再自动 VACUUM，改为显式 `--vacuum`。
+
+### P2 重新定义
+
+- 0.2 的“超 4KB 只留头尾 + spill”等于把 `DefaultInlineOutputBytes` 从 8000 调到 4096，会改变模型可见上下文，不只是存储问题，暂不做。
+- 先评估收益更大、对模型无影响的一项：tool 消息 JSON 里 `Content` 与 `ToolResult.Content` 存了同一份结果（`fts.go:40-45` 注释、`api/types.go`），新写入只存一份、读取时补齐；历史数据是否改写另议（改写会让恢复的会话回放不同字节、使 provider 缓存失效）。另：`spill.go` 写文件后未 fsync，P2/P3 动 spill 前补上。
+
+### 会话来源（保留期 30/180 天）
+
+现有数据无法区分来源（`meta_json` 只有 kind/parent、provider/model、版本、segment；id 形如 `sess_日期_…`）。新会话在入口（chat / run / ACP）写 `meta.origin`；**历史会话一律按交互处理（180 天）**；被 chat 接着用过的非交互会话按交互处理。
 
 ## 0.2 修订：更正实测与新的优先级（本节优先于后文 0.1 的路线排序）
 

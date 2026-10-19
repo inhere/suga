@@ -1,36 +1,37 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # 数据治理实施计划：备份恢复、GC 与输出配额
 
-> 状态：Draft 0.2 / 待用户审批（0.2 起任务顺序改为 P1 FTS 瘦身优先）
+> 状态：Draft 0.3 / 已批准方向（P1 按 0.3 原地分批截断实施）
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.0 | 2026-10-19 | suga（gofer job） | 建立数据治理任务分解、能力发现和验证 Gate。 |
-| 0.1 | 2026-10-19 | suga（gofer job） | 对应 `docs/design/2026-10-19-data-governance-design.md` Draft 0.1，按可回滚功能点拆分备份恢复、GC、spill 和两阶段存储瘦身。 |
+| 0.1 | 2026-10-19 | suga（gofer job） | 对应 `docs/design/2026-10-19-data-governance-design.md` Draft 0.3，按可回滚功能点拆分备份恢复、GC、spill 和两阶段存储瘦身。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 跟随设计 0.2：新增并前置任务 P1（FTS 只索引 tool 输出开头 1KB + 显式分批重建 + VACUUM 提示）；原 T4 拆为 P1/P2，T5（B 路线）暂缓；T1–T3 顺延到 P1/P2 之后。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 按独立审核修订 P1：原地按 FTS rowid 分批截断（头 512 + 尾 512 字符）+ merge，不建影子表、不换表、不新增回填迁移；改漂移测试契约；加 --status/--abort；VACUUM 前置检查；P3 加入 GC 分批删除与取消自动 VACUUM；P2 改为先评估 tool 消息双份存储去重；会话来源用 meta.origin。 |
 
 ## 0.2 任务顺序（本节优先于后文的波次排序）
 
-### P1 FTS 瘦身（先做）
+### P1 FTS 瘦身（先做，按设计 0.3）
 
-- 文件：`internal/personal/store/fts.go`（`ftsTextExpr` 的 tool 分支截取开头 1KB，UTF-8 安全；注意该表达式被插入路径与回填/重建共用，按文件里的注释同步所有副本）、新增显式维护入口（例如 `suga db rebuild-fts`，或 `suga gc --rebuild-fts`，命名在实施前与用户确认）、`internal/cli` 帮助与文档、测试。
+- 文件：`internal/personal/store/fts.go`（tool 分支截断：trim 后头 512 + 尾 512 字符，中间 ` … `；按注释同步所有使用处）、新的维护实现（例如 `internal/personal/store/fts_shrink.go`）、`internal/cli` 新命令（暂定 `suga data rebuild-fts`，与 issue suga-azgs 的命令分组一致；分组未落地前先挂在现有命令树里一个不显眼的位置，实施时与监督确认）、`fts_test.go` 契约更新、`CHANGELOG.md`、`README`/docs。
 - 动作：
-  1. 新写入立即按新表达式入 FTS；不加启动迁移。
-  2. 重建命令：建影子 FTS 表 → 按 `entries` 主键游标每批 2,000 行写入 → 断点记录在表里可续 → 完成后在一个短事务里换表名；全程可 Ctrl-C，重跑从断点继续；**禁止**对 FTS 虚表逐行 `NOT EXISTS`。
-  3. 完成后打印前后大小与“执行 `VACUUM`（或 `suga db vacuum`）才会缩小文件；需要约等于库大小的临时空间”。VACUUM 只在用户显式执行时做。
-  4. `session_search` 的结果说明加一句：tool 输出只索引开头，更深的内容用 `recall` 读 `out:` 引用或 `file_grep`。
-- 验证：20,000+ entries 的基准库上测重建耗时与前后 FTS 大小（写进汇报）；CJK 短词、tool 开头命中、tool 深处不命中、user/assistant 不受影响的检索测试；中断后续跑的测试；反向验证（还原为全文索引后“深处不命中”用例失败）。主机上用**真实库的副本**（复制到隔离目录，不碰 `~/.suga`）跑一次重建并记录耗时与回收量。
-- 完成标准：以上通过；默认不改动用户已有数据，直到用户自己执行重建命令。
+  1. 新写入立即用新表达式；**不新增任何迁移**；`TestFTSExpressionsMatchMigration` 改为断言维护命令与 `AppendEntries` 共用同一表达式（旧迁移不动）。
+  2. 维护命令：按 FTS rowid 分批 2,000 行原地 `UPDATE entries_fts SET text=<表达式> WHERE rowid>? AND rowid<=? AND role='tool' AND length(text)>1024`，每批一个短写事务（走现有 BEGIN IMMEDIATE + 重试）；断点存在一个小的 meta 表或 `memory_meta` 之外的专用表；结束后分批 `merge`；`--status`、`--abort`、Ctrl-C 后续跑。
+  3. `session_search` 结果说明加一句 tool 输出只索引头尾。
+  4. 另一个显式命令（或同命令的 `--vacuum`）：检查空间、持维护锁且无其他 suga 进程、VACUUM、`wal_checkpoint(TRUNCATE)`。
+- 验证：20,000+ entries 基准库上的耗时、截断前后 FTS 大小；中途中断续跑；并发写入期间执行；会话在执行期间被删；CJK 短词、头尾命中、中段不命中、user/assistant 不受影响；反向验证。主机上用真实库**副本**（隔离目录）跑一次并记录耗时与回收量（不碰 `~/.suga`）。
+- 完成标准：以上通过；用户已有数据在用户自己执行命令前不变。
 
-### P2 tool 内联阈值（P1 之后）
+### P2（P1 之后，先评估）
 
-按设计 0.1 的 A 路线第 2 步执行，新写入先行，历史数据仅显式迁移。
+按设计 0.3：先评估 tool 消息 `Content`/`ToolResult.Content` 双份存储去重（新写入），不调整 8000 字节内联阈值；spill 写入补 fsync。
 
 ### P3 备份/GC/spill（P2 之后）
 
-即后文 T1–T3；T5（B 路线）暂缓。
+即后文 T1–T3，另加：GC 分批删会话、FTS 按 rowid 集合删除、`gc --apply` 不再自动 VACUUM（改显式 `--vacuum`）、新会话写 `meta.origin`（历史按交互 180 天）；T5（B 路线）暂缓。
 
 ## 目标与完成定义
 
@@ -45,7 +46,7 @@
 
 ### 完成定义
 
-- 设计和本计划均明确标记 `Draft 0.1 / 待用户审批`，validator 的 design/plan 均 exit code=0、`errors=[]`。
+- 设计和本计划均明确标记 `Draft 0.3 / 待用户审批`，validator 的 design/plan 均 exit code=0、`errors=[]`。
 - 计划中的每个新函数/模块都有真实调用路径、近端单测和至少一项反向验证；不以直接调用私有 helper 代替真实 CLI/store/reader 路径。
 - 20,000+ entries 的基准覆盖 migration/FTS、event TTL、spill migration、backup/VACUUM 和 JSONL export；任何迁移不对 FTS5 虚表做逐行 `NOT EXISTS`。
 - Windows build/vet/gofmt/test/staticcheck 与 Linux `-race` 证据齐全；涉及 interactive chat 才补 `make smoke-chat`，纯治理命令不虚报 PTY 结果。
@@ -61,7 +62,7 @@
 
 ## 输入与批准证据
 
-- 设计：`docs/design/2026-10-19-data-governance-design.md`，Draft 0.1 / 待用户审批。
+- 设计：`docs/design/2026-10-19-data-governance-design.md`，Draft 0.3 / 待用户审批。
 - issue：`suga-zy9f`（backup/restore、GC、spill 配额压缩）；`suga-q3jy`（entries/events 索引、SQL 报表、`BEGIN IMMEDIATE` 忙重试）。
 - 代码事实：`internal/personal/store/store.go:21-229`（embed migration、WAL、Open/ReadOnly）；`gc.go:9-98`（当前 session/event 删除与 VACUUM）；`fts.go:14-65` 与迁移 `20261010-234359-add-ledger-fts-memory-meta.sql:12-66`（FTS/metadata）；`entries.go:13-61`、`events.go:12-150`、`sessions.go:43-192`；`internal/personal/spill.go:23-121`、`internal/personal/ledger.go:57-212`；`internal/cli/gc.go:20-169`、`export.go:20-207`；`internal/config/paths.go:11-49`、`snapshots.go:12-119`、`settings_registry.go:88-195`。
 - 用户实测：2026-10-19，1.09GB、4096 × 267540 页、freelist 183；FTS data 387MB、FTS content 约113MB、tool entries 292MB、events 26MB、spill 约72MB，日增量 44–145MB。
