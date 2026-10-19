@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 图片输入设计（按路径读图 + ACP 图片内容块）
 
-> 状态：Draft 0.2 / 已批准（待独立审核后实施）
+> 状态：Draft 0.3 / 已批准，按独立审核修订后可实施（“0.3 修订”优先于后文）
 > 日期：2026-10-19
 > 关联 issue：`suga-wfcw`；gofer 设计 `inhere-tools/gofer/docs/design/2026-10-19-workbench-image-attachments-design.md`（已批准、实施中）
 
@@ -11,8 +11,64 @@
 |---|---|---|---|
 | 0.1 | 2026-10-19 | 监督（Claude） | 用户 2026-10-19：“suga 能不能读本地图片——gofer 那边正在加上传图片支持”“图片的也设计下”。gofer 交图有两条路：① ACP 声明 `promptCapabilities.image` 时发 image 内容块；② 其余情况把图片存到项目 `tmp/gofer-attachments/<日期>/<id>.<ext>`，消息末尾加“[附图 N] <绝对路径>”。本设计分两期：第一期按路径读图（对应 ②，chat 也能用），第二期 ACP 图片内容块（对应 ①）。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 用户批准（“图片设计按推荐来”）：Q1–Q7 按当前倾向。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 按独立审核（结论“修改后可实施”）修订：补 P2 去重结构的 Images、打通 ToolResult/RunInput/RunRequest 的图片通道、落盘改在 AppendMessages、取回改在上下文组装、OpenAI 追加消息位置、Responses 核实与纯图消息、裁剪对齐 fold 边界并加单请求上限、图片 token 估算、view_image 可读会话图片、vision 三态与回退模型、ACP 声明策略、安全上限；按用户要求加入 chat Alt+V 贴图（第一期）。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
+
+## 0.3 修订：独立审核后的定稿要点（本节优先于后文）
+
+### 阻断项的修法
+
+1. **P2 去重会丢图片**：`store.EncodeMessage` 的去重分支用手工列字段的 `dedupedMessage`/`dedupedToolResult`（`internal/personal/store/message_json.go:33-54`），没有 `Images`。补上 `Images`（字段顺序与 api 声明一致）；`TestEncodeMessageKeepsMessageFields`（`message_json_test.go:107`）给 Images 赋值，使新增字段漏写时测试失败。tool-bodies 的 `tools.jsonl` 存的就是 `EncodeMessage` 输出，修好后图片引用随正文保留；桩不含 Images，所以凡是要读 Images 的地方（孤儿图片检查、备份清单）都必须经 `ListEntries` 取回，不用 SQL `json_extract`。
+2. **图片的通道**：`api.ToolResult` 增加 `Images`，`persistToolTranscript`（`pkg/agentcore/runtime.go:621-626`）把它带进 tool 消息；`RunInput`（`runtime.go:125` 由字符串 Instruction 生成用户消息）与 `personal.RunRequest`（`internal/personal/runner.go:239`）增加 `Images`，用户附图由此进入。
+
+### 落盘与取回的位置（替代 0.2 的“宿主注入保存函数”）
+
+- 工具与入口只在内存里带字节（`Data`）。**落盘统一在 `AgentStorage.AppendMessages`**（`internal/personal/store/agentstore.go:85`，调用 `EncodeMessage` 之前）：写 `sessions/<sid>/images/<sha256>.<ext>`（临时文件 → Sync → rename，同 sha 已存在则跳过），填 `Ref`/`SHA256`，清空 `Data`。用户图片同样走这里。
+- `view_image` 不标 `Prefetchable`（避免并发预取产生孤儿文件，`pkg/agentcore/tools/prefetch.go:41`）。
+- **取回在上下文组装**：`contextBuilder.BuildMessages`/`compose`（`internal/personal/context.go:302`、`:342`）返回消息副本并按 Ref 填 `Data`，按 sha 缓存；各处 clone 函数复制 `Images`。
+- `sha256` 定义为发送字节的 sha；图片无需缩放且格式被 provider 支持时原样发送。
+
+### provider 映射修正
+
+- **OpenAI Chat**：追加的 user 消息插在 `groupToolBatches`（`pkg/agentcore/llm/tool_batch.go:13`）分组之后、整组 tool 消息之后，不逐条插；单调用按对插入。
+- **Responses**：实施时先按当前官方文档核实 `function_call_output` 是否支持 `input_image` 数组；加 compat 开关——官方端用原生方式，网关端回退为追加 user 消息。`buildInput` 对空文本 user 消息直接跳过（`responses.go:201`），纯图消息会丢，必须改。
+- **Claude**：图片块放在文字之前；总像素按当前文档建议控制（约 1.15MP 内效果最佳）。
+- 所有追加消息在组装时确定性生成，回放稳定。
+
+### 历史裁剪与成本（替代 0.2 的“最近 3 回合”）
+
+- 按回合推进裁剪会在每张图过期那一轮改写请求中段，前缀缓存随之失效。改为**复用 fold 的分批边界**（`internal/personal/fold.go:64` 的 every/keep），或只在分段切换时裁剪（那时缓存本来就失效）。配置 `images.history_turns` 保留，含义改为“按 fold 批次保留”。
+- 另加**单请求上限**：图片张数（默认 8）与 base64 总字节（默认 20MB，低于 Claude 单请求约 32MB 的上限）；超出时最早的图换成文字说明。
+- **token 估算**计入图片：`tokensOfMessage`（`internal/personal/tokens.go:70`）按宽高估算（宽×高/750 的量级，按 provider 文档校准），压缩阈值与预算预估（`estimate.go:156`）随之准确。
+- 被省略的图片提示“需要时 `view_image <Ref>`”：`view_image` 接受本会话图片的 `Ref`（`images/<sha>.<ext>`），否则会话目录不在工作区（`readroots.go:110`）读不到。
+
+### vision 能力与回退
+
+- 配置 `vision` 用三态（参照 `StreamRequiredSet`，`internal/config/providers.go:51`）：未设 = 按内置名单（按 `APIModel` 匹配），可显式 true/false 覆盖（网关不支持图片时设 false）；在 `settings_registry.go` 注册。
+- 回退由 `llm.NewPool` 组合（`internal/wiring/runtime.go:702-718`），上下文组装时不知道最终用哪个 provider：**图片换成文字说明放在各 provider 的 vision 选项里做**。
+- 工具表：`SwitchModel`（`runner.go:383`）只换 provider，但 runtime 每步都 `ListTools`（`runtime.go:359`），在 `observedTools`（`observe.go:253`）或新包装层按当前模型过滤 `view_image`。提示文案用 chat 实际命令 `:model`（`chat_commands.go:105`）。
+
+### ACP（第二期）修正
+
+- acp-go-sdk v0.13.5 有 `PromptCapabilities.Image`（`types_gen.go:3785`）与 `ContentBlock.Image{Data,MimeType,Uri}`（`:1195`、`:1271`）。
+- `initialize` 在会话之前、没有 runtime，无法“随主模型声明”：改为**只要配置里有任一支持看图的模型就声明**，prompt 时按当前模型降级为文字说明。
+- `promptText` 改为返回（文本, 图片）；ACP 图片走与 `view_image` 相同的校验与缩放。
+
+### 安全上限（替代 0.2 的 10000×10000）
+
+- 解码前读文件头尺寸，**总像素 ≤ 40MP**；并发解码数受限；先 `Stat`、只接受普通文件、`LimitReader` 读取（输入上限 20MB）；处理 JPEG EXIF 方向；动画 WebP 拒绝；GIF 只取首帧。
+
+### 备份与清理
+
+- 备份目前把整个 `sessions/` 当 spill 默认排除（`internal/personal/backup/backup.go:148-162`）：`images/` 要单独收集并在 restore 安装，`OmittedBytes` 扣除。
+- `handoff.go:92`、`runner.go:483` 删会话不删目录：与 tool-bodies 一起处理（删除会话时清理会话目录或由检查命令报告孤儿）。
+
+### chat 贴图 Alt+V（用户 2026-10-19 追加，第一期）
+
+- 终端粘贴只传文字，suga 直接读系统剪贴板图片：Windows 用剪贴板 API 读 PNG / CF_DIBV5 / CF_DIB（`golang.org/x/sys/windows`，已是依赖）；macOS 用 `osascript` 取 «class PNGf»；Linux 先 `wl-paste --type image/png`，再 `xclip -selection clipboard -t image/png -o`，都没有时提示安装哪个。
+- 绑定 **Alt+V**（Ctrl+V 被终端自己拦截用于粘贴文字，suga 收不到）；有图 → 与 `:image` 相同流程附到下一条消息，输入行上方显示“[已附图 N：宽×高 格式]”；无图 → 提示“剪贴板里没有图片”；模型不支持看图 → 拒绝并说明。
+- 读剪贴板做成可替换的接口；伪终端冒烟用假剪贴板测按键流程（含反向验证）；真实剪贴板由用户在本机手测（Windows 截图后 Alt+V）。
 
 ## 思考模式与范围冻结
 
