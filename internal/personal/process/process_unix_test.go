@@ -56,13 +56,63 @@ func TestValidateSocketPathUnix(t *testing.T) {
 	})
 }
 
-// TestStartRejectsOverlongSocketPathUnix checks the registration path, not only the helper:
-// an overlong root must fail with the length error and leave no record or socket behind.
-func TestStartRejectsOverlongSocketPathUnix(t *testing.T) {
+// TestStartOverlongHomeFallsBack checks the registration path: a home too long
+// for AF_UNIX now starts via the per-user fallback socket (the record itself
+// still lives in the home); removing the fallback branch breaks this test.
+func TestStartOverlongHomeFallsBack(t *testing.T) {
+	relocate(t)
 	root := filepath.Join(t.TempDir(), strings.Repeat("d", 120))
-	_, err := Start(root, "sess-long-path", "long", t.TempDir(), func(string, string, string) (Delivery, error) { return Delivery{}, nil })
-	assert.ErrSubMsg(t, err, "too long")
+	server, err := Start(root, "sess-long-path", "long", t.TempDir(), func(string, string, string) (Delivery, error) { return Delivery{}, nil })
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = server.Close() })
+	record := server.Record()
+	assert.Eq(t, fallbackSocketPath(root, record.PID), record.Socket)
 	entries, dirErr := os.ReadDir(root)
 	assert.Require(t, assert.NoErr(t, dirErr))
-	assert.Len(t, entries, 0)
+	assert.Len(t, entries, 1)
+}
+
+// TestStartFailsWhenFallbackDirIsUnusable: a fallback directory that exists but
+// is too open is refused; Start keeps the original length error and names why
+// the fallback was not taken, instead of widening or reusing the directory.
+func TestStartFailsWhenFallbackDirIsUnusable(t *testing.T) {
+	relocate(t)
+	assert.Require(t, assert.NoErr(t, os.MkdirAll(fallbackDirPath(), 0o755)))
+	root := filepath.Join(t.TempDir(), strings.Repeat("d", 120))
+	_, err := Start(root, "sess-wide-fallback", "wide", t.TempDir(), func(string, string, string) (Delivery, error) { return Delivery{}, nil })
+	assert.ErrSubMsg(t, err, "too long")
+	assert.ErrSubMsg(t, err, "not usable")
+	assert.ErrSubMsg(t, err, "too open")
+	assert.Eq(t, "755", strconv.FormatInt(int64(mustPerm(t, fallbackDirPath())), 8))
+}
+
+// mustPerm reads dir's octal permission bits.
+func mustPerm(t *testing.T, dir string) int64 {
+	t.Helper()
+	info, err := os.Stat(dir)
+	assert.Require(t, assert.NoErr(t, err))
+	return int64(info.Mode().Perm())
+}
+
+// TestFallbackDirRejectsForeignOwner covers the ownership half of
+// ensureFallbackDir; only a privileged runner can chown, so it pins the check
+// where it can be exercised (the Linux container runs the tests as root).
+func TestFallbackDirRejectsForeignOwner(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs root to give the fallback directory to another uid")
+	}
+	relocate(t)
+	dir := fallbackDirPath()
+	assert.Require(t, assert.NoErr(t, os.MkdirAll(dir, 0o700)))
+	assert.Require(t, assert.NoErr(t, os.Chown(dir, os.Getuid()+1, -1)))
+	err := ensureFallbackDir()
+	assert.ErrSubMsg(t, err, "not the current user")
+}
+
+// TestFallbackDirRejectsPlainFile pins the is-a-directory half of the check.
+func TestFallbackDirRejectsPlainFile(t *testing.T) {
+	relocate(t)
+	assert.Require(t, assert.NoErr(t, os.WriteFile(fallbackDirPath(), nil, 0o600)))
+	err := ensureFallbackDir()
+	assert.ErrSubMsg(t, err, "not a directory")
 }

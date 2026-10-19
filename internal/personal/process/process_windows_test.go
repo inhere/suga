@@ -88,6 +88,8 @@ func TestWindowsSecureDirTightensExistingOpenDirectory(t *testing.T) {
 	assertOnlyOwnerAndSystem(t, dir)
 }
 
+// TestWindowsStartSecuresRunDirectoryAndSocketWorks starts a session in a
+// short home and checks the run directory's DACL.
 func TestWindowsStartSecuresRunDirectoryAndSocketWorks(t *testing.T) {
 	root := filepath.Join(shortWindowsTemp(t), "r")
 	server, err := Start(root, "sess-acl", "acl", t.TempDir(), func(mode, text, from string) (Delivery, error) { return Delivery{}, nil })
@@ -95,6 +97,20 @@ func TestWindowsStartSecuresRunDirectoryAndSocketWorks(t *testing.T) {
 	defer server.Close()
 	assertOnlyOwnerAndSystem(t, root)
 	_, err = Send(server.Record(), Request{Text: "hi", From: "test"})
+	assert.NoErr(t, err)
+}
+
+// TestWindowsLongHomeFallsBackToSecuredDir: a too-long home starts through the
+// per-user fallback directory, which carries the same protected DACL as the
+// run root (the portable TestLongHomeUsesFallbackSocket checks the round trip).
+func TestWindowsLongHomeFallsBackToSecuredDir(t *testing.T) {
+	relocate(t)
+	root := filepath.Join(shortWindowsTemp(t), strings.Repeat("long-segment-", 9))
+	server, err := Start(root, "sess-fallback", "fallback", t.TempDir(), func(mode, text, from string) (Delivery, error) { return Delivery{}, nil })
+	assert.Require(t, assert.NoErr(t, err))
+	defer server.Close()
+	assertOnlyOwnerAndSystem(t, fallbackDirPath())
+	_, err = Send(server.Record(), Request{Text: "hi", From: "fallback"})
 	assert.NoErr(t, err)
 }
 

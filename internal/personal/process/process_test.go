@@ -32,6 +32,10 @@ func TestServerPingDeliverListAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := server.Record()
+	// A short home still keeps the socket in the run root.
+	if record.Socket != filepath.Join(root, itoa(record.PID)+".sock") {
+		t.Fatalf("short home did not use the run-root socket: %q", record.Socket)
+	}
 	if got, err := List(root); err != nil || len(got) != 1 || got[0].SessionID != record.SessionID {
 		t.Fatalf("list did not return live registration: %#v err=%v", got, err)
 	}
@@ -111,6 +115,42 @@ func TestListDoesNotRemoveSocketPathOutsideRunRoot(t *testing.T) {
 	}
 	if data, err := os.ReadFile(outside); err != nil || string(data) != "preserve" {
 		t.Fatalf("untrusted socket path was modified: data=%q err=%v", data, err)
+	}
+}
+
+// fakeFallbackRecordFile writes a record file whose socket claims the fallback
+// location of a different SUGA_HOME: it has the fallback's shape (shared
+// per-user directory, "<hash>-<pid>.sock") but a hash no record of this root
+// may own, the way a tampered record points the send machinery at a foreign
+// socket. It returns the recorded socket path.
+func fakeFallbackRecordFile(t *testing.T, root string, pid int) string {
+	t.Helper()
+	other := filepath.Join(t.TempDir(), "other-home")
+	socket := fallbackSocketPath(other, pid)
+	data, _ := json.Marshal(Record{PID: pid, SessionID: "foreign", Socket: socket, Host: "test"})
+	if err := os.WriteFile(filepath.Join(root, itoa(pid)+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return socket
+}
+
+// TestListRejectsForeignFallbackSocket uses a live PID so the only thing that
+// decides the record's fate is the socket-path check: a record whose socket
+// names a fallback path of another home is skipped by List, neither honored
+// nor cleaned up like a dead registration's socket.
+func TestListRejectsForeignFallbackSocket(t *testing.T) {
+	root := shortProcessRoot(t)
+	pid := os.Getpid()
+	socket := fakeFallbackRecordFile(t, root, pid)
+	got, err := List(root)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("foreign fallback socket must be rejected, got %#v err=%v", got, err)
+	}
+	if _, serr := os.Stat(socket); !errors.Is(serr, os.ErrNotExist) {
+		t.Fatalf("a rejected record's socket must be left alone: %v", serr)
+	}
+	if _, rerr := os.Stat(filepath.Join(root, itoa(pid)+".json")); rerr != nil {
+		t.Fatalf("a rejected record file must be kept for diagnosis: %v", rerr)
 	}
 }
 
@@ -203,19 +243,88 @@ func TestProcessChildFixture(t *testing.T) {
 	}
 }
 
-func TestWindowsLongSocketPathFailsWithClearError(t *testing.T) {
+// TestWindowsFallbackAlsoTooLongFailsClearly: when the fallback path is past
+// the limit too, Start keeps the original AF_UNIX limit error (the message
+// chat prints) and annotates it with the fallback's own failure.
+func TestWindowsFallbackAlsoTooLongFailsClearly(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows AF_UNIX path limit")
 	}
+	// A LOCALAPPDATA deep enough to push the fallback path past the limit too,
+	// but short enough for a plain (non-\\?\) MkdirAll; the shallow end of the
+	// created chain stays close to a real %LOCALAPPDATA% in length.
+	base := t.TempDir()
+	for i := 0; i < 5; i++ {
+		base = filepath.Join(base, strings.Repeat("deep-segment-", 2))
+	}
+	t.Setenv("LOCALAPPDATA", base)
 	root := filepath.Join(shortProcessRoot(t), strings.Repeat("long-segment-", 9))
 	_, err := Start(root, "sid", "name", root, nil)
-	if err == nil || !strings.Contains(err.Error(), "Windows AF_UNIX limit") {
-		t.Fatalf("long socket path should fail clearly without fallback: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "Windows AF_UNIX limit") || !strings.Contains(err.Error(), "too long as well") {
+		t.Fatalf("fallback-too-long must keep the original error and name the fallback failure: %v", err)
+	}
+}
+
+func TestSocketHashDiffersForRoots(t *testing.T) {
+	first, second := socketHash(t.TempDir()), socketHash(filepath.Join(t.TempDir(), "suga"))
+	if first == second {
+		t.Fatalf("two homes hashed to the same fallback name %q", first)
+	}
+	if len(first) != 12 || first != strings.ToLower(first) {
+		t.Fatalf("hash should be 12 lowercase hex chars, got %q", first)
+	}
+}
+
+// TestLongHomeUsesFallbackSocket round-trips Start -> List -> Send through the
+// per-user fallback location: the preferred run-root path is far past the
+// AF_UNIX limit, so the record must name the hashed fallback socket and the
+// chat behind it must still be reachable.
+func TestLongHomeUsesFallbackSocket(t *testing.T) {
+	relocate(t)
+	root := filepath.Join(shortProcessRoot(t), strings.Repeat("long-segment-", 9))
+	server, err := Start(root, "session-fallback", "fallback", root, func(mode, text, from string) (Delivery, error) {
+		return Delivery{}, nil
+	})
+	if err != nil {
+		t.Fatalf("long home should fall back, got %v", err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	record := server.Record()
+	if record.Socket != fallbackSocketPath(root, record.PID) {
+		t.Fatalf("record must name the fallback socket: got %q want %q", record.Socket, fallbackSocketPath(root, record.PID))
+	}
+	listed, err := List(root)
+	if err != nil || len(listed) != 1 || listed[0].Socket != record.Socket {
+		t.Fatalf("list did not honor the fallback record: %#v err=%v", listed, err)
+	}
+	if response, err := Send(record, Request{Type: "ping"}); err != nil || !response.OK {
+		t.Fatalf("send over the fallback socket failed: %#v err=%v", response, err)
 	}
 }
 
 func itoa(value int) string {
 	return strconv.Itoa(value)
+}
+
+// relocate points the per-OS fallback base at this test's private directory:
+// %LOCALAPPDATA% on Windows, $TMPDIR elsewhere. The fallback directory tests
+// then exercise is isolated from the real user locations and leaves nothing
+// behind there (both variables are restored when the test ends).
+func relocate(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		// The Windows fallback path counts UTF-16 units against a low limit, and
+		// a t.TempDir test name would push it over; keep the base as short as a
+		// real %LOCALAPPDATA% would be.
+		dir, err := os.MkdirTemp("", "sg")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("LOCALAPPDATA", dir)
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	} else {
+		t.Setenv("TMPDIR", t.TempDir())
+	}
 }
 
 func TestResolvePrefersExactSessionID(t *testing.T) {

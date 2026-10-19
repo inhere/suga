@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"syscall"
 )
 
@@ -20,6 +22,45 @@ func processExists(pid int) bool {
 	// exited process as os.ErrProcessDone rather than ESRCH.
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// fallbackDirPath names the shared per-user fallback socket directory:
+// $TMPDIR/suga-<uid>. It only computes the path (used by trustedSocketPaths
+// too); permissions and ownership of the directory itself are enforced by
+// ensureFallbackDir when the fallback is actually taken.
+func fallbackDirPath() string {
+	return filepath.Join(os.TempDir(), "suga-"+strconv.Itoa(os.Getuid()))
+}
+
+// ensureFallbackDir makes the fallback directory safe to use: it is created as
+// 0700 when missing, and an existing one must be a directory, be owned by the
+// current user and be no wider than 0700. A directory that fails the checks is
+// refused instead of being reused or widened.
+func ensureFallbackDir() error {
+	dir := fallbackDirPath()
+	err := os.Mkdir(dir, 0o700)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	// Already there: the checks below read the same directory that Mkdir saw,
+	// so a racing swap of the path cannot slip past a validated reuse.
+	info, statErr := os.Stat(dir)
+	if statErr != nil {
+		return statErr
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Getuid()) {
+		return fmt.Errorf("%s is owned by uid %d, not the current user (uid %d)", dir, stat.Uid, os.Getuid())
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		return fmt.Errorf("%s is too open (mode %#o), 0700 or tighter is required", dir, perm)
+	}
+	return nil
 }
 
 // socketPathLimit is the longest usable sockaddr_un.sun_path value on goos: the kernel (and

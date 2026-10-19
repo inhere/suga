@@ -49,6 +49,7 @@
 ### 修复
 
 - `file_read` 的 `path:N`（只写一个行号，rg/`file_grep`/堆栈的写法）从第 N 行起读 40 行，不再报 invalid line span。
+- SUGA_HOME 较长时会话 socket 路径超过 AF_UNIX 上限（Linux 107 / macOS 103 / Windows 100 UTF-16 单位）导致 chat 收不到 `suga send` 与 gofer 投递：首选路径超限时改用当前用户专属的短备用目录（Unix `$TMPDIR/suga-<uid>/`，要求已存在目录属主是当前用户且权限不宽于 0700；Windows `%LOCALAPPDATA%\suga\run\`，沿用 run 目录的受保护 DACL），socket 文件名 `<根路径哈希前12位>-<pid>.sock`，不同 SUGA_HOME 不会互相冲突；`run/<pid>.json` 记录实际路径，`suga ps`/`send` 的安全校验只接受首选或按同一算法算出的备用路径，清理死进程时两处都删。备用目录不可用或备用路径仍超限时保留原来的“路径太长”错误并注明原因。
 
 ## [0.35.0] - 2026-10-18
 
