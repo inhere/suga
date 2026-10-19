@@ -237,6 +237,26 @@ func (p *Runtime) Close() error {
 	return errors.Join(p.repo.Close(), p.capabilities.Close())
 }
 
+
+// ReadImage loads a picture for chat's :image / the Alt+V clipboard paste with
+// the view_image rules (design 0.3): the same path resolution, input limits
+// and scaling, so both sides hand the model identical pictures.
+func (rt *Runtime) ReadImage(path string) (agentcore.ImagePart, string, error) {
+	if rt == nil || rt.sessionDirs == nil {
+		return agentcore.ImagePart{}, "", errors.New("读图在本进程不可用")
+	}
+	data, name, err := native.ReadImageFile(rt.sessionDirs.Workspace(), nil, nil, path)
+	if err != nil {
+		return agentcore.ImagePart{}, "", err
+	}
+	return native.PrepareImage(data, name, imageMaxSide())
+}
+
+// VisionGate exposes the live "the current model can see" gate: chat refuses
+// :image / Alt+V while the current model cannot accept pictures.
+func (rt *Runtime) VisionGate() *tools.VisionGate {
+	return rt.vision
+}
 // SessionModelReference reads the last main model of a persisted session before
 // runtime assembly. Chat uses it so --resume follows :model unless --model was
 // explicitly supplied on the command line.

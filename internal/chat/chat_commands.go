@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/inhere/suga/internal/output/termtext"
+	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 )
 
@@ -14,6 +15,7 @@ const (
 :compact 压缩上下文
 :add-dir/:dirs/:rm-dir 管理附加目录
 :diff [N] 显示文件改动
+:image <路径|clear> 管理待发图片（附到下一条消息）
 :checkpoints 列出写操作快照
 :undo [N] [force] 回滚文件改动
 :help 显示此帮助
@@ -21,7 +23,7 @@ const (
 :tasks 显示后台任务
 :quit/:exit 退出
 !<命令> 本地执行；!!<命令> 执行并附给下一条消息
-按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`
+按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Alt+V 贴剪贴板图片；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`
 	chatUsageHint  = ":usage 用量：本次 %d 轮 · 输入 %d / 输出 %d · 缓存读 %d / 写 %d · 成本 $%.6f；会话累计输入 %d / 输出 %d · 成本 $%.6f"
 	chatTasksEmpty = "没有后台任务"
 )
@@ -54,6 +56,57 @@ func BuildChatTasks(items []tasks.Info, now time.Time) string {
 }
 
 func formatElapsedAt(d time.Duration, _ time.Time) string { return formatElapsed(d) }
+
+// isImageCommand recognizes the :image command (chat :image, design 0.3): no
+// argument lists the pending pictures, "clear" drops them, a path attaches one
+// (built with the view_image pipeline; the same rules reject the file).
+func isImageCommand(line string) bool {
+	return line == ":image" || strings.HasPrefix(line, ":image ")
+}
+
+// maxPendingImages bounds the wait list: a pile of :image lines must not hold
+// whole directories in memory, and one request carries at most
+// images.max_request_count pictures anyway.
+const maxPendingImages = 16
+
+// attachImage loads one picture with the view_image rules and queues it for
+// the next message; the note "[已附图 N：宽×高 格式]" shows above the input line.
+func (s *chatState) attachImage(arg string) {
+	out := s.errWriter()
+	if s.readImage == nil {
+		fmt.Fprintln(out, "图片附件在本进程不可用")
+		return
+	}
+	if !s.canSeeImages() {
+		fmt.Fprintf(out, "当前模型 %s 不支持看图，无法附图；请用 :model 切换到支持看图的模型\n", s.modelInfo.Ref())
+		return
+	}
+	if len(s.pendingImages) >= maxPendingImages {
+		fmt.Fprintf(out, "待发图片已达上限（%d 张），请先发送或 :image clear\n", maxPendingImages)
+		return
+	}
+	part, _, err := s.readImage(arg)
+	if err != nil {
+		fmt.Fprintln(out, "读图失败："+err.Error())
+		return
+	}
+	s.pendingImages = append(s.pendingImages, part)
+	fmt.Fprintf(out, "[已附图 %d：%d×%d %s] 将随下一条消息发送\n",
+		len(s.pendingImages), part.Width, part.Height, part.MediaType)
+}
+
+// takePendingImages hands the queued images to the message being sent and
+// clears the queue.
+func (s *chatState) takePendingImages() []agentcore.ImagePart {
+	images := s.pendingImages
+	s.pendingImages = nil
+	return images
+}
+
+// canSeeImages reports whether the current model accepts images (nil: yes).
+func (s *chatState) canSeeImages() bool {
+	return s.vision == nil || s.vision.CanSee()
+}
 
 // isModelCommand recognizes the model command and the checkpoint commands that
 // share the prompt dispatch branch in chat.go.
@@ -119,6 +172,22 @@ func (s *chatState) runChatCommand(line string) bool {
 		s.modelInfo = info
 		s.render.SetModel(info.Provider, info.Model, info.Thinking, info.ContextWindow)
 		fmt.Fprintf(s.source, "已切换模型：%s（下一回合生效）\n", info.Ref())
+	case isImageCommand(line):
+		out := s.errWriter()
+		arg := strings.TrimSpace(strings.TrimPrefix(line, ":image"))
+		switch {
+		case arg == "" && len(s.pendingImages) == 0:
+			fmt.Fprintln(out, "没有待发的图片")
+		case arg == "":
+			for i, part := range s.pendingImages {
+				fmt.Fprintf(out, "[已附图 %d：%d×%d %s]\n", i+1, part.Width, part.Height, part.MediaType)
+			}
+		case arg == "clear":
+			s.pendingImages = nil
+			fmt.Fprintln(out, "已清空待发图片")
+		default:
+			s.attachImage(arg)
+		}
 	case line == ":usage":
 		fmt.Fprintln(s.source, BuildChatUsage(*s.stats))
 	case line == ":tasks":

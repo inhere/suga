@@ -126,6 +126,13 @@ type Options struct {
 	// session it belongs to is opened by SetupSession, so it is only used from
 	// the loop on.
 	Dirs SessionDirs
+	// ReadImage loads a picture for the :image command and the Alt+V paste with
+	// the view_image rules (design 0.3); the CLI builds it over the session's
+	// workspace. ReadImage nil leaves both unavailable.
+	ReadImage func(path string) (agentcore.ImagePart, string, error)
+	// Vision is the live "the current model can see images" gate (nil = can
+	// see), the same one the runtime moves on a :model switch.
+	Vision *tools.VisionGate
 	// ModelOptions and ModelSwitch back the local :model command. Keeping the
 	// callback here avoids making chat depend on runtime wiring.
 	ModelOptions []ModelOption
@@ -346,6 +353,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		createdAtStartup: createdAtStartup, dirs: opts.Dirs,
 		modelOptions: opts.ModelOptions, modelSwitch: opts.ModelSwitch,
 		modelInfo: ModelOption{Provider: provider, Model: model, Thinking: opts.Thinking, ContextWindow: contextWindow, MaxOutputTokens: maxOutputTokens},
+		readImage: opts.ReadImage, vision: opts.Vision,
 		steering:  steering, local: opts.Local, tasks: opts.Tasks, notifier: newChatNotifier(opts.Notify, opts.NotifyAfter, stdout, inputSource.terminal != nil),
 	}
 	if runner.ProcessRoot() != "" {
@@ -498,7 +506,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// Show a file change of this session again, in full (:diff [N]).
 			render.ShowDiff(strings.TrimPrefix(line, diffCmd))
 			continue
-		case isModelCommand(line), line == ":help", line == ":usage", line == ":tasks":
+		case isImageCommand(line), isModelCommand(line), line == ":help", line == ":usage", line == ":tasks":
 			// The reference, this session's usage and its background tasks
 			// (chat_commands.go); like every : command, keyboard only.
 			state.runChatCommand(line)

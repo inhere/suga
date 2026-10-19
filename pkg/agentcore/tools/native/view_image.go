@@ -392,6 +392,20 @@ func readImageLimit(file string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, maxImageInputBytes+1))
 }
 
+// ReadImageFile loads a picture for a chat-side command (:image, Alt+V paste)
+// with exactly the rules view_image applies: the same path resolution
+// (workspace, read-only roots, added directories) and input size limits.
+func ReadImageFile(workspace string, readRoots []string, addDirs *AddDirs, arg string) ([]byte, string, error) {
+	return NewViewImageTool(workspace, readRoots, addDirs, "").read(arg)
+}
+
+// PrepareImage identifies and scales a loaded picture the view_image way and
+// returns the image part for a message plus its text description. Chat's
+// :image and the clipboard paste reuse the tool's pipeline through it.
+func PrepareImage(data []byte, name string, maxSide int) (api.ImagePart, string, error) {
+	return prepareImage(data, name, maxSide)
+}
+
 // filepathToSlash is filepath.ToSlash for the ref form of a path.
 func filepathToSlash(p string) string {
 	return strings.ReplaceAll(p, "\\", "/")
