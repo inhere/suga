@@ -4,7 +4,9 @@
 
 ## [未发布]
 
-支持 YAML/TOML：`file_symbols` 与 `file_read outline` 按完整键路径列出配置键（新增 kind `section`、`key`），`file_refs` 在 YAML/TOML 里把定义键的那一行标为 `def`。
+## [0.35.1] - 2026-10-19
+
+`file_grep` 补齐 `exclude`、`glob` 列表与 `!` 取反、`context`、`literal`，RE2 不支持的 lookaround/反向引用自动回退到 regexp2；`file_symbols` 与大纲读支持 YAML/TOML 键路径；`file_read` 的 `path:N` 从第 N 行起读。
 
 ### 新增
 
@@ -815,7 +817,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.35.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.35.1...HEAD
+[0.35.1]: https://github.com/inhere/suga/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/inhere/suga/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/inhere/suga/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/inhere/suga/compare/v0.32.0...v0.33.0
