@@ -141,6 +141,8 @@ suga trace <session> --analyze | --web            # loop analysis / local web pa
 suga sessions [keywords] [--since 7d] [--agents]  # session list
 suga stats [--session <id>] [--json]              # calls, latency, tokens, cache, cost
 suga export <session> | suga gc --older-than 30d  # export / clean up
+suga gc --shrink-fts [--status|--abort]          # shrink the tool-output FTS index
+suga gc --vacuum                                 # rewrite the db file, truncate the WAL
 suga ps | suga manifest                           # running chats / capability manifest
 ```
 
