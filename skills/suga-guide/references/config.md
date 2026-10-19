@@ -111,6 +111,12 @@
 | `tools.snapshots.on_error` | `deny` | `deny` 在快照存储、清理或状态不确定时在文件 I/O 前拒绝；`continue` 允许写入但标记不可恢复 |
 | `tools.max_output_bytes` | `8000` | 单次工具结果内联进会话的上限；超出时脱敏原文存 `$SUGA_HOME/sessions/<id>/outputs/`，会话只留 ref 与头尾各 2000 字节 |
 | `tools.max_spill_bytes` | `1048576`（1 MiB） | 单次工具（含 MCP）原始输出上限 |
+| `tools.spill.max_bytes` | `1073741824`（1 GiB） | `$SUGA_HOME/sessions/**/outputs` 的逻辑字节配额（`.gz` 按压缩前字节计）；超额时新的 spill 返回错误并只保留头尾，**不会**自动删旧输出；`0` 不设配额 |
+| `tools.spill.max_age` | `90d` | 可淘汰年龄（只作报告/gc 候选，不在写入路径删文件） |
+| `tools.spill.compress_after` | `7d` | `suga gc --compress-spill` 压缩 mtime 超过此时长且会话不活跃的 `.txt`（先写 `.txt.gz.tmp`、解压校验后 rename、最后删 `.txt`；ref 不变） |
+| `tools.spill.compression` | `gzip` | `off` 关闭压缩；读取端始终兼容 `.txt`/`.txt.gz` |
+| `tools.spill.on_quota` | `refuse` | 超配额时拒写新输出（仅支持 `refuse`） |
+| `tools.spill.keep_days` | `0` | 额外的按天淘汰规则；`0` 只用 `max_age` |
 | `tools.parallel_reads` | `true` | 同一次回复里的多个本地读调用（file_read/list/grep/find）并发执行 |
 | `tools.read_page_bytes` | `32768` | `file_read` 每页字节数（它自己分页，不受 `max_output_bytes` 限制） |
 | `tools.minimize_output` | `true` | shell 结果进上下文前整理（去色、折叠重复行、按输出规则裁剪测试/构建/git/grep 输出），原文留 ref |
