@@ -213,6 +213,31 @@ func TestFileReadOutlineFallback(t *testing.T) {
 	})
 }
 
+// TestFileReadOutlineConfig is a configuration file's outline: file_read's
+// outline=true and file_symbols share the extraction layer, so a long YAML file
+// answers with one line per key, and the cap note tells the model where to read
+// on.
+func TestFileReadOutlineConfig(t *testing.T) {
+	pinBuiltinExtractors(t)
+	ws := t.TempDir()
+	var sb strings.Builder
+	for i := 0; i < maxConfigKeys+20; i++ {
+		fmt.Fprintf(&sb, "key%03d: %d\n", i, i)
+	}
+	assert.NoErr(t, os.WriteFile(filepath.Join(ws, "big.yaml"), []byte(sb.String()), 0o644))
+	tool := &FileReadTool{workspace: ws}
+
+	out := execTool(t, tool, map[string]any{"path": "big.yaml", "outline": true})
+	assert.StrContains(t, out, fmt.Sprintf("[outline of big.yaml: %d lines, %d declarations",
+		maxConfigKeys+20, maxConfigKeys))
+	assert.StrContains(t, out, "1: key000: 0")
+	assert.StrContains(t, out, fmt.Sprintf("%d: key%03d: %d", maxConfigKeys, maxConfigKeys-1, maxConfigKeys-1))
+	// The keys past the cap are the omitted span, and the note says where to look.
+	assert.StrContains(t, out, fmt.Sprintf("[omitted %d-%d: 20 lines]", maxConfigKeys+1, maxConfigKeys+20))
+	assert.StrContains(t, out, fmt.Sprintf("[yaml: showing the first %d keys; for the rest use file_grep]", maxConfigKeys))
+	assert.NotContains(t, out, "[approx") // the parser read the file
+}
+
 // TestFileReadOutlineNonGo is the outline of a language that has only the
 // declaration-line recogniser: it must be marked approx.
 func TestFileReadOutlineNonGo(t *testing.T) {

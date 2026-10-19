@@ -114,6 +114,43 @@ func TestLineRefs(t *testing.T) {
 	})
 }
 
+// TestConfigKeyRefs pins the one class the two configuration formats add to the
+// line matcher: the line that defines the name as a key is a def, so "where is
+// this config key declared" is visible at a glance. A commented-out key is no
+// line at all, and the rule must not leak into the code languages.
+func TestConfigKeyRefs(t *testing.T) {
+	t.Run("YAML: a key line is def, a value and a comment are not", func(t *testing.T) {
+		src := "server:\n" + // 1
+			"  port: 8080\n" + // 2
+			"# port: 9090\n" + // 3
+			"listen: \"port\"\n" // 4
+		refs := ScanLineRefs("app.yaml", []byte(src), "port")
+		assert.Eq(t, []int{2, 4}, refLines(refs))
+		assert.Eq(t, RefDef, refs[0].Class)
+		assert.Eq(t, RefRef, refs[1].Class) // a value is a use, not a definition
+	})
+
+	t.Run("YAML: a sequence entry is def too", func(t *testing.T) {
+		refs := ScanLineRefs("app.yml", []byte("ports:\n  - port: 8080\n"), "port")
+		assert.Require(t, assert.Eq(t, 1, len(refs)))
+		assert.Eq(t, RefDef, refs[0].Class)
+	})
+
+	t.Run("TOML: an assignment is def, a table header is not", func(t *testing.T) {
+		src := "[server]\nport = 8080\nname = \"port\"\n"
+		refs := ScanLineRefs("config.toml", []byte(src), "port")
+		assert.Eq(t, []int{2, 3}, refLines(refs))
+		assert.Eq(t, RefDef, refs[0].Class)
+		assert.Eq(t, RefRef, refs[1].Class)
+	})
+
+	t.Run("a code language keeps its plain refs", func(t *testing.T) {
+		refs := ScanLineRefs("app.js", []byte("port = 1\n"), "port")
+		assert.Require(t, assert.Eq(t, 1, len(refs)))
+		assert.Eq(t, RefRef, refs[0].Class)
+	})
+}
+
 // TestLineRefsQualified covers the qualified-name filter of the approximate
 // matcher: only the lines writing the qualified name stay, the others are
 // counted as dropped.

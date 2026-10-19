@@ -48,7 +48,8 @@ func (t *FileRefsTool) Description() string {
 		"Go is parsed exactly (class def, call, sel or ref; sel/call carry the X of X.name, with pkg:X when X is an " +
 		"imported package) but without type checking, so a match may be another local, field or another package's " +
 		"symbol - the shown line decides. JavaScript/TypeScript, Python, Java and PHP match word-bounded text with " +
-		"comments and strings masked and are marked approx; universal-ctags offers declarations, not references, so " +
+		"comments and strings masked and are marked approx; a YAML/TOML file keeps its string values visible (a config " +
+		"names things by their values) and labels the line that defines the name as a key def; universal-ctags offers declarations, not references, so " +
 		"it is not used here. Other text files use word-boundary text matching (approx, comments and strings are not masked). Markdown/text documentation (.md, .txt, .rst) is not searched. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d matches.", defaultRefLimit)
 }
@@ -363,15 +364,15 @@ func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]
 		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
 			filepath.Ext(file), SupportedSymbolLanguages())
 	}
-	if lang.approx { // Go is the only language with an exact extractor
-		refs, dropped := scanLineRefs(file, src, name, qual)
-		return refs, true, dropped, nil
+	if lang.referenceParser { // Go is the only language with a parsed reference search
+		if !re.Match(src) {
+			return nil, false, nil, nil
+		}
+		refs, dropped, err := scanGoRefs(file, src, name, qual)
+		return refs, false, dropped, err
 	}
-	if !re.Match(src) {
-		return nil, false, nil, nil
-	}
-	refs, dropped, err := scanGoRefs(file, src, name, qual)
-	return refs, false, dropped, err
+	refs, dropped := scanLineRefs(file, src, name, qual)
+	return refs, true, dropped, nil
 }
 
 // splitRefName splits a possibly qualified name argument: the last dot segment
@@ -532,8 +533,9 @@ func (o *refOut) notes(limit int) []string {
 	notes = append(notes, "[no type resolution: a match may be another object with the same name "+
 		"(a local, a field, another package's symbol); the shown line decides]")
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java and PHP matches come from word-boundary "+
-			"text matching with comments and strings masked, not a parser; confirm with file_grep]")
+		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary "+
+			"text matching with comments masked (a config file's string values stay visible: that is how a config names "+
+			"things), not a parser; confirm with file_grep]")
 	}
 	if o.bareApprox {
 		notes = append(notes, "[approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]")

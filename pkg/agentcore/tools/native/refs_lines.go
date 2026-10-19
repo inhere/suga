@@ -23,13 +23,16 @@ func refWordRe(name string) *regexp.Regexp {
 }
 
 // refMaskStyle is the mask style of a language, from its file extension: the
-// same split as the declaration recognisers (symbols_lines.go).
+// same split as the declaration recognisers (symbols_lines.go), plus the two
+// configuration formats, whose comments are "#" (maskHash).
 func refMaskStyle(file string) maskStyle {
 	switch strings.ToLower(filepath.Ext(file)) {
 	case ".py", ".pyi":
 		return maskPython
 	case ".php":
 		return maskPhp
+	case ".yaml", ".yml", ".toml":
+		return maskHash
 	default:
 		return maskBraces
 	}
@@ -65,9 +68,38 @@ func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops)
 			continue
 		}
 		// The line is shown as it is written: the masked line is not readable.
-		out = append(out, Ref{File: file, Line: i + 1, Class: RefRef, Text: refLineText(original.at(i + 1))})
+		class := RefRef
+		if isConfigSymbolFile(file) {
+			// A configuration key's defining line is labelled def, like the
+			// fallback does it for the declaration keywords of other languages.
+			class = configRefClass(line, name)
+		}
+		out = append(out, Ref{File: file, Line: i + 1, Class: class, Text: refLineText(original.at(i + 1))})
 	}
 	return out, dropped
+}
+
+// isConfigSymbolFile reports whether file is one of the two configuration formats
+// (YAML and TOML): the only files whose key lines are labelled def.
+func isConfigSymbolFile(file string) bool {
+	switch strings.ToLower(filepath.Ext(file)) {
+	case ".yaml", ".yml", ".toml":
+		return true
+	default:
+		return false
+	}
+}
+
+// configRefClass labels one line of a YAML/TOML file: def when the line defines
+// the name as a key ("port: 8080", "- port: 8080", "port = 8080"), so "where is
+// this config key declared" is visible at a glance. Every other line is a plain
+// ref: how a config file uses a name (usually as a value) is text, not a call.
+func configRefClass(line, name string) string {
+	key := regexp.QuoteMeta(name)
+	if regexp.MustCompile(`^\s*(?:-\s+)?["']?` + key + `["']?\s*(?::(?:\s|$)|=)`).MatchString(line) {
+		return RefDef
+	}
+	return RefRef
 }
 
 // approxQualifierMatches reports whether a masked line holds the qualified name

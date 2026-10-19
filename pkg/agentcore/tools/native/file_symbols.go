@@ -41,8 +41,13 @@ func (t *FileSymbolsTool) Description() string {
 	return "List the declarations of a source file, or of every source file under a directory (recursive): " +
 		"one `path:line kind name signature` line each, sorted by path and line. Use it instead of guessing " +
 		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
-		"JavaScript/TypeScript, Python, Java and PHP are recognised from their declaration lines and marked approx " +
-		"(confirm a name with file_grep); universal-ctags is used first when it is installed and covers more " +
+		"JavaScript/TypeScript, Python, Java, PHP and TOML are recognised from their declaration lines and marked " +
+		"approx (confirm a name with file_grep). A YAML/TOML file lists its keys by their dotted key path " +
+		"(server.http.port, services[].name), a mapping/table as kind section and a leaf as kind key, with the " +
+		"value preview in the signature; YAML is parsed with go-yaml (a file the parser rejects falls back to " +
+		"indentation lines, marked approx), TOML from its lines. A config file lists at most " +
+		fmt.Sprintf("%d key levels and %d keys - file_grep finds a deeper or later one", maxConfigDepth, maxConfigKeys) +
+		"; universal-ctags is used first when it is installed and covers more " +
 		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
 		"Unsupported file types are refused with a file_grep pattern to use instead; file_read outline is unavailable for them. Paths under a read-only dependency " +
 		"root (module cache, SDK sources) work too: use it there to list a dependency's API instead of reading its " +
@@ -125,6 +130,7 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 			return nil, fmt.Errorf("file_symbols: %w", err)
 		}
 		out.files, out.approx = 1, set.Approx
+		out.addNotes(set.Notes)
 		out.syms = filter.apply(set.Symbols)
 	} else if err := t.walkDir(ctx, target, filter, limit, includeTests, noIgnore, out); err != nil {
 		return nil, fmt.Errorf("file_symbols: %w", err)
@@ -186,6 +192,7 @@ func (t *FileSymbolsTool) walkDir(ctx context.Context, target readTarget, filter
 		}
 		out.files++
 		out.approx = out.approx || set.Approx
+		out.addNotes(set.Notes)
 		out.syms = append(out.syms, filter.apply(set.Symbols)...)
 		if len(out.syms) > limit {
 			out.more = true
@@ -235,7 +242,8 @@ type symbolOut struct {
 	tooLarge        int // files over maxSearchFileBytes
 	fallbackPattern string
 	approx          bool
-	more            bool // the walk stopped one declaration past the limit
+	extraNotes      []string // the extractors' own notes (a configuration file's caps), deduplicated
+	more            bool     // the walk stopped one declaration past the limit
 	errors          []string
 	ignoreNote      string
 	timedOut        bool
@@ -244,6 +252,16 @@ type symbolOut struct {
 // noteError records an unreadable or unparsable file; the result names the
 // first few and counts the rest.
 func (o *symbolOut) noteError(msg string) { o.errors = append(o.errors, msg) }
+
+// addNotes collects the notes an extractor added: the same note of ten files is
+// one line, and a note the tool makes itself (the approx marker) is not repeated.
+func (o *symbolOut) addNotes(notes []string) {
+	for _, note := range notes {
+		if !slices.Contains(o.extraNotes, note) {
+			o.extraNotes = append(o.extraNotes, note)
+		}
+	}
+}
 
 // render formats the result: the declaration lines, a line per thing that was
 // left out, and the notes the walk produced.
@@ -291,9 +309,10 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, note+"]")
 	}
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java and PHP declarations come from declaration-line "+
-			"detection, not a parser; confirm a name with file_grep]")
+		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line "+
+			"detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]")
 	}
+	notes = append(notes, o.extraNotes...)
 	if o.more {
 		notes = append(notes, fmt.Sprintf("[showing %d declarations; more matched - narrow name or kind, or raise limit]", limit))
 	}
@@ -342,6 +361,7 @@ var kindAliases = map[string]string{
 	"methods": SymbolMethod, "types": SymbolType, "typedef": SymbolType, "struct": SymbolType,
 	"constants": SymbolConst, "vars": SymbolVar, "variables": SymbolVar,
 	"classes": SymbolClass, "interfaces": SymbolInterface, "enums": SymbolEnum, "records": SymbolRecord,
+	"keys": SymbolKey, "sections": SymbolSection, "tables": SymbolSection, "table": SymbolSection,
 }
 
 // newSymbolFilter reads the name and kind arguments. An unknown kind is an

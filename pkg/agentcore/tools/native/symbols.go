@@ -32,11 +32,22 @@ const (
 	// own kind keeps a listing honest (a language-specific kind, like the ones
 	// ctags reports and the vocabulary does not know).
 	SymbolTrait = "trait"
+	// SymbolSection is a configuration file's table or mapping node: a TOML
+	// [table] / [[array.of.tables]] header, or a YAML key whose value is a
+	// mapping (a server: block). It is the closest of the vocabulary - a
+	// namespace names a scope the same way (see phpSymbols' namespace rule) -, and
+	// it is what file_symbols' kind filter can select: "section" answers "which
+	// tables/blocks does this config declare".
+	SymbolSection = "section"
+	// SymbolKey is a configuration file's leaf key: a YAML/TOML entry whose value
+	// is a scalar (or an array of scalars), named by its full dotted key path
+	// (server.http.port). A config file's keys are its declarations.
+	SymbolKey = "key"
 )
 
 // SymbolKinds is the whole kind vocabulary, in the order the messages list it.
 var SymbolKinds = []string{SymbolFunc, SymbolMethod, SymbolType, SymbolConst, SymbolVar,
-	SymbolClass, SymbolInterface, SymbolEnum, SymbolRecord, SymbolTrait}
+	SymbolClass, SymbolInterface, SymbolEnum, SymbolRecord, SymbolTrait, SymbolSection, SymbolKey}
 
 // The names of the extraction sources (SymbolSet.Source).
 const (
@@ -65,6 +76,11 @@ type SymbolSet struct {
 	Approx bool
 	// Source names what did the extraction; the tests assert it.
 	Source string
+	// Notes are extra lines the extractor wants the tool to show besides its
+	// approx marker: what its own caps left out (YAML/TOML depth and key count),
+	// which the tool alone cannot know. file_symbols and file_read's outline
+	// print them after the declarations.
+	Notes []string
 }
 
 // symbolLanguage is one language of the extraction registry: the extensions it
@@ -80,14 +96,24 @@ type symbolLanguage struct {
 	// ctagsLanguage maps an extension to universal-ctags' --language-force
 	// value (missing = ctags is not used for it).
 	ctagsLanguage map[string]string
+	// referenceParser marks the one language whose references a real parse
+	// classifies (Go's go/parser): file_refs uses its word-bounded line matcher
+	// for every other file, whatever that file's declaration extractor is.
+	referenceParser bool
 	// extract returns the declarations of one file, in line order.
 	extract func(file string, src []byte) ([]Symbol, error)
+	// extractSet, when set, replaces extract for a language whose recogniser
+	// builds the whole SymbolSet itself: a file that does not parse falls back to
+	// line detection and must say so (YAML), and a recogniser's own caps must
+	// travel with the result (YAML and TOML). extract is used for a language that
+	// is just a symbol list plus the language's source and approx.
+	extractSet func(file string, src []byte) (SymbolSet, error)
 }
 
 // symbolLanguages is the registry, in the order the refusal message and the
 // tool description list the languages. A new language is appended: the order of
 // the existing ones is what the tests and the reminders expect.
-var symbolLanguages = []symbolLanguage{goSymbolLanguage, jsSymbolLanguage, pythonSymbolLanguage, javaSymbolLanguage, phpSymbolLanguage}
+var symbolLanguages = []symbolLanguage{goSymbolLanguage, jsSymbolLanguage, pythonSymbolLanguage, javaSymbolLanguage, phpSymbolLanguage, yamlSymbolLanguage, tomlSymbolLanguage}
 
 // symbolLanguageFor returns the extractor that owns file's extension.
 func symbolLanguageFor(file string) (symbolLanguage, bool) {
@@ -135,6 +161,17 @@ func ExtractSymbolsAt(file, onDisk string, src []byte) (SymbolSet, error) {
 		return SymbolSet{}, fmt.Errorf("unsupported file type %q; supported: %s", filepath.Ext(file), SupportedSymbolLanguages())
 	}
 	if set, found := ctagsSymbols(lang, file, onDisk, src); found {
+		return set, nil
+	}
+	// A language whose extractor builds the whole set (YAML) reports its own
+	// approx flag and notes; the others are just a symbol list plus the
+	// language's source and approx.
+	if lang.extractSet != nil {
+		set, err := lang.extractSet(file, src)
+		if err != nil {
+			return SymbolSet{}, err
+		}
+		slices.SortStableFunc(set.Symbols, func(a, b Symbol) int { return a.Line - b.Line })
 		return set, nil
 	}
 	syms, err := lang.extract(file, src)
