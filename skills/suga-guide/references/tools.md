@@ -13,7 +13,7 @@
 | `web_fetch` | 读 | 抓取网页正文（保留标题、链接、代码块）；拒绝内网和本机地址 |
 | `web_search` | 读 | SerpAPI 搜索（需 `serpapi_key`） |
 | `skill` | 读 | 加载 skill、读取其文件，或检索 skills（`query`；`"*"` 列出全部名字） |
-| `session_search` | 读 | 全文检索过往消息、工具结果与摘要（`scope`：workspace、current、all，`kind`：user、assistant、tool、compaction、handoff）；带 `ref=out:...` 时在那份已保存的输出内检索 |
+| `session_search` | 读 | 全文检索过往消息与摘要（`scope`：workspace、current、all，`kind`：user、assistant、compaction、handoff）；tool 输出不进索引，用 `recall` 读；带 `ref=out:...` 时在那份已保存的输出内检索 |
 | `recall` | 读 | 按 ref 读取命中附近内容：`<session>/<seq>` 起的消息，或已保存输出 `out:<session>:<hex>` 的带行号文本 |
 | `agent` | 读 | 把一件独立的任务交给子 agent：它在自己的上下文里大量读取，只把报告带回来（`description`、`prompt`、`type`：`explore` 或 `research`、`background`）；见下文“子 agent” |
 | `suga_manifest` | 读 | 以 JSON 返回本实例的能力清单（与 `suga inspect manifest` 相同） |
