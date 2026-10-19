@@ -672,11 +672,18 @@ func usageSuggestions(rep *UsageReport) {
 		rep.File.Suggestion = fmt.Sprintf("有 %d 个空闲页（%s），`suga data vacuum` 可回收",
 			rep.File.FreePages, humanUsageBytes(rep.File.FreeBytes))
 	}
+	// The entries section can carry two findings: tool results still inline (a
+	// command moves them) and the assistant bodies (no command trims them).
+	var entryHints []string
 	if rep.Entries.Tool.Inline.Bytes > 0 {
-		rep.Entries.Suggestion = fmt.Sprintf("库内 tool 结果 %s，`suga data tool-bodies --move` 可移到会话文件",
-			humanUsageBytes(rep.Entries.Tool.Inline.Bytes))
-	} else if rep.Entries.Assistant.Bytes > 0 {
-		rep.Entries.Suggestion = "assistant 的 Metadata/Reasoning 是模型返回原文，没有裁剪命令；减小它用 `suga data gc --retention` 删旧会话"
+		entryHints = append(entryHints, fmt.Sprintf("库内 tool 结果 %s，`suga data tool-bodies --move` 可移到会话文件",
+			humanUsageBytes(rep.Entries.Tool.Inline.Bytes)))
+	}
+	if rep.Entries.Assistant.Bytes > 0 {
+		entryHints = append(entryHints, "assistant 的 Metadata/Reasoning 是模型返回原文，没有裁剪命令；减小它用 `suga data gc --retention` 删旧会话")
+	}
+	if len(entryHints) > 0 {
+		rep.Entries.Suggestion = strings.Join(entryHints, "；")
 	}
 	if rep.Events.Rows > 0 {
 		rep.Events.Suggestion = "事件随会话一起删除：`suga data gc --retention`（或 --older-than）"
