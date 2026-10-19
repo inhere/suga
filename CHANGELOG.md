@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 变更
+
+- 会话库（SQLite）在大库上更快、并发写不再报 `database is locked`：新增迁移补 `entries(type)`、`events(turn_id)` 两个索引（依据 EXPLAIN QUERY PLAN 实测，`events(kind)` 实测使 `stats` 与用量统计变慢，故不加）；`suga stats` 改成在 SQL 里 GROUP BY/COUNT/SUM 加窗口函数算分位数，不再把整库事件拉进内存并逐条解析 attrs，输出与之前逐字一致；所有写事务改为 `BEGIN IMMEDIATE`（连接参数 `_txlock=immediate`），配合 `busy_timeout`，在事务开始处对 `SQLITE_BUSY` 做有上限的指数退避重试（只重试 BEGIN，不重放已执行的事务）。
+
 ## [0.35.1] - 2026-10-19
 
 `file_grep` 补齐 `exclude`、`glob` 列表与 `!` 取反、`context`、`literal`，RE2 不支持的 lookaround/反向引用自动回退到 regexp2；`file_symbols` 与大纲读支持 YAML/TOML 键路径；`file_read` 的 `path:N` 从第 N 行起读。
@@ -15,7 +19,6 @@
 
 ### 变更
 
-- 会话库（SQLite）在大库上更快、并发写不再报 `database is locked`：新增迁移补 `entries(type)`、`events(turn_id)` 两个索引（依据 EXPLAIN QUERY PLAN 实测，`events(kind)` 实测使 `stats` 与用量统计变慢，故不加）；`suga stats` 改成在 SQL 里 GROUP BY/COUNT/SUM 加窗口函数算分位数，不再把整库事件拉进内存并逐条解析 attrs，输出与之前逐字一致；所有写事务改为 `BEGIN IMMEDIATE`（连接参数 `_txlock=immediate`），配合 `busy_timeout`，在事务开始处对 `SQLITE_BUSY` 做有上限的指数退避重试（只重试 BEGIN，不重放已执行的事务）。
 - 符号提取层的语言注册新增 YAML、TOML（拒绝文案与工具描述随之列出）；`file_refs` 改为按“该语言是否有语法解析”选择匹配方式（原来按 approx 标志推断），除 Go 之外所有已注册语言都用词边界文本匹配。
 - `file_grep` 支持 `exclude`、glob 列表与 `!` 取反、上下文行、字面量匹配，并在 lookaround/backreference 等 RE2 不支持的正则上安全回退到带超时的 regexp2。
 
