@@ -96,7 +96,7 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 		fmt.Fprintf(tw, "tool 结果（库内）\t%d 条\t%s\n", rep.Entries.Tool.Inline.Rows, humanBytes(rep.Entries.Tool.Inline.Bytes))
 	}
 	// events
-	fmt.Fprintf(tw, "events\t%d 条\t%s\n", rep.Events.Rows, humanBytes(rep.Events.Bytes))
+	fmt.Fprintf(tw, "events（attrs_json + error）\t%d 条\t%s\n", rep.Events.Rows, humanBytes(rep.Events.Bytes))
 	for _, stat := range rep.Events.Kinds {
 		fmt.Fprintf(tw, "  %s\t%d 条\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
 	}
