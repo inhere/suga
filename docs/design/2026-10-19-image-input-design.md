@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 图片输入设计（按路径读图 + ACP 图片内容块）
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 已批准（待独立审核后实施）
 > 日期：2026-10-19
 > 关联 issue：`suga-wfcw`；gofer 设计 `inhere-tools/gofer/docs/design/2026-10-19-workbench-image-attachments-design.md`（已批准、实施中）
 
@@ -10,6 +10,7 @@
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-19 | 监督（Claude） | 用户 2026-10-19：“suga 能不能读本地图片——gofer 那边正在加上传图片支持”“图片的也设计下”。gofer 交图有两条路：① ACP 声明 `promptCapabilities.image` 时发 image 内容块；② 其余情况把图片存到项目 `tmp/gofer-attachments/<日期>/<id>.<ext>`，消息末尾加“[附图 N] <绝对路径>”。本设计分两期：第一期按路径读图（对应 ②，chat 也能用），第二期 ACP 图片内容块（对应 ①）。 |
+| 0.2 | 2026-10-19 | 监督（Claude） | 用户批准（“图片设计按推荐来”）：Q1–Q7 按当前倾向。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
