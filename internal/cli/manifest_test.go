@@ -36,7 +36,7 @@ func TestManifestCommand(t *testing.T) {
 
 	t.Run("json", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"manifest", "--json"})
+		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "manifest", "--json"})
 		assert.Require(t, assert.NoErr(t, err))
 		var m wiring.Manifest
 		assert.Require(t, assert.NoErr(t, json.Unmarshal(stdout.Bytes(), &m)))
@@ -49,7 +49,7 @@ func TestManifestCommand(t *testing.T) {
 	})
 	t.Run("text has every section", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"manifest"})
+		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "manifest"})
 		assert.Require(t, assert.NoErr(t, err))
 		for _, section := range []string{"Models", "Tools", "MCP servers", "Skills", "Memory", "Output", "Taint", "suga_manifest", "write_tainted="} {
 			assert.StrContains(t, stdout.String(), section)
@@ -57,7 +57,7 @@ func TestManifestCommand(t *testing.T) {
 	})
 	t.Run("rejects positional arguments", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"manifest", "extra"})
+		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "manifest", "extra"})
 		assert.Err(t, err)
 	})
 }

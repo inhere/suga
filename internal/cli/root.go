@@ -32,13 +32,15 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 	root.BoolVar(&showVersion, "version", false, "show version then exit;false;V")
 	root.LongHelp = `Examples:
   suga                         Start interactive chat
+  suga --resume <session>      Resume a chat (chat options work without "chat")
   suga run --prompt "hello"    Run one turn
   suga acp                     Serve ACP over stdio
   suga init                    Create the onboarding config
   suga config get model        Show the effective model and source
   suga models --json           List configured models offline
   suga undo <session> --list   List file checkpoints
-  suga trace <session> --json  Show the event timeline of a session
+  suga inspect trace <session> --json  Show the event timeline of a session
+  suga data gc --older-than 30d        Remove idle sessions (dry run)
 `
 
 	root.AfterFlagParse = func(c *cflag.CFlags) bool {
@@ -50,24 +52,51 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 	}
 
 	root.Add(
-		NewPersonalCommand(ctx, "run", stdin, stdout, stderr),
 		NewPersonalCommand(ctx, "chat", stdin, stdout, stderr),
-		newACPCommand(ctx, stdin, stdout, stderr),
-		newInitCommand(stdout, stderr),
+		NewPersonalCommand(ctx, "run", stdin, stdout, stderr),
+		newSendCommand(stdin, stderr),
+		newPSCommand(stdout, stderr),
+		newSessionsCommand(ctx, stdout, stderr),
+		newUndoCommand(ctx, stdin, stdout, stderr),
 		newConfigCommand(stdout, stderr),
 		newModelsCommand(stdout, stderr),
+		newInitCommand(stdout, stderr),
 		newVersionCommand(stdout, stderr, build),
-		newPSCommand(stdout, stderr),
-		newSendCommand(stdin, stderr),
-		newTraceCommand(ctx, stdout, stderr),
-		newSessionsCommand(ctx, stdout, stderr),
-		newStatsCommand(ctx, stdout, stderr),
-		newManifestCommand(ctx, stdout, stderr),
-		newGCCommand(ctx, stdout, stderr),
-		newBackupCommand(ctx, stdout, stderr, build.Version),
-		newRestoreCommand(ctx, stdin, stdout, stderr, build.Version),
-		newUndoCommand(ctx, stdin, stdout, stderr),
-		newExportCommand(ctx, stdout, stderr),
+		newACPCommand(ctx, stdin, stdout, stderr),
+		newInspectCommand(ctx, stdout, stderr),
+		newDataCommand(ctx, stdin, stdout, stderr, build.Version),
 	)
 	return root
+}
+
+// newInspectCommand builds the `inspect` group: the session diagnosis commands
+// (trace, stats, export, manifest) that used to sit at the top level. The group
+// only holds subcommands, the leaves keep their own flags.
+func newInspectCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+	inspect := capp.NewCmd("inspect", "Inspect sessions: trace / stats / export / manifest")
+	inspect.SetOutput(stderr)
+	inspect.Add(
+		newTraceCommand(ctx, stdout, stderr),
+		newStatsCommand(ctx, stdout, stderr),
+		newExportCommand(ctx, stdout, stderr),
+		newManifestCommand(ctx, stdout, stderr),
+	)
+	return inspect
+}
+
+// newDataCommand builds the `data` group: the data maintenance commands (gc,
+// shrink-fts, vacuum, compress-spill, backup, restore) that used to sit at the
+// top level or as switches of `gc`.
+func newDataCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, version string) *capp.Cmd {
+	data := capp.NewCmd("data", "Maintain local data: gc / shrink-fts / vacuum / compress-spill / backup / restore")
+	data.SetOutput(stderr)
+	data.Add(
+		newDataGCCommand(ctx, stdout, stderr),
+		newShrinkFTSCommand(ctx, stdout, stderr),
+		newVacuumCommand(ctx, stdout, stderr),
+		newCompressSpillCommand(ctx, stdout, stderr),
+		newBackupCommand(ctx, stdout, stderr, version),
+		newRestoreCommand(ctx, stdin, stdout, stderr, version),
+	)
+	return data
 }

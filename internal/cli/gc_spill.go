@@ -11,7 +11,7 @@ import (
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 )
 
-// runGCCompressSpill runs `suga gc --compress-spill`: it reports the spill
+// runGCCompressSpill runs `suga data compress-spill`: it reports the spill
 // files, the quota of tools.spill.max_bytes and what a compression pass would
 // do; with --apply (inside the maintenance window, so no other suga process is
 // using this ledger) it rewrites the idle .txt files as .txt.gz. A dry run

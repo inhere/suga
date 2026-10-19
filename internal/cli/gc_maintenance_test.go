@@ -15,7 +15,7 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// TestGCMaintenanceCommand covers `suga gc --shrink-fts` and `suga gc --vacuum`
+// TestGCMaintenanceCommand covers `suga data shrink-fts` and `suga data vacuum`
 // through the CLI (data governance P1). The ledger is isolated in a temp
 // SUGA_HOME, and the FTS row is put into its pre-P1 state by hand: the
 // migration only backfills entries that exist when it runs.
@@ -38,39 +38,39 @@ func TestGCMaintenanceCommand(t *testing.T) {
 	assert.NoErr(t, repo.Close())
 	setFTSText(t, dbPath, "s1", 1, strings.Repeat("中", 3000))
 
-	t.Run("maintenance flags need their own form", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "gc", "--status")
-		assert.ErrMsgContains(t, err, "--shrink-fts")
-		_, err = runCLI(t, ctx, "gc", "--shrink-fts", "extra")
+	t.Run("maintenance flags need their own subcommand", func(t *testing.T) {
+		_, err := runCLI(t, ctx, "data", "gc", "--status")
+		assert.ErrMsgContains(t, err, "status")
+		_, err = runCLI(t, ctx, "data", "shrink-fts", "extra")
 		assert.ErrMsgContains(t, err, "usage")
 	})
 
 	t.Run("status reports the pending rows", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--shrink-fts", "--status")
+		out, err := runCLI(t, ctx, "data", "shrink-fts", "--status")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "未开始")
 		assert.StrContains(t, out, "待处理 tool 行：1")
 	})
 
 	t.Run("shrink rewrites the row and status turns complete", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--shrink-fts")
+		out, err := runCLI(t, ctx, "data", "shrink-fts")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "瘦身完成")
 		assert.StrContains(t, out, "重写 1 行")
-		assert.StrContains(t, out, "suga gc --vacuum")
+		assert.StrContains(t, out, "suga data vacuum")
 		assert.Eq(t, store.FTSToolMaxChars+3, len([]rune(ftsText(t, dbPath, "s1", 1))))
 
-		out, err = runCLI(t, ctx, "gc", "--shrink-fts", "--status")
+		out, err = runCLI(t, ctx, "data", "shrink-fts", "--status")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "已完成")
 		assert.StrContains(t, out, "待处理 tool 行：0")
 	})
 
 	t.Run("abort clears the checkpoint", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--shrink-fts", "--abort")
+		out, err := runCLI(t, ctx, "data", "shrink-fts", "--abort")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "已清除")
-		out, err = runCLI(t, ctx, "gc", "--shrink-fts", "--status")
+		out, err = runCLI(t, ctx, "data", "shrink-fts", "--status")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "未开始")
 	})
@@ -88,13 +88,13 @@ func TestGCMaintenanceCommand(t *testing.T) {
 		assert.NoErr(t, os.WriteFile(recordPath, data, 0o600))
 		defer os.Remove(recordPath)
 
-		_, err = runCLI(t, ctx, "gc", "--vacuum")
+		_, err = runCLI(t, ctx, "data", "vacuum")
 		assert.ErrMsgContains(t, err, "sess-live")
 	})
 
 	t.Run("vacuum returns the space", func(t *testing.T) {
 		before := store.DatabaseFileBytes(dbPath)
-		out, err := runCLI(t, ctx, "gc", "--vacuum")
+		out, err := runCLI(t, ctx, "data", "vacuum")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "VACUUM 完成")
 		after := store.DatabaseFileBytes(dbPath)

@@ -13,7 +13,7 @@ import (
 	"github.com/inhere/suga/internal/wiring"
 )
 
-// TestManifestPreferredTools: `suga manifest` reports every declared preferred
+// TestManifestPreferredTools: `suga inspect manifest` reports every declared preferred
 // tool (also the unavailable ones) with its reason in text and JSON, and never
 // leaks the declared server's arguments.
 func TestManifestPreferredTools(t *testing.T) {
@@ -28,7 +28,7 @@ func TestManifestPreferredTools(t *testing.T) {
 	}))
 
 	var stdout, stderr bytes.Buffer
-	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"manifest", "--json"})
+	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "manifest", "--json"})
 	assert.Require(t, assert.NoErr(t, err))
 	var m wiring.Manifest
 	assert.Require(t, assert.NoErr(t, json.Unmarshal(stdout.Bytes(), &m)))
@@ -40,7 +40,7 @@ func TestManifestPreferredTools(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "secret")
 
 	stdout.Reset()
-	err = newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"manifest"})
+	err = newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "manifest"})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, stdout.String(), "Preferred tools")
 	assert.StrContains(t, stdout.String(), "suga-missing-preferred-command (command) present=false: not found on PATH — never")

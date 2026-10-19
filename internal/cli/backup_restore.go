@@ -18,9 +18,9 @@ import (
 func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version string) *capp.Cmd {
 	var output string
 	var includeSpill bool
-	cmd := capp.NewCmd("backup", "Create a verified suga backup archive", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("backup", "Create a verified suga data backup archive", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) != 0 || strings.TrimSpace(output) == "" {
-			return fmt.Errorf("usage: suga backup --output FILE.suga-backup.zip [--include-spill]")
+			return fmt.Errorf("usage: suga data backup --output FILE.suga-backup.zip [--include-spill]")
 		}
 		home, err := appconfig.ResolveSugaHome()
 		if err != nil {
@@ -49,9 +49,9 @@ func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version str
 
 func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, version string) *capp.Cmd {
 	var dryRun, noAuto bool
-	cmd := capp.NewCmd("restore", "Restore a verified suga backup archive", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("restore", "Restore a verified suga data backup archive", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) != 0 {
-			return fmt.Errorf("usage: suga restore FILE.suga-backup.zip [--dry-run] [--no-auto-backup]")
+			return fmt.Errorf("usage: suga data restore FILE.suga-backup.zip [--dry-run] [--no-auto-backup]")
 		}
 		archive := c.Arg("archive").String()
 		home, err := appconfig.ResolveSugaHome()

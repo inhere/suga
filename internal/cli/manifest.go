@@ -12,14 +12,14 @@ import (
 	"github.com/inhere/suga/internal/wiring"
 )
 
-// newManifestCommand builds `suga manifest`: what this instance can do,
+// newManifestCommand builds `suga inspect manifest`: what this instance can do,
 // without contacting the provider or starting any MCP server.
 func newManifestCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var asJSON bool
 	var model, thinking string
 	cmd := capp.NewCmd("manifest", "Show capabilities: models, tools, preferred tools, MCP, skills, memory backends, output limits", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga manifest [--model m] [--thinking level] [--json]")
+			return fmt.Errorf("usage: suga inspect manifest [--model m] [--thinking level] [--json]")
 		}
 		m, err := wiring.LoadManifest(wiring.ManifestOptions{Model: model, Thinking: thinking})
 		if err != nil {
