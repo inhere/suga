@@ -101,12 +101,40 @@ func TestEncodeMessage(t *testing.T) {
 	}
 }
 
+// TestEncodeMessageImages pins the image channel of the store: an image part
+// keeps its reference and metadata but never its bytes, and a message without
+// images encodes exactly as before (the prefix hash must not change).
+func TestEncodeMessageImages(t *testing.T) {
+	t.Run("an image part is stored without its bytes", func(t *testing.T) {
+		msg := api.Message{Role: "user", Content: "look", Images: []api.ImagePart{{
+			MediaType: "image/png", Ref: "images/ab.png", SHA256: "ab", Width: 2, Height: 3,
+			Data: []byte("not-stored"),
+		}}}
+		stored, err := EncodeMessage(msg)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.False(t, bytes.Contains(stored, []byte("not-stored")))
+		var back api.Message
+		assert.Require(t, assert.NoErr(t, json.Unmarshal(stored, &back)))
+		assert.Eq(t, 1, len(back.Images))
+		assert.Eq(t, "images/ab.png", back.Images[0].Ref)
+		assert.Eq(t, "image/png", back.Images[0].MediaType)
+		assert.Eq(t, 0, len(back.Images[0].Data))
+	})
+	t.Run("a message without images has no Images key", func(t *testing.T) {
+		stored, err := EncodeMessage(api.Message{Role: "user", Content: "hi"})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "", string(objectField(t, stored, "Images")))
+	})
+}
+
 // TestEncodeMessageKeepsMessageFields guards the deduped shape against a new
 // field in api.Message or api.ToolResult: the deduped encoding must carry every
 // key of the plain one, in the same order, minus ToolResult.Content.
 func TestEncodeMessageKeepsMessageFields(t *testing.T) {
 	msg := toolMessage()
 	msg.ToolCall.ArgumentsError = "bad"
+	msg.Images = []api.ImagePart{{MediaType: "image/png", Ref: "images/abc.png", SHA256: "abc", Width: 8, Height: 4}}
+	msg.ToolResult.Images = []api.ImagePart{{MediaType: "image/png", Ref: "images/abc.png", SHA256: "abc", Width: 8, Height: 4}}
 	msg.ToolResult.Artifacts = []api.Artifact{{Kind: "file", URI: "out:a", Content: "x", Metadata: map[string]any{"m": "1"}}}
 	msg.ToolResult.IsError = true
 	msg.ToolResult.Metadata = map[string]any{"path": "/x"}

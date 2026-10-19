@@ -36,6 +36,10 @@ const (
 
 type Message = api.Message
 
+// ImagePart is one image part of a message (see api.ImagePart): the bytes live
+// in memory only and the store keeps the reference.
+type ImagePart = api.ImagePart
+
 // ToolBatchMetaKey marks the tool calls of one reply, see api.ToolBatchMetaKey.
 const ToolBatchMetaKey = api.ToolBatchMetaKey
 

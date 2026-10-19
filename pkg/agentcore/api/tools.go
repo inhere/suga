@@ -23,6 +23,10 @@ type ToolResult struct {
 	// the model (e.g. Claude tool_result is_error).
 	IsError  bool
 	Metadata map[string]any
+	// Images are the pictures this result returns (e.g. view_image); providers
+	// that cannot carry them in a tool result send them in a following user
+	// message (see the llm package).
+	Images []ImagePart `json:",omitempty"`
 }
 
 // ToolSchema describes a callable tool in a provider-neutral way.

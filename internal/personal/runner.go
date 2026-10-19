@@ -241,9 +241,13 @@ type RunRequest struct {
 	CreateIfMissing bool
 	AgentID         string
 	Prompt          string
-	SystemContext   string
-	Injected        bool
-	Emit            EmitFunc
+	// Images are pictures that go with Prompt (chat :image, Alt+V paste, or a
+	// caller that hands bytes in). They travel in memory only; the turn's user
+	// message carries them and the store writes their files (no bytes in the DB).
+	Images        []agentcore.ImagePart
+	SystemContext string
+	Injected      bool
+	Emit          EmitFunc
 }
 
 type RunResult struct {
@@ -733,6 +737,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 		RunID:       result.RunID,
 		AgentID:     agentID,
 		Instruction: req.Prompt,
+		Images:      req.Images,
 		ResumeMode:  agentcore.ResumeAuto,
 		Stream:      stream,
 	})
