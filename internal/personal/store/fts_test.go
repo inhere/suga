@@ -134,14 +134,12 @@ func TestFTSIndexOnAppend(t *testing.T) {
 	createSession(t, s, "s1", "/w")
 	appendAll(t, s, "s1", varietyEntries(t)...)
 
-	// seq is the position in varietyEntries + 1; skipped rows are absent.
+	// seq is the position in varietyEntries + 1; skipped rows are absent. The
+	// tool results (5-7) are not indexed any more: recall reads them.
 	assert.Eq(t, []ftsRow{
 		{"s1", EntryUser, "我们来讨论记忆管理的设计", 1},
 		{"s1", EntryUser, "padded text", 2},
 		{"s1", EntryAssistant, "这里有缓存失效问题", 4},
-		{"s1", EntryTool, "same output", 5},
-		{"s1", EntryTool, "only the result", 6},
-		{"s1", EntryTool, "lead\ndifferent result", 7},
 		{"s1", EntryCompaction, "压缩摘要：讨论了检索方案", 8},
 		{"s1", EntryHandoff, "交接摘要：handoff 前的进展", 10},
 	}, indexedRows(t, s, "s1"))
@@ -423,14 +421,13 @@ func normalizeSQL(s string) string {
 	return strings.Join(strings.Fields(regexp.MustCompile(`\s*([(),|])\s*`).ReplaceAllString(s, " $1 ")), " ")
 }
 
-// TestFTSExpressionsMatchMigration guards the P1 contract (design 0.3), which
-// replaced the "every migration backfills the new expression" contract: the
-// truncation a NEW tool result is indexed with and the one the maintenance
-// command applies to the rows already in the index come from the same
-// expression (ftsTruncateExpr), while no migration backfills entries_fts any
-// more. A new startup backfill is the full-table work that hung v0.31.0, and
-// the two historical backfills stay as they were applied: they indexed tool
-// results in full, and `suga data shrink-fts` is what reconciles those rows.
+// TestFTSExpressionsMatchMigration guards the index contract (design 0.3): the
+// types a new entry is indexed with and the rows the maintenance command
+// deletes come from the same constants, while no migration backfills
+// entries_fts any more. A new startup backfill is the full-table work that hung
+// v0.31.0, and the two historical backfills stay as they were applied: they
+// indexed tool results in full, and `suga data shrink-fts` is what deletes those
+// rows.
 func TestFTSExpressionsMatchMigration(t *testing.T) {
 	t.Run("only the two historical backfills touch entries_fts", func(t *testing.T) {
 		backfills := ftsBackfillMigrations(t)
@@ -438,20 +435,19 @@ func TestFTSExpressionsMatchMigration(t *testing.T) {
 		// one must fail here and be justified as "not a startup full-table job".
 		assert.Eq(t, 2, len(backfills))
 		for _, mig := range backfills {
-			assert.False(t, strings.Contains(normalizeSQL(mig), normalizeSQL(ftsTruncateExpr("text"))))
+			assert.False(t, strings.Contains(normalizeSQL(mig), normalizeSQL(`role = 'tool'`)),
+				"deleting the tool rows is the maintenance command's job, not a migration's")
 		}
 	})
 
-	t.Run("write path and shrink command share the truncation", func(t *testing.T) {
-		assert.StrContains(t, normalizeSQL(ftsTextExpr),
-			normalizeSQL(`WHEN type = 'tool' THEN `+ftsTruncateExpr(ftsTrimBodySQL)))
-		assert.StrContains(t, normalizeSQL(ftsShrinkUpdateSQL),
-			normalizeSQL(`SET text = `+ftsTruncateExpr("text")))
+	t.Run("write path and shrink command share the indexed types", func(t *testing.T) {
+		// Tool results are read with recall: they never enter the index.
+		assert.Eq(t, `'user', 'assistant', 'compaction', 'handoff'`, ftsIndexedTypes)
+		assert.NotContains(t, ftsSourceSelect(""), "'tool'")
+		assert.StrContains(t, normalizeSQL(ftsShrinkDeleteSQL), normalizeSQL(`DELETE FROM entries_fts`))
+		assert.StrContains(t, normalizeSQL(ftsShrinkDeleteSQL), normalizeSQL(`role = 'tool'`))
 	})
 
-	// Sub-limit bodies index identically whether the backfill or AppendEntries
-	// wrote them; only bodies above the limit differ, and TestFTSShrinkMatchesWritePath
-	// covers that difference.
 	t.Run("backfill and AppendEntries index the same rows", func(t *testing.T) {
 		ctx := context.Background()
 		s, _ := openAtCoreSchema(t)
@@ -461,19 +457,27 @@ func TestFTSExpressionsMatchMigration(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, s.migrate(ctx)))
 		backfilled := indexedRows(t, s, "hist")
 
-		// The constants select exactly what the migration wrote.
+		// The constants select exactly what the migration wrote, minus the tool
+		// rows: the historical backfill indexed them, the live write path does not.
 		viaConst := queryFTSRows(t, s.db, ftsSourceSelect(` AND session_id = ?`)+` ORDER BY seq`, "hist")
-		assert.Eq(t, backfilled, viaConst)
+		withoutTool := make([]ftsRow, 0, len(backfilled))
+		for _, row := range backfilled {
+			if row.Role != EntryTool {
+				withoutTool = append(withoutTool, row)
+			}
+		}
+		assert.True(t, len(withoutTool) < len(backfilled), "the migration indexed tool results")
+		assert.Eq(t, withoutTool, viaConst)
 
 		// And AppendEntries writes the same role/text/seq for the same bodies.
 		createSession(t, s, "live", "/w")
 		appendAll(t, s, "live", in...)
 		live := indexedRows(t, s, "live")
-		assert.Require(t, assert.Len(t, live, len(backfilled)))
+		assert.Require(t, assert.Len(t, live, len(viaConst)))
 		for i := range live {
 			live[i].SessionID = "hist"
 		}
-		assert.Eq(t, backfilled, live)
+		assert.Eq(t, viaConst, live)
 	})
 }
 
@@ -534,9 +538,9 @@ func TestFTSKindAndTimeFilters(t *testing.T) {
 	entries := appendAll(t, s, "s1",
 		user(t, "kindneedle"),
 		assistant(t, "kindneedle"),
-		t1NamedTool(t, "shell", "kindneedle"),
 		NewEntry{Type: EntryCompaction, JSON: json.RawMessage(`{"summary":"kindneedle"}`)},
 		NewEntry{Type: EntryHandoff, JSON: json.RawMessage(`{"source":"s_old","summary":"kindneedle"}`)},
+		NewEntry{Type: EntryPlan, JSON: json.RawMessage(`{"Items":[{"Content":"kindneedle"}]}`)},
 	)
 	assert.Len(t, entries, 5)
 
@@ -548,11 +552,11 @@ func TestFTSKindAndTimeFilters(t *testing.T) {
 		}{
 			{"user", []string{EntryUser}, []string{"s1/1"}},
 			{"assistant", []string{EntryAssistant}, []string{"s1/2"}},
-			{"tool", []string{EntryTool}, []string{"s1/3"}},
-			{"compaction", []string{EntryCompaction}, []string{"s1/4"}},
-			{"handoff", []string{EntryHandoff}, []string{"s1/5"}},
+			{"compaction", []string{EntryCompaction}, []string{"s1/3"}},
+			{"handoff", []string{EntryHandoff}, []string{"s1/4"}},
 			{"multiple", []string{EntryUser, EntryAssistant}, []string{"s1/1", "s1/2"}},
-			{"the two summary kinds", []string{EntryCompaction, EntryHandoff}, []string{"s1/4", "s1/5"}},
+			{"the two summary kinds", []string{EntryCompaction, EntryHandoff}, []string{"s1/3", "s1/4"}},
+			{"tool has no row in a new index", []string{EntryTool}, []string{}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				assert.Eq(t, tc.want, hitKeys(search(t, s, EntrySearch{Query: "kindneedle", Kinds: tc.kinds})))
@@ -560,7 +564,7 @@ func TestFTSKindAndTimeFilters(t *testing.T) {
 		}
 	})
 	t.Run("no kinds returns every indexed role", func(t *testing.T) {
-		assert.Eq(t, []string{"s1/1", "s1/2", "s1/3", "s1/4", "s1/5"}, hitKeys(search(t, s, EntrySearch{Query: "kindneedle"})))
+		assert.Eq(t, []string{"s1/1", "s1/2", "s1/3", "s1/4"}, hitKeys(search(t, s, EntrySearch{Query: "kindneedle"})))
 	})
 	t.Run("invalid kind is rejected", func(t *testing.T) {
 		_, err := s.SearchEntries(context.Background(), EntrySearch{Query: "kindneedle", Kinds: []string{"unknown"}})
@@ -578,18 +582,20 @@ func TestFTSKindAndTimeFilters(t *testing.T) {
 	t.Run("since is inclusive and until is exclusive", func(t *testing.T) {
 		query := EntrySearch{Query: "kindneedle", Since: base.AddDate(0, 0, 1), Until: base.AddDate(0, 0, 3)}
 		assert.Eq(t, []string{"s1/2", "s1/3"}, hitKeys(search(t, s, query)))
-		assert.Eq(t, []string{"s1/4", "s1/5"}, hitKeys(search(t, s, EntrySearch{Query: "kindneedle", Since: base.AddDate(0, 0, 3)})))
+		assert.Eq(t, []string{"s1/4"}, hitKeys(search(t, s, EntrySearch{Query: "kindneedle", Since: base.AddDate(0, 0, 3)})))
 	})
 }
 
+// TestFTSSearchExcludesRetrievalToolTranscripts: search results must not
+// recursively contain the retrieval tools' own transcripts, while other tool
+// results stay searchable. Only a ledger written before tool results left the
+// index holds tool rows at all, so the fixture is a legacy one.
 func TestFTSSearchExcludesRetrievalToolTranscripts(t *testing.T) {
-	s := openTemp(t)
-	createSession(t, s, "s1", "/w")
-	appendAll(t, s, "s1",
+	s := openLegacyLedger(t, legacySession{"s1", []NewEntry{
 		t1NamedTool(t, "shell", "searchpollution"),
 		t1NamedTool(t, "session_search", "searchpollution"),
 		t1NamedTool(t, "recall", "searchpollution"),
-	)
+	}})
 
 	hits := search(t, s, EntrySearch{Query: "searchpollution"})
 	assert.Eq(t, []string{"s1/1"}, hitKeys(hits))

@@ -135,7 +135,7 @@ func TestCollectGarbageFTSRows(t *testing.T) {
 	old := time.Now().Add(-48 * time.Hour)
 	for _, id := range []string{"gone", "stays", "single"} {
 		assert.Require(t, assert.NoErr(t, s.CreateSession(ctx, Session{ID: id, CreatedAt: old, UpdatedAt: old})))
-		appendAll(t, s, id, NewEntry{Type: EntryTool, JSON: []byte(`{"Role":"tool","Content":"needle-of-` + id + `"}`)})
+		appendAll(t, s, id, NewEntry{Type: EntryUser, JSON: []byte(`{"Role":"user","Content":"needle-of-` + id + `"}`)})
 	}
 	// Only two of the three are stale; "stays" keeps its rows (and is searched
 	// while the others are gone).

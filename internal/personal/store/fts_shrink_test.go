@@ -7,20 +7,18 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gookit/goutil/x/assert"
 )
 
-// Data governance P1: tool results are indexed as their head and tail only.
-// These tests cover the truncation itself, the search consequences and the
-// `suga data shrink-fts` maintenance command that brings the historical rows
-// in line (design 0.3: in-place, batched, resumable).
+// Tool results are not indexed any more (the write path skips them), and the
+// `suga data shrink-fts` maintenance command deletes the rows the historical
+// backfill wrote for them (design 0.3: in-place, batched, resumable). These
+// tests cover the write path, the search consequences and the command.
 
 // markedBody builds a body of n characters whose head, middle and tail hold
 // distinct keywords (HEADER, MIDDLE, FOOTER), so a search can tell which part
-// of it was indexed. MIDDLE sits at least a head/tail length away from both
-// ends once n is well above the limit.
+// of it was indexed.
 func markedBody(prefix string, n int, fill string) string {
 	const markers = 6 + 6 + 6 // HEADER, MIDDLE, FOOTER
 	inner := n - len([]rune(prefix)) - markers
@@ -31,192 +29,78 @@ func markedBody(prefix string, n int, fill string) string {
 	return prefix + "HEADER" + strings.Repeat(fill, head) + "MIDDLE" + strings.Repeat(fill, tail) + "FOOTER"
 }
 
-// markedBodyOfLength is markedBody padded to exactly n characters.
-func markedBodyOfLength(prefix string, n int, fill string) string {
-	body := markedBody(prefix, n, fill)
-	for len([]rune(body)) < n {
-		body += fill
-	}
-	return body
-}
+func TestFTSWritePathSkipsToolResults(t *testing.T) {
+	ctx := context.Background()
 
-// wantToolText is the Go spelling of the SQL truncation: trim the body the way
-// SQLite's trim(x, char(32,9,10,13)) does, then keep head+tail when it is
-// longer than the limit. Getting this from the runes (not the bytes) is the
-// point: SQLite counts characters.
-func wantToolText(body string) string {
-	body = strings.Trim(body, " \t\n\r")
-	rs := []rune(body)
-	if len(rs) <= ftsToolMaxChars {
-		return body
-	}
-	return string(rs[:ftsToolHeadChars]) + ftsToolEllipsis + string(rs[len(rs)-ftsToolTailChars:])
-}
-
-// wantToolBody applies the same join of Content and ToolResult.Content the
-// expression uses: the result is appended only when it says something new.
-func wantToolBody(content, result string) string {
-	if result == "" || result == content {
-		return content
-	}
-	return content + "\n" + result
-}
-
-// indexedToolText appends one tool entry and returns the text the index holds.
-func indexedToolText(t *testing.T, s *Store, sid, content, result string) string {
-	t.Helper()
-	createSession(t, s, sid, "/w")
-	appendAll(t, s, sid, toolMsg(t, content, result))
-	rows := indexedRows(t, s, sid)
-	assert.Require(t, assert.Len(t, rows, 1))
-	return rows[0].Text
-}
-
-func TestFTSToolTruncation(t *testing.T) {
-	t.Run("a body at the limit stays whole", func(t *testing.T) {
-		s := openTemp(t)
-		body := markedBodyOfLength("ascii ", ftsToolMaxChars, "x")
-		assert.Require(t, assert.Eq(t, ftsToolMaxChars, utf8.RuneCountInString(body)))
-		got := indexedToolText(t, s, "s1", body, body)
-		assert.Eq(t, wantToolText(body), got)
-		assert.Eq(t, ftsToolMaxChars, utf8.RuneCountInString(got))
-	})
-
-	t.Run("one character over the limit keeps head and tail", func(t *testing.T) {
-		s := openTemp(t)
-		body := markedBodyOfLength("ascii ", ftsToolMaxChars+1, "x")
-		assert.Require(t, assert.Eq(t, ftsToolMaxChars+1, utf8.RuneCountInString(body)))
-		got := indexedToolText(t, s, "s1", body, body)
-		assert.Eq(t, wantToolText(body), got)
-		assert.Eq(t, ftsToolMaxChars+
-			utf8.RuneCountInString(ftsToolEllipsis), utf8.RuneCountInString(got))
-		assert.StrContains(t, got, "HEADER")
-		// Only one character is dropped here, so both markers survive: the head
-		// carries HEADER, the tail the end of the body.
-		assert.StrContains(t, got, "FOOTER")
-		assert.StrContains(t, got, ftsToolEllipsis)
-	})
-
-	t.Run("a long body drops only its middle", func(t *testing.T) {
-		s := openTemp(t)
-		body := markedBody("ascii ", 3000, "x")
-		got := indexedToolText(t, s, "s1", body, body)
-		assert.Eq(t, wantToolText(body), got)
-		assert.StrContains(t, got, "HEADER")
-		assert.StrContains(t, got, "FOOTER")
-		assert.NotContains(t, got, "MIDDLE")
-	})
-
-	t.Run("two and three byte characters", func(t *testing.T) {
-		for _, tc := range []struct {
-			name, fill string
-		}{
-			{"2-byte", "é"},
-			{"3-byte", "中"},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				s := openTemp(t)
-				body := markedBody("ui ", 3000, tc.fill)
-				got := indexedToolText(t, s, "s1", body, body)
-				assert.Eq(t, wantToolText(body), got)
-				assert.True(t, utf8.ValidString(got))
-				assert.Eq(t, ftsToolMaxChars+
-					utf8.RuneCountInString(ftsToolEllipsis), utf8.RuneCountInString(got))
-			})
-		}
-	})
-
-	t.Run("four byte emoji, cut inside a surrogate pair", func(t *testing.T) {
-		s := openTemp(t)
-		// The head boundary falls inside the emoji run: SQLite substr counts
-		// characters, so the result stays valid UTF-8.
-		body := "🚀" + markedBody("", 3000, "🚀")
-		got := indexedToolText(t, s, "s1", body, body)
-		assert.Eq(t, wantToolText(body), got)
-		assert.True(t, utf8.ValidString(got))
-	})
-
-	t.Run("trim happens before the length test", func(t *testing.T) {
-		s := openTemp(t)
-		// 300 blanks on each side, 700 characters of text: after trimming the
-		// body is below the limit and is indexed whole.
-		body := strings.Repeat(" ", 300) + markedBodyOfLength("core ", 700, "y") + "\n\t" + strings.Repeat(" ", 297)
-		got := indexedToolText(t, s, "s1", body, body)
-		assert.Eq(t, wantToolText(body), got)
-		assert.StrContains(t, got, "MIDDLE")
-	})
-
-	t.Run("content repeating the result is indexed once", func(t *testing.T) {
-		s := openTemp(t)
-		body := markedBody("same ", 3000, "z")
-		got := indexedToolText(t, s, "s1", body, body)
-		assert.Eq(t, wantToolText(body), got)
-	})
-
-	t.Run("content and a different result are joined then truncated", func(t *testing.T) {
-		s := openTemp(t)
-		content := markedBody("call ", 2000, "a")
-		result := markedBody("result ", 3000, "b")
-		got := indexedToolText(t, s, "s1", content, result)
-		assert.Eq(t, wantToolText(wantToolBody(content, result)), got)
-		// The head holds the call, the tail the end of the result.
-		assert.StrContains(t, got, "call HEADER")
-		assert.StrContains(t, got, "FOOTER")
-		assert.NotContains(t, got, "MIDDLE")
-	})
-
-	t.Run("other roles are indexed in full", func(t *testing.T) {
+	t.Run("a tool result is not indexed, the conversation is", func(t *testing.T) {
 		s := openTemp(t)
 		createSession(t, s, "s1", "/w")
-		long := markedBody("assistant ", 5000, "q")
-		appendAll(t, s, "s1", user(t, long), assistant(t, long))
+		appendAll(t, s, "s1",
+			user(t, "user needle"),
+			toolMsg(t, "tool needle", "tool needle"),
+			assistant(t, "assistant needle"))
+
 		rows := indexedRows(t, s, "s1")
 		assert.Require(t, assert.Len(t, rows, 2))
-		assert.Eq(t, long, rows[0].Text)
-		assert.Eq(t, long, rows[1].Text)
+		assert.Eq(t, EntryUser, rows[0].Role)
+		assert.Eq(t, EntryAssistant, rows[1].Role)
+		assert.Eq(t, []string{"s1/1", "s1/3"}, hitKeys(search(t, s, EntrySearch{Query: "needle"})))
+		// Even an explicit tool kind has nothing to match on a new ledger.
+		assert.Empty(t, hitKeys(search(t, s, EntrySearch{Query: "needle", Kinds: []string{EntryTool}})))
+	})
+
+	t.Run("the full tool output stays in the ledger for recall", func(t *testing.T) {
+		s := openTemp(t)
+		createSession(t, s, "s1", "/w")
+		body := markedBody("tool ", 3000, "x")
+		appendAll(t, s, "s1", toolMsg(t, body, body))
+
+		entries, err := s.ListEntries(ctx, "s1", EntryFilter{Types: []string{EntryTool}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.Len(t, entries, 1))
+		assert.StrContains(t, string(entries[0].JSON), "MIDDLE")
+	})
+
+	t.Run("compaction and handoff summaries stay searchable", func(t *testing.T) {
+		s := openTemp(t)
+		createSession(t, s, "s1", "/w")
+		appendAll(t, s, "s1",
+			NewEntry{Type: EntryCompaction, JSON: []byte(`{"summary":"压缩摘要：检索方案"}`)},
+			NewEntry{Type: EntryHandoff, JSON: []byte(`{"source":"x","summary":"交接摘要：检索方案"}`)})
+		assert.Eq(t, []string{"s1/1", "s1/2"}, hitKeys(search(t, s, EntrySearch{Query: "检索方案"})))
+	})
+
+	t.Run("CJK short and three-rune terms still work", func(t *testing.T) {
+		s := openTemp(t)
+		createSession(t, s, "s1", "/w")
+		body := "工具 开头标记" + strings.Repeat("結", 2000) + "中部标记" + strings.Repeat("結", 2000) + "结尾标记"
+		appendAll(t, s, "s1", user(t, body), toolMsg(t, body, body))
+
+		// Two runes take the LIKE path, three or more the trigram MATCH path.
+		assert.Eq(t, []string{"s1/1"}, hitKeys(search(t, s, EntrySearch{Query: "中部"})))
+		assert.Eq(t, []string{"s1/1"}, hitKeys(search(t, s, EntrySearch{Query: "中部标"})))
+		assert.Eq(t, []string{"s1/1"}, hitKeys(search(t, s, EntrySearch{Query: "结尾标记"})))
+		assert.Empty(t, hitKeys(search(t, s, EntrySearch{Query: "中部", Kinds: []string{EntryTool}})))
+	})
+
+	t.Run("a session with only tool entries has no searchable history", func(t *testing.T) {
+		s := openTemp(t)
+		createSession(t, s, "tools", "/w")
+		appendAll(t, s, "tools", toolMsg(t, "only tool output", "only tool output"))
+		ok, err := s.HasSearchableEntries(ctx, EntrySearch{SessionIDs: []string{"tools"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.False(t, ok, "tool output is read with recall, not searched")
+
+		appendAll(t, s, "tools", user(t, "now there is prose"))
+		ok, err = s.HasSearchableEntries(ctx, EntrySearch{SessionIDs: []string{"tools"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, ok)
 	})
 }
 
-func TestFTSToolTruncationSearch(t *testing.T) {
-	s := openTemp(t)
-	createSession(t, s, "s1", "/w")
-	body := markedBody("tool ", 3000, "x")
-	assistantBody := markedBody("assistant ", 3000, "x")
-	appendAll(t, s, "s1", toolMsg(t, body, body), assistant(t, assistantBody))
-	toolOnly := EntrySearch{Kinds: []string{EntryTool}}
-
-	t.Run("the head of a long tool result stays searchable", func(t *testing.T) {
-		q := toolOnly
-		q.Query = "tool HEADER"
-		assert.Eq(t, []string{"s1/1"}, hitKeys(search(t, s, q)))
-	})
-	t.Run("the tail of a long tool result stays searchable", func(t *testing.T) {
-		q := toolOnly
-		q.Query = "FOOTER"
-		assert.Eq(t, []string{"s1/1"}, hitKeys(search(t, s, q)))
-	})
-	t.Run("the middle of a long tool result is gone", func(t *testing.T) {
-		q := toolOnly
-		q.Query = "MIDDLE"
-		assert.Empty(t, hitKeys(search(t, s, q)))
-	})
-	t.Run("a short CJK term falls back to the LIKE path in the tail", func(t *testing.T) {
-		cjk := "工具 开头标记" + strings.Repeat("結", 2000) + "中部标记" + strings.Repeat("結", 2000) + "结尾标记"
-		createSession(t, s, "s2", "/w")
-		appendAll(t, s, "s2", toolMsg(t, cjk, cjk))
-		q := toolOnly
-		q.Query = "结尾"
-		assert.Eq(t, []string{"s2/1"}, hitKeys(search(t, s, q)))
-		q.Query = "中部"
-		assert.Empty(t, hitKeys(search(t, s, q)))
-	})
-	t.Run("an assistant message keeps its middle", func(t *testing.T) {
-		assert.Eq(t, []string{"s1/2"}, hitKeys(search(t, s, EntrySearch{Query: "MIDDLE", Kinds: []string{EntryAssistant}})))
-	})
-}
-
-// legacySession is one session of a pre-P1 ledger: its entries are written
-// before the FTS migration, which then indexes the tool results in FULL.
+// legacySession is one session of a ledger written before tool results left
+// the index: its entries are written before the FTS migration, which then
+// indexes the tool results in FULL.
 type legacySession struct {
 	id      string
 	entries []NewEntry
@@ -264,10 +148,10 @@ func TestFTSShrinkCommand(t *testing.T) {
 		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, int64(2), report.Rows)
-		assert.Eq(t, report.ScannedRowID, report.HighWater)
-		assert.True(t, report.BytesBefore > 0,
-			fmt.Sprintf("entries_fts_data before: %d", report.BytesBefore))
-		assert.Eq(t, report.Merges, report.Merges)
+		assert.Eq(t, report.HighWater, report.ScannedRowID)
+		assert.True(t, report.Optimized, "a pass that deleted rows merges the index once")
+		assert.True(t, report.BytesAfter < report.BytesBefore,
+			fmt.Sprintf("entries_fts_data: %d -> %d", report.BytesBefore, report.BytesAfter))
 
 		after, err := s.FTSShrinkStatus(ctx)
 		assert.Require(t, assert.NoErr(t, err))
@@ -275,14 +159,16 @@ func TestFTSShrinkCommand(t *testing.T) {
 		assert.True(t, after.Complete)
 		assert.False(t, after.Remaining())
 		assert.Eq(t, int64(0), after.PendingRows)
-		// The user row was never touched.
+		// Only the user row is left in the index, and search agrees.
 		rows := indexedRows(t, s, "old")
-		assert.Require(t, assert.Len(t, rows, 3))
-		assert.Eq(t, markedBody("u ", 5000, "x"), rows[2].Text)
+		assert.Require(t, assert.Len(t, rows, 1))
+		assert.Eq(t, EntryUser, rows[0].Role)
+		assert.Eq(t, markedBody("u ", 5000, "x"), rows[0].Text)
+		assert.Empty(t, hitKeys(search(t, s, EntrySearch{Query: "tool 0"})))
 	})
 
-	t.Run("batches cover every row and the checkpoint advances", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 7)})
+	t.Run("batches delete every tool row and the checkpoint advances", func(t *testing.T) {
+		s := openLegacyLedger(t, legacySession{"old", append(toolEntries(t, 7), user(t, "keep this"))})
 
 		var seen []int64
 		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(p FTSShrinkProgress) {
@@ -290,12 +176,13 @@ func TestFTSShrinkCommand(t *testing.T) {
 		}})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, int64(7), report.Rows)
-		// 2000-row batches over 7 rows: four batches of 2 and one of 1.
+		// 2,000-row batches over 7 rows: four batches of 2 and one of 1.
 		assert.Eq(t, []int64{2, 4, 6, 7}, seen)
 		assert.Eq(t, 4, report.Batches)
-		for _, row := range indexedRows(t, s, "old") {
-			assert.True(t, utf8.RuneCountInString(row.Text) <= ftsToolMaxChars+3)
-		}
+		rows := indexedRows(t, s, "old")
+		assert.Require(t, assert.Len(t, rows, 1))
+		assert.Eq(t, "keep this", rows[0].Text)
+		assert.Eq(t, report.ScannedRowID, ftsCheckpoint(t, s))
 	})
 
 	t.Run("an interrupted pass resumes from its checkpoint", func(t *testing.T) {
@@ -317,6 +204,7 @@ func TestFTSShrinkCommand(t *testing.T) {
 
 		midway, err := s.FTSShrinkStatus(ctx)
 		assert.Require(t, assert.NoErr(t, err))
+		assert.False(t, midway.Complete)
 		assert.Eq(t, int64(6), midway.PendingRows)
 
 		rest, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2})
@@ -326,6 +214,7 @@ func TestFTSShrinkCommand(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.True(t, left.Complete)
 		assert.Eq(t, int64(0), left.PendingRows)
+		assert.Empty(t, indexedRows(t, s, "old"))
 	})
 
 	t.Run("abort drops the checkpoint and the next pass starts over", func(t *testing.T) {
@@ -344,30 +233,45 @@ func TestFTSShrinkCommand(t *testing.T) {
 
 		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2})
 		assert.Require(t, assert.NoErr(t, err))
-		// The two rows the first (aborted) pass had already rewritten are in the
-		// truncated form and are not rewritten again; the remaining four are.
+		// Two rows were already deleted before the abort; the remaining four are
+		// the ones this pass reports.
 		assert.Eq(t, int64(4), report.Rows)
-		for _, row := range indexedRows(t, s, "old") {
-			assert.True(t, utf8.RuneCountInString(row.Text) <= ftsToolMaxChars+3)
-		}
+		assert.Empty(t, indexedRows(t, s, "old"))
 	})
 
-	t.Run("appends during the pass are already truncated", func(t *testing.T) {
+	t.Run("a checkpoint left by the truncating version restarts from the first rowid", func(t *testing.T) {
+		s := openLegacyLedger(t, legacySession{"old", append(toolEntries(t, 3), user(t, "keep"))})
+		high, err := s.maxFTSRowID(ctx)
+		assert.Require(t, assert.NoErr(t, err))
+		// What P1's completed pass left behind: complete, checkpoint at the end,
+		// and the tool rows still in the index (only truncated).
+		assert.Require(t, assert.NoErr(t, s.ensureShrinkState(ctx)))
+		_, err = s.db.ExecContext(ctx, `INSERT INTO fts_shrink_state(id, scanned_rowid, complete, shrunk_rows, started_at, updated_at)
+            VALUES(1, ?, 1, 3, ?, ?)`, high, formatTime(time.Now()), formatTime(time.Now()))
+		assert.Require(t, assert.NoErr(t, err))
+
+		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int64(3), report.Rows, "a complete checkpoint does not hide the tool rows")
+		assert.Eq(t, int64(4), report.ScannedRowID)
+	})
+
+	t.Run("appends during the pass are not indexed", func(t *testing.T) {
 		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 4)})
 		createSession(t, s, "live", "/w")
 
 		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(FTSShrinkProgress) {
 			fresh := markedBody("fresh ", 4000, "y")
-			appendAll(t, s, "live", toolMsg(t, fresh, fresh))
+			appendAll(t, s, "live", user(t, fresh), toolMsg(t, fresh, fresh))
 		}})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, int64(4), report.Rows)
-		for _, row := range indexedRows(t, s, "live") {
-			assert.True(t, utf8.RuneCountInString(row.Text) <= ftsToolMaxChars+3,
-				"a row written during the pass is truncated at write time")
+		rows := indexedRows(t, s, "live")
+		assert.Require(t, assert.Len(t, rows, 2), "one user row per batch, no tool rows")
+		for _, row := range rows {
+			assert.Eq(t, EntryUser, row.Role)
 		}
-		// The callback appended one long result per batch, both already truncated.
-		assert.Eq(t, []string{"live/1", "live/2"},
+		assert.Eq(t, []string{"live/1", "live/3"},
 			hitKeys(search(t, s, EntrySearch{Query: "HEADER", SessionIDs: []string{"live"}})))
 	})
 
@@ -386,60 +290,32 @@ func TestFTSShrinkCommand(t *testing.T) {
 		}})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Empty(t, indexedRows(t, s, "doomed"), "the delete trigger still runs during the pass")
-		assert.Len(t, indexedRows(t, s, "old"), 4)
+		assert.Empty(t, indexedRows(t, s, "old"))
 	})
 
-	t.Run("a ledger without long tool rows is a no-op", func(t *testing.T) {
+	t.Run("a ledger without tool rows is a no-op", func(t *testing.T) {
 		s := openTemp(t)
 		createSession(t, s, "s1", "/w")
 		appendAll(t, s, "s1", toolMsg(t, "short", "short"), user(t, "hi"))
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(0), report.Rows)
-		assert.True(t, report.Batches <= 1, "at most the one empty batch over the rowid range")
 		status, err := s.FTSShrinkStatus(ctx)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.False(t, status.Remaining())
+
+		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int64(0), report.Rows)
+		assert.False(t, report.Optimized, "nothing was deleted, so nothing is merged")
+		assert.Eq(t, int64(1), int64(len(indexedRows(t, s, "s1"))))
 	})
-}
-
-// TestFTSShrinkMatchesWritePath is the behavioural guard of the shared
-// expression: a legacy row that the shrink command rewrites ends up holding
-// exactly the text AppendEntries writes for the same entry. Without the shared
-// expression (or with the truncation removed) the two texts differ.
-func TestFTSShrinkMatchesWritePath(t *testing.T) {
-	ctx := context.Background()
-	content := markedBody("live ", 4000, "x")
-	result := "a different result " + markedBody("", 1000, "y")
-
-	// The legacy ledger holds the FULL text of the tool result; the live session
-	// is appended afterwards, through the truncating write path.
-	s := openLegacyLedger(t, legacySession{"legacy", []NewEntry{toolMsg(t, content, result)}})
-	createSession(t, s, "live", "/w")
-	appendAll(t, s, "live", toolMsg(t, content, result))
-	live := indexedRows(t, s, "live")
-	assert.Require(t, assert.Len(t, live, 1))
-	full := wantToolBody(content, result)
-	legacyBefore := indexedRows(t, s, "legacy")
-	assert.Require(t, assert.Len(t, legacyBefore, 1))
-	assert.Eq(t, full, legacyBefore[0].Text)
-
-	report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(1), report.Rows)
-	legacy := indexedRows(t, s, "legacy")
-	assert.Require(t, assert.Len(t, legacy, 1))
-	assert.Eq(t, live[0].Text, legacy[0].Text)
-	assert.True(t, utf8.RuneCountInString(legacy[0].Text) <= ftsToolMaxChars+3,
-		"the rewrite really truncated")
 }
 
 func TestFTSShrinkPendingNotice(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("a legacy ledger announces the unfinished shrink", func(t *testing.T) {
+	t.Run("a legacy ledger announces the tool rows in its index", func(t *testing.T) {
 		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 1)})
 		assert.StrContains(t, searchNotice(t, s, "HEADER"), FTSShrinkPendingNotice)
+		// The historical row still matches in full until the pass deletes it.
 		assert.Eq(t, []string{"old/1"}, hitKeys(search(t, s, EntrySearch{Query: "MIDDLE"})))
 	})
 
@@ -448,35 +324,36 @@ func TestFTSShrinkPendingNotice(t *testing.T) {
 		_, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Empty(t, searchNotice(t, s, "HEADER"))
+		assert.Empty(t, hitKeys(search(t, s, EntrySearch{Query: "MIDDLE"})))
 	})
 
-	t.Run("a ledger that never held a long tool result says nothing", func(t *testing.T) {
+	t.Run("a ledger that never indexed a tool result says nothing", func(t *testing.T) {
 		s := openTemp(t)
 		createSession(t, s, "s1", "/w")
-		appendAll(t, s, "s1", user(t, "short history"))
+		appendAll(t, s, "s1", user(t, "short history"), toolMsg(t, "short output", "short output"))
 		assert.Empty(t, searchNotice(t, s, "short"))
 	})
 }
 
-// TestFTSToolTruncationLargeLedger is the P1 benchmark: 20,000+ entries with
-// the length distribution of a real ledger (most tool results well above the
-// limit), the FTS index in its pre-P1 state, and the shrink pass timed. The
-// measured numbers are logged (the report quotes them).
-func TestFTSToolTruncationLargeLedger(t *testing.T) {
+// TestFTSShrinkLargeLedger is the benchmark of the delete pass: 20,000+ entries
+// with the length distribution of a real ledger, a tool row still in the index
+// for most of them, and the pass timed. The measured numbers are logged (the
+// report quotes them).
+func TestFTSShrinkLargeLedger(t *testing.T) {
 	ctx := context.Background()
 	const (
-		toolEntries = 20000
+		toolRows = 20000
 		// Real tool results: 2-8KB of text, the majority around 3KB.
 		minBytes = 2000
 		maxBytes = 8000
 	)
-	entries := make([]NewEntry, 0, toolEntries+2000)
-	for i := 0; i < toolEntries; i++ {
+	entries := make([]NewEntry, 0, toolRows+1000)
+	for i := 0; i < toolRows; i++ {
 		size := minBytes + (i*7919)%(maxBytes-minBytes)
 		body := markedBody(fmt.Sprintf("tool %d ", i), size, "x")
 		entries = append(entries, toolMsg(t, body, body))
 	}
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 500; i++ {
 		size := 200 + (i*104729)%1800
 		entries = append(entries, user(t, markedBody(fmt.Sprintf("user %d ", i), size, "中")),
 			assistant(t, markedBody(fmt.Sprintf("assistant %d ", i), size, "中")))
@@ -492,7 +369,7 @@ func TestFTSToolTruncationLargeLedger(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	before, err := s.FTSShrinkStatus(ctx)
 	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(toolEntries), before.PendingRows)
+	assert.Eq(t, int64(toolRows), before.PendingRows)
 
 	start = time.Now()
 	report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
@@ -501,18 +378,15 @@ func TestFTSToolTruncationLargeLedger(t *testing.T) {
 	sizeAfter, err := s.ftsDataBytes(ctx)
 	assert.Require(t, assert.NoErr(t, err))
 
-	assert.Eq(t, int64(toolEntries), report.Rows)
+	assert.Eq(t, int64(toolRows), report.Rows)
 	assert.True(t, sizeAfter < sizeBefore, fmt.Sprintf("index did not shrink: %d -> %d", sizeBefore, sizeAfter))
-	var long int64
 	for _, row := range indexedRows(t, s, "big") {
-		if row.Role == EntryTool && utf8.RuneCountInString(row.Text) > ftsToolMaxChars+3 {
-			long++
-		}
+		assert.True(t, row.Role == EntryUser || row.Role == EntryAssistant,
+			"only conversation rows remain, got "+row.Role)
 	}
-	assert.Eq(t, int64(0), long, "every tool row is within the limit")
-	t.Logf("legacy index+backfill: %s; shrink of %d rows in %d batches: %s; entries_fts_data %d -> %d bytes (-%.1f%%); merges %d",
+	t.Logf("legacy index+backfill: %s; delete of %d rows in %d batches: %s; entries_fts_data %d -> %d bytes (-%.1f%%); optimized: %v",
 		backfill, report.Rows, report.Batches, shrink, sizeBefore, sizeAfter,
-		100*float64(sizeBefore-sizeAfter)/float64(sizeBefore), report.Merges)
+		100*float64(sizeBefore-sizeAfter)/float64(sizeBefore), report.Optimized)
 	t.Logf("pending estimate before the pass: %d bytes", before.EstimatedReclaimBytes)
 }
 
@@ -527,7 +401,7 @@ func searchNotice(t *testing.T, s *Store, query string) string {
 // ftsCheckpoint reads the shrink checkpoint (0 when there is none).
 func ftsCheckpoint(t *testing.T, s *Store) int64 {
 	t.Helper()
-	rowid, err := s.shrinkRowID(context.Background())
+	rowid, _, err := s.shrinkCheckpoint(context.Background())
 	assert.Require(t, assert.NoErr(t, err))
 	return rowid
 }
@@ -570,5 +444,3 @@ func TestFreeDiskSpace(t *testing.T) {
 	assert.Eq(t, int64(0), DatabaseFileBytes(filepath.Join(dir, "sessions.db")))
 	assert.True(t, DatabaseFileBytes(filepath.Join(dir, "sessions.db")) < int64(free))
 }
-
-// fileSize is the size of one file (0 when it does not exist).
