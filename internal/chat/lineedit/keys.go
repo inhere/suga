@@ -56,6 +56,7 @@ const (
 	keyRight
 	keyAltLeft
 	keyAltRight
+	keyAltV
 	keyHome
 	keyEnd
 	keyDeleteWord
@@ -126,6 +127,12 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 		case 'F':
 			return keyEnd, b[3:]
 		}
+	}
+
+	if !pasteActive && len(b) >= 2 && b[0] == keyEscape && b[1] == 'v' {
+		// Alt+V (ESC v): chat's clipboard paste of a picture; Ctrl+V stays with the
+		// terminal's own text paste, which never reaches this editor.
+		return keyAltV, b[2:]
 	}
 
 	if !pasteActive && len(b) >= 6 && b[0] == keyEscape && b[1] == '[' && b[2] == '1' && b[3] == ';' && b[4] == '3' {
@@ -200,6 +207,16 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		// move left by a word.
 		t.pos -= t.countToLeftWord()
 		t.moveCursorToPos(t.pos)
+	case keyAltV:
+		// Clipboard paste of a picture (design 0.3): the callback reads the
+		// clipboard and prints its note above the input line; the line itself is
+		// unchanged. The lock goes away like for WithdrawCallback, because the
+		// callback writes to the terminal.
+		if t.PasteImageCallback != nil {
+			t.lock.Unlock()
+			t.PasteImageCallback()
+			t.lock.Lock()
+		}
 	case keyAltRight:
 		// move right by a word.
 		t.pos += t.countToRightWord()

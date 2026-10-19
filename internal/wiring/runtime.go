@@ -12,6 +12,7 @@ import (
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/inhere/suga/internal/adddir"
+	"github.com/inhere/suga/internal/clipboardimage"
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
@@ -235,6 +236,44 @@ func (p *Runtime) Close() error {
 		return nil
 	}
 	return errors.Join(p.repo.Close(), p.capabilities.Close())
+}
+
+// ReadImage loads a picture for chat's :image / the Alt+V clipboard paste with
+// the view_image rules (design 0.3): the same path resolution, input limits
+// and scaling, so both sides hand the model identical pictures.
+func (rt *Runtime) ReadImage(path string) (agentcore.ImagePart, string, error) {
+	if rt == nil || rt.sessionDirs == nil {
+		return agentcore.ImagePart{}, "", errors.New("读图在本进程不可用")
+	}
+	data, name, err := native.ReadImageFile(rt.sessionDirs.Workspace(), nil, nil, path)
+	if err != nil {
+		return agentcore.ImagePart{}, "", err
+	}
+	return native.PrepareImage(data, name, imageMaxSide())
+}
+
+// VisionGate exposes the live "the current model can see" gate: chat refuses
+// :image / Alt+V while the current model cannot accept pictures.
+func (rt *Runtime) VisionGate() *tools.VisionGate {
+	return rt.vision
+}
+
+// PasteImageCallback wires chat's Alt+V (design 0.3): the platform clipboard
+// reader plus the view_image pipeline (the same checks and scaling), so a
+// paste and a :image path end up identical for the model.
+func (rt *Runtime) PasteImageCallback() func() (agentcore.ImagePart, string, error) {
+	if rt == nil || rt.sessionDirs == nil {
+		return nil
+	}
+	read := clipboardimage.Reader()
+	maxSide := imageMaxSide()
+	return func() (agentcore.ImagePart, string, error) {
+		data, name, err := read()
+		if err != nil {
+			return agentcore.ImagePart{}, "", err
+		}
+		return native.PrepareImage(data, name, maxSide)
+	}
 }
 
 // SessionModelReference reads the last main model of a persisted session before
@@ -713,7 +752,16 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// The added directories of the session being served (--add-dir): the front
 	// end fills the set once the session is open (ApplyAddDirs) through this
 	// handle, which chat's commands and the outside-directory question share.
-	rt.sessionDirs = newSessionAddDirs(runner, dirs, opts.AddDirs, opts.ReadOnly, workspace)
+	rt.sessionDirs = newSessionAddDirs(runner, dirs, opts.AddDirs, opts.ReadOnly, workspace, sessionsDir)
+	// Session image refs (images/<sha256>.<ext>): view_image resolves them
+	// against the session being served, which only opens later (ApplyAddDirs /
+	// chat's SetupSession); the resolver hands the ref rule the live directory
+	// at every call instead of the one the tool was built with.
+	if t, err := capabilities.Registry.Get("view_image"); err == nil {
+		if img, ok := t.(*native.ViewImageTool); ok {
+			img.SetImagesDirResolver(rt.sessionDirs.ImagesDir)
+		}
+	}
 	return rt, nil
 }
 

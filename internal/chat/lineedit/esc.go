@@ -12,6 +12,15 @@ package lineedit
 // key press on its own: the next read that ends on an Esc byte with nothing after
 // it reports the key instead of waiting for the rest of a sequence. A caller that
 // sees a follow-up byte never declares it, so a real sequence is unaffected.
+// SetPasteImageCallback binds chat's Alt+V clipboard paste: the callback runs
+// from inside ReadLine on an Alt+V press (see PasteImageCallback).
+func (t *Terminal) SetPasteImageCallback(cb func()) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.PasteImageCallback = cb
+}
+
 func (t *Terminal) SetEscAlone() {
 	t.lock.Lock()
 	defer t.lock.Unlock()

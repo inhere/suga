@@ -58,6 +58,9 @@ type Manifest struct {
 	// They are always included, unlike spill: a stub in the ledger only names an
 	// offset in its file, so the file is the only copy of the body.
 	ToolBodies ToolBodiesInfo `json:"tool_bodies"`
+	// Images counts the session image files the backup always carries
+	// (sessions/<id>/images/, design 0.3).
+	Images SessionImagesInfo `json:"session_images"`
 }
 
 type ToolBodiesInfo struct {
@@ -166,13 +169,17 @@ func Create(ctx context.Context, opts Options) (Manifest, error) {
 	if err := collectToolBodies(&manifest, home, filepath.Join(home, "sessions")); err != nil {
 		return Manifest{}, err
 	}
+	if err := collectImages(&manifest, home, filepath.Join(home, "sessions")); err != nil {
+		return Manifest{}, err
+	}
 	if opts.IncludeSpill {
 		if err := collectSpill(&manifest, home, filepath.Join(home, "sessions")); err != nil {
 			return Manifest{}, err
 		}
 		manifest.Spill.Policy = "included"
 		for _, f := range manifest.Files {
-			if strings.HasPrefix(f.Path, "sessions/") && f.Category != categoryToolBodies {
+			// A categorised file (tool bodies, session images) is never spill.
+			if strings.HasPrefix(f.Path, "sessions/") && f.Category == "" {
 				manifest.Spill.FileCount++
 				manifest.Spill.Bytes += f.Size
 			}

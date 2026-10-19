@@ -145,6 +145,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_interrupt.py --bin tmp/smoke/suga --work tmp/smoke-interrupt
 	python3 -I scripts/ptysmoke/chat_danger.py --bin tmp/smoke/suga --work tmp/smoke-danger
 	python3 -I scripts/ptysmoke/chat_tasks.py --bin tmp/smoke/suga --work tmp/smoke-tasks
+	python3 -I scripts/ptysmoke/chat_images.py --bin tmp/smoke/suga --work tmp/smoke-images
 	python3 -I scripts/ptysmoke/chat_commands.py --bin tmp/smoke/suga --work tmp/smoke-commands
 	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
 	python3 -I scripts/ptysmoke/chat_model.py --bin tmp/smoke/suga --work tmp/smoke-model

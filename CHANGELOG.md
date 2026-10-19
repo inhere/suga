@@ -11,6 +11,8 @@
 - 图片能力（vision）三态与按模型过滤工具：`providers.<id>.models.<model>.vision` 与 `providers.<id>.vision` 都是三态（没写 = 按 `APIModel` 推断：Claude 3 及以后、gpt-4o/4.1/4-turbo/5/6、Gemini 为真，deepseek、glm、qwen 等及其余为假；显式 true/false 覆盖推断），注册进 settings（`suga config get/set` 可用），`suga models` 与 `suga inspect manifest` 显示 `vision=yes/no`。当前模型不支持看图时 `view_image` 不进工具表（runtime 每步列工具，`:model` 切换后下一步生效），直接调用会被拒绝并提示 `:model`；回退模型不支持看图时，各 provider 把图片换成文字说明，不发图片字节。
 - 图片输入上限可配置：`images.history_turns`（默认 3；fold 关闭时保留最近几个回合的图）、`images.max_request_count`（默认 8 张/请求）、`images.max_request_bytes`（默认 20MB/请求，按编码后字节计）、`images.max_side`（默认 1568，`view_image` 缩放的长边）进 settings 注册表（`suga config get/set` 可用）；非正数在启动时报错，原代码里的包级常量改为读配置。
 - `run.deadline_env`（默认空 = 关闭）：环境变量名指向本次运行的截止时间（RFC3339）。gofer 时限 job 主机配置 `run.deadline_env: GOFER_JOB_DEADLINE` 即可，每次请求模型前在消息末尾临时附一条时间提示：现在的时间、截止时间与剩余约多少分钟；剩余不足 10% 或不足 5 分钟改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”，已过截止时间说明已超时。提示只进本次请求，不写库、不进稳定系统提示前缀（前缀缓存不变）；变量缺失或解析失败时只记一行调试日志，不报错。`run`/`chat`/ACP 与子 agent 通用；`suga config get/set run.deadline_env` 可用。
+- chat 贴图：`:image <路径>` 把图片按 `view_image` 同一套校验与缩放附到**下一条**用户消息（可多次、顺序保留，`:[image]` 无参数列出待发、`:image clear` 清空；当前模型不支持看图时拒绝并提示用 `:model` 切换），`Alt+V` 直接读系统剪贴板图片（Windows 走剪贴板 API，按注册的 PNG / CF_DIBV5 / CF_DIB 读取，DIB 转 PNG；macOS 用 `osascript` 取 «class PNGf»；Linux 先 `wl-paste --type image/png` 再 `xclip`，都没有时提示安装哪个）；附到后输入行上方显示 `[已附图 N：宽×高 格式]`，剪贴板没有图片时提示“剪贴板里没有图片”。`view_image` 现在也能读本会话图片引用（`images/<sha>.<ext>`，按当前会话动态解析目录），被省略的历史图提示“需要时 view_image <Ref>”可以直接用。
+- `suga data backup` 现在**始终**包含 `sessions/*/images/`（与 `tools.jsonl` 同一类别处理，manifest 记类别 `session_images`），恢复时安装回各会话目录；删除会话本来就会删整个会话目录，图片随之清理。
 
 ## [0.36.0] - 2026-10-19
 
