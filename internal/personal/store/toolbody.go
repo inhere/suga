@@ -178,6 +178,7 @@ type toolBodyWriter struct {
 	path   string
 	file   *os.File
 	size   int64 // length before this writer's first record
+	pos    int64 // length after the records written so far
 	dirty  bool
 	closed bool
 	// created is true when this writer made the file, so the directory entry
@@ -215,7 +216,7 @@ func (s *Store) openToolBodyWriter(sessionID string) (*toolBodyWriter, error) {
 			return nil, fmt.Errorf("sync session directory: %w", err)
 		}
 	}
-	return &toolBodyWriter{path: path, file: file, size: info.Size()}, nil
+	return &toolBodyWriter{path: path, file: file, size: info.Size(), pos: info.Size()}, nil
 }
 
 // WriteRecord appends one record and returns its reference. off/len cover the
@@ -231,8 +232,10 @@ func (w *toolBodyWriter) WriteRecord(seq int64, raw []byte) (BodyRef, error) {
 	if _, err := w.file.Write(record); err != nil {
 		return BodyRef{}, fmt.Errorf("append tool body record: %w", err)
 	}
+	off := w.pos + int64(len(header))
+	w.pos += int64(len(record))
 	w.dirty = true
-	return BodyRef{Off: w.size + int64(len(header)), Len: int64(len(raw)), SHA256: digest}, nil
+	return BodyRef{Off: off, Len: int64(len(raw)), SHA256: digest}, nil
 }
 
 // Synced makes the records durable before the transaction that points at them

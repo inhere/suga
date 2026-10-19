@@ -37,7 +37,13 @@ func openCoreStore() (*store.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return store.Open(dbPath)
+	// The threshold of store.tool_body_inline_bytes decides what the maintenance
+	// commands see as pending and what --move moves out.
+	settings, err := appconfig.ReadToolBodySettings()
+	if err != nil {
+		return nil, err
+	}
+	return store.Open(dbPath, store.WithToolBodyInlineBytes(settings.InlineBytes))
 }
 
 // parseSince parses "<n>h" or "<n>d" into a duration.
