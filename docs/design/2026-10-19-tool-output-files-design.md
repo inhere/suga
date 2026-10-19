@@ -12,6 +12,7 @@
 | 0.1 | 2026-10-19 | 监督（Claude） | 用户 2026-10-19：“tool 输出基本不是那么重要，搜索主要看 AI 和用户的消息，这部分能否移到 jsonl 文件，需要时才去看”，并要求先出设计。只把 tool 结果正文移出数据库，读取在 store 层透明取回；用户/AI 消息、元数据、events、FTS 仍在库里。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 用户批准（“B 的设计按推荐来”）：Q1 阈值 1,024 字节、Q2 命令 `suga data tool-bodies`、Q3 新写入立即生效、Q4 校验失败报错、Q5 不压缩、Q6 实施前独立审核。 |
 | 0.3 | 2026-10-19 | 监督（Claude） | 按独立审核（独立子 agent，结论“修改后可实施”；codex 审核两次因模型连接中断未产出）修订：--move 改在写事务内；restore 必须安装 tools.jsonl、备份拷贝按记录长度并边拷边算 hash；桩不带 P2 标记且 P2 两个改写跳过桩；用 entries.body_ref 列识别桩；原始字节写文件；失败截断与目录 fsync；--remove-files 竞态；Store 需要知道 sessions 目录；A、P2 为硬前置（均已合并）。 |
+| 0.4 | 2026-10-20 | 监督（Claude） | 用户 2026-10-20 批准“桩瘦身”：真实库 3.3 万个桩平均 1.5KB（设计预期一两百字节），因为桩保留了完整 `ToolCall`（含参数）、`Reasoning`，且预览存了两份。0.4 起桩只留 `Role`、`ToolCall{CallID,Name}`、`ToolResult{CallID,Name,IsError}` 与一份 `Content` 前 120 字预览；读取路径始终取回文件里的完整 JSON，桩只供 SQL 取 CallID。新增 `suga data tool-bodies --slim` 改写旧桩。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -107,7 +108,7 @@
 ### 存储形态
 
 - **文件**：`$SUGA_HOME/sessions/<sid>/tools.jsonl`，追加写，一行一条：`{"seq":<n>,"sha256":"<hex>","json":<条目原 JSON>}`。
-- **数据库桩**：只对 `type='tool'` 且条目 JSON 超过阈值（默认 1,024 字节，配置 `store.tool_body_inline_bytes`）的条目移出；桩是合法的消息 JSON，保留 `Role`、`ToolResult.CallID/Name/IsError`、`Content` 截成前 256 字符的预览，加顶层 `"BodyRef":{"off":<字节偏移>,"len":<字节数>,"sha256":"<hex>"}`。
+- **数据库桩**：只对 `type='tool'` 且条目 JSON 超过阈值（默认 1,024 字节，配置 `store.tool_body_inline_bytes`）的条目移出；桩是合法的消息 JSON，只保留 SQL 与人工识别用得上的字段（0.4）：`Role`、`ToolCall{CallID,Name}`、`ToolResult{CallID,Name,IsError}` 和 `Content` 前 120 字预览；文件位置在 `entries.body_ref` 列（`off,len,sha256`），不在 JSON 里。
 - 预览让桩在“文件丢失”这种异常下仍可读（看得出是什么工具、结果开头是什么），但读取路径**不会**把桩当正文用（见“取回”）。
 
 ### 写入（崩溃与并发）
@@ -138,6 +139,7 @@
 - `--undo`：分批把桩还原为文件里的原 JSON（覆盖所有带 `BodyRef` 的行，含新写入的），完成后可删除文件（`--undo --remove-files`）。
 - `--check`：逐行校验 `BodyRef` 指向的记录存在且 seq/sha256 一致；报告孤儿记录与缺失记录。
 - `--status`：待移出的行数与字节、已移出的行数、文件总大小。
+- `--slim`（0.4）：按 `(session_id, seq)` 游标分批把旧形状的桩改写成新形状（只改库内行，不动会话文件与 `body_ref`），断点可续、重跑幂等；`--status` 同时报告仍是旧形状的桩数量与预计回收字节。
 - 完成后提示 `suga data vacuum`。
 
 ### 配套改动
