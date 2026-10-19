@@ -1,4 +1,4 @@
-// Package backup owns the portable, verified suga backup archive format.
+// Package backup owns the portable, verified suga data backup archive format.
 package backup
 
 import (

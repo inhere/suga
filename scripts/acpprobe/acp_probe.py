@@ -6,7 +6,7 @@ sessions and traces land there, never in the real ~/.suga), opens one session
 in --cwd and sends each --prompt in turn, allowing every permission request.
 --wait N sleeps N seconds before the next prompt (background tasks keep
 running). After the last prompt it closes the connection, then prints the
-session's task events from `suga trace --json`.
+session's task events from `suga inspect trace --json`.
 
 The real provider config: --config-from DIR uses DIR/config.yaml through
 SUGA_CONFIG and reads DIR/.env into the server's environment (in memory; the

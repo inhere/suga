@@ -37,7 +37,7 @@ fallback_models:
 - `providers.<id>.max_output_tokens` 与 `providers.<id>.models.<model>.max_output_tokens`：模型回答的输出 token 上限，模型级覆盖 provider 级。命令行 `--max-output-tokens` > 环境变量 `SUGA_MAX_OUTPUT_TOKENS` > 模型级 > provider 级；未配置时 Anthropic 默认 32000，OpenAI chat/completions 与 Responses 不发送上限字段。
 - `providers.<id>.models.<model>.model_id`：实际发给 provider 的模型 id；不设时发送键名本身。用它给很长的上游 id 起短名：引用、trace、统计、价格与窗口都按短名，只有请求里用 `model_id`。用完整上游 id 引用也会对应到这个短名。
 - `providers.<id>.models.<model>.type` / `base_url`：该模型自己的协议与地址，覆盖 provider 的；`api_key`、`headers` 仍沿用 provider 的。同一网关常把 Claude 模型放在 Anthropic 端点、其余模型放在 OpenAI 兼容端点，这时只在 Claude 模型上写 `type: anthropic` 和对应 `base_url`，不必拆第二个 provider。
-- `providers.<id>.models.<model>.price`：`{input, output, cache_read, cache_write}`，每百万 token 的美元价格；provider 不返回成本时 `suga stats` 与 `usage_update` 用它算成本。
+- `providers.<id>.models.<model>.price`：`{input, output, cache_read, cache_write}`，每百万 token 的美元价格；provider 不返回成本时 `suga inspect stats` 与 `usage_update` 用它算成本。
 - `providers.<id>.prompt_cache`（仅 `anthropic` 类型，默认关）：加 `cache_control` 断点（system 变成块数组）；部分网关不接受。
 - `compact_model`：自动压缩与 `:compact` 使用的模型，引用规则同 `model`；裸模型名用主模型的 provider；不设则用当前回合的模型。
 - `fallback_models`：主模型失败后按顺序尝试的模型列表。
@@ -49,7 +49,7 @@ fallback_models:
 - `openai` 类型作为请求字段 `reasoning_effort` 原样发送，各 provider 支持的取值不同（如 command-code 为 `off|low|medium|high|xhigh|max`，OpenAI 为 `none|minimal|low|medium|high`），不支持的取值由 provider 报错。
 - `anthropic` 类型走 extended thinking：Claude 4.6 及以后发送 `thinking: {type: adaptive, display: summarized}` 与 `output_config.effort`（`minimal` 按 `low`）；4.5 及更早发送 `thinking: {type: enabled, budget_tokens}`（minimal 1024 … max 31000）并带 interleaved-thinking beta 头。设置档位且请求未指定时 `max_tokens` 为 32000。`off`、`auto` 与不设都不发送思考参数（部分新模型默认就会思考，也不接受关闭）。
 - 带签名的 thinking 块随工具调用保存并原样回传；签名绑定请求前缀，所以主模型为 `anthropic` 类型时不做历史折叠（`context.fold_every` 不生效）。
-- `suga manifest` 显示主模型生效的档位。
+- `suga inspect manifest` 显示主模型生效的档位。
 
 ## 模型引用解析
 
@@ -122,14 +122,14 @@ providers:
         model_id: claude-sonnet-4-5
 ```
 
-`--model command-code/deepseek-v4.1-flash`（或 `model` 已指向 command-code 时写 `--model deepseek-v4.1-flash`）都会请求 `deepseek/deepseek-v4.1-flash`；`suga manifest` 在主模型一行显示实际发送的 id。
+`--model command-code/deepseek-v4.1-flash`（或 `model` 已指向 command-code 时写 `--model deepseek-v4.1-flash`）都会请求 `deepseek/deepseek-v4.1-flash`；`suga inspect manifest` 在主模型一行显示实际发送的 id。
 
 ## 超时、重试与常见排查
 
 - 重试（所有 provider）：`retry.max_attempts`（默认 6，含首次；`1` 关闭）、`retry.base_delay`（`1s`）、`retry.max_delay`（`60s`）、`retry.reset_after`（`10m`）。触发条件：网络错误、HTTP 408/429/5xx、响应流断开。流式输出中途断开时整条消息重新请求（chat 显示 `↻` 提示行，stream-json 输出 `retry` 行）。
 - 4xx（除 408/429）与流内 API 错误不重试；重试用尽后才按 `fallback_models` 换模型。
 - 排查顺序建议：`.env` 里的变量名是否与配置里的 `${VAR}` 完全一致 → `base_url` 的路径段（是否多写/漏写 `/v1`）→ 模型 id（上游名字不同就用 `model_id`）→ 代理/网络是否可达 → 上下文窗口是否写对。
-- `suga manifest`（或 `--json`）能看到生效的 provider、模型、实际发送的 id、上下文窗口、思考档位；`suga stats` 看用量与成本；`suga trace <session>` 看每次模型调用的缓存、重试与失败原因。
+- `suga inspect manifest`（或 `--json`）能看到生效的 provider、模型、实际发送的 id、上下文窗口、思考档位；`suga inspect stats` 看用量与成本；`suga inspect trace <session>` 看每次模型调用的缓存、重试与失败原因。
 
 ## 从旧配置迁移
 

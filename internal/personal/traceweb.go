@@ -20,10 +20,10 @@ import (
 var traceWebHTML []byte
 
 // maxWebText caps one text (message, tool argument value, tool result) sent
-// to the trace page; the full text stays in the store (suga export).
+// to the trace page; the full text stays in the store (suga inspect export).
 const maxWebText = 64 * 1024
 
-// TraceView is what `suga trace --web` serves at /api/session: the session,
+// TraceView is what `suga inspect trace --web` serves at /api/session: the session,
 // its events, its transcript entries joined to them (tool results to tool
 // events by call id, assistant messages to the model call that produced
 // them) and the loop analysis.
@@ -228,7 +228,7 @@ func capWebText(s string, n int) string {
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
-	return s[:cut] + fmt.Sprintf("\n[... %d more bytes; full text: suga export]", len(s)-cut)
+	return s[:cut] + fmt.Sprintf("\n[... %d more bytes; full text: suga inspect export]", len(s)-cut)
 }
 
 // entryRef is the minimal entry data the event↔entry join needs. The join runs

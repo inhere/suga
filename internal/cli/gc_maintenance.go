@@ -22,7 +22,7 @@ import (
 // short batches and coexists with chat), but taking it uniformly keeps the
 // "one maintenance job at a time" rule simple.
 
-// runShrinkFTS runs `suga gc --shrink-fts`: --status only reports, --abort
+// runShrinkFTS runs `suga data shrink-fts`: --status only reports, --abort
 // drops the checkpoint, and the plain form rewrites the historical tool rows
 // of entries_fts in batches.
 func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch int) error {
@@ -66,7 +66,7 @@ func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch 
 	if err != nil {
 		// The checkpoint of the last committed batch stands: say what is done
 		// and how to continue instead of only reporting the interruption.
-		fmt.Fprintf(out, "中断于 rowid %d/%d（已重写 %d 行）；重跑 `suga gc --shrink-fts` 从这里续上：%v\n",
+		fmt.Fprintf(out, "中断于 rowid %d/%d（已重写 %d 行）；重跑 `suga data shrink-fts` 从这里续上：%v\n",
 			report.ScannedRowID, report.HighWater, report.Rows, err)
 		return err
 	}
@@ -79,7 +79,7 @@ func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch 
 	if after.Remaining() {
 		fmt.Fprintf(out, "仍有 %d 行待处理（并发写入或 --batch 之外的边界）；可再跑一次\n", after.PendingRows)
 	}
-	fmt.Fprintln(out, "文件大小要等 `suga gc --vacuum` 才回落")
+	fmt.Fprintln(out, "文件大小要等 `suga data vacuum` 才回落")
 	return nil
 }
 
@@ -98,7 +98,7 @@ func writeShrinkStatus(out io.Writer, report store.FTSShrinkStatus) error {
 	return nil
 }
 
-// runGCVacuum runs `suga gc --vacuum`: it refuses to start without the free
+// runGCVacuum runs `suga data vacuum`: it refuses to start without the free
 // space a VACUUM needs or while another suga process uses this ledger, then
 // rewrites the file and truncates the WAL.
 func runGCVacuum(ctx context.Context, out io.Writer) error {

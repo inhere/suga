@@ -20,7 +20,7 @@ import (
 // Spill maintenance of the data governance design (Spill 配额、压缩与透明读取):
 // it reports the spill files below a sessions root, decides which idle .txt
 // files a compression pass may rewrite as .txt.gz, and does that rewrite
-// atomically (verify, rename, then remove the plain file). Only `suga gc
+// atomically (verify, rename, then remove the plain file). Only `suga data gc
 // --compress-spill` calls it; nothing here runs at session start or in a write
 // path, and a ref (out:<session_id>:<stem>) never changes.
 

@@ -12,8 +12,8 @@ continues it from directory B with `suga chat --resume`:
 - choice 3 (cancel) leaves without opening chat and without touching sessions.cwd;
 - choice 1 moves the process to A: the model then reads a *relative* path, and the
   file content proves the file tools see A (that path does not exist in B);
-- choice 2 continues in B and moves sessions.cwd there, which `suga trace` shows
-  as a session_cwd_changed line and `suga trace --json` as its event (from A to B);
+- choice 2 continues in B and moves sessions.cwd there, which `suga inspect trace` shows
+  as a session_cwd_changed line and `suga inspect trace --json` as its event (from A to B);
 - in the session's own directory the question does not appear at all.
 
 The non-interactive entries run as subprocesses: `suga run --resume` from A (the
@@ -223,7 +223,7 @@ def main():
                    and (moved[0].get("attrs") or {}).get("to") == ws_b)
         trace_text = subprocess.run([binary, "trace", session_id], capture_output=True, text=True,
                                     env=env, cwd=ws_b, timeout=60).stdout
-        stay.check("stay-in-b: `suga trace` shows the move in one line",
+        stay.check("stay-in-b: `suga inspect trace` shows the move in one line",
                    any("session_cwd_changed" in line and ws_a in line and ws_b in line
                        for line in trace_text.splitlines()))
 

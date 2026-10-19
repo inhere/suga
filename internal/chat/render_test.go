@@ -84,7 +84,7 @@ func TestRendererLastReply(t *testing.T) {
 		var out bytes.Buffer
 		newRenderer(rendererOptions{Out: &out}).LastReply(strings.Join(lines, "\n"), "sess_1", false)
 		got := out.String()
-		assert.StrContains(t, got, "已截断前 5 行，完整记录见 suga trace sess_1\n")
+		assert.StrContains(t, got, "已截断前 5 行，完整记录见 suga inspect trace sess_1\n")
 		assert.StrNotContains(t, got, "line05")
 		assert.StrContains(t, got, "▣ line06\n")
 		assert.StrContains(t, got, "line45\n")

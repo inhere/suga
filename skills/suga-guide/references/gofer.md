@@ -114,12 +114,12 @@ gofer job answer <job-id> <interaction-id> reject|allow
 - 观测命令在**运行 suga 的那台主机**上执行（Gofer worker 用户的 `SUGA_HOME`）：
 
 ```text
-suga trace <session> [--turn <id>] [--json] [--analyze]   # 时间线、循环分析
-suga trace <session> --web [--addr 127.0.0.1:0]           # 本机网页时间线
-suga stats [--session <id>] [--since 7d] [--json]         # 用量与成本
-suga sessions [关键词] [--agents] [--json]                 # 会话列表
-suga export <session> [--redact] [-o <file>]              # jsonl 导出
-suga manifest --json                                       # 能力清单
+suga inspect trace <session> [--turn <id>] [--json] [--analyze]    # 时间线、循环分析
+suga inspect trace <session> --web [--addr 127.0.0.1:0]            # 本机网页时间线
+suga inspect stats [--session <id>] [--since 7d] [--json]          # 用量与成本
+suga sessions [关键词] [--agents] [--json]                            # 会话列表
+suga inspect export <session> [--redact] [-o <file>]               # jsonl 导出
+suga inspect manifest --json                                       # 能力清单
 ```
 
 ## 会话交接与兼容

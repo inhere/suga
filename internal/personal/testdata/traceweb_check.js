@@ -81,14 +81,14 @@ check("timeline: a Stop hook task row is named by its summary", hookRow > 0 && r
 const agentRow = lineOf("12 步"), taskAgentRow = lineOf("agent: survey the deps");
 check("timeline: a sub-agent row is named by its description", agentRow > 0 && rows[agentRow - 1].includes("子 agent find the callers"));
 check("timeline: a sub-agent summary shows steps, tokens and stop", agentRow >= 0 && rows[agentRow].includes("in 85k（缓存 60k）") && rows[agentRow].includes("out 3k") && rows[agentRow].includes("stop=final"));
-check("timeline: the row names the command that opens its trace", agentRow >= 0 && rows[agentRow].includes("suga trace sess_child1 --web"));
+check("timeline: the row names the command that opens its trace", agentRow >= 0 && rows[agentRow].includes("suga inspect trace sess_child1 --web"));
 check("timeline: a background sub-agent's task row is named by its description", taskAgentRow > 0 && rows[taskAgentRow - 1].includes("子 agent survey the deps"));
 check("timeline: the agent task row shows the steps its sub-agent ran", taskAgentRow >= 0 && rows[taskAgentRow].includes("7 步"));
 const agentEv = data.events.find(e => e.name === "agent" && e.attrs && e.attrs.child_session_id);
 const agentBox = new Node("div");
 showDetail(agentBox, agentEv);
 const agentText = __dump(agentBox);
-check("detail: a sub-agent shows the command for its own trace", agentText.includes("子会话") && agentText.includes("suga trace sess_child1 --web"));
+check("detail: a sub-agent shows the command for its own trace", agentText.includes("子会话") && agentText.includes("suga inspect trace sess_child1 --web"));
 
 tab = "context";
 const cx = new Node("main");

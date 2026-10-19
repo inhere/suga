@@ -248,7 +248,7 @@ func isKeyboardSteer(s Steer) bool { return s.Source == SteerSourceKeyboard }
 // back itself).
 //
 // Each withdrawn steer is recorded in the trace as a "withdrawn" steer event of
-// the turn, so `suga trace` shows what a turn did not receive after all. Chat puts
+// the turn, so `suga inspect trace` shows what a turn did not receive after all. Chat puts
 // the returned text back on the input line for editing (design "chat：退回插话的
 // 处理").
 func (r *Runner) WithdrawSteers(sessionID string, accept func(Steer) bool) []Steer {

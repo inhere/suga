@@ -46,7 +46,7 @@ const (
 
 	// replyTailLines caps how much of a continued session's last reply chat shows
 	// above the first prompt: the tail is what the person goes on from, and the
-	// whole text stays readable with `suga trace`.
+	// whole text stays readable with `suga inspect trace`.
 	replyTailLines = 40
 )
 

@@ -12,7 +12,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
 
-// TraceAnalysis summarizes a session's events for loop analysis (suga trace
+// TraceAnalysis summarizes a session's events for loop analysis (suga inspect trace
 // --analyze): how many steps, which tools, repeated reads and commands, and
 // how much verification happened after the tests first passed. It is derived
 // from the events alone (tool attrs arg/target/exit_code, model attr

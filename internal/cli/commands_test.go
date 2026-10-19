@@ -25,9 +25,12 @@ func TestCLIRegistersPersonalCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"--help"})
 	assert.NoErr(t, err)
-	for _, name := range []string{"run", "chat", "acp", "backup", "restore"} {
+	for _, name := range []string{"run", "chat", "acp", "inspect", "data"} {
 		assert.Eq(t, true, strings.Contains(stdout.String(), name))
 	}
+	// The two groups name their subcommands in the one-line description.
+	assert.StrContains(t, stdout.String(), "trace / stats / export / manifest")
+	assert.StrContains(t, stdout.String(), "gc / shrink-fts / vacuum / compress-spill / backup / restore")
 }
 
 func TestCLIRegistersProcessCommandsAndSendExitCodes(t *testing.T) {
@@ -109,7 +112,7 @@ func TestRestoreRejectsActiveProcess(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = server.Close() })
 	var stdout, stderr bytes.Buffer
-	err = newCLI(context.Background(), strings.NewReader("YES\n"), &stdout, &stderr).RunWithArgs([]string{"restore", archive, "--no-auto-backup"})
+	err = newCLI(context.Background(), strings.NewReader("YES\n"), &stdout, &stderr).RunWithArgs([]string{"data", "restore", archive, "--no-auto-backup"})
 	assert.Err(t, err)
 	assert.StrContains(t, err.Error(), "ledger is in use")
 }
@@ -130,7 +133,7 @@ func TestBackupRunsWhileTheLedgerIsInUse(t *testing.T) {
 	t.Cleanup(func() { _ = server.Close() })
 	var stdout, stderr bytes.Buffer
 	archive := filepath.Join(home, "online.suga-backup.zip")
-	err = newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"backup", "--output", archive})
+	err = newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"data", "backup", "--output", archive})
 	assert.NoErr(t, err)
 	_, statErr := os.Stat(archive)
 	assert.NoErr(t, statErr)
@@ -240,20 +243,20 @@ func TestTraceCommandPrintsSessionTimeline(t *testing.T) {
 		return stdout.String()
 	}
 	t.Run("text", func(t *testing.T) {
-		out := run("trace", "trace-s1")
+		out := run("inspect", "trace", "trace-s1")
 		assert.Eq(t, true, strings.Contains(out, " model primary error "))
 		assert.Eq(t, true, strings.Contains(out, "err=boom"))
 		assert.Eq(t, true, strings.Contains(out, " denial mcp_write denied "))
 	})
 	t.Run("analyze", func(t *testing.T) {
-		out := run("trace", "trace-s1", "--analyze")
+		out := run("inspect", "trace", "trace-s1", "--analyze")
 		assert.StrContains(t, out, "steps                  1 model calls, 1 tool calls")
 		assert.StrContains(t, out, "mcp_write x1 (1 failed)")
-		js := run("trace", "trace-s1", "--analyze", "--json")
+		js := run("inspect", "trace", "trace-s1", "--analyze", "--json")
 		assert.StrContains(t, js, `"model_calls":1`)
 	})
 	t.Run("turn filter with json", func(t *testing.T) {
-		out := run("trace", "trace-s1", "--turn", "t2", "--json")
+		out := run("inspect", "trace", "trace-s1", "--turn", "t2", "--json")
 		lines := strings.Split(strings.TrimSpace(out), "\n")
 		assert.Eq(t, 1, len(lines))
 		var row map[string]any
@@ -262,7 +265,7 @@ func TestTraceCommandPrintsSessionTimeline(t *testing.T) {
 	})
 	t.Run("unknown session", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"trace", "nope"})
+		err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "trace", "nope"})
 		assert.Err(t, err)
 	})
 }
@@ -292,7 +295,7 @@ func TestTraceCommandShowsPlan(t *testing.T) {
 		return stdout.String()
 	}
 	t.Run("text merges plan steps by time", func(t *testing.T) {
-		out := run("trace", "trace-plan")
+		out := run("inspect", "trace", "trace-plan")
 		assert.StrContains(t, out, " plan ✔ design turn=t1")
 		assert.StrContains(t, out, " plan ▶ build turn=t1")
 		assert.StrContains(t, out, " plan ○ ship turn=t1")
@@ -300,12 +303,12 @@ func TestTraceCommandShowsPlan(t *testing.T) {
 		assert.True(t, turn < design && design < late)
 	})
 	t.Run("turn filter", func(t *testing.T) {
-		out := run("trace", "trace-plan", "--turn", "t2")
+		out := run("inspect", "trace", "trace-plan", "--turn", "t2")
 		assert.StrContains(t, out, " plan ○ other turn=t2")
 		assert.StrNotContains(t, out, "design")
 	})
 	t.Run("json", func(t *testing.T) {
-		out := run("trace", "trace-plan", "--turn", "t2", "--json")
+		out := run("inspect", "trace", "trace-plan", "--turn", "t2", "--json")
 		var plan map[string]any
 		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 			var row map[string]any

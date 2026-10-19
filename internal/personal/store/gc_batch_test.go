@@ -176,7 +176,7 @@ func gcTriggerSQL(t *testing.T, s *Store) string {
 }
 
 // TestCollectGarbageDoesNotVacuum: `gc --apply` deletes the rows and stops
-// there. The file keeps the freed pages (freelist) until `suga gc --vacuum`, so
+// there. The file keeps the freed pages (freelist) until `suga data vacuum`, so
 // the two results are reported separately (design 0.3, P3).
 func TestCollectGarbageDoesNotVacuum(t *testing.T) {
 	ctx := context.Background()

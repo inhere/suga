@@ -191,6 +191,11 @@ def estimation(binary, work, port, keep, estimate_off):
     return s.results
 
 
+def status_mentions_budget(text):
+    """Whether a status line (the line holding STATUS) mentions a budget."""
+    return any("budget" in line for line in text.splitlines() if re.search(STATUS, line))
+
+
 def no_budget(binary, work, port, keep):
     home, ws, env, fake = start_group(binary, work, port, ["--prompt-tokens", "10"])
     s = PtySession([binary, "chat"], env=env, cwd=ws, size=(100, 30))
@@ -198,7 +203,12 @@ def no_budget(binary, work, port, keep):
         m = s.mark()
         s.until(r"❯ ", m)
         s.line("旧行为")
-        s.check("unconfigured status remains unchanged", s.until(STATUS, m) and not s.contains("budget", m))
+        # Only the status line may not mention a budget: the screen also shows
+        # the work directory (".../smoke-budget-no-budget/...") whenever the
+        # session socket path is over the 107-byte Linux limit, which happens
+        # once the PID has five digits - the old whole-screen check then
+        # failed only late in `make smoke-chat` (suga-yk7d).
+        s.check("unconfigured status remains unchanged", s.until(STATUS, m) and not status_mentions_budget(s.text(m)))
         exit_chat(s, s.mark())
     finally:
         s.close(grace=0)

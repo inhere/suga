@@ -8,7 +8,7 @@ then a stream that breaks after half the reply, then the whole reply) and
 `suga chat` in a PTY with short retry waits, sends one prompt and checks: a
 retry notice for the 503, a retry notice for the overload ("服务端过载/限流"),
 a restart notice for the broken stream, the whole reply after them, and the
-session's model event in `suga trace --json` with retries=3.
+session's model event in `suga inspect trace --json` with retries=3.
 
   python3 -I scripts/ptysmoke/chat_retry.py --bin tmp/smoke/suga
 

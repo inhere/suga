@@ -14,7 +14,7 @@ import (
 
 // Data governance P1: tool results are indexed as their head and tail only.
 // These tests cover the truncation itself, the search consequences and the
-// `suga gc --shrink-fts` maintenance command that brings the historical rows
+// `suga data shrink-fts` maintenance command that brings the historical rows
 // in line (design 0.3: in-place, batched, resumable).
 
 // markedBody builds a body of n characters whose head, middle and tail hold
@@ -224,7 +224,7 @@ type legacySession struct {
 
 // openLegacyLedger opens a ledger whose entries predate the FTS migration and
 // migrates it, so entries_fts holds the full text of every tool result --
-// exactly the state `suga gc --shrink-fts` has to repair.
+// exactly the state `suga data shrink-fts` has to repair.
 func openLegacyLedger(t *testing.T, sessions ...legacySession) *Store {
 	t.Helper()
 	s, _ := openAtCoreSchema(t)
@@ -482,7 +482,7 @@ func TestFTSToolTruncationLargeLedger(t *testing.T) {
 			assistant(t, markedBody(fmt.Sprintf("assistant %d ", i), size, "中")))
 	}
 	// A ledger whose entries were written before the FTS migration: the backfill
-	// indexes them in FULL, which is exactly the state `suga gc --shrink-fts`
+	// indexes them in FULL, which is exactly the state `suga data shrink-fts`
 	// has to repair.
 	start := time.Now()
 	s := openLegacyLedger(t, legacySession{"big", entries})

@@ -48,12 +48,12 @@ func TestGCCommand(t *testing.T) {
 	}
 
 	t.Run("usage", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "gc")
+		_, err := runCLI(t, ctx, "data", "gc")
 		assert.ErrMsgContains(t, err, "--older-than")
 	})
 
 	t.Run("dry run by default", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--older-than", "30d")
+		out, err := runCLI(t, ctx, "data", "gc", "--older-than", "30d")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "gc-idle")
 		assert.StrContains(t, out, "将删除 2 个会话")
@@ -66,7 +66,7 @@ func TestGCCommand(t *testing.T) {
 		lock, err := personalprocess.AcquireSessionLock(filepath.Join(home, "run", "locks"), "gc-busy", 0)
 		assert.Require(t, assert.NoErr(t, err))
 		defer lock.Close()
-		out, err := runCLI(t, ctx, "gc", "--older-than", "30d", "--apply")
+		out, err := runCLI(t, ctx, "data", "gc", "--older-than", "30d", "--apply")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "已删除 1 个会话")
 		assert.False(t, exists("gc-idle"))

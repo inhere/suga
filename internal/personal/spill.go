@@ -106,7 +106,7 @@ func (s *SessionSpiller) Spill(ctx context.Context, call agentcore.ToolCall, con
 // checkQuota refuses a new output that would push the logical size of all spill
 // files over tools.spill.max_bytes (design: 超配额默认 refuse，不自动删旧输出).
 // The error is diagnostic: the output layer logs it and keeps the head and tail
-// of the result, and the report of `suga gc --compress-spill` says what to do
+// of the result, and the report of `suga data compress-spill` says what to do
 // about the directory.
 func (s *SessionSpiller) checkQuota(content int) error {
 	if s.maxBytes <= 0 {
@@ -120,7 +120,7 @@ func (s *SessionSpiller) checkQuota(content int) error {
 		return nil
 	}
 	return fmt.Errorf("spill: %s of spill files plus %s of this output exceeds tools.spill.max_bytes (%s); "+
-		"older outputs are never dropped by this path - compress or remove them with `suga gc --compress-spill` "+
+		"older outputs are never dropped by this path - compress or remove them with `suga data compress-spill` "+
 		"or raise the limit",
 		humanSpillBytes(usage.LogicalBytes), humanSpillBytes(int64(content)), humanSpillBytes(s.maxBytes))
 }

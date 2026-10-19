@@ -14,7 +14,7 @@ import (
 // a test that ages a session after writing to it has to use the same one.
 const sessionTimeLayout = "2006-01-02T15:04:05.000000000Z"
 
-// TestGCRetentionCommand: `suga gc --retention` reports one line per origin
+// TestGCRetentionCommand: `suga data gc --retention` reports one line per origin
 // class (sessions, entries, estimated bytes), removes nothing without --apply,
 // and refuses to mix the two selection rules of the command.
 func TestGCRetentionCommand(t *testing.T) {
@@ -54,7 +54,7 @@ func TestGCRetentionCommand(t *testing.T) {
 	}
 
 	t.Run("dry run reports every class and writes nothing", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--retention")
+		out, err := runCLI(t, ctx, "data", "gc", "--retention")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "交互会话（保留 180d）：2 个会话")
 		assert.StrContains(t, out, "非交互会话（保留 30d）：1 个会话")
@@ -65,12 +65,12 @@ func TestGCRetentionCommand(t *testing.T) {
 	})
 
 	t.Run("both selection rules at once are refused", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "gc", "--retention", "--older-than", "30d")
+		_, err := runCLI(t, ctx, "data", "gc", "--retention", "--older-than", "30d")
 		assert.ErrMsgContains(t, err, "--retention and --older-than")
 	})
 
 	t.Run("apply removes the expired classes only", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--retention", "--apply")
+		out, err := runCLI(t, ctx, "data", "gc", "--retention", "--apply")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "已删除 3 个会话")
 		// Apply reports the deletion, never a VACUUM: the two are separate.

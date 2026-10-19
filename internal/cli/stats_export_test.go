@@ -66,7 +66,7 @@ func runCLI(t *testing.T, ctx context.Context, args ...string) (string, error) {
 func TestStatsCommand(t *testing.T) {
 	ctx := seedObserve(t)
 	t.Run("json all", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "stats", "--json")
+		out, err := runCLI(t, ctx, "inspect", "stats", "--json")
 		assert.NoErr(t, err)
 		var rep store.Report
 		assert.NoErr(t, json.Unmarshal([]byte(out), &rep))
@@ -93,22 +93,22 @@ func TestStatsCommand(t *testing.T) {
 		assert.Eq(t, 1, rep.ToolSearch)
 	})
 	t.Run("since filters old events", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "stats", "--since", "7d", "--json")
+		out, err := runCLI(t, ctx, "inspect", "stats", "--since", "7d", "--json")
 		assert.NoErr(t, err)
 		var rep store.Report
 		assert.NoErr(t, json.Unmarshal([]byte(out), &rep))
 		assert.Eq(t, 2, rep.Models[0].Calls)
 	})
 	t.Run("session filter and text", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "stats", "--session", "obs-2")
+		out, err := runCLI(t, ctx, "inspect", "stats", "--session", "obs-2")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "anthropic/m1")
 		assert.StrContains(t, out, "compactions: 0")
 	})
 	t.Run("bad args", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "stats", "--since", "abc")
+		_, err := runCLI(t, ctx, "inspect", "stats", "--since", "abc")
 		assert.Err(t, err)
-		_, err = runCLI(t, ctx, "stats", "--session", "nope")
+		_, err = runCLI(t, ctx, "inspect", "stats", "--session", "nope")
 		assert.Err(t, err)
 	})
 }
@@ -134,7 +134,7 @@ func TestExportCommand(t *testing.T) {
 		return rows
 	}
 	t.Run("plain", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "export", "obs-1")
+		out, err := runCLI(t, ctx, "inspect", "export", "obs-1")
 		assert.NoErr(t, err)
 		rows := check(t, out)
 		assert.Eq(t, 9, len(rows)) // 2 entries + 7 events of obs-1
@@ -142,7 +142,7 @@ func TestExportCommand(t *testing.T) {
 	})
 	t.Run("redact to file", func(t *testing.T) {
 		f := t.TempDir() + "/out.jsonl"
-		_, err := runCLI(t, ctx, "export", "obs-1", "--redact", "-o", f)
+		_, err := runCLI(t, ctx, "inspect", "export", "obs-1", "--redact", "-o", f)
 		assert.NoErr(t, err)
 		b, err := os.ReadFile(f)
 		assert.NoErr(t, err)
@@ -159,7 +159,7 @@ func TestExportCommand(t *testing.T) {
 		}
 	})
 	t.Run("unknown session", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "export", "nope")
+		_, err := runCLI(t, ctx, "inspect", "export", "nope")
 		assert.Err(t, err)
 	})
 	t.Run("with outputs", func(t *testing.T) {
@@ -169,11 +169,11 @@ func TestExportCommand(t *testing.T) {
 		assert.NoErr(t, os.MkdirAll(outputs, 0o700))
 		assert.NoErr(t, os.WriteFile(filepath.Join(outputs, "0123456789abcdef.txt"), []byte("full output\nline 2"), 0o600))
 
-		plain, err := runCLI(t, ctx, "export", "obs-1")
+		plain, err := runCLI(t, ctx, "inspect", "export", "obs-1")
 		assert.NoErr(t, err)
 		assert.StrNotContains(t, plain, `"kind":"output"`)
 
-		out, err := runCLI(t, ctx, "export", "obs-1", "--with-outputs")
+		out, err := runCLI(t, ctx, "inspect", "export", "obs-1", "--with-outputs")
 		assert.NoErr(t, err)
 		lines := strings.Split(strings.TrimSpace(out), "\n")
 		assert.Eq(t, 10, len(lines))
@@ -204,7 +204,7 @@ func TestExportCommand(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(dir, "ffffffffffffffff.txt.gz.tmp"), []byte("half"), 0o600)))
 		assert.Require(t, assert.NoErr(t, os.Remove(filepath.Join(dir, "0123456789abcdef.txt"))))
 
-		out, err := runCLI(t, ctx, "export", "obs-1", "--with-outputs")
+		out, err := runCLI(t, ctx, "inspect", "export", "obs-1", "--with-outputs")
 		assert.NoErr(t, err)
 		lines := strings.Split(strings.TrimSpace(out), "\n")
 		assert.Eq(t, 10, len(lines))

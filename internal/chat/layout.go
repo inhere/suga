@@ -146,7 +146,7 @@ func BuildLastReplyNotices(info LastReplyInfo) []LayoutLine {
 	}
 	if info.Omitted > 0 {
 		lines = append(lines, LayoutLine{
-			Text:  fmt.Sprintf("已截断前 %d 行，完整记录见 suga trace %s", info.Omitted, info.SessionID),
+			Text:  fmt.Sprintf("已截断前 %d 行，完整记录见 suga inspect trace %s", info.Omitted, info.SessionID),
 			Color: color.Gray,
 		})
 	}

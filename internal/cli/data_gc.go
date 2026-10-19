@@ -17,44 +17,27 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// newGCCommand builds `suga gc`: remove sessions idle for longer than
+// newDataGCCommand builds `suga data gc`: remove sessions idle for longer than
 // --older-than, or by origin class with --retention (only reports by default;
-// --apply deletes). The same command owns the ledger maintenance jobs of data
-// governance: --shrink-fts rewrites the historical tool rows of entries_fts to
-// the truncated form new rows already use, --vacuum returns the freed space to
-// the disk, and --compress-spill gzips the idle spill files (dry run unless
-// --apply). A deletion no longer VACUUMs by itself: the two results are
-// reported separately (design 0.3, P3).
-func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+// --apply deletes). The ledger maintenance jobs that used to be switches of
+// this command now have their own subcommands (data shrink-fts, data vacuum,
+// data compress-spill). A deletion no longer VACUUMs by itself: the two
+// results are reported separately (design 0.3, P3).
+func newDataGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var olderThan string
-	var apply, shrinkFTS, status, abort, vacuum, retention, compressSpill bool
-	var batch int
-	cmd := capp.NewCmd("gc", "Remove sessions idle within --older-than or by origin class with --retention (dry run unless --apply), shrink the tool-output FTS index, compress spill outputs or VACUUM the ledger", func(c *capp.Cmd) error {
+	var apply, retention bool
+	cmd := capp.NewCmd("gc", "Remove sessions idle within --older-than or by origin class with --retention (dry run unless --apply)", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga gc --older-than 30d [--apply] | suga gc --retention [--apply] | suga gc --shrink-fts [--status|--abort] | suga gc --vacuum | suga gc --compress-spill [--apply]")
+			return fmt.Errorf("usage: suga data gc --older-than 30d [--apply] | suga data gc --retention [--apply]")
 		}
 		if retention && olderThan != "" {
 			return fmt.Errorf("--retention and --older-than are two different selection rules; pass one of them")
 		}
-		if status || abort {
-			if !shrinkFTS {
-				return fmt.Errorf("--status and --abort belong to --shrink-fts: suga gc --shrink-fts [--status|--abort]")
-			}
-		}
-		if shrinkFTS {
-			return runShrinkFTS(ctx, stdout, status, abort, batch)
-		}
-		if vacuum {
-			return runGCVacuum(ctx, stdout)
-		}
 		if retention {
 			return runGCRetention(ctx, stdout, apply)
 		}
-		if compressSpill {
-			return runGCCompressSpill(ctx, stdout, apply)
-		}
 		if olderThan == "" {
-			return fmt.Errorf("usage: suga gc --older-than 30d [--apply]")
+			return fmt.Errorf("usage: suga data gc --older-than 30d [--apply]")
 		}
 		age, err := parseSince(olderThan)
 		if err != nil {
@@ -66,12 +49,6 @@ func newGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	cmd.StringVar(&olderThan, "older-than", "", "remove sessions not updated within this age, e.g. 30d or 12h")
 	cmd.BoolVar(&apply, "apply", false, "delete for real (default: only list what would be removed)")
 	cmd.BoolVar(&retention, "retention", false, "remove by origin class: gc.retention.interactive for chats, gc.retention.noninteractive for run/ACP sessions")
-	cmd.BoolVar(&shrinkFTS, "shrink-fts", false, "rewrite old tool-output FTS rows to the truncated index form (resumable, Ctrl-C keeps the progress)")
-	cmd.BoolVar(&status, "status", false, "with --shrink-fts: report how much of the index is left to shrink")
-	cmd.BoolVar(&abort, "abort", false, "with --shrink-fts: drop the progress checkpoint so the next run starts over")
-	cmd.BoolVar(&vacuum, "vacuum", false, "rewrite the database file to return freed space (needs free disk space and no other suga process)")
-	cmd.BoolVar(&compressSpill, "compress-spill", false, "compress spill outputs older than tools.spill.compress_after (report only unless --apply)")
-	cmd.IntVar(&batch, "batch", 0, "with --shrink-fts: rows per write transaction (default 2000)")
 	return cmd
 }
 
@@ -85,7 +62,7 @@ func runGC(ctx context.Context, out io.Writer, cutoff time.Time, apply bool) err
 		return err
 	}
 	// An apply is a maintenance job: it holds the same run/maintenance.lock as
-	// `gc --vacuum`, so two maintenance jobs never rewrite this ledger at once.
+	// `data vacuum`, so two maintenance jobs never rewrite this ledger at once.
 	if apply {
 		lock, err := acquireMaintenanceLock(home)
 		if err != nil {
@@ -182,7 +159,7 @@ func writeGCReport(out io.Writer, report store.GCReport, cutoff time.Time) {
 	} else {
 		// Freeing the file back to the disk is a separate job with its own
 		// report: apply only says which rows are gone (design 0.3, P3).
-		fmt.Fprint(out, "；VACUUM 未执行，要回收磁盘空间再运行 `suga gc --vacuum`")
+		fmt.Fprint(out, "；VACUUM 未执行，要回收磁盘空间再运行 `suga data vacuum`")
 	}
 	fmt.Fprintln(out)
 }
@@ -259,10 +236,11 @@ func sessionIDsOf(sessions []store.Session) []string {
 	return out
 }
 
-// runGCRetention runs `suga gc --retention`: it applies the per-class retention
-// periods (gc.retention.interactive / gc.retention.noninteractive) instead of
-// one shared age. A first pass plans and takes the locks of its candidates, the
-// second one applies the same selection; both are dry runs without --apply.
+// runGCRetention runs `suga data gc --retention`: it applies the per-class
+// retention periods (gc.retention.interactive / gc.retention.noninteractive)
+// instead of one shared age. A first pass plans and takes the locks of its
+// candidates, the second one applies the same selection; both are dry runs
+// without --apply.
 func runGCRetention(ctx context.Context, out io.Writer, apply bool) error {
 	home, err := appconfig.ResolveSugaHome()
 	if err != nil {
@@ -327,13 +305,13 @@ func writeRetentionReport(out io.Writer, report store.GCRetentionReport) {
 	if report.Applied {
 		verb = "已删除"
 	}
-	fmt.Fprintf(out, "%s %d 个会话（含其 transcript 文件与会话目录），预计释放 %s（实际字节要等 `suga gc --vacuum`）\n",
+	fmt.Fprintf(out, "%s %d 个会话（含其 transcript 文件与会话目录），预计释放 %s（实际字节要等 `suga data vacuum`）\n",
 		verb, len(report.Sessions()),
 		humanBytes(report.Interactive.EstimatedBytes+report.NonInteractive.EstimatedBytes))
 	if !report.Applied {
-		fmt.Fprintln(out, "加 --apply 执行；删除本身不 VACUUM，要回收磁盘空间再运行 `suga gc --vacuum`")
+		fmt.Fprintln(out, "加 --apply 执行；删除本身不 VACUUM，要回收磁盘空间再运行 `suga data vacuum`")
 	} else {
 		// The deletion and the file rewrite are two separate reports.
-		fmt.Fprintln(out, "VACUUM 未执行：要把空间还给磁盘再运行 `suga gc --vacuum`")
+		fmt.Fprintln(out, "VACUUM 未执行：要把空间还给磁盘再运行 `suga data vacuum`")
 	}
 }

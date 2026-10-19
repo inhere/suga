@@ -5,7 +5,7 @@ Starts fakellm.py (adddir mode) and `suga chat --add-dir <outside> --add-dir
 <shared>:rw` in a PTY: the model reads a file that lives outside the workspace
 through file_read, writes a file into the :rw directory through file_write
 (tools.approval: auto, so no question), exits with two Ctrl-C, then checks
-`suga trace --json` of that session: the turn_context event lists both
+`suga inspect trace --json` of that session: the turn_context event lists both
 directories as path:ro and path:rw.
 
   python3 -I scripts/ptysmoke/chat_adddir.py --bin tmp/smoke/suga

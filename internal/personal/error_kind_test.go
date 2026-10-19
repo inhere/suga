@@ -42,7 +42,7 @@ func statusTestServer(t *testing.T, status int) *httptest.Server {
 
 // TestTurnEventRecordsErrorKind: a turn that fails on a provider error carries
 // the kind (llm.ErrorKind) both in the result and as attr error_kind on its turn
-// event, which is what `suga trace --json` and the analysis read; a cut stream
+// event, which is what `suga inspect trace --json` and the analysis read; a cut stream
 // (transient) and an unusable answer (bad response) are told apart.
 func TestTurnEventRecordsErrorKind(t *testing.T) {
 	// Waits of milliseconds: a cut stream is retried (llm.retry), an unusable

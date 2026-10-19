@@ -46,7 +46,7 @@ const (
 // short write transaction, so a cleanup of hundreds of sessions can be
 // interrupted with Ctrl-C and keeps what it already committed. It does NOT
 // VACUUM: returning the freed space to the disk is the explicit
-// `suga gc --vacuum`, which reports separately from the deleted rows
+// `suga data vacuum`, which reports separately from the deleted rows
 // (design 0.3, P3).
 func (s *Store) CollectGarbage(ctx context.Context, cutoff time.Time, keep map[string]bool, apply bool) (GCReport, error) {
 	sessions, err := s.ListSessions(ctx)

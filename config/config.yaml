@@ -23,7 +23,7 @@ providers:
     #     context_window: 128000
     #     max_output_tokens: 64000
     #     # Optional price in USD per million tokens; used for the cost shown by
-    #     # `suga stats` / usage_update when the provider reports no cost.
+    #     # `suga inspect stats` / usage_update when the provider reports no cost.
     #     price: {input: 0.27, output: 1.1, cache_read: 0.07, cache_write: 0}
     #   sonnet:
     #     # A model may use its own protocol and address (e.g. the Claude
@@ -248,7 +248,7 @@ tools:
   # Tools this machine already has and the agent should prefer: a command on PATH
   # or an mcp.servers id, plus one line of "when to use it". Available items are
   # listed in the environment section (missing ones are left out and only show up
-  # in `suga manifest` with a reason). A preferred MCP server is never deferred
+  # in `suga inspect manifest` with a reason). A preferred MCP server is never deferred
   # (tools.deferred above), but it is still denied until it is allowed in
   # auto_allow / read_only_allow below; a preferred command still goes through the
   # shell_exec approval (e.g. an approval rule with command: ["rg *"]).

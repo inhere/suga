@@ -430,7 +430,7 @@ func normalizeSQL(s string) string {
 // expression (ftsTruncateExpr), while no migration backfills entries_fts any
 // more. A new startup backfill is the full-table work that hung v0.31.0, and
 // the two historical backfills stay as they were applied: they indexed tool
-// results in full, and `suga gc --shrink-fts` is what reconciles those rows.
+// results in full, and `suga data shrink-fts` is what reconciles those rows.
 func TestFTSExpressionsMatchMigration(t *testing.T) {
 	t.Run("only the two historical backfills touch entries_fts", func(t *testing.T) {
 		backfills := ftsBackfillMigrations(t)

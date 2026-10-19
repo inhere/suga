@@ -12,7 +12,7 @@ import (
 // TestSessionOriginRecordedAtCreation: the entry point names itself in
 // meta.origin, resuming a session leaves the origin alone, and a chat that
 // continues a run or ACP session marks it used interactively - which is what
-// `suga gc --retention` classifies by (design 0.3, 会话来源).
+// `suga data gc --retention` classifies by (design 0.3, 会话来源).
 func TestSessionOriginRecordedAtCreation(t *testing.T) {
 	ctx := context.Background()
 	repo := openObserveRepo(t)

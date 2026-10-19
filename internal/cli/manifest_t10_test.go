@@ -12,7 +12,7 @@ import (
 func TestManifestApprovalRulesTextIsDiagnostic(t *testing.T) {
 	manifestCLIEnv(t)
 	var stdout, stderr bytes.Buffer
-	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"manifest"})
+	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"inspect", "manifest"})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, stdout.String(), "Approval rules")
 	assert.StrContains(t, stdout.String(), "tools.approval=ask")

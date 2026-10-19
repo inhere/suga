@@ -8,7 +8,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 )
 
-// TestCollectGarbageByRetention: `suga gc --retention` removes sessions by
+// TestCollectGarbageByRetention: `suga data gc --retention` removes sessions by
 // origin class (design 0.3, 会话来源). A chat session, a session a chat
 // continued and a session from before meta.origin existed are interactive; run,
 // ACP and sub-agent sessions are not. A missing origin must never be guessed

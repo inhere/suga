@@ -43,7 +43,7 @@ suga chat                                         # 在当前目录开启交互�
 ```
 
 - 单轮：`suga run --prompt "概括一下这个项目"`（只读）、`suga run --allow-write --prompt "修好失败的测试"`、`suga run --resume <session-id> --prompt "继续"`；`--max-steps` 限制本轮步数（默认 240）。
-- 完整字段样例见 [config/config.yaml](config/config.yaml)；`suga manifest` 显示完整的生效能力。
+- 完整字段样例见 [config/config.yaml](config/config.yaml)；`suga inspect manifest` 显示完整的生效能力。
 
 ## Chat
 
@@ -63,7 +63,7 @@ suga chat                                         # 在当前目录开启交互�
 - 只读取 `$SUGA_HOME/config.yaml` 和 `$SUGA_HOME/.env`（默认 `~/.suga`），工作目录下的配置不会被读取；`SUGA_CONFIG` 可指定唯一配置文件。
 - `suga init` 可安全重复执行；`suga init --force` 只备份并替换 home 配置，绝不写入 `.env` 值，也不会绕过显式 `SUGA_CONFIG` 保护。
 - `suga config get|set|unset|list|path` 显示生效值与来源、保留 YAML 注释，并拒绝把密钥写入 YAML；密钥放进 `.env`，配置用 `${VAR}` 引用。
-- `suga models [--json]` 只离线查看本地 provider 和模型引用，不替代 `suga manifest` 或 chat 会话级的 `:model` 切换。
+- `suga models [--json]` 只离线查看本地 provider 和模型引用，不替代 `suga inspect manifest` 或 chat 会话级的 `:model` 切换。
 - `model` 为 `<provider>/<model>`，优先级 `--model` > `SUGA_MODEL` > 配置；`fallback_models` 依次备用，`compact_model` 生成摘要。
 - `providers.<id>`：`type`（`openai`、`openai-responses`、`anthropic`）、`base_url`、`api_key`、`headers`，以及模型级 `context_window`、`max_output_tokens`、`model_id`、`price`、`thinking`。
 - 常用开关：`tools.allow_write`、`tools.approval`、`mcp.servers`、`memory.*`、`hooks.*`、`chat.*`、`skills.*`、`workspace`。
@@ -83,7 +83,7 @@ suga chat                                         # 在当前目录开启交互�
 - **后台与监听任务**：`shell_exec` 带 `background: true` 后台运行；加 `every` / `watch_paths` 变成监听，结果变化时通知模型。
 - **大输出**：超过 `tools.max_output_bytes` 的结果外置为 ref；shell 测试/构建输出先按输出规则精简（可在 `output-rules.yaml` 定制）。
 - **MCP**：`--mcp-config` 或 `mcp.servers` 接入，默认全部拒绝，需在 `tools.auto_allow` / `tools.read_only_allow` 放行。
-- **优先工具**：`tools.preferred` 声明本机已有的命令（如 `rg`、`xerj`）与 MCP 服务；可用项写进环境说明（`kind: command` 只在注册了 `shell_exec` 的可写会话里列出，只读会话不列），`suga manifest` 对每项显示 `present` 与原因（包括缺失项，命令项的原因注明只读会话不列出）。优先只是排序提示：不会放行 MCP 调用、也不跳 `shell_exec` 的审批，缺失的项只是不进提示词。
+- **优先工具**：`tools.preferred` 声明本机已有的命令（如 `rg`、`xerj`）与 MCP 服务；可用项写进环境说明（`kind: command` 只在注册了 `shell_exec` 的可写会话里列出，只读会话不列），`suga inspect manifest` 对每项显示 `present` 与原因（包括缺失项，命令项的原因注明只读会话不列出）。优先只是排序提示：不会放行 MCP 调用、也不跳 `shell_exec` 的审批，缺失的项只是不进提示词。
 
 ## 子 agent
 
@@ -136,13 +136,13 @@ suga chat                                         # 在当前目录开启交互�
 详细说明：[references/observability.md](skills/suga-guide/references/observability.md)
 
 ```text
-suga trace <session> [--turn <id>] [--json]       # 时间线：模型调用、工具、拒绝、计划
-suga trace <session> --analyze | --web            # 循环分析 / 本机网页
-suga sessions [关键词] [--since 7d] [--agents]     # 会话列表
-suga stats [--session <id>] [--json]              # 调用次数、耗时、token、缓存、成本
-suga export <session> | suga gc --older-than 30d  # 导出 / 清理
-suga gc --retention [--apply]                     # 按来源清理：chat 180 天 / run+ACP 30 天
-suga ps | suga manifest                           # 运行中的 chat / 能力清单
+suga inspect trace <session> [--turn <id>] [--json]            # 时间线：模型调用、工具、拒绝、计划
+suga inspect trace <session> --analyze | --web                 # 循环分析 / 本机网页
+suga sessions [关键词] [--since 7d] [--agents]                    # 会话列表
+suga inspect stats [--session <id>] [--json]                   # 调用次数、耗时、token、缓存、成本
+suga inspect export <session> | suga data gc --older-than 30d  # 导出 / 清理
+suga data gc --retention [--apply]                             # 按来源清理：chat 180 天 / run+ACP 30 天
+suga ps | suga inspect manifest                                # 运行中的 chat / 能力清单
 ```
 
 - `run --output-format stream-json` 每次模型调用后输出累计 `usage`，重试输出 `retry`，上限收尾时 `result` 带 `wrap_up`。

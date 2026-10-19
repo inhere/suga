@@ -29,7 +29,7 @@
 | `providers.<id>.models.<model>.context_window` | 按模型名推断 | 该模型的上下文窗口（优先级：模型级 > provider 级 > 名字推断） |
 | `providers.<id>.models.<model>.model_id` | 不设（发送键名） | 请求里实际发送的模型 id，便于用短名引用长 id |
 | `providers.<id>.models.<model>.type`、`base_url` | 继承 provider | 该模型自己的协议与地址（同一网关的 Claude 模型可单独走 Anthropic 端点） |
-| `providers.<id>.models.<model>.price` | 不设 | `{input, output, cache_read, cache_write}`，每百万 token 的美元价；provider 不返回成本时 `suga stats` 用它算 |
+| `providers.<id>.models.<model>.price` | 不设 | `{input, output, cache_read, cache_write}`，每百万 token 的美元价；provider 不返回成本时 `suga inspect stats` 用它算 |
 | `providers.<id>.models.<model>.thinking` | 不设 | 该模型的思考档位 |
 
 思考档位取值：`off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`auto`。优先级 `--thinking`（只作用于主模型）> 模型级 > provider 级；不设或 `auto` 不发送。细节与网关示例见 `references/providers.md`。
@@ -113,7 +113,7 @@
 | `tools.max_spill_bytes` | `1048576`（1 MiB） | 单次工具（含 MCP）原始输出上限 |
 | `tools.spill.max_bytes` | `1073741824`（1 GiB） | `$SUGA_HOME/sessions/**/outputs` 的逻辑字节配额（`.gz` 按压缩前字节计）；超额时新的 spill 返回错误并只保留头尾，**不会**自动删旧输出；`0` 不设配额 |
 | `tools.spill.max_age` | `90d` | 可淘汰年龄（只作报告/gc 候选，不在写入路径删文件） |
-| `tools.spill.compress_after` | `7d` | `suga gc --compress-spill` 压缩 mtime 超过此时长且会话不活跃的 `.txt`（先写 `.txt.gz.tmp`、解压校验后 rename、最后删 `.txt`；ref 不变） |
+| `tools.spill.compress_after` | `7d` | `suga data compress-spill` 压缩 mtime 超过此时长且会话不活跃的 `.txt`（先写 `.txt.gz.tmp`、解压校验后 rename、最后删 `.txt`；ref 不变） |
 | `tools.spill.compression` | `gzip` | `off` 关闭压缩；读取端始终兼容 `.txt`/`.txt.gz` |
 | `tools.spill.on_quota` | `refuse` | 超配额时拒写新输出（仅支持 `refuse`） |
 | `tools.spill.keep_days` | `0` | 额外的按天淘汰规则；`0` 只用 `max_age` |
@@ -138,7 +138,7 @@
 
 allow 命令按实际 sh/bash、PowerShell 或 cmd 做 ASCII 字符、配对引号和 token 校验；只有末尾独立 `*`/`**` 扩展 token。allow 路径同时检查 root 锚定的词法和真实路径，符号链接、硬链接、特殊文件、解析失败及 Windows 特殊路径不放行。YAML anchor/alias、未知字段、错误组合、超过 64 KiB 或超过 256 条规则都会导致启动失败。规则不能绕过只读模式、沙箱、危险删除守卫或 `$SUGA_HOME`、`.suga`、`.git` 等受保护路径。
 
-chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区分的会话规则；`persist_ask` 开启时，随后用 `u` 写用户级，`p` 只写项目级 deny，回车保留本会话。ACP 的 `allow_always`/`reject_always` 只保存在当前进程会话状态，不写规则文件。`suga manifest --json` 显示路径、生效条数、hash/信任与忽略原因；`suga trace <session> --json` 显示 `approval_rule`、`approval_scope` 与 `approval_rule_persist`。`enabled: false` 可回退旧路径。
+chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区分的会话规则；`persist_ask` 开启时，随后用 `u` 写用户级，`p` 只写项目级 deny，回车保留本会话。ACP 的 `allow_always`/`reject_always` 只保存在当前进程会话状态，不写规则文件。`suga inspect manifest --json` 显示路径、生效条数、hash/信任与忽略原因；`suga inspect trace <session> --json` 显示 `approval_rule`、`approval_scope` 与 `approval_rule_persist`。`enabled: false` 可回退旧路径。
 
 输出规则：内置规则按语言/工具分文件（`go`、`rust`、`js`、`python`、`java`、`git`、`grep`）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。一条规则可按命令（可加 `match_output` 再按输出）匹配，然后丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），并用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果永远不短于原文时不交给模型。字段与执行顺序见 `pkg/agentcore/tools/native/rules/README.md`。
 
@@ -146,10 +146,10 @@ chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
-| `gc.retention.interactive` | `180d` | `suga gc --retention` 对交互会话的保留期：chat 创建、被 chat 接续过（`used_interactively`）以及没有 `meta.origin` 的历史会话。`0` 表示该类不清理 |
+| `gc.retention.interactive` | `180d` | `suga data gc --retention` 对交互会话的保留期：chat 创建、被 chat 接续过（`used_interactively`）以及没有 `meta.origin` 的历史会话。`0` 表示该类不清理 |
 | `gc.retention.noninteractive` | `30d` | 同上，适用于非交互入口（`meta.origin` 为 `run`、`acp`、`agent`）创建的会话。`0` 表示该类不清理 |
 
-时长接受天数（`180d`、`30d`）、Go 时长（`4320h`）或秒数。`suga gc --retention` 默认只报告（每类的会话数、条目数、预计字节），`--apply` 才删除；活跃会话、run 登记与持锁会话始终跳过，删除本身不 VACUUM（要回收磁盘空间再跑 `suga gc --vacuum`）。
+时长接受天数（`180d`、`30d`）、Go 时长（`4320h`）或秒数。`suga data gc --retention` 默认只报告（每类的会话数、条目数、预计字节），`--apply` 才删除；活跃会话、run 登记与持锁会话始终跳过，删除本身不 VACUUM（要回收磁盘空间再跑 `suga data vacuum`）。
 
 ## `mcp.*`
 
@@ -202,7 +202,7 @@ chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区
 | `memory.<scope>.args` | `[]` | 外部命令参数 |
 | `memory.<scope>.timeout_sec` | 不设 | 外部命令超时秒数 |
 
-`memory.project.backend` 不设时的选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/<id>.md`，可随项目提交）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`（`<key>` = 仓库目录名 + 路径短哈希）。`suga manifest` 显示结果与原因。
+`memory.project.backend` 不设时的选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/<id>.md`，可随项目提交）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`（`<key>` = 仓库目录名 + 路径短哈希）。`suga inspect manifest` 显示结果与原因。
 
 ## `hooks.*`（仅 chat）
 
@@ -264,7 +264,7 @@ suga models
 suga models --json
 ```
 
-它只读取本地配置，列出内置 provider 命名空间、已配置模型以及当前/compact/fallback 角色，并输出与 chat `:model` 共享的 `switchable` 范围。它不构造 provider、不启动 MCP 或 hooks、不请求远端模型目录；`suga manifest` 仍负责完整能力诊断，chat 的 `:model` 仍是会话级切换且不写配置。
+它只读取本地配置，列出内置 provider 命名空间、已配置模型以及当前/compact/fallback 角色，并输出与 chat `:model` 共享的 `switchable` 范围。它不构造 provider、不启动 MCP 或 hooks、不请求远端模型目录；`suga inspect manifest` 仍负责完整能力诊断，chat 的 `:model` 仍是会话级切换且不写配置。
 
 ### 命令退出码与手工备选
 
@@ -320,20 +320,20 @@ suga run --prompt "..."   # 单轮；[--allow-write] [--read-only] [--model] [--
                           # [--no-project-rules] [--injected] [--max-steps <N>]
                           # [--add-dir <绝对目录>[:ro|:rw]]（可重复；也可用 SUGA_ADD_DIRS）
                           # [--allow-cwd-change]（会话原目录与当前目录不一致时在当前目录继续）
-suga acp                  # 以 ACP stdio 服务（供 gofer 等客户端接入）
+suga acp                                      # 以 ACP stdio 服务（供 gofer 等客户端接入）
 suga send --session <id|短名称|前缀> --text <文本>   # 给正在运行的 chat 送话（--wait 等真正开始）
-suga ps                   # 正在运行的 chat 进程（第二列是短名称）
+suga ps                                       # 正在运行的 chat 进程（第二列是短名称）
 suga sessions [关键词] [-n 10] [--since 7d] [--cwd .] [--agents] [--json]
-suga trace <session> [--turn <id>] [--json] [--analyze] [--web]
+suga inspect trace <session> [--turn <id>] [--json] [--analyze] [--web]
 suga undo <session> --list [--json]
 suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]
-suga stats [--session <id>] [--since 7d] [--json]
-suga export <session> [--redact] [-o <file>]
-suga gc --older-than 30d [--apply]
-suga gc --retention [--apply]
-suga gc --shrink-fts [--status|--abort]
-suga gc --vacuum
-suga manifest [--json] [--model <p/m>] [--thinking <level>]
+suga inspect stats [--session <id>] [--since 7d] [--json]
+suga inspect export <session> [--redact] [-o <file>]
+suga data gc --older-than 30d [--apply]
+suga data gc --retention [--apply]
+suga data shrink-fts [--status|--abort]
+suga data vacuum
+suga inspect manifest [--json] [--model <p/m>] [--thinking <level>]
 suga version
 ```
 

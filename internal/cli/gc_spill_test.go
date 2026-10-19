@@ -14,7 +14,7 @@ import (
 	"github.com/inhere/suga/internal/personal"
 )
 
-// TestGCCompressSpillCommand covers `suga gc --compress-spill` through the CLI:
+// TestGCCompressSpillCommand covers `suga data compress-spill` through the CLI:
 // the dry run only reports (and still measures the compressed size), --apply
 // rewrites the old spill file inside the maintenance window, and the ref keeps
 // reading the same content afterwards. The ledger is an isolated temp SUGA_HOME.
@@ -43,7 +43,7 @@ func TestGCCompressSpillCommand(t *testing.T) {
 	writeSpill(t, "sess_new", "bbbbbbbbbbbbbbbb", 0)
 
 	t.Run("dry run reports without changing files", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "gc", "--compress-spill")
+		out, err := runCLI(t, ctx, "data", "compress-spill")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "2 个文件")
 		assert.StrContains(t, out, "未超额")
@@ -65,13 +65,13 @@ func TestGCCompressSpillCommand(t *testing.T) {
 		record := fmt.Sprintf(`{"pid":%d,"session_id":"sess_live","socket":%q}`,
 			os.Getpid(), filepath.Join(runDir, fmt.Sprintf("%d.sock", os.Getpid())))
 		assert.Require(t, assert.NoErr(t, os.WriteFile(recordPath, []byte(record), 0o600)))
-		_, err := runCLI(t, ctx, "gc", "--compress-spill", "--apply")
+		_, err := runCLI(t, ctx, "data", "compress-spill", "--apply")
 		assert.ErrMsgContains(t, err, "sess_live")
 		_, err = os.Stat(oldPath)
 		assert.NoErr(t, err)
 
 		assert.Require(t, assert.NoErr(t, os.Remove(recordPath)))
-		out, err := runCLI(t, ctx, "gc", "--compress-spill", "--apply")
+		out, err := runCLI(t, ctx, "data", "compress-spill", "--apply")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "压缩完成：1 个文件")
 		assert.StrContains(t, out, "ref 不变")
@@ -96,7 +96,7 @@ func TestGCCompressSpillCommand(t *testing.T) {
 	})
 
 	t.Run("a configuration error is reported", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "gc", "--compress-spill", "extra")
+		_, err := runCLI(t, ctx, "data", "compress-spill", "extra")
 		assert.ErrMsgContains(t, err, "usage")
 	})
 }

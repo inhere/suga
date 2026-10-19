@@ -15,13 +15,13 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// newStatsCommand builds `suga stats`.
+// newStatsCommand builds `suga inspect stats`.
 func newStatsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var since, session string
 	var asJSON bool
 	cmd := capp.NewCmd("stats", "Summarize model/tool calls, latency, tokens and cache hits", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga stats [--since 7d] [--session id] [--json]")
+			return fmt.Errorf("usage: suga inspect stats [--since 7d] [--session id] [--json]")
 		}
 		return runStats(ctx, stdout, since, session, asJSON)
 	})

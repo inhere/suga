@@ -63,6 +63,27 @@ func TestOnboardingLeavesReachTheirCappHandlers(t *testing.T) {
 	})
 }
 
+// TestGroupHelpListsLeaves: a group without a subcommand only prints its own
+// help, which must name every subcommand it holds (v0.36 command groups).
+func TestGroupHelpListsLeaves(t *testing.T) {
+	for _, tc := range []struct {
+		group  string
+		leaves []string
+	}{
+		{group: "inspect", leaves: []string{"trace", "stats", "export", "manifest"}},
+		{group: "data", leaves: []string{"gc", "shrink-fts", "vacuum", "compress-spill", "backup", "restore"}},
+	} {
+		t.Run(tc.group, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{tc.group})
+			assert.NoErr(t, err)
+			for _, name := range tc.leaves {
+				assert.StrContains(t, stderr.String(), name)
+			}
+		})
+	}
+}
+
 func TestConfigLeafHelpKeepsItsPositionalContract(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"config", "set", "--help"})

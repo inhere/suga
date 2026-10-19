@@ -8,7 +8,7 @@ changes target.txt on disk), and then the request after that tool result fails
 with 3 HTTP 503s, so the turn ends failed with its side effect already applied.
 The next prompt ("继续") must reach a model whose request again carries that
 file_grep/file_edit exchange plus the interruption note the failed turn left
-behind (fakellm's "seen" digest), and `suga export` must show the note entry.
+behind (fakellm's "seen" digest), and `suga inspect export` must show the note entry.
 
   python3 -I scripts/ptysmoke/chat_interrupt.py --bin tmp/smoke/suga
 

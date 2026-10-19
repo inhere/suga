@@ -140,7 +140,7 @@ func TestSessionSpiller(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		_, err = sp.Spill(ctx, agentcore.ToolCall{CallID: "c2"}, strings.Repeat("y", 40))
 		assert.ErrMsgContains(t, err, "tools.spill.max_bytes")
-		assert.ErrMsgContains(t, err, "suga gc --compress-spill")
+		assert.ErrMsgContains(t, err, "suga data compress-spill")
 		files, err := os.ReadDir(SessionOutputsDir(dir, "sess_5"))
 		assert.NoErr(t, err)
 		assert.Eq(t, 1, len(files))

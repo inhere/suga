@@ -19,7 +19,7 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// newExportCommand builds `suga export`.
+// newExportCommand builds `suga inspect export`.
 func newExportCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var redact, withOutputs bool
 	var outFile string
@@ -34,7 +34,7 @@ func newExportCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	return cmd
 }
 
-// exportOptions are the flags of `suga export`.
+// exportOptions are the flags of `suga inspect export`.
 type exportOptions struct {
 	redact      bool
 	withOutputs bool

@@ -25,6 +25,12 @@ func main() {
 	if len(args) == 0 {
 		args = []string{"chat"}
 	}
+	// Accept the pre-v0.36 top-level command names and chat options without
+	// "chat" before anything reads the first argument (bootstrapExempt does).
+	args, notice := cli.RewriteLegacyArgs(args)
+	if notice != "" {
+		fmt.Fprintln(os.Stderr, notice)
+	}
 	// Version and help are pure queries: neither may create the user's home.
 	if !bootstrapExempt(args) && !isInitCommand(args) {
 		result, err := appconfig.EnsureHome(appconfig.BootstrapOptions{})

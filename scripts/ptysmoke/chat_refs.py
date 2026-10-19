@@ -119,7 +119,7 @@ def check_trace(s, events):
 
 
 def export_rows(binary, env, session):
-    """The session's entries and events as the `suga export` jsonl rows."""
+    """The session's entries and events as the `suga inspect export` jsonl rows."""
     out = subprocess.run([binary, "export", session], capture_output=True, text=True, env=env, timeout=60)
     rows = []
     for line in out.stdout.splitlines():
@@ -140,7 +140,7 @@ def stored(binary, env, session):
             continue
         body = row.get("json") or ""
         if not isinstance(body, str):
-            # `suga export` writes an entry's json as an object, not a string.
+            # `suga inspect export` writes an entry's json as an object, not a string.
             body = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         if row.get("type") == "assistant" and '"Name":"file_refs"' in body:
             calls.append(body)

@@ -43,7 +43,7 @@ suga chat                                         # interactive chat in the curr
 ```
 
 - One turn: `suga run --prompt "Summarize this project"` (read-only), `suga run --allow-write --prompt "Fix the failing test"`, `suga run --resume <session-id> --prompt "Continue"`; `--max-steps` caps the turn's steps (default 240).
-- [config/config.yaml](config/config.yaml) lists every field; `suga manifest` reports the full effective capabilities.
+- [config/config.yaml](config/config.yaml) lists every field; `suga inspect manifest` reports the full effective capabilities.
 
 ## Chat
 
@@ -63,7 +63,7 @@ Details: [references/config.md](skills/suga-guide/references/config.md) (every k
 - Only `$SUGA_HOME/config.yaml` and `$SUGA_HOME/.env` are read (default `~/.suga`), never the working directory's; `SUGA_CONFIG` names a single config file.
 - `suga init` is safe to repeat; `suga init --force` backs up and replaces only the home config. It never writes `.env` values, and refuses to bypass an explicit `SUGA_CONFIG`.
 - `suga config get|set|unset|list|path` shows effective values and sources, preserves YAML comments, and rejects secret keys in YAML; put credentials in `.env` and reference them as `${VAR}`.
-- `suga models [--json]` is an offline view of local providers and model references. It does not replace `suga manifest` or chat's session-local `:model` switch.
+- `suga models [--json]` is an offline view of local providers and model references. It does not replace `suga inspect manifest` or chat's session-local `:model` switch.
 - `model` is `<provider>/<model>`, precedence `--model` > `SUGA_MODEL` > config; `fallback_models` are tried in order, `compact_model` writes summaries.
 - `providers.<id>`: `type` (`openai`, `openai-responses`, `anthropic`), `base_url`, `api_key`, `headers`, plus per-model `context_window`, `max_output_tokens`, `model_id`, `price`, `thinking`.
 - Common switches: `tools.allow_write`, `tools.approval`, `mcp.servers`, `memory.*`, `hooks.*`, `chat.*`, `skills.*`, `workspace`.
@@ -83,7 +83,7 @@ Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 - **Background and watch tasks**: `shell_exec` with `background: true` runs in the background; `every` / `watch_paths` turn it into a watcher that notifies the model on changes.
 - **Large output**: results over `tools.max_output_bytes` are offloaded to a ref; shell test/build output is first trimmed by output rules (customizable in `output-rules.yaml`).
 - **MCP**: `--mcp-config` or `mcp.servers`; all calls are denied until allowed in `tools.auto_allow` / `tools.read_only_allow`.
-- **Preferred tools**: `tools.preferred` declares commands (`rg`, `xerj`) and MCP servers this machine already has; the available ones are listed in the environment section (a `kind: command` entry only in a session that registered `shell_exec`, so a read-only session leaves it out) and `suga manifest` shows `present` plus a reason for every declaration, including the missing ones, with command reasons naming that read-only limit. Preference only ranks tools: it never allows an MCP call or skips the `shell_exec` approval, and a missing tool just stays out of the prompt.
+- **Preferred tools**: `tools.preferred` declares commands (`rg`, `xerj`) and MCP servers this machine already has; the available ones are listed in the environment section (a `kind: command` entry only in a session that registered `shell_exec`, so a read-only session leaves it out) and `suga inspect manifest` shows `present` plus a reason for every declaration, including the missing ones, with command reasons naming that read-only limit. Preference only ranks tools: it never allows an MCP call or skips the `shell_exec` approval, and a missing tool just stays out of the prompt.
 
 ## Sub-agents
 
@@ -136,18 +136,18 @@ Details: [references/gofer.md](skills/suga-guide/references/gofer.md) (Chinese),
 Details: [references/observability.md](skills/suga-guide/references/observability.md) (Chinese)
 
 ```text
-suga trace <session> [--turn <id>] [--json]       # timeline: model calls, tools, denials, plans
-suga trace <session> --analyze | --web            # loop analysis / local web page
-suga sessions [keywords] [--since 7d] [--agents]  # session list
-suga stats [--session <id>] [--json]              # calls, latency, tokens, cache, cost
-suga export <session> | suga gc --older-than 30d  # export / clean up
-suga gc --retention [--apply]                    # remove by origin class: 180d chat / 30d run+ACP
-suga gc --shrink-fts [--status|--abort]          # shrink the tool-output FTS index
-suga gc --vacuum                                 # rewrite the db file, truncate the WAL
-suga backup --output <file>.suga-backup.zip       # verified online backup; spill excluded by default
-suga restore <file>.suga-backup.zip --dry-run     # validate without changing the home
-suga restore <file>.suga-backup.zip               # staged restore with a pre-restore backup
-suga ps | suga manifest                           # running chats / capability manifest
+suga inspect trace <session> [--turn <id>] [--json]            # timeline: model calls, tools, denials, plans
+suga inspect trace <session> --analyze | --web                 # loop analysis / local web page
+suga sessions [keywords] [--since 7d] [--agents]               # session list
+suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
+suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
+suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP
+suga data shrink-fts [--status|--abort]                        # shrink the tool-output FTS index
+suga data vacuum                                               # rewrite the db file, truncate the WAL
+suga data backup --output <file>.suga-backup.zip               # verified online backup; spill excluded by default
+suga data restore <file>.suga-backup.zip --dry-run             # validate without changing the home
+suga data restore <file>.suga-backup.zip                       # staged restore with a pre-restore backup
+suga ps | suga inspect manifest                                # running chats / capability manifest
 ```
 
 - `run --output-format stream-json` emits cumulative `usage` after each model call, `retry` on retries, and `wrap_up` on the `result` of a turn ended by a limit.

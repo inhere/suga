@@ -168,7 +168,7 @@ func TestServeTraceView(t *testing.T) {
 	}
 	ctype, page := get("")
 	assert.StrContains(t, ctype, "text/html")
-	assert.StrContains(t, page, "<title>suga trace</title>")
+	assert.StrContains(t, page, "<title>suga inspect trace</title>")
 	ctype, body := get("api/session")
 	assert.StrContains(t, ctype, "application/json")
 	var view TraceView

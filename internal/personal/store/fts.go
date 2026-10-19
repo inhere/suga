@@ -21,7 +21,7 @@ import (
 // same role/text from an entry:
 //
 //   - AppendEntries, for every new entry, using the constants below;
-//   - the maintenance command `suga gc --shrink-fts` (fts_shrink.go), which
+//   - the maintenance command `suga data shrink-fts` (fts_shrink.go), which
 //     rewrites the text of the rows written before tool results were truncated.
 //
 // The truncation of tool results (ftsTruncateExpr) lives in ONE expression that
