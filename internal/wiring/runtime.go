@@ -160,6 +160,7 @@ type Runtime struct {
 	// tools is the registry stack the runner calls (visibility -> approval
 	// -> base); kept for tests.
 	tools    agentcore.ToolRegistry
+	vision   *tools.VisionGate
 	approval approvalPolicy
 }
 
@@ -202,6 +203,9 @@ func (rt *Runtime) SwitchModel(ctx context.Context, sessionID, ref string) (Mode
 	if err := rt.Runner.SwitchModel(ctx, sessionID, provider, option.Provider, option.Model, option.ContextWindow, maxOutputTokens); err != nil {
 		return ModelOption{}, err
 	}
+	// The tool table follows the new model: view_image is listed only while the
+	// current main model can see images.
+	rt.vision.SetVision(appconfig.VisionFor(spec))
 	rt.ContextWindow, rt.Thinking = option.ContextWindow, option.Thinking
 	return option, nil
 }
@@ -416,6 +420,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 
 	settings, taintTools, taintOnSpill := rs.models, rs.taintTools, rs.taintOnSpill
 	memSetup, memPolicy, sessionsDir := rs.memSetup, rs.memPolicy, rs.sessionsDir
+	// One live vision gate per runtime: the main model builds the tool set with
+	// it, and :model moves it (view_image is filtered per current model).
+	visionGate := tools.NewVisionGate(appconfig.VisionFor(settings.Main))
 	provider, err := buildMainProviderWithEstimate(settings, estimateOptionsForBudget(budget.Tokens, budget.CostUSD, budget.Estimate, budget.EstimateFactor))
 	if err != nil {
 		return nil, err
@@ -434,6 +441,13 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	// Bind view_image to the runtime's gate: the tool was built from the startup
+	// model, the gate follows every later :model switch.
+	if t, err := capabilities.Registry.Get("view_image"); err == nil {
+		if img, ok := t.(*native.ViewImageTool); ok {
+			img.SetVision(visionGate)
+		}
 	}
 	preferredTools, err := ResolvePreferredTools(capabilities.Registry, servers)
 	if err != nil {
@@ -611,6 +625,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Model:             settings.Main.Model,
 		ProviderName:      settings.Main.Provider.ID,
 		Tools:             toolRegistry,
+		Vision:            visionGate,
 		PromptBuilder:     staticPrompt(basePrompt()),
 		// Environment and skills go into the segment context (design D1).
 		// preferredEnvironment records the names it lists, so turn_context and
@@ -664,6 +679,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		},
 		repo: repo, capabilities: capabilities, ContextWindow: contextWindow, Budget: budget,
 		Thinking: settings.Main.ThinkingLevel(), tools: toolRegistry, approval: approval,
+		vision:  visionGate,
 		AddDirs: dirs, modelOptions: modelOptions, modelSpecs: modelSpecs,
 		fallbacks:        append([]appconfig.ModelSpec(nil), settings.Fallbacks...),
 		thinkingOverride: opts.Thinking, maxOutputOverride: opts.MaxOutputTokens}

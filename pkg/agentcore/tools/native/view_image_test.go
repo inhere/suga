@@ -16,6 +16,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 // encodeTestPNG writes a width×height opaque PNG.
@@ -96,7 +97,7 @@ func TestViewImageRefuses(t *testing.T) {
 	})
 	t.Run("a model without vision gets an explanation", func(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(dir, "ok.png"), encodeTestPNG(t, 2, 2), 0o600)))
-		_, err := NewViewImageTool(dir, nil, nil, "").WithoutVision(true).Execute(context.Background(),
+		_, err := NewViewImageTool(dir, nil, nil, "").SetVision(tools.NewVisionGate(false)).Execute(context.Background(),
 			api.ToolCall{Arguments: map[string]any{"path": "ok.png"}})
 		assert.Require(t, assert.Err(t, err))
 		assert.Contains(t, err.Error(), ":model")

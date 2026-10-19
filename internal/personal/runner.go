@@ -48,6 +48,10 @@ type Config struct {
 	Model        string
 	ProviderName string
 	Tools        agentcore.ToolRegistry
+	// Vision is the live capability of the current model: view_image leaves the
+	// tool table of a model that cannot see images, and a :model switch updates
+	// this gate instead of rebuilding the tools. nil = the model can see.
+	Vision *tools.VisionGate
 	// PromptBuilder is the stable system prompt (identity and working
 	// conventions only, design D1); the runner sends it unchanged.
 	PromptBuilder agentcore.PromptBuilder
@@ -343,7 +347,7 @@ func New(cfg Config) (*Runner, error) {
 	}
 	rec := &recorder{sink: cfg.Repository, price: cfg.Price,
 		taint:  newTaintMarker(cfg.Repository, cfg.TaintTools, cfg.TaintOnSpill),
-		prefix: newPrefixTracker(), workspace: cfg.Workspace}
+		prefix: newPrefixTracker(), workspace: cfg.Workspace, vision: cfg.Vision}
 	cfg.Provider = rec.observeProvider(cfg.Provider, cfg.ProviderName, cfg.Model)
 	if cfg.Tools != nil {
 		// Stack: observe -> output -> (visibility -> approval -> base). The
@@ -431,6 +435,17 @@ func (r *Runner) ModelSettings() (provider, model string, contextWindow, maxOutp
 	r.modelMu.RLock()
 	defer r.modelMu.RUnlock()
 	return r.cfg.ProviderName, r.cfg.Model, r.cfg.ContextWindow, r.cfg.MaxOutputTokens
+}
+
+// ToolRegistry is the tool table the runtime lists at every step
+// (observe -> output -> visibility -> approval -> base), so it reflects the
+// model-scoped filtering a turn sees (e.g. view_image and the current model's
+// vision). nil when the runner was built without tools.
+func (r *Runner) ToolRegistry() agentcore.ToolRegistry {
+	if r == nil {
+		return nil
+	}
+	return r.cfg.Tools
 }
 
 // MaxSteps is this runner's per-turn step limit (0 = no limit); the CLI names

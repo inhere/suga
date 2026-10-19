@@ -62,9 +62,10 @@ type Env struct {
 	// ImagesDir is the session's images directory (view_image accepts a ref to
 	// one of its files); empty = only ordinary paths.
 	ImagesDir string
-	// NoVision marks a model without vision: view_image then explains how to
-	// switch instead of reading a picture nobody can see.
-	NoVision bool
+	// Vision is the live capability of the current model (nil = can see):
+	// view_image explains how to switch instead of reading a picture nobody can
+	// see. The host updates the gate on a model switch.
+	Vision *tools.VisionGate
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -86,7 +87,7 @@ func Catalog() []Spec {
 		}},
 		{Name: "view_image", New: func(env Env) api.Tool {
 			return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs,
-				imagesDir: env.ImagesDir, noVision: env.NoVision}
+				imagesDir: env.ImagesDir, vision: env.Vision}
 		}},
 		{Name: "file_list", New: func(env Env) api.Tool {
 			return &FileListTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}

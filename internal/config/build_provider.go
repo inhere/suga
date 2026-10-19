@@ -35,7 +35,10 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 			Thinking:       spec.ThinkingLevel(),
 			ThinkingStyle:  ThinkingStyleFor(spec),
 			StreamRequired: StreamRequiredFor(spec),
-			Retry:          p.Retry,
+			// A model without vision gets text notes instead of image parts (a
+			// fallback model served by another provider keeps its own value).
+			NoImages: !VisionFor(spec),
+			Retry:    p.Retry,
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
@@ -53,6 +56,7 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 				ReasoningEffort: reasoningEffort(spec.ThinkingLevel()),
 				Retry:           p.Retry,
 				StreamRequired:  StreamRequiredFor(spec),
+				NoImages:        !VisionFor(spec),
 				// Request bounds: timeouts.*, providers.<id>.timeouts.
 				RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 				ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
@@ -71,6 +75,7 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 			ReasoningEffort: reasoningEffort(spec.ThinkingLevel()),
 			Retry:           p.Retry,
 			StreamRequired:  StreamRequiredFor(spec),
+			NoImages:        !VisionFor(spec),
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),

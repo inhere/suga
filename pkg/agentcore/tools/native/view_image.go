@@ -55,9 +55,10 @@ type ViewImageTool struct {
 	// its files by ref (images/<sha256>.<ext>, as an omitted image note shows it)
 	// is read from there. Empty = only ordinary paths.
 	imagesDir string
-	// noVision reports that the current model cannot see: the call then explains
-	// how to switch instead of shipping bytes nobody reads.
-	noVision bool
+	// vision is the live capability of the current model (:model switching
+	// updates it); a model that cannot see is told how to switch instead of
+	// receiving bytes nobody reads. nil = can see.
+	vision *tools.VisionGate
 }
 
 // NewViewImageTool returns the tool for a workspace and the session's images
@@ -66,9 +67,10 @@ func NewViewImageTool(workspace string, readRoots []string, addDirs *AddDirs, im
 	return &ViewImageTool{workspace: workspace, readRoots: readRoots, addDirs: addDirs, imagesDir: imagesDir}
 }
 
-// WithoutVision marks the tool as running under a model that cannot see images.
-func (t *ViewImageTool) WithoutVision(noVision bool) *ViewImageTool {
-	t.noVision = noVision
+// SetVision binds the tool to the runtime's live vision gate, so the check
+// follows a model switch instead of the model the tool was built with.
+func (t *ViewImageTool) SetVision(gate *tools.VisionGate) *ViewImageTool {
+	t.vision = gate
 	return t
 }
 
@@ -113,7 +115,7 @@ func (t *ViewImageTool) Execute(_ context.Context, call api.ToolCall) (*api.Tool
 	if arg == "" {
 		return nil, fmt.Errorf("view_image: path is required")
 	}
-	if t.noVision {
+	if !t.vision.CanSee() {
 		return nil, fmt.Errorf("current model cannot see images: switch to a model with vision (chat: :model)")
 	}
 	maxSide := DefaultImageMaxSide

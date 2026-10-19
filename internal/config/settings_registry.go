@@ -218,6 +218,7 @@ var providerKeyDescriptors = map[string]ConfigKey{
 	"thinking":          {Pattern: "providers.<id>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"thinking_style":    {Pattern: "providers.<id>.thinking_style", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"stream_required":   {Pattern: "providers.<id>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
+	"vision":            {Pattern: "providers.<id>.vision", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"prompt_cache":      {Pattern: "providers.<id>.prompt_cache", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"compat":            {Pattern: "providers.<id>.compat", Type: ConfigTypeStringList, Writable: true, Reader: "providers"},
 }
@@ -231,6 +232,7 @@ var providerModelKeyDescriptors = map[string]ConfigKey{
 	"thinking":          {Pattern: "providers.<id>.models.<name>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"thinking_style":    {Pattern: "providers.<id>.models.<name>.thinking_style", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
 	"stream_required":   {Pattern: "providers.<id>.models.<name>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
+	"vision":            {Pattern: "providers.<id>.models.<name>.vision", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"price":             {Pattern: "providers.<id>.models.<name>.price", Type: ConfigTypeStringMap, Writable: true, Reader: "providers"},
 }
 
