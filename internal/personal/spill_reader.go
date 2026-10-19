@@ -102,6 +102,20 @@ func noOutputsHint(root *os.Root, sessionID string) string {
 	return ""
 }
 
+// OutputStem reports the ref stem of one outputs directory entry: the name of
+// a plain .txt or of a compressed .txt.gz. Anything else (the .tmp of an
+// interrupted write, a foreign file) is no output and yields false, so it is
+// never reported or exported as a ref recall could not read back.
+func OutputStem(name string) (string, bool) {
+	if stem, ok := strings.CutSuffix(name, ".txt"); ok {
+		return stem, stem != ""
+	}
+	if stem, ok := strings.CutSuffix(name, gzSuffix); ok {
+		return stem, stem != ""
+	}
+	return "", false
+}
+
 // gzLogicalBytes is the uncompressed size gzip records in the trailer of a .gz
 // file (its last 4 bytes, little endian), or 0 when it cannot be read. Spill
 // accounting uses it so the quota compares logical, not physical, bytes.

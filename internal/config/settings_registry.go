@@ -146,6 +146,12 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.approval", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "tools.max_output_bytes", Type: ConfigTypeInt64, Writable: true},
 	{Pattern: "tools.max_spill_bytes", Type: ConfigTypeInt64, Writable: true},
+	{Pattern: "tools.spill.max_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "spill"},
+	{Pattern: "tools.spill.max_age", Type: ConfigTypeDuration, Writable: true, Reader: "spill"},
+	{Pattern: "tools.spill.compress_after", Type: ConfigTypeDuration, Writable: true, Reader: "spill"},
+	{Pattern: "tools.spill.compression", Type: ConfigTypeEnum, Writable: true, Reader: "spill"},
+	{Pattern: "tools.spill.on_quota", Type: ConfigTypeEnum, Writable: true, Reader: "spill"},
+	{Pattern: "tools.spill.keep_days", Type: ConfigTypeInt, Writable: true, Reader: "spill"},
 	{Pattern: "tools.read_page_bytes", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.parallel_reads", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.minimize_output", Type: ConfigTypeBool, Writable: true},
@@ -543,6 +549,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadAgentSettings()
 	case "snapshots":
 		_, err = ReadSnapshotSettings()
+	case "spill":
+		_, err = ReadSpillSettings()
 	case "approval_rules":
 		_, err = ReadApprovalRulesSettings()
 	case "mcp":
@@ -834,6 +842,25 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.KeepDays, true, nil
 		default:
 			return settings.OnError, true, nil
+		}
+	case "tools.spill.max_bytes", "tools.spill.max_age", "tools.spill.compress_after", "tools.spill.compression", "tools.spill.on_quota", "tools.spill.keep_days":
+		settings, err := ReadSpillSettings()
+		if err != nil {
+			return nil, false, err
+		}
+		switch key {
+		case "tools.spill.max_bytes":
+			return settings.MaxBytes, true, nil
+		case "tools.spill.max_age":
+			return settings.MaxAge, true, nil
+		case "tools.spill.compress_after":
+			return settings.CompressAfter, true, nil
+		case "tools.spill.compression":
+			return settings.Compression, true, nil
+		case "tools.spill.on_quota":
+			return settings.OnQuota, true, nil
+		default:
+			return settings.KeepDays, true, nil
 		}
 	case "tools.approval_rules.enabled", "tools.approval_rules.always_prefix_tokens", "tools.approval_rules.persist_ask":
 		settings, err := ReadApprovalRulesSettings()

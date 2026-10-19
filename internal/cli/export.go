@@ -113,7 +113,7 @@ func writeExportOutputs(w io.Writer, sessionID string) error {
 	sort.Strings(names)
 	done := map[string]bool{}
 	for _, name := range names {
-		stem, ok := outputStem(name)
+		stem, ok := personal.OutputStem(name)
 		if !ok || done[stem] {
 			continue
 		}
@@ -132,20 +132,6 @@ func writeExportOutputs(w io.Writer, sessionID string) error {
 		}
 	}
 	return nil
-}
-
-// outputStem reports the ref stem of one outputs directory entry: the name of
-// a plain .txt or of a compressed .txt.gz. Anything else (a .tmp of an
-// interrupted write, a foreign file) is no output and yields false, so it is
-// never exported as a ref that recall could not read back.
-func outputStem(name string) (string, bool) {
-	if stem, ok := strings.CutSuffix(name, ".txt"); ok {
-		return stem, stem != ""
-	}
-	if stem, ok := strings.CutSuffix(name, ".txt.gz"); ok {
-		return stem, stem != ""
-	}
-	return "", false
 }
 
 // writeOutputRow writes one output row, streaming the content through r so that
