@@ -713,7 +713,16 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// The added directories of the session being served (--add-dir): the front
 	// end fills the set once the session is open (ApplyAddDirs) through this
 	// handle, which chat's commands and the outside-directory question share.
-	rt.sessionDirs = newSessionAddDirs(runner, dirs, opts.AddDirs, opts.ReadOnly, workspace)
+	rt.sessionDirs = newSessionAddDirs(runner, dirs, opts.AddDirs, opts.ReadOnly, workspace, sessionsDir)
+	// Session image refs (images/<sha256>.<ext>): view_image resolves them
+	// against the session being served, which only opens later (ApplyAddDirs /
+	// chat's SetupSession); the resolver hands the ref rule the live directory
+	// at every call instead of the one the tool was built with.
+	if t, err := capabilities.Registry.Get("view_image"); err == nil {
+		if img, ok := t.(*native.ViewImageTool); ok {
+			img.SetImagesDirResolver(rt.sessionDirs.ImagesDir)
+		}
+	}
 	return rt, nil
 }
 

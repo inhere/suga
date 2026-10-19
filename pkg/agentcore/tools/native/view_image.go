@@ -54,7 +54,12 @@ type ViewImageTool struct {
 	// imagesDir is the session's images directory; a path argument naming one of
 	// its files by ref (images/<sha256>.<ext>, as an omitted image note shows it)
 	// is read from there. Empty = only ordinary paths.
-	imagesDir string
+	// imagesDirFn is the session resolver set by the host (design 0.3): the
+	// images directory belongs to the session being served, which the runtime
+	// only knows once it opens, so it is resolved at call time. Non-empty wins
+	// over the static imagesDir.
+	imagesDir   string
+	imagesDirFn func() string
 	// vision is the live capability of the current model (:model switching
 	// updates it); a model that cannot see is told how to switch instead of
 	// receiving bytes nobody reads. nil = can see.
@@ -74,6 +79,14 @@ func NewViewImageTool(workspace string, readRoots []string, addDirs *AddDirs, im
 // follows a model switch instead of the model the tool was built with.
 func (t *ViewImageTool) SetVision(gate *tools.VisionGate) *ViewImageTool {
 	t.vision = gate
+	return t
+}
+
+// SetImagesDirResolver binds a function that resolves the served session's
+// images directory at call time, so view_image works across the session a chat
+// opens later (:resume, :new). Function may return "" while no session is open.
+func (t *ViewImageTool) SetImagesDirResolver(fn func() string) *ViewImageTool {
+	t.imagesDirFn = fn
 	return t
 }
 
@@ -151,13 +164,19 @@ var errUnsupportedImage = fmt.Errorf("unsupported image format (PNG, JPEG, GIF a
 
 // read returns the bytes of the path argument and the name to report.
 func (t *ViewImageTool) read(arg string) ([]byte, string, error) {
-	if t.imagesDir != "" && isSessionImageRef(arg) {
-		name := path.Base(filepathToSlash(arg))
-		data, err := readImageLimit(joinPath(t.imagesDir, name))
-		if err != nil {
+	imagesDir := t.imagesDir
+	if t.imagesDirFn != nil {
+		// The served session decides: its directory wins over the one built with.
+		imagesDir = t.imagesDirFn()
+	}
+	if isSessionImageRef(arg) {
+		if imagesDir == "" {
+			return nil, "", fmt.Errorf("session image %s: no session images directory in this process", arg)
+		} else if data, err := readImageLimit(joinPath(imagesDir, path.Base(filepathToSlash(arg)))); err != nil {
 			return nil, "", fmt.Errorf("session image %s: %w", arg, err)
+		} else {
+			return data, arg, nil
 		}
-		return data, arg, nil
 	}
 	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), arg)
 	if err != nil {

@@ -104,6 +104,44 @@ func TestViewImageRefuses(t *testing.T) {
 	})
 }
 
+// TestViewImageSessionRefByResolver pins the host-injected resolver (design
+// 0.3): a session image ref reads against the directory the served session
+// resolves, and the tool refuses a ref while no session is open.
+func TestViewImageSessionRefByResolver(t *testing.T) {
+	sessions := t.TempDir()
+	images := filepath.Join(sessions, "s1", "images")
+	assert.Require(t, assert.NoErr(t, os.MkdirAll(images, 0o700)))
+	assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(images, "ab12.png"), encodeTestPNG(t, 4, 4), 0o600)))
+
+	sid := "s1"
+	tool := NewViewImageTool(sessions, nil, nil, "").SetImagesDirResolver(func() string {
+		if sid == "" {
+				return ""
+			}
+			return filepath.Join(sessions, sid, "images")
+	})
+	t.Run("a ref reads from the resolved directory", func(t *testing.T) {
+		res, err := tool.Execute(context.Background(), api.ToolCall{Arguments: map[string]any{"path": "images/ab12.png"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.Eq(t, 1, len(res.Images)))
+		assert.True(t, len(res.Images[0].Data) > 0, "the tool hands bytes to the store")
+	})
+	t.Run("no open session leaves the ref unreadable", func(t *testing.T) {
+		sid = ""
+		_, err := tool.Execute(context.Background(), api.ToolCall{Arguments: map[string]any{"path": "images/ab12.png"}})
+		assert.Require(t, assert.Err(t, err))
+		assert.Contains(t, err.Error(), "no session images directory")
+	})
+	t.Run("a workspace path still reads as a file", func(t *testing.T) {
+		sid = "s1"
+		file := filepath.Join(sessions, "shot.png")
+		assert.Require(t, assert.NoErr(t, os.WriteFile(file, encodeTestPNG(t, 8, 8), 0o600)))
+		res, err := tool.Execute(context.Background(), api.ToolCall{Arguments: map[string]any{"path": "shot.png"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 8, res.Images[0].Width)
+	})
+}
+
 // TestViewImageMaxSide pins images.max_side: the configured long side is the
 // default of a call that names none, and the call's own argument still wins.
 func TestViewImageMaxSide(t *testing.T) {

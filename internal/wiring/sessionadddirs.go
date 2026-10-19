@@ -46,6 +46,9 @@ type SessionAddDirs struct {
 	readOnly  bool
 	// workspace is the workspace root, listed first by List.
 	workspace string
+	// sessionsDir is the per-session file root ($SUGA_HOME/sessions); ImagesDir
+	// derives the served session's images directory from it (design 0.3).
+	sessionsDir string
 
 	mu sync.Mutex
 	// sessionID is the session being served, filled by apply; the handle itself
@@ -59,8 +62,35 @@ type SessionAddDirs struct {
 
 // newSessionAddDirs builds the handle of one runtime.
 func newSessionAddDirs(runner *personal.Runner, live *native.AddDirs, requested []adddir.Dir,
-	readOnly bool, workspace string) *SessionAddDirs {
-	return &SessionAddDirs{runner: runner, live: live, requested: requested, readOnly: readOnly, workspace: workspace}
+	readOnly bool, workspace string, sessionsDir string) *SessionAddDirs {
+	return &SessionAddDirs{runner: runner, live: live, requested: requested, readOnly: readOnly,
+		workspace: workspace, sessionsDir: sessionsDir}
+}
+
+// SessionID is the session the handle currently serves ("" until one opens,
+// through apply or a :add-dir publish).
+func (h *SessionAddDirs) SessionID() string {
+	if h == nil {
+		return ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.sessionID
+}
+
+// ImagesDir is the images directory of the session being served ("" until one
+// opens): view_image resolves a session image ref (images/<sha256>.<ext>,
+// design 0.3) against it.
+func (h *SessionAddDirs) ImagesDir() string {
+	if h == nil || h.runner == nil {
+		return ""
+	}
+	sid := h.SessionID()
+	sessionsDir := h.sessionsDir
+	if sid == "" || sessionsDir == "" {
+		return ""
+	}
+	return store.SessionImagesDir(sessionsDir, sid)
 }
 
 // Workspace is the workspace root the session's tools are confined to.
