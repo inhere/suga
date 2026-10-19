@@ -34,11 +34,10 @@ type SizeStat struct {
 }
 
 // NamedStat is one row of a breakdown (an entry type, an event kind, a JSON
-// field, a tool name, a directory part).
+// field, a tool name).
 type NamedStat struct {
 	Name  string `json:"name"`
 	Rows  int64  `json:"rows,omitempty"`
-	Files int64  `json:"files,omitempty"`
 	Bytes int64  `json:"bytes"`
 }
 
