@@ -35,6 +35,10 @@ type subAgents struct {
 	// addDirs is the parent session's additional-directory set (--add-dir): a
 	// sub-agent works on the same task, so it reads the same directories.
 	addDirs *native.AddDirs
+	// deadlineEnv is the parent's run.deadline_env value: a sub-agent works on
+	// the same job deadline (its own agents.timeout still wraps it up first
+	// when it hits that sooner).
+	deadlineEnv string
 	// policySnapshot returns the parent's policy at child creation time. The
 	// child copies it before building its approval layer, so later session-rule
 	// changes cannot alter an already-created child.
@@ -177,6 +181,9 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 		},
 		MaxSteps: s.settings.MaxSteps, MaxRunTokens: s.settings.MaxTokens, RunTimeout: s.settings.Timeout,
 		Budget: s.budget,
+		// The job deadline of the parent (run.deadline_env): the child tells
+		// the model the remaining time per request, like the parent does.
+		DeadlineEnv: s.deadlineEnv,
 		// The sub-agent model's own output limit (agents.model); 0 leaves it to
 		// the provider's default.
 		MaxOutputTokens: appconfig.MaxOutputTokensFor(rs.models.Main),
