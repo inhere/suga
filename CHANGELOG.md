@@ -32,6 +32,10 @@
 - `suga data gc` 除会话清理外还负责上面两项 ledger 维护，`--older-than` 与 `--apply` 语义不变。
 - 会话库（SQLite）在大库上更快、并发写不再报 `database is locked`：新增迁移补 `entries(type)`、`events(turn_id)` 两个索引（依据 EXPLAIN QUERY PLAN 实测，`events(kind)` 实测使 `stats` 与用量统计变慢，故不加）；`suga inspect stats` 改成在 SQL 里 GROUP BY/COUNT/SUM 加窗口函数算分位数，不再把整库事件拉进内存并逐条解析 attrs，输出与之前逐字一致；所有写事务改为 `BEGIN IMMEDIATE`（连接参数 `_txlock=immediate`），配合 `busy_timeout`，在事务开始处对 `SQLITE_BUSY` 做有上限的指数退避重试（只重试 BEGIN，不重放已执行的事务）。
 
+### 修复
+
+- SUGA_HOME 较长时会话 socket 路径超过 AF_UNIX 上限（Linux 107 / macOS 103 / Windows 100 UTF-16 单位）导致 chat 收不到 `suga send` 与 gofer 投递：首选路径超限时改用当前用户专属的短备用目录（Unix `$TMPDIR/suga-<uid>/`，要求已存在目录属主是当前用户且权限不宽于 0700；Windows `%LOCALAPPDATA%\suga\run\`，沿用 run 目录的受保护 DACL），socket 文件名 `<根路径哈希前12位>-<pid>.sock`，不同 SUGA_HOME 不会互相冲突；`run/<pid>.json` 记录实际路径，`suga ps`/`send` 的安全校验只接受首选或按同一算法算出的备用路径，清理死进程时两处都删。备用目录不可用或备用路径仍超限时保留原来的“路径太长”错误并注明原因。
+
 ## [0.35.1] - 2026-10-19
 
 `file_grep` 补齐 `exclude`、`glob` 列表与 `!` 取反、`context`、`literal`，RE2 不支持的 lookaround/反向引用自动回退到 regexp2；`file_symbols` 与大纲读支持 YAML/TOML 键路径；`file_read` 的 `path:N` 从第 N 行起读。
@@ -49,7 +53,6 @@
 ### 修复
 
 - `file_read` 的 `path:N`（只写一个行号，rg/`file_grep`/堆栈的写法）从第 N 行起读 40 行，不再报 invalid line span。
-- SUGA_HOME 较长时会话 socket 路径超过 AF_UNIX 上限（Linux 107 / macOS 103 / Windows 100 UTF-16 单位）导致 chat 收不到 `suga send` 与 gofer 投递：首选路径超限时改用当前用户专属的短备用目录（Unix `$TMPDIR/suga-<uid>/`，要求已存在目录属主是当前用户且权限不宽于 0700；Windows `%LOCALAPPDATA%\suga\run\`，沿用 run 目录的受保护 DACL），socket 文件名 `<根路径哈希前12位>-<pid>.sock`，不同 SUGA_HOME 不会互相冲突；`run/<pid>.json` 记录实际路径，`suga ps`/`send` 的安全校验只接受首选或按同一算法算出的备用路径，清理死进程时两处都删。备用目录不可用或备用路径仍超限时保留原来的“路径太长”错误并注明原因。
 
 ## [0.35.0] - 2026-10-18
 
