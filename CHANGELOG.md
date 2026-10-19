@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 输出最小化规则补齐 TypeScript/ESLint、Ruff/Mypy、Go build/vet、Docker/Compose、make、gh 只读命令与 PHPUnit/Pest：成功输出折叠为摘要，失败保留错误定位、断言 diff 与构建诊断。
+
 ### 变更
 
 - 会话库（SQLite）在大库上更快、并发写不再报 `database is locked`：新增迁移补 `entries(type)`、`events(turn_id)` 两个索引（依据 EXPLAIN QUERY PLAN 实测，`events(kind)` 实测使 `stats` 与用量统计变慢，故不加）；`suga stats` 改成在 SQL 里 GROUP BY/COUNT/SUM 加窗口函数算分位数，不再把整库事件拉进内存并逐条解析 attrs，输出与之前逐字一致；所有写事务改为 `BEGIN IMMEDIATE`（连接参数 `_txlock=immediate`），配合 `busy_timeout`，在事务开始处对 `SQLITE_BUSY` 做有上限的指数退避重试（只重试 BEGIN，不重放已执行的事务）。
@@ -13,8 +17,6 @@
 `file_grep` 补齐 `exclude`、`glob` 列表与 `!` 取反、`context`、`literal`，RE2 不支持的 lookaround/反向引用自动回退到 regexp2；`file_symbols` 与大纲读支持 YAML/TOML 键路径；`file_read` 的 `path:N` 从第 N 行起读。
 
 ### 新增
-
-- 输出最小化规则补齐 TypeScript/ESLint、Ruff/Mypy、Go build/vet、Docker/Compose、make、gh 只读命令与 PHPUnit/Pest：成功输出折叠为摘要，失败保留错误定位、断言 diff 与构建诊断。
 
 - 新增 YAML（`.yaml`/`.yml`）与 TOML（`.toml`）的符号支持：`file_symbols` 与 `file_read outline` 把配置键当成声明列出，名字是完整点分键路径（`server.http.port`），序列/表数组里的映射用 `[]` 标记（`services[].name`），同一路径只列首次出现的行并在签名里给出现次数（`api ×2`）；映射/表节点为 kind `section`（与 PHP namespace 记 `type` 同理：它命名一个作用域，也是模型问“这份配置有哪些表/段”时筛选的对象），叶子键为 `key`；签名列给值的简短预览（标量截断到 60 字节，表写 `{…}`、数组写 `[…]`）。YAML 用仓库已有的 `goccy/go-yaml` 解析（AST 带行号，结果非 approx），解析失败时退回缩进 + `key:` 的行识别并标 approx、在结果说明里写清原因；多文档按 `doc1.`、`doc2.` 前缀；锚点/别名不展开（别名的键只列在锚点处）。TOML 不新增依赖、按行识别 `[table]`、`[[array.of.tables]]`、`key = value`、点分键，跳过注释与 `"""`/`'''` 多行字符串，内联表只列外层键。两种格式都默认最多 4 层键、每文件最多 300 条，超出时在结果里各给一条说明（`file_grep` 补查更深/更多的键），`file_symbols` 的 `limit` 仍按条数截断最终列表。
 - `file_refs` 在 YAML/TOML 文件里把定义被查名字作为键的行（`key:`、`- key:`、`key =`）标为 `def`，使“这个配置键在哪定义”一眼可见；这两种格式其余仍走 v0.35.0 的退化文本匹配（注释已遮蔽、字符串值保持可见，因为配置文件本身就是用值来引用别处的名字），不做跨语言键映射。
