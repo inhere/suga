@@ -82,18 +82,46 @@ func (s *SessionSpiller) Spill(ctx context.Context, call agentcore.ToolCall, con
 		return "", fmt.Errorf("spill: create outputs directory: %w", err)
 	}
 	name := OutputFileName(scope.turnID, call.CallID)
-	f, err := root.OpenFile(filepath.Join(rel, name+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	if err != nil {
+	if err := writeFileDurably(root, filepath.Join(rel, name+".txt"), redact.Secrets(content)); err != nil {
 		return "", fmt.Errorf("spill: %w", err)
 	}
-	if _, err := f.WriteString(redact.Secrets(content)); err != nil {
+	return outputRefPrefix + scope.sessionID + ":" + name, nil
+}
+
+// writeFileDurably writes data to name (relative to root) so that name either
+// holds the whole content or does not exist at all: the bytes go into a
+// temporary file in the same directory, are flushed to disk (Sync) and only
+// then renamed over name. A crash, a full disk or a killed process therefore
+// never leaves a half written .txt that recall and export would read as the
+// complete output. Rename replaces an existing file on unix and on Windows
+// (MoveFileEx with MOVEFILE_REPLACE_EXISTING), so repeating a call id
+// overwrites its own output. The final name is used in this function alone.
+func writeFileDurably(root *os.Root, name, data string) error {
+	tmp := name + ".tmp"
+	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	cleanup := func(err error) error {
 		_ = f.Close()
-		return "", fmt.Errorf("spill: write: %w", err)
+		_ = root.Remove(tmp)
+		return err
+	}
+	if _, err := f.WriteString(data); err != nil {
+		return cleanup(fmt.Errorf("write: %w", err))
+	}
+	if err := f.Sync(); err != nil {
+		return cleanup(fmt.Errorf("sync: %w", err))
 	}
 	if err := f.Close(); err != nil {
-		return "", fmt.Errorf("spill: close: %w", err)
+		_ = root.Remove(tmp)
+		return fmt.Errorf("close: %w", err)
 	}
-	return outputRefPrefix + scope.sessionID + ":" + name, nil
+	if err := root.Rename(tmp, name); err != nil {
+		_ = root.Remove(tmp)
+		return fmt.Errorf("rename into place: %w", err)
+	}
+	return nil
 }
 
 // TaskOutput names the output file of background task taskID of a session

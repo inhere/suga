@@ -94,6 +94,42 @@ func TestSessionSpiller(t *testing.T) {
 		_, err := NewSessionSpiller(shortTempDir(t)).Spill(context.Background(), agentcore.ToolCall{CallID: "c1"}, "body")
 		assert.ErrMsgContains(t, err, "no session")
 	})
+
+	t.Run("a failed write leaves no half written output", func(t *testing.T) {
+		dir := shortTempDir(t)
+		ctx := withObserveScope(context.Background(), "sess_3", "turn_1")
+		outputs := SessionOutputsDir(dir, "sess_3")
+		name := OutputFileName("turn_1", "c1")
+		// Block the temporary file with a directory of that name so the write
+		// fails after the file was created: the content is published by rename
+		// alone, so the final .txt must not exist as a half written file.
+		assert.Require(t, assert.NoErr(t, os.MkdirAll(filepath.Join(outputs, name+".txt.tmp"), 0o700)))
+		_, err := NewSessionSpiller(dir).Spill(ctx, agentcore.ToolCall{CallID: "c1"}, "body")
+		assert.Err(t, err)
+		_, statErr := os.Stat(filepath.Join(outputs, name+".txt"))
+		assert.True(t, os.IsNotExist(statErr), "half written .txt left behind")
+		files, err := os.ReadDir(outputs)
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, len(files)) // only the blocking directory
+	})
+
+	t.Run("rewriting a call id replaces its output in place", func(t *testing.T) {
+		dir := shortTempDir(t)
+		ctx := withObserveScope(context.Background(), "sess_4", "turn_1")
+		sp := NewSessionSpiller(dir)
+		ref, err := sp.Spill(ctx, agentcore.ToolCall{CallID: "c1"}, strings.Repeat("x", 200))
+		assert.Require(t, assert.NoErr(t, err))
+		ref2, err := sp.Spill(ctx, agentcore.ToolCall{CallID: "c1"}, "short")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, ref, ref2)
+		got, err := os.ReadFile(filepath.Join(SessionOutputsDir(dir, "sess_4"),
+			strings.TrimPrefix(ref, "out:sess_4:")+".txt"))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "short", string(got))
+		files, err := os.ReadDir(SessionOutputsDir(dir, "sess_4"))
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, len(files)) // the temp file is gone
+	})
 }
 
 // bigMCP is an MCP stub returning fixed content.
