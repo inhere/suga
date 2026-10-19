@@ -247,9 +247,9 @@ def main():
         finally:
             if s is not None:
                 s.close(grace=0)
+        s.check("vision off: no picture reached the store", not assert_images(home, sid, 0))
         results_total[0] += len(s.results) - len(s.failed())
         results_total[1] += len(s.results)
-       s.check("vision off: no picture reached the store", not assert_images(home, sid, 0))
 
         # 2. round: attachments ride.
         write_home(home, args.port, "fake/gpt-4o")
@@ -261,13 +261,13 @@ def main():
         finally:
             if s is not None:
                 s.close(grace=0)
-        results_total[0] += len(s.results) - len(s.failed())
-        results_total[1] += len(s.results)
         # The store kept the pictures: the clipboard one and the :image one are
         # different bytes, so exactly two files (same-bytes attaches dedup).
         files = assert_images(home, sid, 2)
         s.check("vision on: both pictures in sessions/<sid>/images", len(files) == 2)
         s.check("trace: the turn is recorded", any(e.get("kind") for e in trace_events(binary, dict(base_env, SUGA_HOME=home), sid)))
+        results_total[0] += len(s.results) - len(s.failed())
+        results_total[1] += len(s.results)
     finally:
         fake.terminate()
         fake.wait(timeout=5)
