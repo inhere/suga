@@ -136,6 +136,15 @@ chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区
 
 输出规则：内置规则按语言/工具分文件（`go`、`rust`、`js`、`python`、`java`、`git`、`grep`）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。一条规则可按命令（可加 `match_output` 再按输出）匹配，然后丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），并用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果永远不短于原文时不交给模型。字段与执行顺序见 `pkg/agentcore/tools/native/rules/README.md`。
 
+## `gc.*`
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `gc.retention.interactive` | `180d` | `suga gc --retention` 对交互会话的保留期：chat 创建、被 chat 接续过（`used_interactively`）以及没有 `meta.origin` 的历史会话。`0` 表示该类不清理 |
+| `gc.retention.noninteractive` | `30d` | 同上，适用于非交互入口（`meta.origin` 为 `run`、`acp`、`agent`）创建的会话。`0` 表示该类不清理 |
+
+时长接受天数（`180d`、`30d`）、Go 时长（`4320h`）或秒数。`suga gc --retention` 默认只报告（每类的会话数、条目数、预计字节），`--apply` 才删除；活跃会话、run 登记与持锁会话始终跳过，删除本身不 VACUUM（要回收磁盘空间再跑 `suga gc --vacuum`）。
+
 ## `mcp.*`
 
 | 键 | 默认 | 含义 |
@@ -315,6 +324,9 @@ suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]
 suga stats [--session <id>] [--since 7d] [--json]
 suga export <session> [--redact] [-o <file>]
 suga gc --older-than 30d [--apply]
+suga gc --retention [--apply]
+suga gc --shrink-fts [--status|--abort]
+suga gc --vacuum
 suga manifest [--json] [--model <p/m>] [--thinking <level>]
 suga version
 ```
