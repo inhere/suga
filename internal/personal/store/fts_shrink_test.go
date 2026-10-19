@@ -207,9 +207,16 @@ func TestFTSShrinkCommand(t *testing.T) {
 		assert.False(t, midway.Complete)
 		assert.Eq(t, int64(6), midway.PendingRows)
 
-		rest, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2})
+		var resumed []int64
+		rest, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(p FTSShrinkProgress) {
+			resumed = append(resumed, p.ScannedRowID)
+		}})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, int64(6), rest.Rows)
+		// The checkpoint skips the rowids the first pass already walked: three
+		// batches for the six rows left, starting right after the checkpoint.
+		assert.Eq(t, []int64{report.ScannedRowID + 2, report.ScannedRowID + 4, report.ScannedRowID + 6}, resumed)
+		assert.Eq(t, 3, rest.Batches)
 		left, err := s.FTSShrinkStatus(ctx)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.True(t, left.Complete)
