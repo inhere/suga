@@ -602,6 +602,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		// Tool outputs above tools.max_output_bytes go to
 		// <SUGA_HOME>/sessions/<id>/outputs/ and the session keeps a ref.
 		InlineOutputBytes: inlineOutputBytes(),
+		SessionsDir:       sessionsDir,
 		Spiller:           personal.NewSessionSpiller(sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
 		MinimizeOutput:    minimizeOutput(workspace),
 		PrefetchTools:     prefetchTools(capabilities.Registry),

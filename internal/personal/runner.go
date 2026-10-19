@@ -85,9 +85,13 @@ type Config struct {
 	AppendSystemPromptSet bool
 	Hooks                 []agentcore.Hook
 	TranscriptDir         string
-	LockRoot              string
-	ProcessRoot           string
-	MaxSteps              int
+	// SessionsDir is the per-session file root ($SUGA_HOME/sessions). Message
+	// images are stored below <SessionsDir>/<session_id>/images and read back
+	// from there when a request is assembled; empty disables both.
+	SessionsDir string
+	LockRoot    string
+	ProcessRoot string
+	MaxSteps    int
 	// MaxOutputTokens is the output token limit of the model's requests
 	// (appconfig.ResolveMaxOutputTokens); 0 leaves it to the provider, which
 	// applies its own default then.
@@ -693,7 +697,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 			return emit(ctx, req.Emit, e)
 		}))
 	}
-	var storage agentcore.Storage = r.cfg.Repository.AgentStorage()
+	var storage agentcore.Storage = r.cfg.Repository.AgentStorage().WithSessionsDir(r.cfg.SessionsDir)
 	if req.Injected {
 		// Persist the existing "not typed by a person" marker on the turn's
 		// request, so a later handoff package can tell it apart (D4).

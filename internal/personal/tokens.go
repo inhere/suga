@@ -2,6 +2,7 @@ package personal
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/inhere/suga/pkg/agentcore"
 	"golang.org/x/text/width"
@@ -79,6 +80,29 @@ func tokensOfMessage(m agentcore.Message) int {
 		if raw, err := json.Marshal(m.ToolCall.Arguments); err == nil {
 			n += tokensOfText(string(raw))
 		}
+	}
+	n += tokensOfImages(m.Images)
+	if m.ToolResult != nil {
+		n += tokensOfImages(m.ToolResult.Images)
+	}
+	return n
+}
+
+// tokensOfImages estimates the tokens of a message's images the way the
+// providers do: roughly width×height/750, i.e. a 1568×1568 picture (the long
+// side the image tools scale to) costs about a thousand tokens.
+func tokensOfImages(images []agentcore.ImagePart) int {
+	if len(images) == 0 {
+		return 0
+	}
+	n := 0
+	for _, part := range images {
+		if part.Width > 0 && part.Height > 0 {
+			n += (part.Width*part.Height + 749) / 750
+			continue
+		}
+		// Unknown pixel size: charge the bytes as text instead of nothing.
+		n += tokensOfText(strings.Repeat("x", len(part.Data)))
 	}
 	return n
 }

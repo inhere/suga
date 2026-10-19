@@ -165,6 +165,7 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 		Workspace:     s.workspace, Version: buildVersion, Mode: runMode(false),
 		TaintTools: rs.taintTools, TaintOnSpill: rs.taintOnSpill,
 		InlineOutputBytes: inlineOutputBytes(), Spiller: personal.NewSessionSpiller(rs.sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
+		SessionsDir:    rs.sessionsDir,
 		MinimizeOutput: minimizeOutput(s.workspace), PrefetchTools: prefetchTools(registry),
 		PromptBuilder:     staticPrompt(subAgentPrompt()),
 		EnvironmentSource: func() string { return subAgentEnvironment(s.workspace, kind) },

@@ -306,12 +306,17 @@ func (b *contextBuilder) BuildMessages(ctx context.Context, state *agentcore.Run
 	b.takeTaskNotices(ctx, state)
 	b.takeSteers(ctx, state)
 	view := b.compose(state)
+	// Image bytes are read back here (the store keeps references only): the
+	// history and per-request rules run on the composed view, so the estimate
+	// below counts what the request will actually carry.
+	view = b.prepareImages(view)
 	est := b.estimate(ctx, state, view)
 	if est > b.threshold() {
 		_, err := b.startSegment(ctx, state, segmentReasonThreshold, est)
 		switch {
 		case err == nil:
 			view = b.compose(state)
+			view = b.prepareImages(view)
 			est = b.estimate(ctx, state, view)
 		case ctx.Err() != nil:
 			return nil, ctx.Err()
