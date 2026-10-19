@@ -1,7 +1,6 @@
 package personal
 
 import (
-	"compress/gzip"
 	"context"
 	"io"
 	"os"
@@ -26,18 +25,9 @@ func writeOutput(t *testing.T, sessionsDir, sid, stem, content string, compress 
 	}
 	f, err := os.Create(filepath.Join(dir, stem+gzSuffix))
 	assert.Require(t, assert.NoErr(t, err))
-	assert.Require(t, assert.NoErr(t, gzipInto(f, content)))
+	_, err = gzipInto(f, strings.NewReader(content))
+	assert.Require(t, assert.NoErr(t, err))
 	assert.Require(t, assert.NoErr(t, f.Close()))
-}
-
-// gzipInto writes content compressed into w (no header timestamp, so repeated
-// runs produce the same bytes).
-func gzipInto(w io.Writer, content string) error {
-	zw := gzip.NewWriter(w)
-	if _, err := zw.Write([]byte(content)); err != nil {
-		return err
-	}
-	return zw.Close()
 }
 
 func readOutput(t *testing.T, r io.ReadCloser) string {
