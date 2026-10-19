@@ -43,8 +43,12 @@ const (
 	// ToolBodyFileName is the append-only file of one session's moved bodies.
 	ToolBodyFileName = "tools.jsonl"
 	// toolBodyPreviewRunes bounds the preview a stub keeps of a tool result, so a
-	// lost file still shows what the call was and how its output began.
-	toolBodyPreviewRunes = 256
+	// lost file still shows what the call was and how its output began. It is the
+	// only copy of the output the stub holds (the result itself is not repeated),
+	// so it stays at the length a human needs to recognize the call: the stubs of a
+	// real ledger average ~1.5 KB at 256 runes twice, this shape keeps them near
+	// 200 bytes.
+	toolBodyPreviewRunes = 120
 	// toolBodyHeaderWindow is how far before a record's JSON a reader looks for
 	// the record header (seq + sha256) when it verifies a read.
 	toolBodyHeaderWindow = 192
@@ -95,25 +99,34 @@ func parseBodyRef(value string) (BodyRef, error) {
 	return BodyRef{Off: off, Len: length, SHA256: parts[2]}, nil
 }
 
-// toolBodyStub is the stored shape of a moved tool entry: enough for the link
-// extractions (ToolResult.CallID), for a trace page and for a human to see what
-// the call was. It deliberately carries no ResultSameAsContent marker: a stub is
-// not a deduped row and the P2 rewrites skip it (entries.body_ref non-empty).
+// toolBodyStub is the stored shape of a moved tool entry: only what SQL still
+// reads from a row (Role, and the CallIDs the link extraction in
+// ListEntryRefs pulls with json_extract), plus one short preview so a human and
+// a lost file still see which call it was. Everything else lives in the record
+// (the full JSON the readers restore); a stub keeps no Arguments, no Reasoning
+// and no second copy of the preview. It deliberately carries no
+// ResultSameAsContent marker: a stub is not a deduped row and the P2 rewrites
+// skip it (entries.body_ref non-empty).
 type toolBodyStub struct {
 	Role       string              `json:"Role"`
-	Content    string              `json:"Content"`
-	ToolCall   *api.ToolCall       `json:"ToolCall,omitempty"`
+	Content    string              `json:"Content,omitempty"`
+	ToolCall   *toolBodyStubCall   `json:"ToolCall,omitempty"`
 	ToolResult *toolBodyStubResult `json:"ToolResult,omitempty"`
-	Reasoning  string              `json:"Reasoning,omitempty"`
+}
+
+// toolBodyStubCall is the tool call as a stub keeps it: the id and the name the
+// link extraction and a reader's summary need, without the arguments.
+type toolBodyStubCall struct {
+	CallID string `json:"CallID,omitempty"`
+	Name   string `json:"Name,omitempty"`
 }
 
 // toolBodyStubResult is the tool result as a stub keeps it: the fields a reader
-// links on plus the beginning of the output.
+// links on.
 type toolBodyStubResult struct {
 	CallID  string `json:"CallID,omitempty"`
 	Name    string `json:"Name,omitempty"`
 	IsError bool   `json:"IsError,omitempty"`
-	Preview string `json:"Preview,omitempty"`
 }
 
 // buildToolBodyStub returns the stub of one tool entry body. ok is false when the
@@ -124,13 +137,15 @@ func buildToolBodyStub(raw []byte) (stub []byte, ok bool, err error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, false, nil
 	}
-	out := toolBodyStub{Role: m.Role, Content: previewText(m.Content), ToolCall: m.ToolCall, Reasoning: m.Reasoning}
+	out := toolBodyStub{Role: m.Role, Content: previewText(m.Content)}
+	if m.ToolCall != nil {
+		out.ToolCall = &toolBodyStubCall{CallID: m.ToolCall.CallID, Name: m.ToolCall.Name}
+	}
 	if m.ToolResult != nil {
 		out.ToolResult = &toolBodyStubResult{
 			CallID:  m.ToolResult.CallID,
 			Name:    m.ToolResult.Name,
 			IsError: m.ToolResult.IsError,
-			Preview: previewText(m.ToolResult.Content),
 		}
 	}
 	stub, err = json.Marshal(out)
@@ -138,6 +153,25 @@ func buildToolBodyStub(raw []byte) (stub []byte, ok bool, err error) {
 		return nil, false, err
 	}
 	return stub, true, nil
+}
+
+// slimToolBodyStub narrows a stub written by an older version (one that kept the
+// call arguments, the reasoning and a second preview) to the shape
+// buildToolBodyStub writes now. It needs no body: the fields it keeps are already
+// in the stub, and the preview of a 256-rune preview is the first 120 runes of
+// the output. changed is false when the row is in the current shape already, so
+// the pass skips it and a rerun writes nothing.
+func slimToolBodyStub(raw []byte) (slim []byte, changed bool) {
+	var old toolBodyStub
+	if err := json.Unmarshal(raw, &old); err != nil {
+		return nil, false // not a stub of ours: left as it is
+	}
+	slim, err := json.Marshal(toolBodyStub{Role: old.Role, Content: previewText(old.Content),
+		ToolCall: old.ToolCall, ToolResult: old.ToolResult})
+	if err != nil {
+		return nil, false
+	}
+	return slim, !bytes.Equal(slim, raw)
 }
 
 // previewText cuts s to the preview length in runes (never in the middle of a

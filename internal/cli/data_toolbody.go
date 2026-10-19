@@ -18,29 +18,30 @@ import (
 
 // newToolBodiesCommand builds `suga data tool-bodies`.
 func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	var status, move, undo, check, removeFiles, abort bool
+	var status, move, undo, check, removeFiles, abort, slim bool
 	var batch int
-	cmd := capp.NewCmd("tool-bodies", "Move tool result bodies out of the ledger into sessions/<id>/tools.jsonl (--move), restore them (--undo), verify (--check)", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("tool-bodies", "Move tool result bodies out of the ledger into sessions/<id>/tools.jsonl (--move), narrow old stubs (--slim), restore them (--undo), verify (--check)", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga data tool-bodies [--status|--move|--undo|--check|--abort] [--remove-files] [--batch N]")
+			return fmt.Errorf("usage: suga data tool-bodies [--status|--move|--slim|--undo|--check|--abort] [--remove-files] [--batch N]")
 		}
 		modes := 0
-		for _, on := range []bool{status, move, undo, check, abort} {
+		for _, on := range []bool{status, move, slim, undo, check, abort} {
 			if on {
 				modes++
 			}
 		}
 		if modes > 1 {
-			return fmt.Errorf("--status, --move, --undo, --check and --abort are different jobs; pass one of them")
+			return fmt.Errorf("--status, --move, --slim, --undo, --check and --abort are different jobs; pass one of them")
 		}
 		if removeFiles && !undo {
 			return fmt.Errorf("--remove-files only applies to --undo")
 		}
-		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, undo: undo, check: check, abort: abort, removeFiles: removeFiles, batch: batch})
+		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, slim: slim, undo: undo, check: check, abort: abort, removeFiles: removeFiles, batch: batch})
 	})
 	cmd.SetOutput(stderr)
 	cmd.BoolVar(&status, "status", false, "report what would move, what moved and how large the files are")
 	cmd.BoolVar(&move, "move", false, "move the historical tool bodies into the session files (resumable)")
+	cmd.BoolVar(&slim, "slim", false, "narrow the stubs an older version wrote to the current shape (resumable, touches no file)")
 	cmd.BoolVar(&undo, "undo", false, "restore every moved body into the ledger and keep new ones inline (do this before running an older suga)")
 	cmd.BoolVar(&check, "check", false, "verify every stub against its record and report orphans (report only)")
 	cmd.BoolVar(&abort, "abort", false, "drop the progress checkpoints so the next pass starts over")
@@ -51,8 +52,8 @@ func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.C
 
 // toolBodiesFlags is what the flags asked for.
 type toolBodiesFlags struct {
-	status, move, undo, check, abort, removeFiles bool
-	batch                                         int
+	status, move, slim, undo, check, abort, removeFiles bool
+	batch                                               int
 }
 
 // runToolBodies runs one job of `suga data tool-bodies`.
@@ -93,8 +94,10 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 		return nil
 	case f.move:
 		return runMoveToolBodies(ctx, out, repo, before, f.batch)
+	case f.slim:
+		return runSlimToolBodies(ctx, out, repo, before, f.batch)
 	}
-	return fmt.Errorf("usage: suga data tool-bodies [--status|--move|--undo|--check|--abort]")
+	return fmt.Errorf("usage: suga data tool-bodies [--status|--move|--slim|--undo|--check|--abort]")
 }
 
 // runMoveToolBodies moves the historical bodies out in batches.
@@ -118,6 +121,33 @@ func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 	}
 	fmt.Fprintf(out, "移出完成：%d 条 tool 结果（%s）写入会话文件，%d 个写事务\n", report.Rows, humanBytes(report.Bytes), report.Batches)
 	fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`；会话文件在备份里始终包含")
+	return nil
+}
+
+// runSlimToolBodies narrows the old-shape stubs of a release before this one. It
+// is a separate job from --move (whose window is "inline bodies", which a stub is
+// not): only the stub rows change, the files and their body_ref stay untouched.
+func runSlimToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
+	if before.SlimRows == 0 {
+		fmt.Fprintln(out, "旧形状的桩已全部瘦身：没有需要改写的桩")
+		return nil
+	}
+	fmt.Fprintf(out, "开始瘦身：%d 个旧形状的桩（预计回收 %s），Ctrl-C 可中断，重跑续上\n",
+		before.SlimRows, humanBytes(before.SlimReclaimBytes))
+	report, err := repo.SlimToolBodies(ctx, store.ToolBodyMaintOptions{
+		Batch: batch,
+		OnBatch: func(p store.ToolBodyMaintProgress) {
+			fmt.Fprintf(out, "  已扫到 %s/%d，瘦身 %d 个（回收 %s）\n", p.SessionID, p.Seq, p.Rows, humanBytes(p.Bytes))
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(out, "中断于 %s/%d（已瘦身 %d 个）；重跑 `suga data tool-bodies --slim` 从这里续上：%v\n",
+			report.CursorSession, report.CursorSeq, report.Rows, err)
+		return err
+	}
+	fmt.Fprintf(out, "瘦身完成：%d 个桩改写为当前形状（回收 %s），%d 个写事务；会话文件未改动\n",
+		report.Rows, humanBytes(report.Bytes), report.Batches)
+	fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`")
 	return nil
 }
 
@@ -170,6 +200,12 @@ func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
 		moveState = "进行中"
 	}
 	fmt.Fprintf(out, "--move 状态：%s（断点 %s/%d，已移出 %d 条）\n", moveState, st.MoveSession, st.MoveSeq, st.MoveRows)
+	if st.SlimRows > 0 {
+		fmt.Fprintf(out, "旧形状的桩：%d 个（--slim 可回收 %s；完成后 `suga data vacuum` 缩小库文件）\n",
+			st.SlimRows, humanBytes(st.SlimReclaimBytes))
+	} else {
+		fmt.Fprintln(out, "旧形状的桩：无（桩已是当前形状）")
+	}
 	undoState := "未开始"
 	switch {
 	case st.UndoComplete:
