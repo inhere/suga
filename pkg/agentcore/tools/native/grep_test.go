@@ -113,6 +113,69 @@ func TestGrepFiles(t *testing.T) {
 	})
 }
 
+func TestGrepOptions(t *testing.T) {
+	ws := searchWorkspace(t)
+	assert.NoErr(t, os.WriteFile(filepath.Join(ws, "context.txt"), []byte(
+		"one\nhit two\nthree\nhit four\nfive\nsix\nhit seven\neight\n"), 0o644))
+	assert.NoErr(t, os.WriteFile(filepath.Join(ws, "literal.txt"), []byte("a+b\naab\n"), 0o644))
+	tool := &FileGrepTool{workspace: ws}
+
+	t.Run("exclude filters content and files output", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": "Hello", "exclude": "func"})
+		assert.NotContains(t, out, "main.go")
+		assert.StrContains(t, out, "internal/a/a.go:3: // Hello says hi")
+		files := execTool(t, tool, map[string]any{"pattern": "Hello", "exclude": "func", "output": "files", "no_ignore": true})
+		assert.StrContains(t, files, "internal/a/a.go")
+		assert.NotContains(t, files, "main.go")
+	})
+	t.Run("glob list includes and excludes, including only exclusions", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": "Hello", "glob": []any{"*.go", "!*_test.go"}, "output": "files", "no_ignore": true})
+		assert.StrContains(t, out, "main.go")
+		assert.StrContains(t, out, "build/out.go")
+		assert.NotContains(t, out, "a_test.go")
+		allButTests := execTool(t, tool, map[string]any{"pattern": "Hello", "glob": []any{"!*_test.go"}, "output": "files", "no_ignore": true})
+		assert.StrContains(t, allButTests, "docs/中文.md")
+		assert.NotContains(t, allButTests, "a_test.go")
+	})
+	t.Run("context merges adjacent blocks and does not consume max results", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": "hit", "path": "context.txt", "context": 1, "max_results": 1})
+		assert.StrContains(t, out, "context.txt-1- one")
+		assert.StrContains(t, out, "context.txt:2: hit two")
+		assert.StrContains(t, out, "context.txt-3- three")
+		assert.StrContains(t, out, "[stopped at 1 results")
+		assert.NotContains(t, out, "context.txt:4:")
+	})
+	t.Run("literal and exclude combine", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": "a+b", "literal": true, "path": "literal.txt", "exclude": "aab"})
+		assert.Eq(t, "literal.txt:1: a+b", out)
+		out = execTool(t, tool, map[string]any{"pattern": "a+b", "literal": true, "path": "literal.txt", "output": "files"})
+		assert.Eq(t, "literal.txt", out)
+	})
+	t.Run("regexp2 lookbehind and backreference fallback", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": `(?<=hit )two`, "path": "context.txt"})
+		assert.StrContains(t, out, "context.txt:2: hit two")
+		assert.StrContains(t, out, "used regexp2")
+		assert.NoErr(t, os.WriteFile(filepath.Join(ws, "repeat.txt"), []byte("go go\nno\n"), 0o644))
+		out = execTool(t, tool, map[string]any{"pattern": `(\w+) \1`, "path": "repeat.txt"})
+		assert.StrContains(t, out, "repeat.txt:1: go go")
+		assert.StrContains(t, out, "used regexp2")
+	})
+	t.Run("regexp2 timeout is reported", func(t *testing.T) {
+		long := strings.Repeat("a", 10000) + "x\n"
+		assert.NoErr(t, os.WriteFile(filepath.Join(ws, "catastrophic.txt"), []byte(long), 0o644))
+		started := time.Now()
+		out := execTool(t, tool, map[string]any{"pattern": `(?=(a+)+$)a`, "path": "catastrophic.txt"})
+		assert.True(t, time.Since(started) < time.Second, time.Since(started).String())
+		assert.StrContains(t, out, "regexp2 match timed out")
+	})
+	t.Run("invalid syntax gives executable advice without fallback", func(t *testing.T) {
+		_, err := tool.Execute(t.Context(), callWith(map[string]any{"pattern": "("}))
+		assert.ErrMsgContains(t, err, "literal: true")
+		_, err = tool.Execute(t.Context(), callWith(map[string]any{"pattern": `(?<bad`}))
+		assert.ErrMsgContains(t, err, "RE2 syntax")
+	})
+}
+
 func TestFindFiles(t *testing.T) {
 	ws := searchWorkspace(t)
 	tool := &FileFindTool{workspace: ws}
