@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- `file_grep` 支持 `exclude`、glob 列表与 `!` 取反、上下文行、字面量匹配，并在 lookaround/backreference 等 RE2 不支持的正则上安全回退到带超时的 regexp2。
+
 ## [0.35.0] - 2026-10-18
 
 支持 PHP（`file_symbols`、`file_refs`、`phpunit`/`pest`）；`file_refs` 对没有提取器的文本文件（Rust、模板、TOML 等）退化为词边界文本匹配而不再拒绝，`file_symbols` 改为给出可执行的 `file_grep` 用法；限定名查询不再漏掉定义包内的裸调用。
