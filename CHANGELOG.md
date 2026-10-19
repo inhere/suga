@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 图片输入（第一期）：新增只读工具 `view_image`，模型可按路径看图（PNG、JPEG、GIF 首帧、WebP；长边缩到 1568，单张 ≤3.5MB，先读文件头把总像素限制在 40MP 内，只接受普通文件、输入 ≤20MB）。图片不进数据库：`AppendMessages` 在编码前把字节写到 `sessions/<sid>/images/<sha256>.<ext>`（临时文件 → Sync → rename，同类图只存一份），消息里只留引用；组装请求时按引用读回（校验 sha256，缺失或不符改成文字说明），早于最近 fold 边界的旧图和超出单请求上限（8 张 / 20MB）的图换成“需要时 `view_image <Ref>`”的文字。三个 provider 都会发图：Claude 在用户消息与 tool_result 里带 image 块（图片在文字前），OpenAI Chat 与 Responses 在整批工具结果之后追加一条带图片的 user 消息，纯图 user 消息不再因空文本被跳过；`NoImages` 的模型得到文字说明。图片按宽高计入 token 估算。
 - 顶层命令分组：新增 `suga inspect`（会话诊断：`trace`、`stats`、`export`、`manifest`）与 `suga data`（数据维护：`gc`、`shrink-fts`、`vacuum`、`compress-spill`、`backup`、`restore`）两个分组命令，顶层只留 `chat`、`run`、`send`、`ps`、`sessions`、`undo`、`config`、`models`、`init`、`version`、`acp`；分组的一行说明列出其子命令名，单独执行 `suga inspect`（或 `suga data`）时打印子命令列表。原 `suga gc` 的维护开关拆成独立子命令：`suga data shrink-fts [--status|--abort|--batch N]`、`suga data vacuum`、`suga data compress-spill [--apply]`，`suga data gc` 只保留 `--older-than` / `--retention` 与 `--apply`。命令行为、参数名与输出格式均未改变。
 - 顶层直接接受 chat 选项：`suga --resume <session>`、`suga -m <model>` 等同 `suga chat --resume <session>`（第一个参数是选项时自动视为 chat，`-h`/`--help`/`-V`/`--version` 除外）。
 - `suga data backup --output FILE.suga-backup.zip [--include-spill]` 与 `suga data restore FILE.suga-backup.zip`：使用带 `manifest.json`、SHA-256 清单和 SQLite `VACUUM INTO` 在线快照的 ZIP 归档；默认不打包 spill，`--include-spill` 显式纳入。restore 校验路径、解压比例、全部 hash 和 SQLite integrity check，取得 `run/maintenance.lock` 后以 staging 原子替换，并默认先写入 `backups/pre-restore-<时间>.suga-backup.zip`。
