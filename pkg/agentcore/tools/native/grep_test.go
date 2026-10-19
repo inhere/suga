@@ -144,6 +144,9 @@ func TestGrepOptions(t *testing.T) {
 		assert.StrContains(t, out, "context.txt-3- three")
 		assert.StrContains(t, out, "[stopped at 1 results")
 		assert.NotContains(t, out, "context.txt:4:")
+		out = execTool(t, tool, map[string]any{"pattern": "seven", "path": "context.txt", "context": 2})
+		assert.StrContains(t, out, "context.txt-5- five")
+		assert.StrContains(t, out, "context.txt:7: hit seven")
 	})
 	t.Run("literal and exclude combine", func(t *testing.T) {
 		out := execTool(t, tool, map[string]any{"pattern": "a+b", "literal": true, "path": "literal.txt", "exclude": "aab"})

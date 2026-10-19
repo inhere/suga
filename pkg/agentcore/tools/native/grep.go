@@ -175,6 +175,7 @@ func grepFile(root *os.Root, rel, name string, re, exclude grepMatcher, filesOnl
 		return nil, 0, false, nil
 	}
 	var lines []grepLine
+	hitCount := 0
 	for lineNo := 1; ; lineNo++ {
 		line, readErr := br.ReadString('\n')
 		if line == "" && readErr != nil {
@@ -195,7 +196,8 @@ func grepFile(root *os.Root, rel, name string, re, exclude grepMatcher, filesOnl
 			}
 			matched = !matched
 		}
-		if matched && countGrepHits(lines) < limit {
+		if matched && hitCount < limit {
+			hitCount++
 			lines = append(lines, grepLine{text: line, hit: true, line: lineNo})
 		} else {
 			lines = append(lines, grepLine{text: line, line: lineNo})
@@ -204,7 +206,7 @@ func grepFile(root *os.Root, rel, name string, re, exclude grepMatcher, filesOnl
 			break
 		}
 	}
-	hits := countGrepHits(lines)
+	hits := hitCount
 	if hits == 0 {
 		return nil, 0, false, nil
 	}
