@@ -14,15 +14,16 @@ import (
 //
 //	suga data tool-bodies --status          what would move, what moved
 //	suga data tool-bodies --move            move the historical bodies out
+//	suga data tool-bodies --slim            narrow the stubs an older version wrote
 //	suga data tool-bodies --undo            restore every stub into the ledger
 //	suga data tool-bodies --undo --remove-files   ... and drop the files
 //	suga data tool-bodies --check           verify every stub, report orphans
 //
-// --move and --undo walk the entries by (session_id, seq) in small batches, each
-// one a single write transaction that also records its checkpoint, so a
-// cancelled run resumes where it stopped. The batch of both jobs is capped by
-// rows and by bytes: the write lock is held while the file is appended, so it
-// must stay short even when the rows are large tool outputs.
+// --move, --slim and --undo walk the entries by (session_id, seq) in small
+// batches, each one a single write transaction that also records its
+// checkpoint, so a cancelled run resumes where it stopped. The batch of every
+// pass is capped by rows and by bytes: the write lock is held while the file is
+// appended, so it must stay short even when the rows are large tool outputs.
 const (
 	// toolBodyBatchRows is the default batch of both passes (100 rows keeps the
 	// write lock short; a --batch flag may raise it up to toolBodyMaxBatch).
@@ -35,12 +36,14 @@ const (
 	// toolBodyCheckBatch is the page size of --check, which never holds the write
 	// lock.
 	toolBodyCheckBatch = 500
-	// toolBodyMoveJob and toolBodyUndoJob are the checkpoint rows of the passes.
+	// toolBodyMoveJob, toolBodyUndoJob and toolBodySlimJob are the checkpoint rows
+	// of the passes.
 	toolBodyMoveJob = "move"
 	toolBodyUndoJob = "undo"
+	toolBodySlimJob = "slim"
 )
 
-// toolBodyStateDDL is the checkpoint table of both passes: one row per job.
+// toolBodyStateDDL is the checkpoint table of the passes: one row per job.
 const toolBodyStateDDL = `CREATE TABLE IF NOT EXISTS tool_body_state (
     job             TEXT PRIMARY KEY,
     scanned_session TEXT NOT NULL DEFAULT '',
@@ -61,6 +64,15 @@ const toolBodyMoveWindowSQL = `SELECT session_id, seq, json FROM entries
 
 // toolBodyUndoWindowSQL reads one batch of stubs, after the same cursor.
 const toolBodyUndoWindowSQL = `SELECT session_id, seq, body_ref FROM entries
+    WHERE COALESCE(body_ref, '') <> ''
+      AND (session_id > ? OR (session_id = ? AND seq > ?))
+    ORDER BY session_id ASC, seq ASC LIMIT ?`
+
+// toolBodySlimWindowSQL reads one batch of stubs with their stored JSON, after
+// the cursor. Which of them is still in the old shape is decided in Go (the
+// shape is not a SQL predicate), so the pass pages over every stub and rewrites
+// only the ones slimToolBodyStub changes.
+const toolBodySlimWindowSQL = `SELECT session_id, seq, json, body_ref FROM entries
     WHERE COALESCE(body_ref, '') <> ''
       AND (session_id > ? OR (session_id = ? AND seq > ?))
     ORDER BY session_id ASC, seq ASC LIMIT ?`
@@ -107,6 +119,11 @@ type ToolBodyStatus struct {
 	MovedRows int64
 	FileBytes int64
 	Files     int
+	// SlimRows are stubs still in the shape an older version wrote (arguments,
+	// reasoning and a second preview); SlimReclaimBytes is what --slim would give
+	// back.
+	SlimRows         int64
+	SlimReclaimBytes int64
 	// The checkpoints of both passes.
 	MoveStarted, MoveComplete bool
 	MoveSession               string
@@ -161,6 +178,14 @@ func (s *Store) UndoToolBodies(ctx context.Context, opts ToolBodyMaintOptions) (
 	return s.runToolBodyPass(ctx, toolBodyUndoJob, opts, s.undoToolBodyBatch)
 }
 
+// SlimToolBodies rewrites the stubs of an older version to the current shape, at
+// most Batch rows per write transaction, resumable through its own
+// (session_id, seq) checkpoint. It never touches a session file or a body_ref:
+// only the ledger row shrinks, so an interrupted or repeated run is harmless.
+func (s *Store) SlimToolBodies(ctx context.Context, opts ToolBodyMaintOptions) (ToolBodyMaintReport, error) {
+	return s.runToolBodyPass(ctx, toolBodySlimJob, opts, s.slimToolBodyBatch)
+}
+
 // toolBodyBatchFunc applies one batch; it returns the rows/bytes it handled and
 // the cursor it reached.
 type toolBodyBatchFunc func(ctx context.Context, job string, opts ToolBodyMaintOptions) (rows, bytes int64, last *toolBodyRow, more bool, err error)
@@ -173,7 +198,7 @@ type toolBodyRow struct {
 	Ref       string
 }
 
-// runToolBodyPass is the shared loop of --move and --undo.
+// runToolBodyPass is the shared loop of --move, --slim and --undo.
 func (s *Store) runToolBodyPass(ctx context.Context, job string, opts ToolBodyMaintOptions, batch toolBodyBatchFunc) (ToolBodyMaintReport, error) {
 	if err := s.ensureToolBodyState(ctx); err != nil {
 		return ToolBodyMaintReport{}, err
@@ -366,6 +391,102 @@ func (s *Store) undoToolBodyBatch(ctx context.Context, job string, opts ToolBody
 		return 0, 0, nil, false, err
 	}
 	return restored, restoredBytes, last, len(rows) == batch, nil
+}
+
+// slimToolBodyBatch narrows one batch of old-shape stubs, in one write
+// transaction with its checkpoint. It rewrites only the rows slimToolBodyStub
+// changes, so a rerun over the same window writes nothing.
+func (s *Store) slimToolBodyBatch(ctx context.Context, job string, opts ToolBodyMaintOptions) (int64, int64, *toolBodyRow, bool, error) {
+	batch := toolBodyBatchSize(opts)
+	tx, err := s.beginWriteTx(ctx)
+	if err != nil {
+		return 0, 0, nil, false, err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after Commit
+	cursor, err := s.toolBodyCursorTx(ctx, tx, job)
+	if err != nil {
+		return 0, 0, nil, false, err
+	}
+	rows, err := toolBodySlimWindow(ctx, tx, cursor, batch)
+	if err != nil {
+		return 0, 0, nil, false, err
+	}
+	if len(rows) == 0 {
+		return 0, 0, nil, false, nil
+	}
+	var slimmed, saved int64
+	var last *toolBodyRow
+	for i := range rows {
+		row := &rows[i]
+		last = row
+		stub, changed := slimToolBodyStub(row.JSON)
+		if !changed {
+			continue // already in the current shape: a rerun rewrites nothing
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE entries SET json = ? WHERE session_id = ? AND seq = ?`,
+			string(stub), row.SessionID, row.Seq); err != nil {
+			return 0, 0, nil, false, fmt.Errorf("slim stub of %s/%d: %w", row.SessionID, row.Seq, err)
+		}
+		slimmed++
+		saved += int64(len(row.JSON) - len(stub))
+	}
+	if err := s.checkpointToolBody(ctx, tx, job, last, slimmed, saved); err != nil {
+		return 0, 0, nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, nil, false, err
+	}
+	return slimmed, saved, last, len(rows) == batch, nil
+}
+
+// toolBodySlimWindow reads up to limit stubs with their stored JSON, after the
+// cursor.
+func toolBodySlimWindow(ctx context.Context, q querier, cursor cursorState, limit int) ([]toolBodyRow, error) {
+	rows, err := q.QueryContext(ctx, toolBodySlimWindowSQL, cursor.SessionID, cursor.SessionID, cursor.Seq, limit)
+	if err != nil {
+		return nil, fmt.Errorf("read tool stubs after %s/%d: %w", cursor.SessionID, cursor.Seq, err)
+	}
+	defer rows.Close()
+	var out []toolBodyRow
+	for rows.Next() {
+		var row toolBodyRow
+		var body string
+		if err := rows.Scan(&row.SessionID, &row.Seq, &body, &row.Ref); err != nil {
+			return nil, err
+		}
+		row.JSON = []byte(body)
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// countSlimToolBodyRows counts the stubs still in the old shape and what --slim
+// would give back. It only reads (no write lock) and pages like the pass itself,
+// so --status stays usable next to a running chat.
+func (s *Store) countSlimToolBodyRows(ctx context.Context) (int64, int64, error) {
+	var rows, saved int64
+	var cursor cursorState
+	for {
+		if err := ctx.Err(); err != nil {
+			return rows, saved, err
+		}
+		window, err := toolBodySlimWindow(ctx, s.db, cursor, toolBodyCheckBatch)
+		if err != nil {
+			return rows, saved, err
+		}
+		for i := range window {
+			stub, changed := slimToolBodyStub(window[i].JSON)
+			if !changed {
+				continue
+			}
+			rows++
+			saved += int64(len(window[i].JSON) - len(stub))
+		}
+		if len(window) < toolBodyCheckBatch {
+			return rows, saved, nil
+		}
+		cursor.SessionID, cursor.Seq = window[len(window)-1].SessionID, window[len(window)-1].Seq
+	}
 }
 
 // toolBodyWindowTx reads up to limit tool rows that still hold their body, after
@@ -598,6 +719,10 @@ func (s *Store) ToolBodyStatus(ctx context.Context) (ToolBodyStatus, error) {
 	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE COALESCE(body_ref, '') <> ''`).Scan(&status.MovedRows)
 	if err != nil {
 		return status, fmt.Errorf("count moved tool bodies: %w", err)
+	}
+	status.SlimRows, status.SlimReclaimBytes, err = s.countSlimToolBodyRows(ctx)
+	if err != nil {
+		return status, err
 	}
 	files, err := s.toolBodyFiles()
 	if err != nil {

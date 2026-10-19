@@ -14,6 +14,10 @@
 - chat 贴图：`:image <路径>` 把图片按 `view_image` 同一套校验与缩放附到**下一条**用户消息（可多次、顺序保留，`:[image]` 无参数列出待发、`:image clear` 清空；当前模型不支持看图时拒绝并提示用 `:model` 切换），`Alt+V` 直接读系统剪贴板图片（Windows 走剪贴板 API，按注册的 PNG / CF_DIBV5 / CF_DIB 读取，DIB 转 PNG；macOS 用 `osascript` 取 «class PNGf»；Linux 先 `wl-paste --type image/png` 再 `xclip`，都没有时提示安装哪个）；附到后输入行上方显示 `[已附图 N：宽×高 格式]`，剪贴板没有图片时提示“剪贴板里没有图片”。`view_image` 现在也能读本会话图片引用（`images/<sha>.<ext>`，按当前会话动态解析目录），被省略的历史图提示“需要时 view_image <Ref>”可以直接用。
 - `suga data backup` 现在**始终**包含 `sessions/*/images/`（与 `tools.jsonl` 同一类别处理，manifest 记类别 `session_images`），恢复时安装回各会话目录；删除会话本来就会删整个会话目录，图片随之清理。
 
+### 变更
+
+- tool 正文移出后留在库里的“桩”只保留 `Role`、`ToolCall{CallID, Name}`、`ToolResult{CallID, Name, IsError}` 与一份 120 字的 `Content` 预览（不再带 `ToolCall.Arguments`、`Reasoning` 和重复的 `ToolResult.Preview`）：读取路径始终从 `tools.jsonl` 取回完整 JSON，桩只给 SQL 取 CallID 用，旧形状在真实库上平均 1.5KB/条（3.3 万条约 50MB）。新增 `suga data tool-bodies --slim`：把旧版本写下的桩按 `(session_id, seq)` 分批改写成新形状，断点可续、重跑幂等，只改库内行、不动会话文件与 `body_ref`；`--status` 报告仍是旧形状的桩数量与预计回收字节。完成后执行 `suga data vacuum` 缩小库文件。
+
 ## [0.36.0] - 2026-10-19
 
 会话库数据治理：全文检索只覆盖用户与 AI 消息，tool 结果不再双份存储，大 tool 结果正文移到会话文件 `tools.jsonl`（用户真实库副本上 779MB → 308MB），并新增备份恢复、按来源的保留期与分批 GC；CLI 分组为 `suga inspect …` / `suga data …`，顶层直接接受 chat 选项；`suga run` 的 stream-json 首尾行带 `model`；`file_refs` 的 `context`；更多输出精简规则；会话 socket 路径过长时改用短的备用目录。
