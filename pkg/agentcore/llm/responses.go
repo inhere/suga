@@ -172,7 +172,13 @@ func hasReasoning(msgs []agentcoreapi.Message) bool {
 func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking bool) []map[string]any {
 	items := make([]map[string]any, 0, len(msgs))
 	inTurn := false // the last item came from the assistant
-	for _, m := range groupToolBatches(msgs) {
+	// Pictures of a tool batch go into one user item after the batch, since a
+	// function_call_output carries text only (design 0.3); the user item is
+	// generated deterministically during assembly, so a replay matches it.
+	grouped := groupToolBatches(msgs)
+	header := ""
+	var pendingImages []map[string]any
+	for i, m := range grouped {
 		switch {
 		case m.ToolResult != nil || m.Role == "tool":
 			callID, out := "", m.Content
@@ -181,9 +187,32 @@ func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking boo
 			} else if m.ToolCall != nil {
 				callID = m.ToolCall.CallID
 			}
+			if images := messageImages(m); len(images) > 0 {
+				if p.noImages {
+					out = withImageNotes(out, images)
+				} else if _, missing := sendableImages(images); len(missing) > 0 {
+					out = withImageNotes(out, missing)
+				}
+				if !p.noImages {
+					if send, _ := sendableImages(images); len(send) > 0 {
+						if header == "" {
+							header = toolImageNoteText(m)
+						}
+						for _, part := range send {
+							pendingImages = append(pendingImages, responsesImageBlock(part))
+						}
+					}
+				}
+			}
 			items = append(items, map[string]any{"type": "function_call_output", "call_id": callID, "output": out})
 			inTurn = false
+			if !nextIsTool(grouped, i) {
+				items = flushToolImages(items, header, pendingImages)
+				header, pendingImages = "", nil
+			}
 		case m.Role == "assistant":
+			items = flushToolImages(items, header, pendingImages)
+			header, pendingImages = "", nil
 			if !inTurn {
 				items = append(items, p.turnReasoning(m, thinking)...)
 				inTurn = true
@@ -197,18 +226,41 @@ func (p *ResponsesProvider) buildInput(msgs []agentcoreapi.Message, thinking boo
 					"name": m.ToolCall.Name, "arguments": mustJSON(m.ToolCall.Arguments)})
 			}
 		default:
+			items = flushToolImages(items, header, pendingImages)
+			header, pendingImages = "", nil
 			// user, and system messages mid-conversation: gateways such as
 			// command-code reject the developer role; the system prompt
 			// itself is the instructions field.
-			if strings.TrimSpace(m.Content) == "" {
+			if strings.TrimSpace(m.Content) == "" && len(messageImages(m)) == 0 {
 				continue
 			}
-			items = append(items, map[string]any{"role": "user",
-				"content": []map[string]any{{"type": "input_text", "text": m.Content}}})
+			items = append(items, map[string]any{"role": "user", "content": responsesUserContent(m.Content, messageImages(m), p.noImages)})
 			inTurn = false
 		}
 	}
-	return items
+	return flushToolImages(items, header, pendingImages)
+}
+
+// responsesUserContent renders a user message body: the text first, then the
+// pictures (a message may carry pictures alone, so the caller must not drop it
+// for an empty text).
+func responsesUserContent(text string, images []agentcoreapi.ImagePart, noImages bool) []map[string]any {
+	parts := make([]map[string]any, 0, len(images)+1)
+	if noImages {
+		text = withImageNotes(text, images)
+		images = nil
+	}
+	if text != "" {
+		parts = append(parts, map[string]any{"type": "input_text", "text": text})
+	}
+	send, missing := sendableImages(images)
+	for _, note := range imageNotes(missing) {
+		parts = append(parts, map[string]any{"type": "input_text", "text": note})
+	}
+	for _, part := range send {
+		parts = append(parts, responsesImageBlock(part))
+	}
+	return parts
 }
 
 // turnReasoning returns the reasoning items opening m's turn: the stored

@@ -50,6 +50,9 @@ type ClaudeProvider struct {
 	thinkingStyle string
 	// streamRequired sends every request as a streamed one (ClaudeConfig).
 	streamRequired bool
+	// noImages marks a provider or model without vision: the images a message
+	// carries become a text note instead of image blocks (ClaudeConfig.NoImages).
+	noImages bool
 	// retry is the provider's shared retry state (ClaudeConfig.Retry).
 	retry *backoff
 }
@@ -102,6 +105,10 @@ type ClaudeConfig struct {
 	// through Stream. Some gateways answer only stream=true requests, the
 	// internal summary requests included.
 	StreamRequired bool
+	// NoImages marks a provider or model without vision: pictures a message
+	// carries are sent as a text note instead of image blocks. It is the
+	// fallback path for a model whose configuration says vision: false.
+	NoImages bool
 	// Retry is the retry policy; zero fields take DefaultRetryPolicy's.
 	Retry RetryPolicy
 	// RequestTimeout bounds one non-streamed request as a whole
@@ -137,6 +144,7 @@ func NewClaudeProvider(cfg ClaudeConfig) *ClaudeProvider {
 		thinking:       cfg.Thinking,
 		thinkingStyle:  cfg.ThinkingStyle,
 		streamRequired: cfg.StreamRequired,
+		noImages:       cfg.NoImages,
 		retry:          newBackoff(cfg.Retry),
 	}
 }
@@ -206,6 +214,48 @@ func appendClaudeBlock(msgs []map[string]any, role string, block map[string]any)
 	return append(msgs, map[string]any{"role": role, "content": []map[string]any{block}})
 }
 
+// claudeUserContent renders a user message body that carries images: the image
+// blocks come first, then the text (design 0.3). Without images, and for a
+// model that cannot see, it returns the plain string form.
+func claudeUserContent(text string, images []agentcoreapi.ImagePart, noImages bool) any {
+	if noImages {
+		return withImageNotes(text, images)
+	}
+	send, missing := sendableImages(images)
+	if len(send) == 0 {
+		return withImageNotes(text, missing)
+	}
+	blocks := make([]map[string]any, 0, len(send)+1)
+	for _, part := range send {
+		blocks = append(blocks, claudeImageBlock(part))
+	}
+	if text = withImageNotes(text, missing); text != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": text})
+	}
+	return blocks
+}
+
+// claudeResultContent renders a tool_result body that carries images: image
+// blocks first, then the result text (a text-only result keeps its string form).
+func claudeResultContent(content any, images []agentcoreapi.ImagePart, noImages bool) any {
+	text, _ := content.(string)
+	if noImages {
+		return withImageNotes(text, images)
+	}
+	send, missing := sendableImages(images)
+	if len(send) == 0 {
+		return withImageNotes(text, missing)
+	}
+	blocks := make([]map[string]any, 0, len(send)+1)
+	for _, part := range send {
+		blocks = append(blocks, claudeImageBlock(part))
+	}
+	if text = withImageNotes(text, missing); text != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": text})
+	}
+	return blocks
+}
+
 func (p *ClaudeProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, model string) map[string]any {
 	msgs := make([]map[string]any, 0, len(req.Messages))
 	// Anthropic messages only accept user/assistant roles; mid-conversation
@@ -235,6 +285,11 @@ func (p *ClaudeProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 			} else if m.ToolCall != nil {
 				block["tool_use_id"] = m.ToolCall.CallID
 			}
+			if images := messageImages(m); len(images) > 0 {
+				// Anthropic is the only one of the three APIs that takes images in a
+				// tool result; they come before the text (design 0.3).
+				block["content"] = claudeResultContent(block["content"], images, p.noImages)
+			}
 			msgs = appendClaudeBlock(msgs, "user", block)
 		case m.ToolCall != nil:
 			// The reply's thinking blocks go back first and unchanged, as
@@ -255,6 +310,12 @@ func (p *ClaudeProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 		default:
 			if v, _ := m.Metadata[SegmentContextMetaKey].(bool); v {
 				segmentIdx = len(msgs)
+			}
+			if images := messageImages(m); len(images) > 0 {
+				// A user message with pictures is a content block array, images before
+				// the text (a plain text message keeps the string form).
+				msgs = append(msgs, map[string]any{"role": m.Role, "content": claudeUserContent(m.Content, images, p.noImages)})
+				continue
 			}
 			msgs = append(msgs, map[string]any{"role": m.Role, "content": m.Content})
 		}
