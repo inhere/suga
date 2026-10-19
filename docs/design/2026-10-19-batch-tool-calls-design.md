@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 批量工具调用 DSL 设计
 
-> 状态：Draft 0.2 / 待用户审批（0.2 起结论改为：DAG DSL 暂缓，先做 `file_refs` 的 `context`）
+> 状态：Draft 0.3 / 已批准实施（本版只实施 `file_refs` 的 `context`；DAG DSL 暂缓）
 > 日期：2026-10-19
 > 关联 issue：`suag-2p3u`
 
@@ -11,6 +11,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-19 | suga（gofer job） | 依据 `suag-2p3u`、`docs/research/2026-10-18-explore-efficiency.md` §7–§12 与 `docs/research/2026-10-18-xlang-eval.md`，提出受限的只读批量工具调用 DSL；明确完整工具管线、审批、hooks、输出治理、取消/错误语义、评测门槛与待用户确认问题。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 按第十九批复测（explore-efficiency §12）与工具使用率数据重审：T6 已降到 9.5 步/14 调用、追平 omp，0.1 的主要动机不再成立；gojq DSL 与 8 个结构化投影的成本高、模型很可能用不好。结论改为暂缓 DAG DSL，第一版只给 `file_refs` 加 `context` 参数（命中点带上下文行），用一次调用覆盖 refs→读调用点这条最常见链路；DAG 方案保留为后续候选并给出重启条件。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 用户批准（2026-10-19“同意先只做 file_refs 的 context”）：本版范围为 `file_refs` 的 `context` 参数，DAG DSL 暂缓。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 

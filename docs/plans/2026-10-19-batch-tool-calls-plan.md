@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # 批量工具调用 DSL 实施计划
 
-> 状态：Draft 0.2 / 待用户审批（0.2 起本批只实施 `file_refs` 的 `context`，T0–T6 的 DAG 波次暂缓）
+> 状态：Draft 0.3 / 已批准实施（本版只实施 `file_refs` 的 `context`；DAG DSL 暂缓）
 > 日期：2026-10-19
 > 对应设计：`docs/design/2026-10-19-batch-tool-calls-design.md`
 > 关联 issue：`suag-2p3u`
@@ -12,6 +12,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-19 | suga（gofer job） | 将方案①拆为前置 Gate、受限只读 DSL/投影、DAG 调度、完整工具管线接入、接线与冒烟、真实模型评测六个波次；明确不做写工具、shell、MCP、网络工具、脚本沙箱与递归。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 跟随设计 0.2：暂缓 DAG DSL 的 T0–T6 波次；新增本批任务 C1（`file_refs` 的 `context` 参数）与 C2（复测），作为当前唯一授权实施范围。 |
+| 0.3 | 2026-10-19 | 监督（Claude） | 用户批准实施 C1/C2；T0–T6 仍暂缓。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
