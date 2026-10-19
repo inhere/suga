@@ -5,6 +5,7 @@
       "fields": [
         "error",
         "error_kind",
+        "model",
         "session_id",
         "session_usage",
         "type",
@@ -27,6 +28,7 @@
       "type": "session",
       "fields": [
         "id",
+        "model",
         "session_id",
         "type"
       ]
@@ -56,6 +58,7 @@
       "type": "input_required",
       "fields": [
         "denied_tools",
+        "model",
         "run_id",
         "session_id",
         "session_usage",
@@ -77,6 +80,7 @@
       "status": "COMPLETED",
       "fields": [
         "context",
+        "model",
         "result",
         "run_id",
         "session_id",
@@ -90,6 +94,7 @@
       "type": "session",
       "fields": [
         "id",
+        "model",
         "session_id",
         "type"
       ]
@@ -159,6 +164,7 @@
       "status": "COMPLETED",
       "fields": [
         "context",
+        "model",
         "result",
         "run_id",
         "session_id",
@@ -172,6 +178,7 @@
       "type": "session",
       "fields": [
         "id",
+        "model",
         "session_id",
         "type"
       ]

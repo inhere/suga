@@ -6,6 +6,7 @@
 
 ### 新增
 
+- `suga run --output-format stream-json` 的首行（`session`）和结尾行（`result` / `input_required` / `error` / yielded）带上 `model` 字段（`provider/model`），调用方不用再从别处推断本次用的模型。
 - `suga gc --shrink-fts [--status|--abort|--batch N]`：把历史 tool 输出的 FTS 索引改成新写入用的截断形式（头/尾各 512 字符，中间 ` … `），按 `entries_fts` 自己的 rowid 每批 2,000 行原地重写（每批一个短写事务，走 `BEGIN IMMEDIATE` + 忙重试），完成后分批 `merge` 回收段空间；断点存在命令自建的小表 `fts_shrink_state`（不进迁移），Ctrl-C 中断后重跑从断点续上，`--status` 报待处理行数/字符数与估算回收量，`--abort` 清断点重来。执行期间可正常 chat/写会话（新写入本来就已截断）；不换表、不动触发器。
 - `suga gc --retention [--apply]`：按会话来源（`meta.origin`）分类套用保留期，而不是统一用 `--older-than`。交互会话（chat 创建、被 chat 接续过、以及 `meta.origin` 出现之前的历史会话）默认 180 天，非交互会话（`run`、ACP、子 agent）默认 30 天；默认 dry-run，逐类报告会话数、条目数与预计字节，`--apply` 才删除（活跃/持锁会话一律跳过）。与 `--older-than` 同时给出会报错（两种选择规则二选一）。
 - 配置 `gc.retention.interactive`（默认 `180d`）与 `gc.retention.noninteractive`（默认 `30d`）进入 settings 注册表，`suga config get/set` 可用；时长解析新增 `<n>d` 天数写法（`180d`、`30d`），`0` 表示该类不清理。
