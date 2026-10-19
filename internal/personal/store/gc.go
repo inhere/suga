@@ -73,7 +73,7 @@ func (s *Store) CollectGarbage(ctx context.Context, cutoff time.Time, keep map[s
 		return report, nil
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWriteTx(ctx)
 	if err != nil {
 		return GCReport{}, err
 	}

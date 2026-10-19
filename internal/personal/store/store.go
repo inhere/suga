@@ -81,12 +81,16 @@ func fileURI(path string) string {
 //     load an fsync took 15-50ms, enough for 100 commits of two writers to
 //     run past a 5s busy_timeout (suag-5o5g). A power loss may drop the last
 //     commits, never corrupt the database.
+//   - _txlock immediate: every transaction of this handle takes the write lock
+//     at BEGIN, so a read-then-write cannot fail later on a lock upgrade. A
+//     begin that stays busy is retried by beginWriteTx (tx.go).
 func buildDSN(path string) string {
 	q := url.Values{}
 	q.Add("_pragma", "busy_timeout(15000)")
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Add("_pragma", "foreign_keys(1)")
+	q.Add("_txlock", "immediate")
 	return fileURI(path) + "?" + q.Encode()
 }
 
@@ -211,7 +215,7 @@ func (s *Store) migrateUpTo(ctx context.Context, last string) error {
 			return err
 		}
 		// DDL and the ledger row commit together so a crash cannot half-apply.
-		tx, err := s.db.BeginTx(ctx, nil)
+		tx, err := s.beginWriteTx(ctx)
 		if err != nil {
 			return err
 		}
