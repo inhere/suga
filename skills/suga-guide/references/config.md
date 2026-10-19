@@ -142,8 +142,13 @@ chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区
 
 输出规则：内置规则按语言/工具分文件（`go`、`rust`、`js`、`python`、`java`、`git`、`grep`）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。一条规则可按命令（可加 `match_output` 再按输出）匹配，然后丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），并用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果永远不短于原文时不交给模型。字段与执行顺序见 `pkg/agentcore/tools/native/rules/README.md`。
 
-## `gc.*`
+## `store.*`
 
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `store.tool_body_inline_bytes` | `1024` | tool 结果正文超过此字节数时移出数据库，写进 `$SUGA_HOME/sessions/<id>/tools.jsonl`，库里只留元数据、前 256 字符预览与文件偏移，读取时透明取回；`0` 表示全部留在库里。回退到旧版本前先执行 `suga data tool-bodies --undo` |
+
+## `gc.*`
 | 配置项 | 默认 | 说明 |
 |---|---|---|
 | `gc.retention.interactive` | `180d` | `suga data gc --retention` 对交互会话的保留期：chat 创建、被 chat 接续过（`used_interactively`）以及没有 `meta.origin` 的历史会话。`0` 表示该类不清理 |
@@ -295,6 +300,7 @@ suga models --json
 | `config.yaml`、`.env` | 配置与密钥 |
 | `db/sessions.db` | 全部会话（单个 SQLite 库，WAL） |
 | `sessions/<session-id>/outputs/` | 外置的大工具输出（`recall` 用 `out:<session>:<hex>` 读） |
+| `sessions/<session-id>/tools.jsonl` | 移出库的 tool 结果正文（每行 `seq` + sha256 + 原始 JSON；库里只留桩，读取时透明取回；备份始终包含，删会话时一并删除） |
 | `sessions/<session-id>/snapshots/` | 文件工具的敏感写前快照；按会话、回合和调用保存，不进入上下文、transcript 或 export |
 | `memory/user/` | 用户级记忆（files 后端） |
 | `projects/<key>/memory/` | 项目记忆（files 后端，非仓库模式） |
@@ -333,6 +339,7 @@ suga data gc --older-than 30d [--apply]
 suga data gc --retention [--apply]
 suga data shrink-fts [--status|--abort]
 suga data dedupe-tool-results [--status|--abort|--undo]
+suga data tool-bodies [--status|--move|--undo|--check|--remove-files]
 suga data vacuum
 suga inspect manifest [--json] [--model <p/m>] [--thinking <level>]
 suga version

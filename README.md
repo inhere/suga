@@ -145,6 +145,7 @@ suga inspect export <session> | suga data gc --older-than 30d  # export / clean 
 suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP
 suga data shrink-fts [--status|--abort]                        # delete the historical tool-output FTS rows
 suga data dedupe-tool-results [--status|--undo]                 # store old tool results once (--undo restores them)
+suga data tool-bodies [--status|--move|--undo|--check]           # move tool result bodies to sessions/<id>/tools.jsonl
 suga data vacuum                                               # rewrite the db file, truncate the WAL
 suga data backup --output <file>.suga-backup.zip               # verified online backup; spill excluded by default
 suga data restore <file>.suga-backup.zip --dry-run             # validate without changing the home
