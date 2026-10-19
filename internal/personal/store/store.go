@@ -50,6 +50,15 @@ type Store struct {
 	db   *sql.DB
 	path string
 
+	// sessionsDir is the root of the per-session files (sessions/<id>/
+	// tools.jsonl). It is <db dir>/../sessions by default, so every caller that
+	// only knows the database path (restore staging, inspect trace) resolves the
+	// same place.
+	sessionsDir string
+	// toolBodyInlineBytes is the threshold above which a new tool entry body
+	// moves to the session file (store.tool_body_inline_bytes); 0 disables it.
+	toolBodyInlineBytes int64
+
 	// searchMu protects the process-local cursor snapshots. They deliberately
 	// live beside the store rather than in SQLite, so cursors never become
 	// persistent state or part of a search query.
@@ -111,9 +120,28 @@ func buildReadOnlyDSN(path string) string {
 	return fileURI(path) + "?" + q.Encode()
 }
 
+// Option adjusts what a Store knows besides its database file.
+type Option func(*Store)
+
+// WithSessionsDir sets the sessions root that holds the tool body files
+// (default: <db dir>/../sessions).
+func WithSessionsDir(dir string) Option {
+	return func(s *Store) {
+		if dir != "" {
+			s.sessionsDir = dir
+		}
+	}
+}
+
+// WithToolBodyInlineBytes sets the tool body threshold (default 1024, 0 keeps
+// every body inline).
+func WithToolBodyInlineBytes(n int64) Option {
+	return func(s *Store) { s.toolBodyInlineBytes = n }
+}
+
 // Open opens (creating if needed) the store at path and applies pending
 // migrations. Repeated opens are idempotent.
-func Open(path string) (*Store, error) {
+func Open(path string, opts ...Option) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create store directory: %w", err)
 	}
@@ -129,19 +157,44 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("open store: %w", err)
 	}
-	s := &Store{db: db, path: abs}
+	s := newStore(db, abs)
+	for _, opt := range opts {
+		opt(s)
+	}
 	if err := s.migrate(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	// The persistent switch of the tool body files and their checkpoint live in
+	// a small table this open creates (never a migration: opening a ledger must
+	// not start full-table work) and a reader does not create.
+	if err := s.ensureStoreMeta(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
 }
 
+// newStore is the store of a path with the defaults every open shares.
+func newStore(db *sql.DB, abs string) *Store {
+	return &Store{
+		db: db, path: abs,
+		sessionsDir:         deriveSessionsDir(abs),
+		toolBodyInlineBytes: DefaultToolBodyInlineBytes,
+	}
+}
+
+// deriveSessionsDir is the default sessions root of a database path: a store at
+// $SUGA_HOME/db/sessions.db owns $SUGA_HOME/sessions.
+func deriveSessionsDir(dbPath string) string {
+	return filepath.Join(filepath.Dir(filepath.Dir(dbPath)), "sessions")
+}
+
 // OpenReadOnly opens an existing store for reading only: it never creates the
 // file, never migrates and never writes. A missing file or a database without
 // the migration ledger (an empty or foreign file) is reported as an error, so a
 // read-only page cannot touch a session store it merely is asked to show.
-func OpenReadOnly(path string) (*Store, error) {
+func OpenReadOnly(path string, opts ...Option) (*Store, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -166,7 +219,11 @@ func OpenReadOnly(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("store %s is not initialized: run a suga session against it first", abs)
 	}
-	return &Store{db: db, path: abs}, nil
+	s := newStore(db, abs)
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
 }
 
 // Close releases the database handle.
