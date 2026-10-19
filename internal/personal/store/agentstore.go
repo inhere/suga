@@ -92,7 +92,8 @@ func (a *AgentStorage) AppendMessages(ctx context.Context, runID string, msgs ..
 	}
 	in := make([]NewEntry, 0, len(msgs))
 	for _, m := range msgs {
-		raw, err := json.Marshal(m)
+		// EncodeMessage stores a tool result that repeats Content once (P2).
+		raw, err := EncodeMessage(m)
 		if err != nil {
 			return fmt.Errorf("encode message: %w", err)
 		}

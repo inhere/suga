@@ -88,11 +88,12 @@ func newInspectCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 // shrink-fts, vacuum, compress-spill, backup, restore) that used to sit at the
 // top level or as switches of `gc`.
 func newDataCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, version string) *capp.Cmd {
-	data := capp.NewCmd("data", "Maintain local data: gc / shrink-fts / vacuum / compress-spill / backup / restore")
+	data := capp.NewCmd("data", "Maintain local data: gc / shrink-fts / dedupe-tool-results / vacuum / compress-spill / backup / restore")
 	data.SetOutput(stderr)
 	data.Add(
 		newDataGCCommand(ctx, stdout, stderr),
 		newShrinkFTSCommand(ctx, stdout, stderr),
+		newDedupeToolResultsCommand(ctx, stdout, stderr),
 		newVacuumCommand(ctx, stdout, stderr),
 		newCompressSpillCommand(ctx, stdout, stderr),
 		newBackupCommand(ctx, stdout, stderr, version),

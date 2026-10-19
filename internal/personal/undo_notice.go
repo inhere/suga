@@ -160,7 +160,7 @@ func (r *Runner) injectUndoNotice(ctx context.Context, sessionID, turnID string)
 		return ctxItem{}, false, err
 	}
 	message := undoNoticeMessage(notice.Text)
-	raw, err := json.Marshal(message)
+	raw, err := store.EncodeMessage(message)
 	if err != nil {
 		return ctxItem{}, false, err
 	}

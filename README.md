@@ -143,6 +143,7 @@ suga inspect stats [--session <id>] [--json]                   # calls, latency,
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
 suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP
 suga data shrink-fts [--status|--abort]                        # shrink the tool-output FTS index
+suga data dedupe-tool-results [--status|--undo]                 # store old tool results once (--undo restores them)
 suga data vacuum                                               # rewrite the db file, truncate the WAL
 suga data backup --output <file>.suga-backup.zip               # verified online backup; spill excluded by default
 suga data restore <file>.suga-backup.zip --dry-run             # validate without changing the home

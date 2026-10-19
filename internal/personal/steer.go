@@ -331,7 +331,7 @@ func (b *contextBuilder) takeSteers(ctx context.Context, state *agentcore.RunSta
 	step := state.Step
 	for _, s := range steers {
 		item := turnInjected{at: len(state.Messages), msg: SteerMessage(s)}
-		raw, err := json.Marshal(item.msg)
+		raw, err := store.EncodeMessage(item.msg)
 		if err == nil {
 			var entries []store.Entry
 			entries, err = b.r.cfg.Repository.AppendEntries(context.WithoutCancel(ctx), b.sessionID,

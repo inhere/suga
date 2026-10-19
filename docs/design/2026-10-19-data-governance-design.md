@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 数据治理设计：备份恢复、GC 与输出配额
 
-> 状态：Draft 0.3 / 已批准方向，按独立审核修订（P1 改为原地分批截断；本节“0.3 修订”优先于 0.2 与 0.1）
+> 状态：Draft 0.4 / 已批准方向（P1、P3 已实施；本版补 P2 的具体规则，“0.4 修订”优先于 0.3）
 
 ## 修订记录
 
@@ -11,6 +11,7 @@
 | 0.1 | 2026-10-19 | suga（gofer job） | 针对约 1.09GB 会话库，设计在线备份/恢复、保守 GC、spill 配额与压缩，并比较 DB 内瘦身和按会话 JSONL 真相源两条路线。 |
 | 0.2 | 2026-10-19 | 监督（Claude） | 用 `entries_fts` 按 role 的实测更正 0.1 的待核对项：FTS 约 500MB 里 95% 来自 **tool 输出**（42,735 行、120MB 文本），不是 user/assistant；据此把“FTS 只索引 tool 输出开头”定为第一阶段（预计回收约 350MB，改动最小、风险最低），tool 内联阈值为第二阶段，backup/GC/spill 为第三阶段，B 路线暂缓并给出重启条件；新增按会话来源（gofer job）设保留期的问题。 |
 | 0.3 | 2026-10-19 | 监督（Claude） | 用户批准方向（P1→P2→P3、B 暂缓、非交互 30 天/交互 180 天、Q1–Q8 按倾向）。按两份独立审核（独立子 agent、codex 重试）修订：P1 由“影子表+换表”改为“FTS 原地按 rowid 分批截断 + merge”（避开触发器改名与并发写丢失）；截断改为头 512 + 尾 512 字符；改漂移测试契约；GC 会话删除的 O(会话数×FTS 行数) 问题与自动 VACUUM 纳入 P3；P2 改为先评估 tool 消息双份存储去重；会话来源用新写入的 meta.origin，历史一律按交互。 |
+| 0.4 | 2026-10-19 | 监督（Claude） | P1、P3 已实施并装到主机。按用户“继续 P2”与只读实测（44,411 条 tool 消息全部双份存储，重复 124MB，约占当前 765MB 库的 16%）定下 P2 规则：只在写存储时去重、解码时自动还原、历史数据用显式维护命令分批改写。 |
 
 ### 思考模式与范围冻结
 
@@ -21,6 +22,28 @@
 - expansion_policy：若要改变会话写入语义、恢复时覆盖正在运行实例、或把配置/密钥备份格式改成跨产品兼容协议，先回到用户确认 Gate。
 - review budget：中。优先交付可逆的治理命令；文件为真相源是后续分阶段迁移，不作为本批隐式实现。
 - stop condition：用户批准本设计和计划前，不添加命令、配置、迁移或数据重写代码。
+
+## 0.4 修订：P2 tool 消息双份存储去重（本节优先于 0.3 的 P2 描述）
+
+### 实测（2026-10-19，只读统计用户主机库）
+
+`type='tool'` 的 44,411 条 entries 全部满足 `Content == ToolResult.Content`，重复正文合计 124.2MB（entries JSON 共 305.5MB，库 765MB）。
+
+### 规则
+
+1. **只在写存储这一层去重**：新增 `store.EncodeMessage(api.Message) ([]byte, error)`，tool 消息满足 `ToolResult != nil && ToolResult.Content == Content && Content != ""` 时，存储 JSON 里**省略** `ToolResult.Content`，并加顶层标记 `"ResultSameAsContent": true`；其它消息与原编码逐字节相同。所有写 entries 的地方（`AgentStorage.AppendMessages`、`tasks.go` 的注入消息等，实施时 grep 全部 `AppendEntries` 调用点）改用它。
+2. **解码自动还原**：`api.Message` 增加 `UnmarshalJSON`：先按原结构解码，若带 `ResultSameAsContent` 标记且 `ToolResult.Content` 为空，则还原为 `Content`。这样 20 个各自 `json.Unmarshal` 成 `api.Message` 的读取点**不用改**，读出的消息与去重前完全相同。
+3. **不改 `api.Message` 的编码**（不加 `MarshalJSON`）：`prefix.go` 用默认编码算前缀哈希、hooks/export 等对外 JSON 也保持原样，provider 请求字节不变，前缀缓存不受影响。
+4. **SQL 侧**：FTS 表达式已用 `coalesce(json_extract(json,'$.ToolResult.Content'),'')`，缺失时只取 `Content`，结果不变；实施时 grep 所有 `json_extract(…ToolResult` 的 SQL 并确认。
+5. **历史数据**：显式维护命令 `suga data dedupe-tool-results [--status|--abort]`：按 entries 主键（`session_id, seq`）游标分批 2,000 行，`UPDATE entries SET json = json_set(json_remove(json,'$.ToolResult.Content'),'$.ResultSameAsContent',json('true')) WHERE type='tool' AND json_extract(json,'$.Content') = json_extract(json,'$.ToolResult.Content') AND …批次条件`，短写事务（复用 tx.go），断点表、可中断续跑；不进启动迁移；完成后提示 `suga data vacuum`。因为解码会还原，改写前后读出的消息逐字节相同，恢复会话与 provider 缓存都不受影响（这推翻了 0.3 里“改写历史会让回放不同”的担心）。
+6. **回退旧版本的风险（已核对）**：claude、openai、responses 三个 provider 映射工具结果都只读 `ToolResult.Content`（`pkg/agentcore/llm/claude.go:231`、`openai.go:162`、`responses.go:180`）。旧版本二进制读到去重后的条目会把工具结果发成空。因此：维护命令必须提供 `--undo`（对所有带 `ResultSameAsContent` 标记的行，用 `json_set(json_remove(json,'$.ResultSameAsContent'),'$.ToolResult.Content',json_extract(json,'$.Content'))` 分批还原，**也覆盖新版本新写入的行**）；CHANGELOG 写明“回退到旧版本前先执行 `suga data dedupe-tool-results --undo`”。
+
+### 验证
+
+- 编码/解码往返：去重后 `json.Unmarshal` 得到的 `api.Message` 与原消息 `reflect.DeepEqual`；非 tool 消息与 Content≠ToolResult.Content 的 tool 消息编码逐字节不变。
+- 读取路径回归：恢复会话（LoadMessages）、交接、压缩、recall、session_search、export、trace 在去重库上结果不变。
+- 维护命令：分批、中断续跑、`--status`；在用户真实库**副本**上实测回收量与耗时（不碰 `~/.suga`），副本用完即删。
+- 反向验证：去掉 UnmarshalJSON 的还原后，往返用例与读取路径回归失败。
 
 ## 0.3 修订：独立审核后的定稿要点（本节优先于后文）
 
