@@ -49,7 +49,7 @@ type ToolStat struct {
 	Spilled     int   `json:"spilled"`
 }
 
-// Report is the result of `suga stats`.
+// Report is the result of `suga inspect stats`.
 type Report struct {
 	Models      []ModelStat `json:"models"`
 	Tools       []ToolStat  `json:"tools"`
@@ -57,7 +57,7 @@ type Report struct {
 	ToolSearch  int         `json:"tool_searches"`
 }
 
-// reportKinds are the event kinds `suga stats` aggregates.
+// reportKinds are the event kinds `suga inspect stats` aggregates.
 var reportKinds = []string{EventModel, EventTool, EventDenial, EventCompaction, EventToolSearch}
 
 // BuildReport queries events matching f (session/since) and aggregates them in

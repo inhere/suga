@@ -11,7 +11,7 @@ description: suga 的安装、配置与使用向导——首次配置（SUGA_HOM
 
 - suga **只读** `$SUGA_HOME/config.yaml` 和 `$SUGA_HOME/.env`，`SUGA_HOME` 默认 `~/.suga`。工作目录里的 `config.yaml` / `.env` 属于用户的项目，suga 从不读取——要改配置就改 `$SUGA_HOME` 下的那两个文件，不要在项目目录里放一份。
 - 密钥只写在 `$SUGA_HOME/.env`（或进程环境变量）里，配置文件用 `${VAR}` 引用。**不要把密钥值读出来贴进对话**：不要 `file_read` `.env` 后回显内容，也不要让用户把密钥发给你；只说变量名。密钥由用户自己填时，让他在自己终端里填（例如 `file_write` 写出变量名+占位符，或告诉他用编辑器补上）。
-- 改配置前先确认真实情况，别凭印象：`suga manifest`（生效的模型、思考档位、工具、skills、记忆后端与选择原因、输出上限）、`suga run --help`、`suga manifest --json`。本文件里的键名与命令都与当前代码一致；仍拿不准时读 `references/config.md`。
+- 改配置前先确认真实情况，别凭印象：`suga inspect manifest`（生效的模型、思考档位、工具、skills、记忆后端与选择原因、输出上限）、`suga run --help`、`suga inspect manifest --json`。本文件里的键名与命令都与当前代码一致；仍拿不准时读 `references/config.md`。
 - 写配置**只增改需要的那几个键**，不要整份重写：用户可能有本文件没列出的配置与注释。
 - 值写错时 suga 是启动失败（不是悄悄用默认值），所以让用户看到真实报错，别猜一个值蒙过去。
 
@@ -60,11 +60,11 @@ BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ### 5. 验证
 
 ```bash
-suga run --prompt "只回答 ok 两个字"     # 单轮，只读
-suga manifest                            # 生效的模型、工具、skills、记忆后端
+suga run --prompt "只回答 ok 两个字"                   # 单轮，只读
+suga inspect manifest                            # 生效的模型、工具、skills、记忆后端
 ```
 
-第一条能正常回话即配置完成。想确认发出去的模型 id、思考档位，用 `suga manifest`（主模型一行显示实际发送的 id）。
+第一条能正常回话即配置完成。想确认发出去的模型 id、思考档位，用 `suga inspect manifest`（主模型一行显示实际发送的 id）。
 
 ### 6. 常见报错怎么处理
 
@@ -104,7 +104,7 @@ suga manifest                            # 生效的模型、工具、skills、�
 - chat 提示符使用 `:checkpoints` 查看清单，使用 `:undo`、`:undo N` 回滚最近的文件改动，`force` 只覆盖内容冲突；默认会确认，可用 `chat.undo_confirm: false` 关闭。只认本地键盘输入，投递消息不会触发这些命令。
 - CLI 使用 `suga undo <session> --list [--json]`，或 `suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]`。session 支持唯一前缀；非终端破坏性调用必须 `--yes`。该命令不需要 provider，可在没有模型配置时列出或回滚。
 - 默认上限为单次 16 MiB、会话 256 MiB、全局 1 GiB，保留 20 个已完成回合或 7 天。`on_error: deny` 在快照不可靠时拒绝文件 I/O；`continue` 会继续但标为不可恢复。`shell_exec`、cwd/可写附加目录变更、冲突与 `--force` 的安全边界见 README 的回滚章节。
-- 回滚后下一次显式回合会收到 `suga.undo` 事实通知；用 `suga trace <session> --json` 检查 undo 事件和写工具事件的 `attrs.snapshot`。没有 redo，也没有 ACP 内置 undo 命令，但 ACP/run 的文件写操作照常快照。
+- 回滚后下一次显式回合会收到 `suga.undo` 事实通知；用 `suga inspect trace <session> --json` 检查 undo 事件和写工具事件的 `attrs.snapshot`。没有 redo，也没有 ACP 内置 undo 命令，但 ACP/run 的文件写操作照常快照。
 
 ### chat 输入历史与快捷键
 
@@ -121,7 +121,7 @@ suga manifest                            # 生效的模型、工具、skills、�
 ### 长期记忆（memory）
 
 - 范围与后端：`memory.user.backend`（`files` / `exec`）、`memory.project.backend`（`files` / `gofer` / `exec`）。`exec` 必须同时配 `memory.<scope>.command`（可选 `.args`、`.timeout_sec`）。
-- 不设 `memory.project.backend` 时的自动选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/`）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`。`suga manifest` 显示选了哪个与原因。
+- 不设 `memory.project.backend` 时的自动选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/`）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`。`suga inspect manifest` 显示选了哪个与原因。
 - 写入开关：`memory.write: off` 让 memory 工具只读；`memory.write_tainted: ask|deny|allow` 决定读过外部内容（网页、MCP、会话检索等）的会话写记忆时如何处理。放宽前先跟用户说明影响。
 
 ### MCP 服务
@@ -188,6 +188,6 @@ hooks:
 - `references/chat.md`：chat 交互：`:` 本地命令（`:diff`、`:model`、`:add-dir`/`:dirs`、`:help`/`:usage`/`:tasks`）、输入历史与多行输入、插话（steering）与 Esc/Ctrl-C 语义、`!`/`!!` 本地命令、续接预览与崩溃恢复、`suga send` 投递。用户问 chat 里某个按键或命令怎么用时读。
 - `references/tools.md`：工具与权限：工具清单、写权限与审批、`--add-dir` 与越界授权、只读根（依赖/idev-std）、危险删除拦截、大输出外置与输出规则、后台/监听任务、后台 Stop hook、MCP、子 agent。用户问某个工具能做什么、为什么被拒、怎么放行时读。
 - `references/sessions.md`：会话、记忆与 skills：续接与交接、换目录续接、分段压缩、中断回合、历史折叠、空闲整理、提示词结构、记忆后端与污染确认、skills 扫描与加载。用户问会话/记忆/skill 行为时读。
-- `references/observability.md`：观测：`suga trace`（各类行与 `--analyze` 字段）、`sessions`/`stats`/`export`/`gc`、stream-json 的 `usage`/`retry`/`wrap_up`、进程日志与 `SUGA_DEBUG`。排查一次运行、看用量成本时读。
+- `references/observability.md`：观测：`suga inspect trace`（各类行与 `--analyze` 字段）、`sessions`/`stats`/`export`/`gc`、stream-json 的 `usage`/`retry`/`wrap_up`、进程日志与 `SUGA_DEBUG`。排查一次运行、看用量成本时读。
 
 只有在需要某个具体键的默认值或取值范围、或要回答“能不能配 X”时再读 `references/config.md`；回答“怎么装、怎么改、报错怎么办”通常上面的向导就够了。

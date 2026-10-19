@@ -267,7 +267,7 @@ func renderUndoResult(result personal.UndoResult, rows []personal.Checkpoint) st
 	}
 	for _, row := range rows {
 		for _, shell := range row.Shell {
-			parts = append(parts, fmt.Sprintf("shell_exec 未纳入回滚：%s%s（suga trace --turn %s）", cleanUndoValue(shell.Command), undoTaskSuffix(shell.TaskID), cleanUndoValue(row.TurnID)))
+			parts = append(parts, fmt.Sprintf("shell_exec 未纳入回滚：%s%s（suga inspect trace --turn %s）", cleanUndoValue(shell.Command), undoTaskSuffix(shell.TaskID), cleanUndoValue(row.TurnID)))
 		}
 	}
 	return strings.Join(parts, "；") + "。"

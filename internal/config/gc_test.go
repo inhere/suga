@@ -8,7 +8,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 )
 
-// TestReadGCRetentionSettings: the retention keys of `suga gc --retention` keep
+// TestReadGCRetentionSettings: the retention keys of `suga data gc --retention` keep
 // the documented defaults and accept both a day count and a duration.
 func TestReadGCRetentionSettings(t *testing.T) {
 	t.Run("defaults are 180d and 30d", func(t *testing.T) {

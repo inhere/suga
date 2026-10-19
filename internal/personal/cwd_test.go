@@ -62,7 +62,7 @@ func TestSameDir(t *testing.T) {
 	})
 }
 
-// TestTraceSessionCwdLine: `suga trace` names both directories of a session
+// TestTraceSessionCwdLine: `suga inspect trace` names both directories of a session
 // that was continued elsewhere; the other session events keep their own parts.
 func TestTraceSessionCwdLine(t *testing.T) {
 	line := traceLine(store.Event{Kind: store.EventSession, Name: sessionCwdChangedEvent, Status: eventOK,

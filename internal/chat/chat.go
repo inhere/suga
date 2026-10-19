@@ -141,7 +141,7 @@ type Options struct {
 
 // markInteractivelyUsed records that this chat continued a session a
 // non-interactive entry point created, which moves that session into the
-// interactive retention class of `suga gc --retention`. A failure is reported
+// interactive retention class of `suga data gc --retention`. A failure is reported
 // and never fatal: the session is usable either way.
 func markInteractivelyUsed(stderr io.Writer, runner *personal.Runner, sessionID string) {
 	if err := runner.MarkSessionUsedInteractively(context.WithoutCancel(context.Background()), sessionID); err != nil {

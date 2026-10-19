@@ -1,7 +1,7 @@
 package store
 
 // Session origins (meta.origin). A session records which entry point created
-// it, and `suga gc --retention` picks the retention period from that: an
+// it, and `suga data gc --retention` picks the retention period from that: an
 // interactive chat is worth keeping much longer than a session a batch job or
 // an editor integration started (design 0.3, 会话来源).
 const (

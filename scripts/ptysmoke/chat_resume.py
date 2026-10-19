@@ -10,14 +10,14 @@ for it, leaving the session marked running with a long reply behind it (what a
 kill -9 or a crash leaves). Two chats continue that session, `--resume <id>` and
 `--session-id <id>` (the path gofer uses): check the dim "上一次回复：" label, the
 last reply in full, the "上一回合未正常结束" note of the killed turn and the
-"已截断前 N 行" hint naming `suga trace` — all of it above the first ❯ prompt,
+"已截断前 N 行" hint naming `suga inspect trace` — all of it above the first ❯ prompt,
 which is what tells history from a fresh answer, and all of it without calling
 the model. The second continue then sends a prompt: the session was left running
 by a process that is gone, so it is recovered first ("已恢复会话", trace event
 "session recovered") and the turn answers; its own next turn is killed to leave
 the session running again. `suga run --resume <id>` covers the other entry
 point: it takes the session lock itself, recovers the session, prints the notice
-on stderr and answers on stdout. Finally `suga trace --json` shows one recovered
+on stderr and answers on stdout. Finally `suga inspect trace --json` shows one recovered
 event per recovery, naming the cancelled turn.
 
   python3 -I scripts/ptysmoke/chat_resume.py --bin tmp/smoke/suga
@@ -121,7 +121,7 @@ def preview_checks(s, sid, name):
     s.check(name + ": the last lines of the reply are shown", TAIL in before and reply >= 0)
     s.check(name + ": the head of the long reply is not shown", LAST_HIDDEN not in before)
     s.check(name + ": the truncation hint names the trace command",
-            "已截断前 %d 行，完整记录见 suga trace %s" % (OMITTED, sid) in before)
+            "已截断前 %d 行，完整记录见 suga inspect trace %s" % (OMITTED, sid) in before)
     s.check(name + ": the killed turn is flagged", INCOMPLETE in before)
 
 

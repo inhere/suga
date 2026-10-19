@@ -165,7 +165,7 @@ func TestLayoutLastReplyNotices(t *testing.T) {
 		var out bytes.Buffer
 		newRenderer(rendererOptions{Out: &out}).LastReply(strings.Join(lines, "\n"), "sess_x", true)
 		got := out.String()
-		assert.StrContains(t, got, "上一次回复：\n上一回合未正常结束\n已截断前 3 行，完整记录见 suga trace sess_x\n▣ ")
+		assert.StrContains(t, got, "上一次回复：\n上一回合未正常结束\n已截断前 3 行，完整记录见 suga inspect trace sess_x\n▣ ")
 		assert.StrNotContains(t, got, "\x1b[")
 	})
 

@@ -266,7 +266,7 @@ func renderShellRows(rows []personal.Checkpoint) string {
 	var b strings.Builder
 	for _, row := range rows {
 		for _, shell := range row.Shell {
-			fmt.Fprintf(&b, "\n本回合还运行了 shell_exec：%s%s；改动不在快照范围内：suga trace <session> --turn %s", cleanText(shell.Command), taskSuffix(shell.TaskID), cleanText(row.TurnID))
+			fmt.Fprintf(&b, "\n本回合还运行了 shell_exec：%s%s；改动不在快照范围内：suga inspect trace <session> --turn %s", cleanText(shell.Command), taskSuffix(shell.TaskID), cleanText(row.TurnID))
 		}
 	}
 	return b.String()

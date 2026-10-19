@@ -8,7 +8,7 @@ import (
 )
 
 // Session origins (design 0.3, 会话来源). An entry point names itself when it
-// creates a session, so `suga gc --retention` can keep interactive sessions
+// creates a session, so `suga data gc --retention` can keep interactive sessions
 // longer than the ones a batch job or an editor integration started. The
 // constants are re-exported here so the chat, run and ACP entry points do not
 // have to reach into the store package for them.
@@ -31,7 +31,7 @@ func (r *Runner) NewSessionFor(ctx context.Context, id, title, origin string) (S
 
 // MarkSessionUsedInteractively records that an interactive chat continued a
 // session a non-interactive entry point created (run, ACP): the session counts
-// as interactive for `suga gc --retention` from then on. A chat session, a
+// as interactive for `suga data gc --retention` from then on. A chat session, a
 // sub-agent session and a session from before meta.origin existed (no origin,
 // treated as interactive anyway) have nothing to record.
 func (r *Runner) MarkSessionUsedInteractively(ctx context.Context, sessionID string) error {

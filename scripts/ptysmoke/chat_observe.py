@@ -5,7 +5,7 @@ trace (Linux/macOS).
 Starts scripts/ptysmoke/fakellm.py (tool mode) and `suga chat` in a PTY with
 a hook command (a small script answering UserPromptSubmit with additional
 context), asks for one shell_exec, waits at the approval question, answers y,
-exits, then checks `suga trace --json` of that session: hook events for
+exits, then checks `suga inspect trace --json` of that session: hook events for
 SessionStart, UserPromptSubmit (with the injected chars) and Stop; the
 shell_exec event with approval=user and the answer time; the turn's context
 event counting the hook context.

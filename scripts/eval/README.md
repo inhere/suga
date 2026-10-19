@@ -20,7 +20,7 @@ go run ./scripts/eval --model opencode-go/deepseek-v4.1-flash --config-from ~/.s
 `--suga-args` / `--omp-args` / `--repeat`（见“附加参数、tool_counts 与重复运行”）、
 `--probe-prefix` / `--probe-repeat` / `--probe-gap`（见“前缀缓存探针”）。
 终端输出汇总表；`<out>/results.jsonl` 每任务一行（成败、checks 明细、答案、调用/token/命中率/成本/工具调用数、
-`tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga stats` 提供之前为 null）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
+`tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga inspect stats` 提供之前为 null）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
 
 ## 任务格式
 
@@ -99,7 +99,7 @@ go run ./scripts/eval --task repo-t9-schedule --model <model> --config-from ~/.s
 - `--suga-args "<args>"` / `--omp-args "<args>"`：按空白切分（无引号处理），suga 附加在 `suga run` 参数末尾（`--prompt` 之后；run 只有 flag，位置无关），
   omp 放在 `omp -p ...` 参数之后、prompt 之前（prompt 是最后的位置参数）。记录在 results.jsonl 的 `agent_args`，表格新增 ARGS 列（超过 24 字符截断，空为 `-`）。
 - `--suga-set dotted.key=value`（可重复）：改写临时 SUGA_HOME 的 config.yaml（值按 YAML 标量解析），例如 `--suga-set "tools.shell=C:/Program Files/Git/usr/bin/bash.exe"`；同样记入 `agent_args`。
-- `tool_counts`（results.jsonl，`map[工具名]次数`，无工具调用时省略；表格不加列）：suga 取 `suga stats --session <id> --json` 的 `tools[].name/calls`；
+- `tool_counts`（results.jsonl，`map[工具名]次数`，无工具调用时省略；表格不加列）：suga 取 `suga inspect stats --session <id> --json` 的 `tools[].name/calls`；
   omp 取事件流 `tool_execution_start` 的 `toolName`，没有该事件时退回统计 assistant 消息里 toolCall 块的 `name`。
 - `--repeat N`（默认 1）：每个任务依次跑 N 轮。N>1 时输出目录为 `<out>/<task>-r<i>/`（N=1 保持 `<out>/<task>/`），session id 同样带 `-r<i>`；
   results.jsonl 每轮一行，新增 `round`（从 1 起）。表格逐轮显示（TASK 列为 `<task>-r<i>`），每个任务末尾追加一行 `<task> (avg)`：
@@ -111,7 +111,7 @@ go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--n
 
 ## 历史折叠与思考档位
 
-- suga 默认不折叠历史（`context.fold_every: 0`）；折叠组加 `--suga-set context.fold_every=10`。每轮的 `suga trace` 中 `fold` 行给出折叠点与视图字符数。
+- suga 默认不折叠历史（`context.fold_every: 0`）；折叠组加 `--suga-set context.fold_every=10`。每轮的 `suga inspect trace` 中 `fold` 行给出折叠点与视图字符数。
 - 与 omp 对比时两边要用同一思考档位：omp 以 `--thinking`（或其配置）为准，suga 用 `--suga-args "--thinking high"` 或 provider 配置的 `thinking`；不设时 suga 不发送 `reasoning_effort`，用 provider 默认。
 
 ## Claude Code（`--agent claude`）
@@ -130,9 +130,9 @@ go run ./scripts/eval --agent claude --claude-args "--effort high" --task repo-t
 
 `results.jsonl` 的 `first_call_uncached`（表格 FIRST 列）= 第一个主循环模型调用的未缓存输入 token，度量“冷启动前缀”的代价；取不到为 null。
 
-- suga：取 `suga trace <sid> --json` 中第一个 `status=ok` 且 `attrs.purpose` 不是 `compact` 的 model 事件，
+- suga：取 `suga inspect trace <sid> --json` 中第一个 `status=ok` 且 `attrs.purpose` 不是 `compact` 的 model 事件，
   值 = `input_tokens − cache_read_tokens − cache_write_tokens`（下限 0）。**trace 里的 `input_tokens` 含缓存读写**
-  （事件原始口径；`suga stats` 与 ACP/stream-json 报告口径才是已扣除缓存的）。
+  （事件原始口径；`suga inspect stats` 与 ACP/stream-json 报告口径才是已扣除缓存的）。
 - omp：第一个 assistant `message_end` 的 `usage.input`（omp 的 input 本身不含缓存）。
 
 ## 前缀缓存探针

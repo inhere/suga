@@ -9,7 +9,7 @@ import (
 )
 
 // Garbage-collection retention (data governance P3, design 0.3 会话来源).
-// `suga gc --retention` removes sessions by class instead of by one age: a
+// `suga data gc --retention` removes sessions by class instead of by one age: a
 // session an interactive chat created is kept for the interactive period, one a
 // non-interactive entry point created (run, ACP, sub-agent) for the shorter
 // one. A period of 0 keeps its class forever.

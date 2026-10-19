@@ -16,7 +16,7 @@
 | `session_search` | 读 | 全文检索过往消息、工具结果与摘要（`scope`：workspace、current、all，`kind`：user、assistant、tool、compaction、handoff）；带 `ref=out:...` 时在那份已保存的输出内检索 |
 | `recall` | 读 | 按 ref 读取命中附近内容：`<session>/<seq>` 起的消息，或已保存输出 `out:<session>:<hex>` 的带行号文本 |
 | `agent` | 读 | 把一件独立的任务交给子 agent：它在自己的上下文里大量读取，只把报告带回来（`description`、`prompt`、`type`：`explore` 或 `research`、`background`）；见下文“子 agent” |
-| `suga_manifest` | 读 | 以 JSON 返回本实例的能力清单（与 `suga manifest` 相同） |
+| `suga_manifest` | 读 | 以 JSON 返回本实例的能力清单（与 `suga inspect manifest` 相同） |
 | `memory` | 状态 | 对长期记忆 `add`、`replace`、`remove`、`get`、`search`（`scope` 为 project 或 user），条目可选 `applies_when` 适用条件，见 `references/sessions.md` 的“记忆” |
 | `file_write` | 写 | 整文件写入 |
 | `file_edit` | 写 | 替换一处唯一的字符串（`replace_all` 替换全部），或用 `edits` 一次替换多处（全部成功或全部不改）；保留 CRLF |
@@ -49,11 +49,11 @@ suga config set tools.preferred '[{name: rg, kind: command, when: "精确搜索�
 ```
 
 - 三项都必填：`name`（可执行文件名，不带参数和 shell 语法；`mcp` 时是 `mcp.servers` 里的 server `id`）、`kind`（`command` 或 `mcp`）、`when`（一句适用场景）。列表顺序即展示顺序；`config set` 整列表替换，不支持 `tools.preferred[0]` 这样的元素级路径。名字重复、空值、未知字段、非法 `kind` 都会让命令失败（退出码 2）且原配置文件不变。
-- **探测方式**：`command` 按当前 PATH 查找（Windows 交给 Go 的 `PATHEXT`，`.exe`、`.cmd` 都认），只查 PATH 不执行命令，也不产生审批请求；`mcp` 以会话启动时该 server 启动并 `tools/list` 成功为准。`suga manifest` 不启动 MCP，`mcp` 项只报是否已在 `mcp.servers` 中配置。
+- **探测方式**：`command` 按当前 PATH 查找（Windows 交给 Go 的 `PATHEXT`，`.exe`、`.cmd` 都认），只查 PATH 不执行命令，也不产生审批请求；`mcp` 以会话启动时该 server 启动并 `tools/list` 成功为准。`suga inspect manifest` 不启动 MCP，`mcp` 项只报是否已在 `mcp.servers` 中配置。
 - **只列能用项**：环境说明里只出现可用项，形如 ``- Preferred tool: rg (command) — <when>. Use when applicable; usage unclear, first check `--help`; record learned usage in memory.``；不可用项不写进提示词。另外 `command` 项只在本会话注册了 `shell_exec` 时可写会话里列出：只读会话（`run` 无 `--allow-write`、chat 未开 `tools.allow_write`、ACP `read_only`）列出连上的 `mcp` 项、不列 `command` 项，因为那里的模型执行不了命令。列表只进段上下文，不改稳定系统提示，所以新装命令在下一个 segment 才出现，`command` 在新 segment 重新查 PATH，MCP 状态在会话启动时固定。
 - **MCP 常驻**：`kind: mcp` 的 server 注册出来的工具不会被 `tools.deferred: auto|always` 放进 `tool_search` 延迟集合，直接出现在工具列表里；其他 MCP 照旧。
 - **优先不等于放行**：`preferred` 只影响提示词与可见性。MCP 调用仍按 `tools.auto_allow` / `tools.read_only_allow` 判定：不在放行名单时 chat 与 `run` 直接拒绝（不询问），ACP 走客户端权限请求；`command` 仍经过 `shell_exec` 的审批，可用审批规则放行，例如 `command: ["rg *"]`。
-- **观测**：`suga manifest --json` 的 `preferred_tools` 列出每个声明的 `kind`、`when`、`present` 与原因（`found on PATH; read-only sessions do not list it`、`not found on PATH`、`server not configured`、`configured; connection confirmed at session start`、`connected at runtime`、`not connected at runtime`）——命令项找不到就是 `not found on PATH`，找到了也仍写 `present=true`，原因里注明了只读会话不列出；`suga trace <session> --json` 的 `turn_context.preferred_tools` 是本回合环境说明实际列出的名字（按声明顺序，只读会话里没有 `command` 项）。
+- **观测**：`suga inspect manifest --json` 的 `preferred_tools` 列出每个声明的 `kind`、`when`、`present` 与原因（`found on PATH; read-only sessions do not list it`、`not found on PATH`、`server not configured`、`configured; connection confirmed at session start`、`connected at runtime`、`not connected at runtime`）——命令项找不到就是 `not found on PATH`，找到了也仍写 `present=true`，原因里注明了只读会话不列出；`suga inspect trace <session> --json` 的 `turn_context.preferred_tools` 是本回合环境说明实际列出的名字（按声明顺序，只读会话里没有 `command` 项）。
 - **语义检索提供者**：例如把 `xerj`（`command`，在已建索引的项目上做语义检索）或某个代码图谱 MCP 声明为优先项，让 Agent 先试它、再用内置工具兜底。不可用时（命令不在 PATH、MCP 没配置或没连上）Agent 照常用 `file_grep`、`file_find`、`session_search` 等内置工具，不会因为优先项缺失而失败。MCP 返回属外部内容：读过之后会话按现有污点规则被标记，之后的记忆写入受 `memory.write_tainted` 约束。
 
 ## 写权限与审批
@@ -72,7 +72,7 @@ tools:
     always_prefix_tokens: 2
     persist_ask: true
     project_trust:
-      /绝对路径/到/项目: <从 suga manifest 获取的 sha256>
+      /绝对路径/到/项目: <从 suga inspect manifest 获取的 sha256>
 ```
 
 Suga 读取 `$SUGA_HOME/approval-rules.yaml`（用户级）和 `<workspace>/.suga/approval-rules.yaml`（项目级）。文件只包含一个 `rules` 列表：
@@ -96,7 +96,7 @@ rules:
 
 匹配采用 fail-closed：所有命中中取最强动作（`deny > ask > allow`），不是首次命中。allow 命令必须按实际配置的 shell（`sh`/`bash`、PowerShell 或 `cmd`）通过保守的 ASCII、引号和 token 检查；只有末尾独立的 `*` 或 `**` 才能扩展 token。控制符、展开、包装器和未知 shell 不会产生 allow。allow 路径同时检查 root 下的词法路径和 `EvalSymlinks` 后的真实目标；符号链接、硬链接、特殊文件、解析失败，以及 Windows 短名、ADS、尾部点/空格名称都不会产生 allow。deny 在 allow 安全检查失败时仍可用于收紧策略。
 
-项目规则有意采用不对称信任：项目 `deny` 和 `ask` 可以收紧策略，但项目 `allow` 必须等精确的绝对 workspace 路径和当前规则文件 SHA-256 出现在 `project_trust` 后才生效。`suga manifest --json` 会显示当前 hash 及 allow 被忽略的原因；确认文件内容后再把 hash 复制进配置。文件变化或重载失败时保留上一份有效快照，并在诊断中报告。
+项目规则有意采用不对称信任：项目 `deny` 和 `ask` 可以收紧策略，但项目 `allow` 必须等精确的绝对 workspace 路径和当前规则文件 SHA-256 出现在 `project_trust` 后才生效。`suga inspect manifest --json` 会显示当前 hash 及 allow 被忽略的原因；确认文件内容后再把 hash 复制进配置。文件变化或重载失败时保留上一份有效快照，并在诊断中报告。
 
 各入口默认动作保持明确：
 
@@ -114,11 +114,11 @@ chat 中，`y`/`yes` 只允许本次调用。`a`/`always` 为本会话创建规�
 
 ACP 提供 `allow`、`allow_always`、`reject`、`reject_always` 四个选项。两个 `always` 选项创建进程内会话规则：后续同范围调用跳过或直接失败权限请求，但仍发送 `tool_call` 通知；不会写规则文件。同一进程内 `session/load` 保留它们，换进程后需要重新询问。
 
-用 `suga manifest --json` 查看规则文件路径、生效条数、项目 hash/信任诊断、被忽略规则和 `tools.approval` 默认动作；用 `suga trace <session> --json` 查看工具/拒绝事件的 `approval_rule`、`approval_scope` 以及写回事件 `approval_rule_persist`。设置 `tools.approval_rules.enabled: false` 可回到旧审批路径。
+用 `suga inspect manifest --json` 查看规则文件路径、生效条数、项目 hash/信任诊断、被忽略规则和 `tools.approval` 默认动作；用 `suga inspect trace <session> --json` 查看工具/拒绝事件的 `approval_rule`、`approval_scope` 以及写回事件 `approval_rule_persist`。设置 `tools.approval_rules.enabled: false` 可回到旧审批路径。
 
 ## 回滚文件工具改动（快照与 undo）
 
-默认开启时，`file_write`、`file_edit`、`file_remove` 会在实际改动文件前保存原内容快照。快照是本机私有数据，位于 `$SUGA_HOME/sessions/<session-id>/snapshots/`，不会进入模型上下文、transcript 或 `suga export`。只覆盖文件工具：`shell_exec`（包括后台任务）的改动只会被列出，不会自动回滚。`file_remove` 仍按原语义保留 7 天回收区；被忽略目录直接永久删除时，仍不可恢复。
+默认开启时，`file_write`、`file_edit`、`file_remove` 会在实际改动文件前保存原内容快照。快照是本机私有数据，位于 `$SUGA_HOME/sessions/<session-id>/snapshots/`，不会进入模型上下文、transcript 或 `suga inspect export`。只覆盖文件工具：`shell_exec`（包括后台任务）的改动只会被列出，不会自动回滚。`file_remove` 仍按原语义保留 7 天回收区；被忽略目录直接永久删除时，仍不可恢复。
 
 在 chat 提示符输入 `:checkpoints` 查看最近写操作，清单会区分恢复、删除、跳过、无法恢复，并列出未纳入快照的 shell 命令。输入 `:undo` 回滚最近一个有文件改动的回合，或输入 `:undo N` 回滚最近 N 个这样的回合；追加 `force` 才会覆盖内容冲突。默认 `chat.undo_confirm: true`，会先询问，除 `y`/`yes` 外都取消。这些命令只认本地键盘：投递文本、hook、任务通知和插话仍是普通消息；回合进行中输入的 `:undo` / `:checkpoints` 会退回输入框，等回合结束后再执行。
 
@@ -131,7 +131,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 `<session>` 支持完整 ID 或唯一前缀。非终端执行破坏性操作必须带 `--yes`；`--force` 只覆盖内容冲突，不绕过 root、路径、文件类型、链接或保护路径校验。回滚按调用逆序执行，可删除写操作新建的文件，可恢复符合条件的 `file_remove` 回收区条目，并在回滚前建立独立快照。会话 cwd 变化或可写附加目录被移除后，旧快照会被标记为不可恢复，不会写入不可信 root。只读会话可以回滚自己可信的快照，但不能扩大允许的 root。没有 redo，也没有 ACP 内置 undo 命令；ACP 与 `run` 的文件写操作仍会创建快照。
 
-默认上限为每次调用 16 MiB、每会话 256 MiB、全局 1 GiB；保留最近 20 个已完成回合或 7 天。`tools.snapshots.enabled: false` 只停止新快照，已有快照仍可由命令读取。默认 `on_error: deny`：快照存储、清理或状态检查不确定时，在文件 I/O 前拒绝写入；显式设为 `continue` 才会继续，但会标记为不可恢复。超过 `max_file_bytes` 的文件照常写入，并明确提示不可回滚。`suga gc` 会随会话数据清理快照，并报告快照字节数。回滚后，下一次显式回合会收到 `suga.undo` 事实通知（不是新的用户请求）；可用 `suga trace <session> --json` 查看 undo 事件以及各写工具事件的 `attrs.snapshot`。Git 工作区中，快照边界之外的改动请用 `git status --short` 和 `git diff` 核对。
+默认上限为每次调用 16 MiB、每会话 256 MiB、全局 1 GiB；保留最近 20 个已完成回合或 7 天。`tools.snapshots.enabled: false` 只停止新快照，已有快照仍可由命令读取。默认 `on_error: deny`：快照存储、清理或状态检查不确定时，在文件 I/O 前拒绝写入；显式设为 `continue` 才会继续，但会标记为不可恢复。超过 `max_file_bytes` 的文件照常写入，并明确提示不可回滚。`suga data gc` 会随会话数据清理快照，并报告快照字节数。回滚后，下一次显式回合会收到 `suga.undo` 事实通知（不是新的用户请求）；可用 `suga inspect trace <session> --json` 查看 undo 事件以及各写工具事件的 `attrs.snapshot`。Git 工作区中，快照边界之外的改动请用 `git status --short` 和 `git diff` 核对。
 
 ## 附加目录（`--add-dir`）
 
@@ -225,5 +225,5 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 - **上限**：`agents.max_steps`（30）、`agents.max_tokens`（400000，按未命中缓存的输入加输出累计，长上下文命中缓存不会很快耗尽它）、`agents.timeout`（10m，软截止，之后 60 秒宽限）。到任一个上限时子 agent 被要求收尾，基于已有信息给出报告。
 - **报告尾行**：`[sub-agent <会话> · N steps · in … / out … · <耗时> · stop=<原因>]`，原因有 `final`、`max_steps`、`max_tokens`、`timeout`、`cancelled`、`failed`。
 - **模型与开关**：`agents.model` 可让子 agent 跑在更便宜的模型上；`agents.enabled: false` 则不注册该工具。
-- **用量与污染**：子 agent 的模型调用计入调用它的会话当前进行中的 run（stream-json 与 ACP 的 `usage_update` 都含它，ACP 在 prompt 进行中上报），也计入会话累计——会话累计 = 父会话加它的全部子会话（`suga stats --session`）。子 agent 读过的外部内容会和其它外部读取一样把父会话标记为已污染：`research` 类型的子 agent（或读到了引用网页内容的文件）会让之后的写记忆需要确认。
-- **子会话**：每次调用都在一个自己的会话里运行——`kind: agent`，带 `parent_session_id`、`agent_type` 以及发起它的回合与工具调用，标题就是 description。`suga sessions` 与 `session_search` 默认不列出子会话；`suga sessions --agents` 会列出并标明各自的父会话。`suga trace <会话>` 可以照常查看某一个子会话，`suga gc` 随父会话一起删除它。
+- **用量与污染**：子 agent 的模型调用计入调用它的会话当前进行中的 run（stream-json 与 ACP 的 `usage_update` 都含它，ACP 在 prompt 进行中上报），也计入会话累计——会话累计 = 父会话加它的全部子会话（`suga inspect stats --session`）。子 agent 读过的外部内容会和其它外部读取一样把父会话标记为已污染：`research` 类型的子 agent（或读到了引用网页内容的文件）会让之后的写记忆需要确认。
+- **子会话**：每次调用都在一个自己的会话里运行——`kind: agent`，带 `parent_session_id`、`agent_type` 以及发起它的回合与工具调用，标题就是 description。`suga sessions` 与 `session_search` 默认不列出子会话；`suga sessions --agents` 会列出并标明各自的父会话。`suga inspect trace <会话>` 可以照常查看某一个子会话，`suga data gc` 随父会话一起删除它。

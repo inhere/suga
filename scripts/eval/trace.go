@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 )
 
-// traceCall is the token usage of one model event in `suga trace --json`.
+// traceCall is the token usage of one model event in `suga inspect trace --json`.
 // In the trace, input_tokens INCLUDES cache read/write (the store's raw
 // convention; only stats/reports subtract them), so the uncached part is
 // input - cache_read - cache_write.

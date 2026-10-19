@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Session retention by origin (design 0.3, 会话来源). `suga gc --retention`
+// Session retention by origin (design 0.3, 会话来源). `suga data gc --retention`
 // removes sessions by class instead of by one shared age: an interactive
 // session is kept for the interactive period, a session a non-interactive
 // entry point (run, ACP, sub-agent) created for the shorter one. The removal
@@ -22,7 +22,7 @@ import (
 // longer exists are kept before `gc --retention --apply` drops them.
 const GCDefaultOrphanEventRetention = 30 * 24 * time.Hour
 
-// GCRetentionPolicy is the per-class session retention of `suga gc --retention`.
+// GCRetentionPolicy is the per-class session retention of `suga data gc --retention`.
 // A period of zero or less turns its class off: those sessions are kept.
 type GCRetentionPolicy struct {
 	// Interactive applies to chat sessions and to sessions created before

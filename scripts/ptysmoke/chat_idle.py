@@ -7,7 +7,7 @@ temporary SUGA_HOME with context.idle_after: 2s and a small context_window,
 runs `suga chat` in a PTY and checks: a turn longer than idle_after does not
 trigger it; a few seconds after the turn "✦ 空闲整理中…" then "✦ 已整理上下文：X
 → Y token" appear; input afterwards works; typing while a consolidation runs
-preempts it (no success line, the turn answers); `suga trace` shows the
+preempts it (no success line, the turn answers); `suga inspect trace` shows the
 schedule events and the idle segment.
 
   make smoke-chat                        # runs this after chat_memory.py

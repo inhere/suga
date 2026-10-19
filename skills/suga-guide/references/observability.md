@@ -5,21 +5,21 @@
 ## 命令
 
 ```text
-suga trace <session> [--turn <id>] [--json]       # 时间线：模型调用、工具、拒绝、计划
+suga inspect trace <session> [--turn <id>] [--json]                                          # 时间线：模型调用、工具、拒绝、计划
 suga sessions [关键词] [-n 10] [--since 7d] [--until 2026-10-01] [--cwd .] [--agents] [--json]  # 会话列表，最新在前；关键词匹配标题、id、目录、模型或对话内容；--agents 连子会话一起列出
-suga trace <session> --analyze [--json]          # 循环分析：步数、并行调用、重复读、重复命令、首次通过后的测试、子 agent
-suga trace <session> --web [--addr 127.0.0.1:0]  # 本机网页：时间线（后台任务横条、任务通知标注、子 agent 行及其子会话 trace 命令）、详情、上下文组成、分析、本机环境（Ctrl-C 结束）
-suga stats [--session <id>] [--since 7d] [--json] # 调用次数、耗时、token、缓存命中
-suga export <session> [--redact] [-o <file>]      # 以 jsonl 导出会话内容与事件
-suga gc --older-than 30d [--apply]                # 列出（默认）或删除长期未活动的会话
-suga gc --retention [--apply]                     # 按来源套用保留期（chat 180 天 / run+ACP 30 天，默认只报告）
-suga ps                                           # 正在运行的 chat 进程（含短名称）
-suga manifest [--json] [--model <p/m>]            # 模型、工具、MCP、skills、记忆后端、输出上限
+suga inspect trace <session> --analyze [--json]                                              # 循环分析：步数、并行调用、重复读、重复命令、首次通过后的测试、子 agent
+suga inspect trace <session> --web [--addr 127.0.0.1:0]                                      # 本机网页：时间线（后台任务横条、任务通知标注、子 agent 行及其子会话 trace 命令）、详情、上下文组成、分析、本机环境（Ctrl-C 结束）
+suga inspect stats [--session <id>] [--since 7d] [--json] # 调用次数、耗时、token、缓存命中
+suga inspect export <session> [--redact] [-o <file>]      # 以 jsonl 导出会话内容与事件
+suga data gc --older-than 30d [--apply]                   # 列出（默认）或删除长期未活动的会话
+suga data gc --retention [--apply]                        # 按来源套用保留期（chat 180 天 / run+ACP 30 天，默认只报告）
+suga ps                                                   # 正在运行的 chat 进程（含短名称）
+suga inspect manifest [--json] [--model <p/m>]            # 模型、工具、MCP、skills、记忆后端、输出上限
 ```
 
 - `trace --web` 以只读方式打开会话库：不创建文件、不跑迁移，库不存在或未初始化时直接报错；页面上的“自动刷新”开关默认关闭，打开后只拉取新增步骤（回合进行中每 5 秒，空闲时每 15 秒检查新回合）。
 
-## `suga trace` 时间线里的各类行
+## `suga inspect trace` 时间线里的各类行
 
 - **工具行**：退出码（shell）、进入上下文的字节数、转存标记与脱敏后的参数摘要；编辑的增删行数（`+新增/-删除`）；问过人时显示 `approval=user(wait=3.2s)`。
 - **`agent` 行**（子 agent 调用）：它运行的会话、类型、步数（连带子 agent 自己的工具调用数）、token 与成本、结束原因，如 `sub=<会话> type=explore steps=12 calls=5 in=85k(cache 60k) out=3k cost=$0.0123 stop=final`。后台子 agent 的 task 行显示 `agent steps=N calls=M`。
@@ -35,7 +35,7 @@ suga manifest [--json] [--model <p/m>]            # 模型、工具、MCP、skil
 - **`local_command` 行**：一次在提示符处、回合之外执行的 `!`/`!!` 命令（`exit=`、输出的 `bytes=`、结果会随下一条消息进入模型时的 `model=next-message`、被终止时的 `cancelled`/`timeout`），命令本身放在行尾的方括号里。
 - 其它：`model_switch`（`:model` 切换）、`fold`（折叠点前移）、`session_cwd_changed`（换目录续接）、`danger=…`（危险删除拦截原因）。
 
-## `suga trace --analyze`
+## `suga inspect trace --analyze`
 
 从同一组事件得出：
 
@@ -50,7 +50,7 @@ suga manifest [--json] [--model <p/m>]            # 模型、工具、MCP、skil
 - 有后台任务时还会补充：任务运行期间循环用于模型与工具调用的时间（`background_overlap_ms`，即省下的等待，只计后台命令，不含监听与 Stop hook；重叠的前台调用只算一次）、`task wait` 的次数与阻塞时长，以及其中在任务启动后立刻 wait 的次数（`immediate_waits`，把后台当前台用）。
 - 按种类补充：watch 任务数及其运行与变化次数（`watch_tasks`、`watch_runs`、`watch_changes`），以及后台 Stop hook 的运行次数（`stop_hooks`）。
 
-## `suga stats`
+## `suga inspect stats`
 
 - 显示各模型成本（provider 返回，或按配置的 `price` 计算）。
 - 加 `--json` 还有工具输出字节（`raw_bytes`、`inline_bytes`、`spilled`）。

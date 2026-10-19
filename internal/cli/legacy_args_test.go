@@ -8,7 +8,7 @@ import (
 
 // TestRewriteLegacyArgs covers the argument rewrite of the v0.36 command-group
 // move (design 2026-10-19-cli-command-groups-design.md): every old top-level
-// command reaches its new group, `suga trace …` is rewritten without a notice,
+// command reaches its new group, `suga inspect trace …` is rewritten without a notice,
 // and the forms that must NOT be rewritten stay as typed.
 func TestRewriteLegacyArgs(t *testing.T) {
 	t.Run("moved top-level commands", func(t *testing.T) {
