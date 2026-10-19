@@ -9,6 +9,15 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/redact"
 )
 
+// WithModel adds the "model" field ("provider/model") to a stream-json line;
+// an empty model leaves the line as it is.
+func WithModel(line map[string]any, model string) map[string]any {
+	if model != "" {
+		line["model"] = model
+	}
+	return line
+}
+
 // SessionLine is the first stream-json line of a run.
 func SessionLine(sessionID string) map[string]any {
 	return map[string]any{"type": "session", "id": sessionID, "session_id": sessionID}
