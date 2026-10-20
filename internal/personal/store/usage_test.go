@@ -352,3 +352,34 @@ func TestUsageTablesFromDBStat(t *testing.T) {
 	assert.True(t, names["entries"] > 0, "the entries table holds pages")
 	assert.True(t, names["sessions"] > 0)
 }
+
+// TestUsageReportCountsMovedAssistant: the assistant field sums only describe the
+// ledger, so the report separates the rows that moved to a session file and names
+// the files it found instead of assuming tools.jsonl.
+func TestUsageReportCountsMovedAssistant(t *testing.T) {
+	ctx := context.Background()
+	s := openTemp(t)
+	createSession(t, s, "s1", "/w")
+	appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c1"))})
+
+	rep, err := s.Usage(ctx, UsageOptions{Top: 5})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(1), rep.Entries.MovedAssistant.Rows)
+	assert.True(t, rep.Entries.MovedAssistant.Bytes > 0, "the stub bytes are counted")
+	assert.Eq(t, int64(0), fieldBytes(rep.Entries.Assistant.Fields, "Reasoning"), "the moved reasoning is not in the ledger")
+	assert.Eq(t, 1, len(rep.Sessions.BodyFiles))
+	// Writes stay on the old name until --rename-files switches it.
+	assert.Eq(t, LegacyBodyFileName, rep.Sessions.BodyFiles[0].Name)
+	assert.Eq(t, int64(1), rep.Sessions.BodyFiles[0].Rows)
+	assert.Eq(t, int64(1), rep.Sessions.Tools.Files)
+}
+
+// fieldBytes returns the byte total the usage report holds for one JSON field.
+func fieldBytes(fields []NamedStat, name string) int64 {
+	for _, stat := range fields {
+		if stat.Name == name {
+			return stat.Bytes
+		}
+	}
+	return 0
+}
