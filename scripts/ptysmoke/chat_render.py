@@ -5,8 +5,8 @@ alignment and the fold of a long code block with the :code command.
 The fake model answers with a Chinese table and a 45 line go code block. The
 checks fail when the table buffering is removed (the table stays as the model
 wrote it), when the fold limit is removed (no "… 还有 N 行" line) or when
-highlighting is off (no 256 color sequence). The Linux/macOS supervisor runs it
-through make smoke-chat; a Windows console cannot be driven this way.
+highlighting is off (no 16 color SGR sequence). The Linux/macOS supervisor runs
+it through make smoke-chat; a Windows console cannot be driven this way.
 """
 import argparse, os, shutil, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -60,9 +60,11 @@ def main():
         s.check('table header aligned', s.until(r'│ 名称 │ 状态 │', m))
         s.check('table row aligned', s.until(r'│ 构建 │ 通过 │', m))
         s.check('table separator', s.until(r'─{10,}', m))
-        # A go block is colored with ANSI 256 colors while it streams; text()
-        # strips escape codes, so this one reads the raw output.
-        s.check('highlighted code', s.until_raw('\x1b\\[38;5;', m))
+        # A go block is colored while it streams: keywords are cyan and strings
+        # green (16 color ANSI); text() strips escape codes, so this reads the raw
+        # output.
+        s.check('highlighted keyword', s.until_raw('\x1b\\[36mfunc', m))
+        s.check('highlighted string', s.until_raw('\x1b\\[32m"step 1"', m))
         # Past chat.code_max_lines the block folds and names :code.
         s.check('fold notice', s.until(r'… 还有 %d 行（:code 查看全部）' % (CODE_LINES + 2 - 40), m))
         s.check('the folded line is not printed', not s.contains(r'step %d' % CODE_LINES, m))

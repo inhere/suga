@@ -238,15 +238,13 @@ func TestChatCodeSettings(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
 		load(t, "model: openai/m\n")
 		assert.True(t, ChatCodeHighlightEnabled())
-		assert.Eq(t, DefaultChatCodeTheme, ChatCodeTheme())
 		lines, err := ChatCodeMaxLines()
 		assert.NoErr(t, err)
 		assert.Eq(t, 40, lines)
 	})
 	t.Run("set", func(t *testing.T) {
-		load(t, "chat:\n  code_highlight: off\n  code_theme: monokai\n  code_max_lines: 12\n")
+		load(t, "chat:\n  code_highlight: off\n  code_max_lines: 12\n")
 		assert.False(t, ChatCodeHighlightEnabled())
-		assert.Eq(t, "monokai", ChatCodeTheme())
 		lines, err := ChatCodeMaxLines()
 		assert.NoErr(t, err)
 		assert.Eq(t, 12, lines)
@@ -256,10 +254,6 @@ func TestChatCodeSettings(t *testing.T) {
 		lines, err := ChatCodeMaxLines()
 		assert.NoErr(t, err)
 		assert.Eq(t, 0, lines)
-	})
-	t.Run("an empty theme means the default", func(t *testing.T) {
-		load(t, "chat:\n  code_theme: \"\"\n")
-		assert.Eq(t, DefaultChatCodeTheme, ChatCodeTheme())
 	})
 	for name, body := range map[string]string{
 		"negative":     "chat:\n  code_max_lines: -1\n",
