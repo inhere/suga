@@ -256,8 +256,17 @@ func (rt *Runtime) ReadImage(path string) (agentcore.ImagePart, string, error) {
 // relative path against workspace. `suga send --image` uses it with the sender's
 // own working directory, so both ends check, scale and name a picture the same
 // way (design send --image).
+//
+// The path is one the person typed (:image, run --image, send --image), not a
+// model's tool call, so it is not confined to the workspace: its own directory
+// is added as a read root. Every other view_image check (regular file only,
+// input size, pixel and format limits) still applies.
 func ReadImageAt(workspace, path string) (agentcore.ImagePart, string, error) {
-	data, name, err := native.ReadImageFile(workspace, nil, nil, path)
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(workspace, abs)
+	}
+	data, name, err := native.ReadImageFile(workspace, []string{filepath.Dir(filepath.Clean(abs))}, nil, path)
 	if err != nil {
 		return agentcore.ImagePart{}, "", err
 	}
