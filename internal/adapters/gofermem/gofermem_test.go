@@ -310,6 +310,27 @@ func TestKeyMapping(t *testing.T) {
 	}
 }
 
+// TestSummaryNotStoredSeparately pins the documented limit of this backend:
+// gofer memories have one summary slot (the title), so the suga one-sentence
+// index summary has no second field to live in and stays empty.
+func TestSummaryNotStoredSeparately(t *testing.T) {
+	seed := []record{
+		{Key: "suga-project-release-flow", Content: "Close the release notes first. Then tag.", Tags: []string{"suga", "project"},
+			Kind: "note", Summary: "Release flow", UpdatedAt: "2026-10-01T00:00:00Z"},
+	}
+	_, st := newFake(t, seed...)
+
+	ix, err := st.Index(ctx, proj)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Require(t, assert.Len(t, ix.Lines, 1))
+	assert.Eq(t, "Release flow", ix.Lines[0].Title)
+	assert.Eq(t, "", ix.Lines[0].Summary)
+
+	e, err := st.Get(ctx, proj, ix.Lines[0].ID)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "", e.Summary)
+}
+
 func TestWriteReadRoundTrip(t *testing.T) {
 	f, st := newFake(t)
 	t.Setenv(leakProbeEnv, "sk-secret")

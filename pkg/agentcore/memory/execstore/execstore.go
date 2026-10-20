@@ -10,18 +10,20 @@
 // scope is always the string "user" or "project:<key>". Per op:
 //
 //	op "index"   args {"scope"}
-//	             result {"lines":[{"id","title","kind"}],"bytes":0}
+//	             result {"lines":[{"id","title","kind","summary"}],"bytes":0}
 //	op "get"     args {"scope","id"}
 //	             result entry
-//	op "write"   args {"scope","op":{"action":"add|replace|remove","id","title","body","kind","applies_when"}}
+//	op "write"   args {"scope","op":{"action":"add|replace|remove","id","title","body","kind","summary","applies_when"}}
 //	             result entry; for "add" the backend derives the id from the
 //	             title (the request id is empty); for "remove" it returns the
 //	             entry as it was before removal, with title and body
 //	op "search"  args {"scope","query","limit"}  (limit 0: backend default)
 //	             result {"hits":[{"id","title","kind","snippet","updated"}]}
 //
-// An entry is {"id","title","body","kind","applies_when","updated"} with kind one of user,
+// An entry is {"id","title","body","kind","summary","applies_when","updated"} with kind one of user,
 // feedback, project, reference and updated an RFC 3339 time (optional).
+// summary is the one-sentence index line description (optional; a backend
+// that ignores it just returns an empty summary).
 //
 // Ids must satisfy memory.ValidateID (lowercase a-z, 0-9, '-'). A missing
 // entry is reported with ok=false and an error text containing "not found".
@@ -84,9 +86,10 @@ func (s *Store) BackendName() string { return Name }
 // wire types -----------------------------------------------------------
 
 type wireLine struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Kind  string `json:"kind"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Kind    string `json:"kind"`
+	Summary string `json:"summary,omitempty"`
 }
 
 type wireIndex struct {
@@ -99,6 +102,7 @@ type wireEntry struct {
 	Title       string    `json:"title"`
 	Body        string    `json:"body"`
 	Kind        string    `json:"kind"`
+	Summary     string    `json:"summary,omitempty"`
 	AppliesWhen []string  `json:"applies_when,omitempty"`
 	Updated     time.Time `json:"updated"`
 }
@@ -121,6 +125,7 @@ type wireOp struct {
 	Title       string   `json:"title,omitempty"`
 	Body        string   `json:"body,omitempty"`
 	Kind        string   `json:"kind,omitempty"`
+	Summary     string   `json:"summary,omitempty"`
 	AppliesWhen []string `json:"applies_when,omitempty"`
 }
 
@@ -163,7 +168,7 @@ func (s *Store) Index(ctx context.Context, sc memory.Scope) (memory.Index, error
 		if memory.ValidateID(l.ID) != nil || !kind.Valid() {
 			continue
 		}
-		ix.Lines = append(ix.Lines, memory.IndexLine{ID: l.ID, Title: l.Title, Kind: kind})
+		ix.Lines = append(ix.Lines, memory.IndexLine{ID: l.ID, Title: l.Title, Kind: kind, Summary: l.Summary})
 	}
 	return ix, nil
 }
@@ -192,7 +197,8 @@ func (s *Store) Write(ctx context.Context, sc memory.Scope, op memory.Op) (memor
 	if err := op.Validate(); err != nil {
 		return memory.Entry{}, err
 	}
-	w := wireOp{Action: string(op.Action), ID: op.ID, Title: op.Title, Body: op.Body, Kind: string(op.Kind), AppliesWhen: op.AppliesWhen}
+	w := wireOp{Action: string(op.Action), ID: op.ID, Title: op.Title, Body: op.Body, Kind: string(op.Kind),
+		Summary: op.Summary, AppliesWhen: op.AppliesWhen}
 	var res wireEntry
 	if err := s.call(ctx, "write", map[string]any{"scope": sc.String(), "op": w}, &res); err != nil {
 		return memory.Entry{}, err
@@ -236,5 +242,6 @@ func decodeEntry(w wireEntry, wantID string) (memory.Entry, error) {
 	if !kind.Valid() {
 		return memory.Entry{}, fmt.Errorf("%w: backend returned unknown kind %q", memory.ErrInvalid, w.Kind)
 	}
-	return memory.Entry{ID: w.ID, Title: w.Title, Body: w.Body, Kind: kind, AppliesWhen: w.AppliesWhen, Updated: w.Updated}, nil
+	return memory.Entry{ID: w.ID, Title: w.Title, Body: w.Body, Kind: kind, Summary: w.Summary,
+		AppliesWhen: w.AppliesWhen, Updated: w.Updated}, nil
 }

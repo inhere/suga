@@ -89,7 +89,7 @@ func serveMem(req extproc.Request) {
 	case "index":
 		lines := []map[string]any{}
 		for id, e := range st.Entries {
-			lines = append(lines, map[string]any{"id": id, "title": e["title"], "kind": e["kind"]})
+			lines = append(lines, map[string]any{"id": id, "title": e["title"], "kind": e["kind"], "summary": e["summary"]})
 		}
 		reply(map[string]any{"lines": lines})
 	case "get":
@@ -105,7 +105,7 @@ func serveMem(req extproc.Request) {
 		switch op["action"] {
 		case "add":
 			id = strings.ToLower(strings.ReplaceAll(op["title"].(string), " ", "-"))
-			st.Entries[id] = map[string]any{"id": id, "title": op["title"], "body": op["body"], "kind": op["kind"], "applies_when": op["applies_when"], "updated": "2026-01-02T03:04:05Z"}
+			st.Entries[id] = map[string]any{"id": id, "title": op["title"], "body": op["body"], "kind": op["kind"], "summary": op["summary"], "applies_when": op["applies_when"], "updated": "2026-01-02T03:04:05Z"}
 		case "replace":
 			old, ok := st.Entries[id]
 			if !ok {
@@ -114,6 +114,9 @@ func serveMem(req extproc.Request) {
 			}
 			old["title"], old["body"] = op["title"], op["body"]
 			old["applies_when"] = op["applies_when"]
+			if s, _ := op["summary"].(string); s != "" {
+				old["summary"] = s
+			}
 			if k, _ := op["kind"].(string); k != "" {
 				old["kind"] = k
 			}
@@ -208,6 +211,36 @@ func TestRoundTrip(t *testing.T) {
 		assert.Eq(t, "spaces now", e.Body)
 		_, err = st.Get(ctx, sc, "use-tabs")
 		assert.ErrIs(t, err, memory.ErrNotFound)
+	})
+}
+
+func TestSummaryRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t, "mem", 10*time.Second)
+	sc := memory.ProjectScope("proj")
+
+	t.Run("add stores the summary", func(t *testing.T) {
+		_, err := st.Write(ctx, sc, memory.Op{Action: memory.ActionAdd, Title: "Use Tabs", Body: "tabs everywhere",
+			Kind: memory.KindFeedback, Summary: "项目缩进约定"})
+		assert.Require(t, assert.NoErr(t, err))
+	})
+	t.Run("index line carries it", func(t *testing.T) {
+		ix, err := st.Index(ctx, sc)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Len(t, ix.Lines, 1)
+		assert.Eq(t, "项目缩进约定", ix.Lines[0].Summary)
+	})
+	t.Run("get returns it", func(t *testing.T) {
+		e, err := st.Get(ctx, sc, "use-tabs")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "项目缩进约定", e.Summary)
+	})
+	t.Run("replace without a summary keeps it", func(t *testing.T) {
+		_, err := st.Write(ctx, sc, memory.Op{Action: memory.ActionReplace, ID: "use-tabs", Title: "Use Tabs", Body: "spaces now"})
+		assert.Require(t, assert.NoErr(t, err))
+		e, err := st.Get(ctx, sc, "use-tabs")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "项目缩进约定", e.Summary)
 	})
 }
 

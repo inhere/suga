@@ -160,6 +160,11 @@ func hasTag(tags []string, want string) bool {
 
 // title is the stored summary, or the first content line when a tagged entry
 // was edited by hand without one.
+//
+// gofer memories carry a single summary slot, which this backend already uses
+// for the title; there is no second field for the suga one-sentence index
+// summary, so index lines of this backend carry none (the title itself is the
+// one-line description shown in gofer's own index).
 func (r record) title() string {
 	if t := strings.TrimSpace(r.Summary); t != "" {
 		return t

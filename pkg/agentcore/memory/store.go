@@ -37,6 +37,13 @@ type Enumerator interface {
 	Entries(ctx context.Context, s Scope) ([]Entry, error)
 }
 
+// Summarizer is optionally implemented by a backend that can rewrite the
+// one-sentence index summary of an entry without touching its body or title.
+// It backs the maintenance command that fills missing summaries.
+type Summarizer interface {
+	SetSummary(ctx context.Context, s Scope, id, summary string) error
+}
+
 // ProvenanceStore keeps provenance and tombstones for entries. A backend that
 // can store them itself implements it; otherwise the host injects one through
 // Policy.Provenance (suga uses a SQLite side table). backend is the backend

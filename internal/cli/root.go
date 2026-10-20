@@ -64,6 +64,7 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 		newVersionCommand(stdout, stderr, build),
 		newACPCommand(ctx, stdin, stdout, stderr),
 		newInspectCommand(ctx, stdout, stderr),
+		newMemoryCommand(ctx, stdout, stderr),
 		newDataCommand(ctx, stdin, stdout, stderr, build.Version),
 	)
 	return root

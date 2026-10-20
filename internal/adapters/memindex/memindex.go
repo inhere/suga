@@ -3,6 +3,7 @@ package memindex
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -64,6 +65,18 @@ func (s *Store) Write(ctx context.Context, scope memory.Scope, op memory.Op) (me
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.base.Write(ctx, scope, op)
+}
+
+// SetSummary implements memory.Summarizer by forwarding to the base backend, so
+// the derived FTS layer never hides a capability of the Markdown files it wraps.
+func (s *Store) SetSummary(ctx context.Context, scope memory.Scope, id, summary string) error {
+	sum, ok := s.base.(memory.Summarizer)
+	if !ok {
+		return fmt.Errorf("memory: backend %s cannot store a summary separately", memory.BackendName(s.base))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return sum.SetSummary(ctx, scope, id, summary)
 }
 
 // Search synchronizes from Markdown before querying FTS. Any enumeration,

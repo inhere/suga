@@ -110,6 +110,7 @@ Details: [references/sessions.md#skills](skills/suga-guide/references/sessions.m
 Details: [references/sessions.md#记忆](skills/suga-guide/references/sessions.md#记忆) (Chinese)
 
 - The model writes cross-session memory with the `memory` tool: `user`, `feedback`, `project` and `reference` entries.
+- Every index line carries a one-sentence summary (`- [title](path) — kind: summary`); `add` requires `summary` (the first sentence of the body is used when it is missing) and the prompt's memory index shows it. `suga memory summaries --missing [--fill [--apply]]` lists or fills the missing ones without touching entry bodies.
 - User memory lives in `$SUGA_HOME/memory/user`; the project backend is picked automatically (repo-root `MEMORY.md`, `.gofer/tracker`, or `$SUGA_HOME/projects/<key>/memory`).
 - The memory index is frozen per segment; what this session writes shows up in the next segment.
 - `memory search` on the files backend ranks hits through a rebuildable FTS5 index (Markdown stays the source of truth), and entries may carry optional `applies_when` conditions.

@@ -79,8 +79,11 @@ func (t *MemoryTool) Description() string {
 		"out again. A dead end counts (the path and why it failed). For experience, state the conditions " +
 		"it applies under (versions, environment, endpoints).\n" +
 		"Facts go into memory; procedures and how-tos belong in skills.\n" +
-		"Actions: add (kind, title, body; optional applies_when conditions; the id is derived from the title), replace (id, title, body; " +
+		"Actions: add (kind, title, body, summary; optional applies_when conditions; the id is derived from the title), replace (id, title, body, summary; " +
 		"rewrites the whole entry), remove (id), get (id), search (query). scope: project (default) or user. " +
+		"summary is one sentence (at most 120 characters) saying what the entry covers and when to read it; it is " +
+		"what the memory index shows, so write it even when the title seems clear. It is required for add: when it " +
+		"is omitted the first sentence of the body is used and the result tells you so. " +
 		"Prefer replace to merge an existing entry over adding a near-duplicate. When the project memory " +
 		"is backed by gofer, every project entry is a gofer note that enters the start-up context of all " +
 		"agents working in the repository: keep it short and generally useful."
@@ -107,8 +110,10 @@ func (t *MemoryTool) Schema() api.ToolSchema {
 					MemoryActionRemove, MemoryActionGet, MemoryActionSearch}},
 				"scope": map[string]any{"type": "string", "enum": []any{memory.ScopeProject, memory.ScopeUser},
 					"description": "project (default): this repository; user: about the user, across projects"},
-				"kind":         map[string]any{"type": "string", "enum": kinds, "description": "Entry kind (add; optional for replace)"},
-				"title":        map[string]any{"type": "string", "description": "One-line title (add, replace)"},
+				"kind":  map[string]any{"type": "string", "enum": kinds, "description": "Entry kind (add; optional for replace)"},
+				"title": map[string]any{"type": "string", "description": "One-line title (add, replace)"},
+				"summary": map[string]any{"type": "string", "description": "One sentence (at most 120 characters) for the memory index: " +
+					"what the entry covers and when to read it (add required; replace optional, an empty value keeps the stored summary)"},
 				"body":         map[string]any{"type": "string", "description": "Entry text (add, replace)"},
 				"applies_when": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Conditions for which this entry applies (optional, add/replace)"},
 				"id":           map[string]any{"type": "string", "description": "Entry id from the index or search (replace, remove, get)"},
@@ -127,6 +132,9 @@ type memoryRequest struct {
 	op     memory.Op
 	query  string
 	limit  int
+	// derivedSummary records that the model gave no summary and the body's
+	// first sentence was used, so the result can say so.
+	derivedSummary bool
 }
 
 func (t *MemoryTool) Execute(ctx context.Context, call api.ToolCall) (*api.ToolResult, error) {
@@ -180,10 +188,18 @@ func (t *MemoryTool) Execute(ctx context.Context, call api.ToolCall) (*api.ToolR
 			return nil, t.mapError(req, err)
 		}
 		// The write happened; only bookkeeping (provenance) failed.
-		content := renderMemoryChange(req.action, req.scope, e) + "\nwarning: " + err.Error()
+		content := renderMemoryChange(req.action, req.scope, e, req.summaryNote()) + "\nwarning: " + err.Error()
 		return result(content, false), nil
 	}
-	return result(renderMemoryChange(req.action, req.scope, e), false), nil
+	return result(renderMemoryChange(req.action, req.scope, e, req.summaryNote()), false), nil
+}
+
+// summaryNote is the extra result line about a derived summary.
+func (req memoryRequest) summaryNote() string {
+	if !req.derivedSummary {
+		return ""
+	}
+	return "已用正文首句作摘要：" + req.op.Summary
 }
 
 // memoryCallKey carries the tool call id of a memory write in ctx.
@@ -236,6 +252,13 @@ func (t *MemoryTool) parse(args map[string]any) (memoryRequest, error) {
 		}
 		if req.action == MemoryActionAdd && req.op.Kind == "" {
 			return req, errors.New("add needs kind: user, feedback, project or reference")
+		}
+		req.op.Summary = memory.CleanSummary(str("summary"))
+		if req.action == MemoryActionAdd && req.op.Summary == "" {
+			// The index line needs a description; the first sentence of the
+			// body is the fallback and the result reports it.
+			req.op.Summary = memory.FirstSentence(req.op.Body)
+			req.derivedSummary = true
 		}
 		if req.action == MemoryActionReplace && id == "" {
 			return req, errors.New("replace needs the id of the entry to rewrite")
@@ -349,9 +372,13 @@ var memoryChangeVerbs = map[string]string{
 }
 
 // renderMemoryChange renders a write result; its first line is the stable
-// "<Verb> memory <id> (<scope>): <title>" that ParseMemoryResult reads.
-func renderMemoryChange(action string, s memory.Scope, e memory.Entry) string {
+// "<Verb> memory <id> (<scope>): <title>" that ParseMemoryResult reads. note,
+// when not empty, is appended as an extra line.
+func renderMemoryChange(action string, s memory.Scope, e memory.Entry, note string) string {
 	line := fmt.Sprintf("%s memory %s (%s): %s", memoryChangeVerbs[action], e.ID, s.Kind, e.Title)
+	if note != "" {
+		line += "\n" + note
+	}
 	if action == MemoryActionRemove {
 		return line
 	}
