@@ -157,7 +157,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 	send.Usage = "suga send --session <id|name> [--text <text> | <text>...] [--image <file>]... [--source <label>] [--steer] [--wait]"
 	send.Example = sendExamples
 	send.LongHelp = sendHelp
-	send.StringVar(&sendSession, "session", "", "session ID, ID prefix, or the short name of a running chat (suga ps)")
+	send.StringVar(&sendSession, "session", "", "session ID, ID prefix, or the short name of a running chat (suga ps){[;sid]}")
 	send.StringVar(&sendText, "text", "", "message text; cannot be combined with arguments; defaults to stdin{[]}")
 	send.StringVar(&sendSource, "source", "cli", "source label the chat shows before the text as [来自 <source>]; text already starting with a [...] tag is shown as is{[]}")
 	send.BoolVar(&sendWait, "wait", false, "wait until the message reaches the running turn or starts a turn; exit 3 if it is discarded{[]}")

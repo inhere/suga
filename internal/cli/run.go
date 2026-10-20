@@ -195,7 +195,8 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
 	var opts personalOptions
 	desc := "Run one personal-agent turn"
-	if mode == "chat" {
+	isChatMode := mode == "chat"
+	if isChatMode {
 		desc = "Chat with the personal agent"
 	}
 	cmd := capp.NewCmd(mode, desc, func(c *capp.Cmd) error {
@@ -208,8 +209,7 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 		return runPersonalWithOptions(ctx, mode, opts, stdin, stdout, stderr)
 	})
 	cmd.SetOutput(stderr)
-	cmd.StringVar(&opts.Prompt, "prompt", "", "task prompt for run mode;;p")
-	cmd.StringVar(&opts.Model, "model", "", "model, <provider>/<model> or a bare model id (overrides SUGA_MODEL)")
+	cmd.StringVar(&opts.Model, "model", "", "model, <provider>/<model> or a bare model id (overrides SUGA_MODEL){[;m]}")
 	cmd.StringVar(&opts.Thinking, "thinking", "", "thinking level of the main model: off, minimal, low, medium, high, xhigh, max, auto (overrides the config)")
 	cmd.IntVar(&opts.MaxOutputTokens, "max-output-tokens", 0, "max output tokens per model request, >= 1 (overrides SUGA_MAX_OUTPUT_TOKENS, models.<m>.max_output_tokens and providers.<id>.max_output_tokens)")
 	cmd.IntVar(&opts.Budget.Tokens, "budget-tokens", 0, "token budget for this turn or session, >= 0 (overrides SUGA_BUDGET_TOKENS and budget.tokens)")
@@ -224,11 +224,12 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	cmd.StringVar(&opts.AppendSystemPrompt, "append-system-prompt", "", "append system instructions after rules, empty keeps the saved prompt")
 	cmd.BoolVar(&opts.ClearAppendSystemPrompt, "clear-append-system-prompt", false, "clear the session's saved append prompt (a non-empty --append-system-prompt still replaces it)")
 	cmd.BoolVar(&opts.NoProjectRules, "no-project-rules", false, "skip project rule files for debugging")
-	cmd.Var((*cflag.Strings)(&opts.MCPConfigs), "mcp-config", "Claude-style JSON MCP server config")
+	cmd.Var((*cflag.Strings)(&opts.MCPConfigs), "mcp-config", "Claude-style JSON MCP server config{[;mcp]}")
 	cmd.Var((*cflag.Strings)(&opts.AddDirs), "add-dir", "extra absolute directory for this session as \"<directory>[:ro|:rw]\" (default :ro), repeatable; SUGA_ADD_DIRS adds more")
 	cmd.BoolVar(&opts.AllowCwdChange, "allow-cwd-change", false, "continue a resumed session in the current directory even if it was created in another one")
 	cmd.Var((*cflag.Strings)(&opts.ImagePaths), "image", "image file attached to this prompt (same checks, scaling and storage as chat :image)")
-	if mode == "run" {
+	if !isChatMode {
+		cmd.StringVar(&opts.Prompt, "prompt", "", "task prompt for run mode;;p")
 		cmd.BoolVar(&opts.Injected, "injected", false, "mark this turn's prompt as not typed by a person")
 		cmd.IntVar(&opts.MaxSteps, "max-steps", 0, "max tool steps in this turn, >= 1 (overrides SUGA_MAX_STEPS and max_steps); sub-agent agents.max_steps is unaffected")
 	}

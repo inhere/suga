@@ -30,18 +30,22 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 	root.Version = build.Version
 	root.SetOutput(stdout)
 	root.BoolVar(&showVersion, "version", false, "show version then exit;false;V")
-	root.LongHelp = `Examples:
+	root.LongHelp = `<ylw>Options for chat</>:
+  --resume, -r <session>              Resume a chat
+  --model, -r <model_id>              Custom a model for the chat
+
+<info>Examples</>:
   suga                                 Start interactive chat
   suga --resume <session>              Resume a chat (chat options work without "chat")
   suga run --prompt "hello"            Run one turn
-  suga acp                             Serve ACP over stdio
-  suga init                            Create the onboarding config
   suga config get model                Show the effective model and source
   suga models --json                   List configured models offline
   suga undo <session> --list           List file checkpoints
   suga inspect trace <session> --json  Show the event timeline of a session
   suga data gc --older-than 30d        Remove idle sessions (dry run)
 `
+
+	// 绑定 chat/run 的公共参数到 app
 
 	root.AfterFlagParse = func(c *cflag.CFlags) bool {
 		if showVersion {
