@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gookit/goutil/x/assert"
 	"github.com/inhere/suga/internal/personal/store"
@@ -411,7 +410,9 @@ func TestRunnerPersistsCancellationAfterContextEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// The outer guard comes from testCtx; the explicit cancel stays the one the
+	// test drives (stopping the run mid-turn to check what got persisted).
+	ctx, cancel := context.WithCancel(testCtx(t))
 	defer cancel()
 	resultCh := make(chan RunResult, 1)
 	errCh := make(chan error, 1)

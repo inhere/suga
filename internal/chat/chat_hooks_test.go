@@ -271,8 +271,7 @@ func TestPersonalChatEOFExitsNormally(t *testing.T) {
 	for _, input := range []string{"", "prompt\n"} {
 		t.Run(fmt.Sprintf("input_%q", input), func(t *testing.T) {
 			runner, _ := newCLITestRunner(t, mock.NewProvider(mock.Final("done")))
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+			ctx := testCtx(t)
 			if err := Run(ctx, runner, Options{}, strings.NewReader(input), io.Discard, io.Discard, nil); err != nil {
 				t.Fatalf("normal EOF returned an error: %v", err)
 			}
