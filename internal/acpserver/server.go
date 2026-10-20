@@ -2,6 +2,7 @@ package acpserver
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -36,6 +37,10 @@ type Runtime struct {
 	// Policy is the shared wiring policy. ACP adds session-level always rules
 	// around this immutable per-runtime decision function.
 	Policy PolicyDecision
+	// Vision is the live capability of the current model (nil = can see, the
+	// convention of personal.Config): an ACP prompt that brought image blocks
+	// tells the client once that they turn into text notes on this model.
+	Vision *tools.VisionGate
 }
 
 func (r Runtime) close() error {
@@ -227,15 +232,19 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 	if a.connection() == nil {
 		return acp.PromptResponse{}, fmt.Errorf("ACP connection is not ready")
 	}
-	prompt, err := promptText(req.Prompt)
-	if err != nil {
-		return acp.PromptResponse{}, err
-	}
 	a.mu.Lock()
 	state := a.sessions[req.SessionId]
 	if state == nil || state.cancel != nil {
 		a.mu.Unlock()
 		return acp.PromptResponse{}, acp.NewInvalidParams(map[string]any{"sessionId": req.SessionId})
+	}
+	// The images of the prompt are checked and scaled before the turn opens: a
+	// broken or oversized picture is dropped here with its reason in the text,
+	// and only an entirely empty prompt is refused.
+	prompt, images, err := promptContent(req.Prompt, state.cwd)
+	if err != nil {
+		a.mu.Unlock()
+		return acp.PromptResponse{}, err
 	}
 	turnCtx, cancel := context.WithCancel(ctx)
 	state.cancel = cancel
@@ -262,6 +271,16 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 		window = appconfig.DefaultContextWindow
 	}
 	textSent := false
+	// The pictures of the prompt always ride along: the store keeps them in the
+	// session's images directory even when this model cannot see, and the llm
+	// layer turns their bytes into a text note (design 0.3, vision fallback).
+	// The client is told once, as a thought so the notice stays out of the answer.
+	if len(images) > 0 && runtime.Vision != nil && !runtime.Vision.CanSee() {
+		note := fmt.Sprintf("提示：当前模型不支持看图，附带的 %d 张图片已转为文字说明\n", len(images))
+		if err := a.connection().SessionUpdate(ctx, acp.SessionNotification{SessionId: req.SessionId, Update: acp.UpdateAgentThoughtText(note)}); err != nil {
+			return acp.PromptResponse{}, err
+		}
+	}
 	// Budget metadata is carried by the final run_finished event. Keep it
 	// separate from RunResult: ACP must not expand the personal run contract.
 	var finalBudget *personal.BudgetSnapshot
@@ -294,7 +313,7 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 		textSent = true
 		return a.connection().SessionUpdate(ctx, acp.SessionNotification{SessionId: req.SessionId, Update: acp.UpdateAgentMessageText(event.Text)})
 	}
-	result, runErr := runtime.Runner.Run(turnCtx, personal.RunRequest{SessionID: string(req.SessionId), Prompt: prompt, Emit: emit})
+	result, runErr := runtime.Runner.Run(turnCtx, personal.RunRequest{SessionID: string(req.SessionId), Prompt: prompt, Images: images, Emit: emit})
 	closeErr := runtime.close()
 	if turnCtx.Err() != nil || errors.Is(runErr, context.Canceled) {
 		// A cancelled turn still consumed tokens; report them before returning.
@@ -437,19 +456,99 @@ func sessionInputs(cwd string, roots []string, mcpServers []acp.McpServer) (stri
 	return filepath.Clean(cwd), servers, nil
 }
 
-func promptText(blocks []acp.ContentBlock) (string, error) {
+// promptContent turns the content blocks of one session/prompt into the text
+// prompt and the in-memory image parts that ride with it (design 0.3, ACP
+// second phase). Text, resource links and images keep their order; an image
+// leaves the placeholder "[图片 N]" in the text (an unusable one names the
+// reason instead, so the model knows what was meant to be there). Images go
+// through the same checks and scaling as view_image; the failure of one picture
+// never fails the turn — only a prompt with no text and no usable image is
+// refused, so the client can tell the sender the request carried nothing.
+func promptContent(blocks []acp.ContentBlock, cwd string) (string, []agentcore.ImagePart, error) {
 	parts := make([]string, 0, len(blocks))
+	images := make([]agentcore.ImagePart, 0, 4)
+	// dropped counts unusable image blocks, but every image block takes the
+	// next sequence number whether or not it loaded, so the placeholders keep
+	// the order the client sent. textSent records a real text block: failure
+	// notes alone are not content, so such a prompt is refused.
+	dropped, seq, textSent := 0, 0, false
 	for _, block := range blocks {
 		switch {
 		case block.Text != nil:
+			textSent = true
 			parts = append(parts, block.Text.Text)
+		case block.Image != nil:
+			seq++
+			part, reason := promptImage(block.Image, cwd)
+			if reason != "" {
+				dropped++
+				parts = append(parts, fmt.Sprintf("[图片 %d 不可用：%s]", seq, reason))
+				continue
+			}
+			images = append(images, part)
+			parts = append(parts, fmt.Sprintf("[图片 %d]", seq))
 		case block.ResourceLink != nil:
 			parts = append(parts, "Resource: "+block.ResourceLink.Uri)
 		default:
-			return "", acp.NewInvalidParams(map[string]any{"prompt": "unsupported content block"})
+			return "", nil, acp.NewInvalidParams(map[string]any{"prompt": "unsupported content block"})
 		}
 	}
-	return strings.Join(parts, "\n"), nil
+	text := strings.Join(parts, "\n")
+	if !textSent && len(images) == 0 {
+		reason := "no usable content"
+		if dropped > 0 {
+			reason = "every image of the prompt failed to load"
+		}
+		return "", nil, acp.NewInvalidParams(map[string]any{"prompt": reason})
+	}
+	return text, images, nil
+}
+
+// promptImage loads one image content block the view_image way. The bytes may
+// come as base64 data (possibly as a data URI), or the uri names a local file
+// read with the same path rules as view_image (the session's workspace); a
+// remote URL is refused: suga reads no network image. The reason names why the
+// block cannot be used.
+func promptImage(image *acp.ContentBlockImage, cwd string) (agentcore.ImagePart, string) {
+	data, mime := image.Data, image.MimeType
+	if image.Uri != nil && *image.Uri != "" {
+		uri := *image.Uri
+		switch {
+		case strings.HasPrefix(uri, "http://"), strings.HasPrefix(uri, "https://"):
+			return agentcore.ImagePart{}, "远程图片不支持（只接受本地文件路径或 data URI）"
+		case strings.HasPrefix(uri, "data:"):
+			// data:<mime>;base64,<payload> — the same bytes a data block carries.
+			rest := strings.TrimPrefix(uri, "data:")
+			semi, comma := strings.Index(rest, ";"), strings.Index(rest, ",")
+			if semi <= 0 || comma < semi || !strings.Contains(rest[semi:comma+1], "base64") {
+				return agentcore.ImagePart{}, "data URI 格式不支持（仅接受 data:<类型>;base64,<数据>）"
+			}
+			mime, data = rest[:semi], rest[comma+1:]
+		default:
+			fileData, name, err := native.ReadImageFile(cwd, nil, nil, uri)
+			if err != nil {
+				return agentcore.ImagePart{}, err.Error()
+			}
+			part, _, err := native.PrepareImage(fileData, name, native.DefaultImageMaxSide)
+			if err != nil {
+				return agentcore.ImagePart{}, err.Error()
+			}
+			return part, ""
+		}
+	}
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return agentcore.ImagePart{}, fmt.Sprintf("base64 解码失败：%v", err)
+	}
+	name := "ACP 图片"
+	if mime != "" {
+		name += " (" + mime + ")"
+	}
+	part, _, err := native.PrepareImage(decoded, name, native.DefaultImageMaxSide)
+	if err != nil {
+		return agentcore.ImagePart{}, err.Error()
+	}
+	return part, ""
 }
 
 func (*Agent) Authenticate(context.Context, acp.AuthenticateRequest) (acp.AuthenticateResponse, error) {
