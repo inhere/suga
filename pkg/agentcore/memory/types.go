@@ -123,9 +123,12 @@ type Provenance struct {
 type Entry struct {
 	ID, Title, Body string
 	Kind            Kind
-	AppliesWhen     []string
-	Updated         time.Time
-	Prov            Provenance
+	// Summary is the one-sentence description carried by the index line; it
+	// is metadata, not part of the body.
+	Summary     string
+	AppliesWhen []string
+	Updated     time.Time
+	Prov        Provenance
 }
 
 // Action is a write operation.
@@ -151,6 +154,10 @@ type Op struct {
 	Title  string
 	Body   string
 	Kind   Kind
+	// Summary is the one-sentence description stored in the index line. add
+	// fills it from the body's first sentence when it is empty; replace keeps
+	// the stored summary when it is empty.
+	Summary string
 	// AppliesWhen records versions, environments or other conditions under
 	// which this entry remains useful. It is optional and never enters Index.
 	AppliesWhen []string
@@ -204,16 +211,61 @@ func (op Op) validateText() error {
 	return nil
 }
 
+// SummaryMaxRunes bounds a one-line summary; longer text is cut and ends
+// with "…" so one entry can never flood the resident index.
+const SummaryMaxRunes = 120
+
+// CleanSummary folds s onto one line (runs of whitespace become one space)
+// and truncates it to SummaryMaxRunes runes.
+func CleanSummary(s string) string {
+	return truncateRunes(strings.Join(strings.Fields(s), " "), SummaryMaxRunes)
+}
+
+// truncateRunes keeps at most max runes and marks the cut with "…".
+func truncateRunes(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:max-1]) + "…"
+}
+
+// FirstSentence returns the first sentence of body on one line. It is the
+// fallback summary when a write carries none; a '.' only ends a sentence when
+// it ends the text or is followed by a space, so versions and paths survive.
+func FirstSentence(body string) string {
+	one := strings.Join(strings.Fields(body), " ")
+	runes := []rune(one)
+	for i, r := range runes {
+		switch r {
+		case '。', '！', '？', '!', '?':
+			return CleanSummary(string(runes[:i+1]))
+		case '.':
+			if i+1 == len(runes) || runes[i+1] == ' ' {
+				return CleanSummary(string(runes[:i+1]))
+			}
+		}
+	}
+	return CleanSummary(one)
+}
+
 // IndexLine is the resident one-line summary of an entry.
 type IndexLine struct {
 	ID    string
 	Title string
 	Kind  Kind
+	// Summary is the optional one-sentence description shown after the kind.
+	// Empty renders exactly like the line format before summaries existed.
+	Summary string
 }
 
 // Render formats the line as it appears in the prompt index.
 func (l IndexLine) Render() string {
-	return "- " + l.ID + " (" + string(l.Kind) + "): " + l.Title
+	line := "- " + l.ID + " (" + string(l.Kind) + "): " + l.Title
+	if l.Summary != "" {
+		line += " — " + l.Summary
+	}
+	return line
 }
 
 // Index is the resident part of a scope: one line per entry.

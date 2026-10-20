@@ -150,6 +150,7 @@ func (g *Governed) Write(ctx context.Context, s Scope, op Op) (Entry, error) {
 		// 2. Sanitize, then re-check that something is left.
 		op.Title = strings.TrimSpace(g.p.Sanitize(op.Title))
 		op.Body = strings.TrimSpace(g.p.Sanitize(op.Body))
+		op.Summary = CleanSummary(g.p.Sanitize(op.Summary))
 		for i, condition := range op.AppliesWhen {
 			if i == 0 {
 				op.AppliesWhen = append([]string(nil), op.AppliesWhen...)
@@ -232,6 +233,7 @@ func (g *Governed) Index(ctx context.Context, s Scope) (Index, error) {
 			continue
 		}
 		l.Title = g.clean(l.Title)
+		l.Summary = CleanSummary(g.clean(l.Summary))
 		lines = append(lines, l)
 	}
 	ix.Scope, ix.Lines = s, lines
@@ -285,7 +287,7 @@ func (g *Governed) checkBudget(ctx context.Context, s Scope, op Op) error {
 		return fmt.Errorf("memory: read index for budget: %w", err)
 	}
 	lines, size := len(ix.Lines), ix.size()
-	newLine := IndexLine{ID: op.ID, Title: op.Title, Kind: op.Kind}
+	newLine := IndexLine{ID: op.ID, Title: op.Title, Kind: op.Kind, Summary: op.Summary}
 	switch op.Action {
 	case ActionAdd:
 		newLine.ID = Slug(op.Title)
@@ -345,6 +347,7 @@ func (g *Governed) clean(s string) string { return g.p.Sanitize(s) }
 
 func (g *Governed) cleanEntry(e Entry) Entry {
 	e.Title, e.Body = g.clean(e.Title), g.clean(e.Body)
+	e.Summary = CleanSummary(g.clean(e.Summary))
 	if len(e.AppliesWhen) > 0 {
 		cleaned := make([]string, len(e.AppliesWhen))
 		for i, condition := range e.AppliesWhen {

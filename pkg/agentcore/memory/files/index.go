@@ -12,9 +12,11 @@ import (
 // indexFile is the index name in both layouts.
 const indexFile = "MEMORY.md"
 
-// entryLinePattern matches "- [Title](link) — kind". The title may contain
-// backslash escapes (\[, \], \\); the separator is an em dash.
-var entryLinePattern = regexp.MustCompile(`^- \[((?:\\.|[^\\\]])+)\]\(([^()\s]+)\) — ([a-z]+)\s*$`)
+// entryLinePattern matches "- [Title](link) — kind" and the newer
+// "- [Title](link) — kind: summary". The title may contain backslash escapes
+// (\[, \], \\); the separator is an em dash. The summary group is absent in
+// the old format and empty after a bare colon; both render back identically.
+var entryLinePattern = regexp.MustCompile(`^- \[((?:\\.|[^\\\]])+)\]\(([^()\s]+)\) — ([a-z]+)(?::[ \t]*(.*?))?[ \t]*$`)
 
 // docLine is one line of MEMORY.md: either a managed entry line or a
 // hand-written line that is preserved verbatim and never modified.
@@ -76,7 +78,7 @@ func parseEntryLine(raw, entryDir string) (memory.IndexLine, bool) {
 	if memory.ValidateID(id) != nil {
 		return memory.IndexLine{}, false
 	}
-	return memory.IndexLine{ID: id, Title: unescapeTitle(m[1]), Kind: kind}, true
+	return memory.IndexLine{ID: id, Title: unescapeTitle(m[1]), Kind: kind, Summary: m[4]}, true
 }
 
 // entries returns the managed entry lines in file order.
@@ -126,14 +128,19 @@ func (d *indexDoc) render() []byte {
 	return []byte(b.String())
 }
 
-// renderEntryLine formats "- [Title](relative/link.md) — kind"; the link is
-// relative to MEMORY.md and always uses forward slashes.
+// renderEntryLine formats "- [Title](relative/link.md) — kind: summary"; the
+// link is relative to MEMORY.md and always uses forward slashes. An entry
+// without a summary renders exactly like the old format.
 func renderEntryLine(l memory.IndexLine, entryDir string) string {
 	link := l.ID + ".md"
 	if entryDir != "" {
 		link = entryDir + "/" + link
 	}
-	return "- [" + escapeTitle(l.Title) + "](" + link + ") — " + string(l.Kind)
+	line := "- [" + escapeTitle(l.Title) + "](" + link + ") — " + string(l.Kind)
+	if l.Summary != "" {
+		line += ": " + l.Summary
+	}
+	return line
 }
 
 var titleEscaper = strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`)

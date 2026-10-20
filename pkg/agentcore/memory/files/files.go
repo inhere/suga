@@ -158,7 +158,7 @@ func (s *Store) Get(_ context.Context, sc memory.Scope, id string) (memory.Entry
 	if err != nil {
 		return memory.Entry{}, notFoundOr(err, sc, id)
 	}
-	if e.Title == "" || !e.Kind.Valid() {
+	if e.Title == "" || !e.Kind.Valid() || e.Summary == "" {
 		data, ierr := readFile(root, indexFile)
 		if ierr != nil {
 			return memory.Entry{}, ierr
@@ -200,7 +200,7 @@ func (s *Store) Write(_ context.Context, sc memory.Scope, op memory.Op) (memory.
 		id := memory.UniqueID(memory.Slug(op.Title), func(id string) bool {
 			return doc.find(id) >= 0 || exists(root, entryPath(lp, id))
 		})
-		e := memory.Entry{ID: id, Title: op.Title, Body: op.Body, Kind: op.Kind,
+		e := memory.Entry{ID: id, Title: op.Title, Body: op.Body, Kind: op.Kind, Summary: memory.CleanSummary(op.Summary),
 			AppliesWhen: append([]string(nil), op.AppliesWhen...), Updated: s.stamp(), Prov: op.Prov}
 		return e, s.store(root, lp, doc, e)
 
@@ -220,7 +220,12 @@ func (s *Store) Write(_ context.Context, sc memory.Scope, op memory.Op) (memory.
 		if !kind.Valid() {
 			return memory.Entry{}, fmt.Errorf("%w: entry %s has no valid kind; pass one", memory.ErrInvalid, op.ID)
 		}
-		e := memory.Entry{ID: op.ID, Title: op.Title, Body: op.Body, Kind: kind,
+		// An empty summary on replace keeps the stored one, like the kind.
+		summary := memory.CleanSummary(op.Summary)
+		if summary == "" {
+			summary = old.Summary
+		}
+		e := memory.Entry{ID: op.ID, Title: op.Title, Body: op.Body, Kind: kind, Summary: summary,
 			AppliesWhen: append([]string(nil), op.AppliesWhen...), Updated: s.stamp(), Prov: op.Prov}
 		return e, s.store(root, lp, doc, e)
 
@@ -300,7 +305,40 @@ func (s *Store) store(root *os.Root, lp layoutPaths, doc *indexDoc, e memory.Ent
 	if err := writeAtomic(root, entryPath(lp, e.ID), renderEntry(e)); err != nil {
 		return err
 	}
-	doc.set(memory.IndexLine{ID: e.ID, Title: e.Title, Kind: e.Kind}, lp.entryDir)
+	doc.set(memory.IndexLine{ID: e.ID, Title: e.Title, Kind: e.Kind, Summary: e.Summary}, lp.entryDir)
+	return writeAtomic(root, indexFile, doc.render())
+}
+
+// SetSummary implements memory.Summarizer: only the MEMORY.md line changes,
+// the entry file keeps its body untouched. An empty summary removes the
+// summary from the line (back to the old format).
+func (s *Store) SetSummary(_ context.Context, sc memory.Scope, id, summary string) error {
+	if err := memory.ValidateID(id); err != nil {
+		return err
+	}
+	summary = memory.CleanSummary(summary)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, lp, err := s.open(sc, false)
+	if err != nil {
+		return err
+	}
+	if root == nil {
+		return notFound(sc, id)
+	}
+	defer root.Close()
+	data, err := readFile(root, indexFile)
+	if err != nil {
+		return err
+	}
+	doc := parseIndex(data, lp.entryDir)
+	i := doc.find(id)
+	if i < 0 {
+		return notFound(sc, id)
+	}
+	line := doc.lines[i].line
+	line.Summary = summary
+	doc.set(line, lp.entryDir)
 	return writeAtomic(root, indexFile, doc.render())
 }
 
@@ -394,6 +432,9 @@ func fillFromIndex(e *memory.Entry, l memory.IndexLine) {
 	}
 	if !e.Kind.Valid() {
 		e.Kind = l.Kind
+	}
+	if e.Summary == "" {
+		e.Summary = l.Summary
 	}
 }
 
