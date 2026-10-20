@@ -148,7 +148,7 @@ func TestToolBodiesMoveSkipsExistingStubs(t *testing.T) {
 	first, err := tiny.MoveToolBodies(ctx, ToolBodyMaintOptions{Batch: 10})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, int64(1), first.Rows)
-	file := filepath.Join(tiny.sessionsDir, "s1", ToolBodyFileName)
+	file := filepath.Join(tiny.sessionsDir, "s1", LegacyBodyFileName)
 	info, err := os.Stat(file)
 	assert.Require(t, assert.NoErr(t, err))
 
@@ -197,7 +197,7 @@ func TestDeleteSessionFilesRemovesTheSessionDirectory(t *testing.T) {
 	createSession(t, s, "s1", "/w")
 	appendAll(t, s, "s1", NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
 	dir := filepath.Join(s.sessionsDir, "s1")
-	_, err := os.Stat(filepath.Join(dir, ToolBodyFileName))
+	_, err := os.Stat(filepath.Join(dir, LegacyBodyFileName))
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, s.DeleteSessionFiles("s1"))
 	_, err = os.Stat(dir)

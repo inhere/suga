@@ -214,7 +214,7 @@ func TestAssistantBodiesKeepTheInterruptedReplayIdentical(t *testing.T) {
 // unaffected. It returns how many records it broke.
 func corruptRecordsBefore(t *testing.T, sessionsDir, sessionID string, before int64) int {
 	t.Helper()
-	path := filepath.Join(sessionsDir, sessionID, store.ToolBodyFileName)
+	path := filepath.Join(sessionsDir, sessionID, store.LegacyBodyFileName)
 	data, err := os.ReadFile(path)
 	assert.Require(t, assert.NoErr(t, err))
 	broken, at := 0, 0
@@ -294,7 +294,7 @@ func TestLoadHistoryRefusesStubItems(t *testing.T) {
 	assert.Eq(t, reply.Reasoning, view.items[0].msg.Reasoning)
 
 	// With the record gone the load refuses the item instead of sending the stub.
-	assert.Require(t, assert.NoErr(t, os.Remove(filepath.Join(sessionsDir, "s1", store.ToolBodyFileName))))
+	assert.Require(t, assert.NoErr(t, os.Remove(filepath.Join(sessionsDir, "s1", store.LegacyBodyFileName))))
 	_, err = runner.loadHistory(ctx, "s1")
 	assert.True(t, errors.Is(err, store.ErrToolBodyMissing), "want ErrToolBodyMissing, got %v", err)
 }
@@ -319,7 +319,7 @@ func TestLastReplyReadsNoBody(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Require(t, assert.Eq(t, 1, len(entries)))
 	assert.True(t, entries[0].Stub(), "the reply moved out of the ledger")
-	assert.Require(t, assert.NoErr(t, os.Remove(filepath.Join(sessionsDir, "s1", store.ToolBodyFileName))))
+	assert.Require(t, assert.NoErr(t, os.Remove(filepath.Join(sessionsDir, "s1", store.LegacyBodyFileName))))
 
 	text, _, err := runner.LastReply(ctx, "s1")
 	assert.NoErr(t, err)
@@ -341,7 +341,7 @@ func TestTurnItemsReadsNoBody(t *testing.T) {
 		if n == 2 {
 			// The first step's assistant entry is a stub now: drop the file so any read
 			// of it fails.
-			paths, gerr := filepath.Glob(filepath.Join(dir, "sessions", "*", store.ToolBodyFileName))
+			paths, gerr := filepath.Glob(filepath.Join(dir, "sessions", "*", store.LegacyBodyFileName))
 			assert.NoErr(t, gerr)
 			assert.Require(t, assert.True(t, len(paths) > 0))
 			for _, p := range paths {

@@ -76,7 +76,7 @@ func TestToolBodyMovesAboveThresholdAndReadsBack(t *testing.T) {
 	row, ref := storedRow(t, s, "s1", appended[1].Seq)
 	assert.True(t, ref != "", "body_ref must be set")
 	assert.True(t, len(row) < len(big), "stored stub must be smaller than the body")
-	path := filepath.Join(s.sessionsDir, "s1", ToolBodyFileName)
+	path := filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName)
 	data, err := os.ReadFile(path)
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, string(data), `"seq":2,`)
@@ -116,7 +116,7 @@ func TestToolBodySmallEntriesStayInline(t *testing.T) {
 	row, ref := storedRow(t, s, "s1", appended[0].Seq)
 	assert.Eq(t, "", ref)
 	assert.Eq(t, string(small), row)
-	_, err := os.Stat(filepath.Join(s.sessionsDir, "s1", ToolBodyFileName))
+	_, err := os.Stat(filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName))
 	assert.True(t, errors.Is(err, os.ErrNotExist), "no file is created for inline bodies")
 	entries, err := s.ListEntries(ctx, "s1", EntryFilter{})
 	assert.Require(t, assert.NoErr(t, err))
@@ -142,7 +142,7 @@ func TestToolBodyMissingAndTamperedRecordsAreErrors(t *testing.T) {
 		s := openTemp(t)
 		createSession(t, s, "s1", "/w")
 		appendAll(t, s, "s1", NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
-		return s, filepath.Join(s.sessionsDir, "s1", ToolBodyFileName)
+		return s, filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName)
 	}
 
 	t.Run("missing file", func(t *testing.T) {
@@ -220,7 +220,7 @@ func TestToolBodyRecordIsTruncatedWhenTheTransactionFails(t *testing.T) {
 	var rows int
 	assert.NoErr(t, s.db.QueryRow(`SELECT COUNT(1) FROM entries WHERE session_id = 's1'`).Scan(&rows))
 	assert.Eq(t, 0, rows, "the rolled back transaction keeps no row")
-	data, readErr := os.ReadFile(filepath.Join(s.sessionsDir, "s1", ToolBodyFileName))
+	data, readErr := os.ReadFile(filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName))
 	if !errors.Is(readErr, os.ErrNotExist) {
 		assert.Require(t, assert.NoErr(t, readErr))
 		assert.Eq(t, 0, len(data), "the record was truncated again")
