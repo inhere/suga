@@ -15,9 +15,9 @@ import (
 )
 
 // Body file name and the two migration passes (design 2026-10-20, revisions 3-5):
-// the assistant pass keeps its own checkpoint, the file name is switched by
-// --rename-files only, and both names are read with the sha256 check, so a store
-// restored from an old backup with both files still reads the right record.
+// the assistant pass keeps its own checkpoint, the file name follows the switch a
+// v0.40 `--rename-files` set, and both names are read with the sha256 check, so a
+// store restored from an old backup with both files still reads the right record.
 
 // bodyFileExists reports whether one of the two file names exists in a session.
 func bodyFileExists(t *testing.T, s *Store, sessionID, name string) bool {
@@ -32,17 +32,32 @@ func bodyFileExists(t *testing.T, s *Store, sessionID, name string) bool {
 	return true
 }
 
+// setBodyFileNameSwitch writes the switch row the way v0.40's --rename-files
+// did, so a test can start from a renamed ledger.
+func setBodyFileNameSwitch(t *testing.T, s *Store, useCurrent bool) {
+	t.Helper()
+	value := LegacyBodyFileName
+	if useCurrent {
+		value = BodyFileName
+	}
+	_, err := s.db.Exec(`INSERT INTO store_meta(key, value) VALUES(?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`, bodyFileNameKey, value)
+	assert.Require(t, assert.NoErr(t, err))
+}
+
+// TestBodyFileNameFollowsTheSwitch: a store of the v0.36 shape (no switch row)
+// writes the old name, while a ledger renamed by v0.40's --rename-files keeps
+// writing bodies.jsonl -- the switch is read, and v0.41.0 no longer writes it.
 func TestBodyFileNameFollowsTheSwitch(t *testing.T) {
 	ctx := context.Background()
 	s := openTemp(t)
 	createSession(t, s, "s1", "/w")
 	appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c1"))})
-	// A store of the v0.36 shape (no switch row) writes the old name, so a suga of
-	// the previous version reading the same home still finds its bodies.
-	assert.True(t, bodyFileExists(t, s, "s1", LegacyBodyFileName), "before --rename-files the write uses tools.jsonl")
+	assert.True(t, bodyFileExists(t, s, "s1", LegacyBodyFileName), "without the switch the write uses tools.jsonl")
 	assert.False(t, bodyFileExists(t, s, "s1", BodyFileName))
 
-	assert.Require(t, assert.NoErr(t, s.SetBodyFileNameSwitch(ctx, true)))
+	// What --rename-files left behind in a ledger it converted.
+	setBodyFileNameSwitch(t, s, true)
 	createSession(t, s, "s2", "/w")
 	appendAll(t, s, "s2", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c2"))})
 	assert.True(t, bodyFileExists(t, s, "s2", BodyFileName), "after the switch the write uses bodies.jsonl")
@@ -195,7 +210,7 @@ func TestRemoveToolBodyFilesDropsBothNames(t *testing.T) {
 	s := openTemp(t)
 	createSession(t, s, "s1", "/w")
 	appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c1"))})
-	assert.Require(t, assert.NoErr(t, s.SetBodyFileNameSwitch(ctx, true)))
+	setBodyFileNameSwitch(t, s, true)
 	createSession(t, s, "s2", "/w")
 	appendAll(t, s, "s2", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c2"))})
 	assert.True(t, bodyFileExists(t, s, "s1", LegacyBodyFileName))
@@ -213,81 +228,13 @@ func TestRemoveToolBodyFilesDropsBothNames(t *testing.T) {
 	}
 }
 
-// TestRenameBodyFilesResumesAfterInterruption: a cancelled run renames nothing it
-// had not finished, leaves the switch off, and the next run completes the pass.
-func TestRenameBodyFilesResumesAfterInterruption(t *testing.T) {
-	s := openTemp(t)
-	for _, id := range []string{"s1", "s2"} {
-		createSession(t, s, id, "/w")
-		appendAll(t, s, id, NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c-"+id))})
-	}
-	cancelled, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := s.RenameBodyFiles(cancelled)
-	assert.Err(t, err)
-	for _, id := range []string{"s1", "s2"} {
-		assert.True(t, bodyFileExists(t, s, id, LegacyBodyFileName), "%s keeps the old name", id)
-	}
-	enabled, err := s.bodyFileNameSwitch(context.Background())
-	assert.Require(t, assert.NoErr(t, err))
-	assert.False(t, enabled, "an interrupted run must not switch the name")
-
-	report, err := s.RenameBodyFiles(context.Background())
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, 2, report.Renamed)
-	assert.True(t, report.SwitchSet)
-}
-
-// TestRenameBodyFiles renames both names once, keeps a session that holds both
-// untouched and is idempotent on a rerun.
-func TestRenameBodyFiles(t *testing.T) {
-	ctx := context.Background()
-	s := openTemp(t)
-	for _, id := range []string{"s1", "s2"} {
-		createSession(t, s, id, "/w")
-		appendAll(t, s, id, NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c-"+id))})
-	}
-	// The second session already holds a current-name file: --rename-files must
-	// not overwrite it.
-	current, ok := s.toolBodyPathName("s2", BodyFileName)
-	assert.Require(t, assert.True(t, ok))
-	legacy, ok := s.toolBodyPathName("s2", LegacyBodyFileName)
-	assert.Require(t, assert.True(t, ok))
-	legacyData, err := os.ReadFile(legacy)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Require(t, assert.NoErr(t, os.WriteFile(current, legacyData, 0o600)))
-
-	report, err := s.RenameBodyFiles(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, 1, report.Renamed)
-	assert.Eq(t, 1, len(report.Skipped))
-	assert.Eq(t, "s2", report.Skipped[0])
-	assert.True(t, report.SwitchSet, "the switch is set after the pass")
-	assert.True(t, bodyFileExists(t, s, "s1", BodyFileName))
-	assert.False(t, bodyFileExists(t, s, "s1", LegacyBodyFileName))
-
-	// A rerun renames nothing and sets the switch again: it resumes and is
-	// idempotent.
-	report, err = s.RenameBodyFiles(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, 0, report.Renamed)
-	assert.Eq(t, 1, len(report.Skipped))
-
-	enabled, err := s.bodyFileNameSwitch(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.True(t, enabled)
-	entries, err := s.ListEntries(ctx, "s1", EntryFilter{})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.False(t, entries[0].Stub(), "the renamed file still reads")
-}
-
 func TestUndoRestoresAssistantBodyBytes(t *testing.T) {
 	ctx := context.Background()
 	s := openTemp(t)
 	createSession(t, s, "s1", "/w")
 	body := msgJSON(t, bigAssistantMessage("c1"))
 	appended := appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: body})
-	assert.Require(t, assert.NoErr(t, s.SetBodyFileNameSwitch(ctx, true)))
+	setBodyFileNameSwitch(t, s, true)
 	_, err := s.MoveAssistantBodies(ctx, ToolBodyMaintOptions{})
 	assert.Require(t, assert.NoErr(t, err))
 	_, ref := storedRow(t, s, "s1", appended[0].Seq)

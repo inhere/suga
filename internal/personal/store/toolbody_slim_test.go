@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,9 +11,10 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/api"
 )
 
-// `suga data tool-bodies --slim`: the stubs an older version wrote kept the whole
-// call, the reasoning and two 256-rune previews (~1.5 KB per row in the real
-// ledger); the pass narrows them to the link fields plus one short preview.
+// Stubs written by v0.38 or older kept the whole call, the reasoning and two
+// 256-rune previews (~1.5 KB per row in the real ledger). The `--slim` pass that
+// narrowed them was removed in v0.41.0, so such rows stay as they are: these tests
+// pin the read path over a ledger of the old shape.
 
 // oldToolBodyStub is the stub shape of the previous release: the full
 // api.ToolCall (arguments included), the reasoning and a preview of both the
@@ -58,11 +58,11 @@ func oldStubJSON(t *testing.T, m api.Message) []byte {
 	return raw
 }
 
-// slimFixture moves three sessions' tool bodies out with the current code and
+// oldStubLedger moves three sessions' tool bodies out with the current code and
 // then puts every stub back into the old shape, so the ledger looks like one a
 // previous release wrote. before maps each session to the entries as they were
 // inline (the bytes a reader must still get).
-func slimFixture(t *testing.T) (s *Store, before map[string]map[int64]string) {
+func oldStubLedger(t *testing.T) (s *Store, before map[string]map[int64]string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "db", "sessions.db")
 	inline, err := Open(path, WithToolBodyInlineBytes(0))
@@ -153,94 +153,36 @@ func TestToolBodyStubKeepsOnlyTheLinkFields(t *testing.T) {
 	assert.True(t, total/len(sizes) < 300, "average stub must stay well below 300 bytes")
 }
 
-// TestListEntryRefsOnSlimStubs: the link extraction still finds the call id of a
-// slimmed row, which is the only thing SQL reads from a stub.
-func TestListEntryRefsOnSlimStubs(t *testing.T) {
+// TestOldShapeStubsStillRead: the fat stubs a v0.40 or older ledger holds are
+// never rewritten any more, and reading them must return the original body, the
+// call link and a clean check; --undo still restores every row byte for byte.
+func TestOldShapeStubsStillRead(t *testing.T) {
 	ctx := context.Background()
-	s, _ := slimFixture(t)
-	report, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 4})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(9), report.Rows)
+	s, before := oldStubLedger(t)
 
-	refs, err := s.ListEntryRefs(ctx, "s1")
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, 6, len(refs))
-	assert.Eq(t, "", refs[0].CallID, "a user entry links no call")
-	assert.Eq(t, "cs10", refs[1].CallID)
-	assert.Eq(t, "cs11", refs[3].CallID)
-}
-
-// TestSlimToolBodiesRewritesOldStubs covers the pass itself: the batches, the
-// unchanged reads, the untouched files, the rerun and the byte-for-byte undo.
-func TestSlimToolBodiesRewritesOldStubs(t *testing.T) {
-	ctx := context.Background()
-	s, before := slimFixture(t)
-	file := filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName)
-	fileBefore, err := os.ReadFile(file)
-	assert.Require(t, assert.NoErr(t, err))
-
-	status, err := s.ToolBodyStatus(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(9), status.SlimRows, "every stub is still in the old shape")
-	assert.True(t, status.SlimReclaimBytes > 9*400, "the old shape costs about 1 KB a row")
-
-	report, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 2})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(9), report.Rows)
-	assert.True(t, report.Batches >= 5, "the batch size must be honored")
-	assert.True(t, report.Complete)
-	assert.Eq(t, status.SlimReclaimBytes, report.Bytes, "the estimate of --status matches the pass")
-
-	t.Run("the stubs are in the current shape and read back the original bytes", func(t *testing.T) {
+	t.Run("ListEntries hands back the original bodies", func(t *testing.T) {
 		for id, want := range before {
 			assert.Eq(t, want, storedEntries(t, s, id), id)
-			for seq := range want {
-				stub, ref := storedRow(t, s, id, seq)
-				if ref == "" {
-					continue
-				}
-				_, changed := slimToolBodyStub([]byte(stub))
-				assert.False(t, changed, "stub of %s/%d is still in the old shape: %s", id, seq, stub)
-			}
 		}
 	})
 
-	t.Run("the session files are untouched", func(t *testing.T) {
-		fileAfter, err := os.ReadFile(file)
+	t.Run("the call links come from the old stub", func(t *testing.T) {
+		refs, err := s.ListEntryRefs(ctx, "s1")
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, string(fileBefore), string(fileAfter))
+		assert.Eq(t, 6, len(refs))
+		assert.Eq(t, "", refs[0].CallID, "a user entry links no call")
+		assert.Eq(t, "cs10", refs[1].CallID)
+		assert.Eq(t, "cs11", refs[3].CallID)
+	})
+
+	t.Run("status and check accept the old shape", func(t *testing.T) {
 		status, err := s.ToolBodyStatus(ctx)
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(9), status.MovedRows, "a slimmed row is still a moved row")
-		assert.Eq(t, int64(0), status.SlimRows)
+		assert.Eq(t, int64(9), status.MovedRows, "an old-shape stub is a moved row")
 		check, err := s.ToolBodyCheck(ctx)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, int64(9), check.Checked)
 		assert.True(t, check.OK())
-	})
-
-	t.Run("a rerun rewrites nothing", func(t *testing.T) {
-		rows := map[string]string{}
-		for _, id := range []string{"s1", "s2", "s3"} {
-			for seq := int64(1); seq <= 6; seq++ {
-				stub, _ := storedRow(t, s, id, seq)
-				rows[id+"/"+string(rune('0'+seq))] = stub
-			}
-		}
-		// The pass finished, so its checkpoint sits at the last row: drop it to walk
-		// the stubs again, which is what --abort does.
-		assert.Require(t, assert.NoErr(t, s.ResetToolBodyState(ctx)))
-		again, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 4})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.True(t, again.Batches >= 1, "the pass walked the stubs")
-		assert.Eq(t, int64(0), again.Rows, "an already slim stub is skipped")
-		assert.Eq(t, int64(0), again.Bytes)
-		for _, id := range []string{"s1", "s2", "s3"} {
-			for seq := int64(1); seq <= 6; seq++ {
-				stub, _ := storedRow(t, s, id, seq)
-				assert.Eq(t, rows[id+"/"+string(rune('0'+seq))], stub)
-			}
-		}
 	})
 
 	t.Run("--undo still restores the bodies byte for byte", func(t *testing.T) {
@@ -254,91 +196,4 @@ func TestSlimToolBodiesRewritesOldStubs(t *testing.T) {
 		assert.NoErr(t, s.db.QueryRow(`SELECT COUNT(1) FROM entries WHERE COALESCE(body_ref, '') <> ''`).Scan(&stubs))
 		assert.Eq(t, 0, stubs)
 	})
-}
-
-// TestSlimToolBodiesSkipsAssistantStubs: assistant entries also move out to
-// stubs (design 2026-10-20, 0.3 修订), and their stub keeps the full Content for
-// the full-text search, so --slim must leave those rows as they are and --status
-// must not count them as old-shape rows. The fixture's tool stubs are still in
-// the old shape, so a pass that touched the assistant stub would report 10 rows.
-func TestSlimToolBodiesSkipsAssistantStubs(t *testing.T) {
-	ctx := context.Background()
-	s, _ := slimFixture(t)
-	// An assistant stub the way the assistant move will write it: the full
-	// content (240 runes, beyond the 120-rune preview) beside a body_ref. The
-	// body_ref is reused from another stub: the pass only tests it for non-empty.
-	long := strings.Repeat("回答内容", 60)
-	stub, err := json.Marshal(toolBodyStub{Role: "assistant", Content: long})
-	assert.Require(t, assert.NoErr(t, err))
-	_, ref := storedRow(t, s, "s1", 2)
-	appended := appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, api.Message{Role: "assistant", Content: long})})
-	_, err = s.db.Exec(`UPDATE entries SET json = ?, body_ref = ? WHERE session_id = ? AND seq = ?`,
-		string(stub), ref, "s1", appended[0].Seq)
-	assert.Require(t, assert.NoErr(t, err))
-	want, gotRef := storedRow(t, s, "s1", appended[0].Seq)
-	assert.True(t, gotRef != "", "the assistant stub carries a body_ref")
-
-	status, err := s.ToolBodyStatus(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(9), status.SlimRows, "--status counts tool stubs only")
-
-	report, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 4})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(9), report.Rows, "the pass rewrites the tool stubs, not the assistant stub")
-	row, _ := storedRow(t, s, "s1", appended[0].Seq)
-	assert.Eq(t, want, row, "--slim leaves the assistant stub's bytes alone")
-}
-
-// TestSlimToolBodiesRestartsAfterComplete: a pass that completed sits on the
-// last row; a rerun must scan from the start again so it sees the stubs written
-// since it finished (a resumed cursor would hide them, suga-rykn).
-func TestSlimToolBodiesRestartsAfterComplete(t *testing.T) {
-	ctx := context.Background()
-	s, _ := slimFixture(t)
-	first, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 8})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.True(t, first.Complete)
-	assert.Eq(t, int64(9), first.Rows)
-
-	// A new old-shape stub appears after the finish, at a key before the finished
-	// cursor ("a0" sorts before "s1"): a pass that resumes at the cursor s3/6
-	// would never see it.
-	createSession(t, s, "a0", "/w")
-	msg := bigToolMessage("cNew")
-	appended := appendAll(t, s, "a0", NewEntry{Type: EntryTool, JSON: msgJSON(t, msg)})
-	_, err = s.db.Exec(`UPDATE entries SET json = ? WHERE session_id = ? AND seq = ?`,
-		string(oldStubJSON(t, msg)), "a0", appended[0].Seq)
-	assert.Require(t, assert.NoErr(t, err))
-
-	again, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 8})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.True(t, again.Complete)
-	assert.Eq(t, int64(1), again.Rows, "the rerun scans from the start and rewrites the new stub")
-	stub, _ := storedRow(t, s, "s3", appended[0].Seq)
-	_, changed := slimToolBodyStub([]byte(stub))
-	assert.False(t, changed, "the rerun brought the new stub to the current shape")
-}
-
-// TestSlimToolBodiesResumeAfterInterrupt: a cancelled pass keeps its checkpoint,
-// the rerun finishes the rest and nothing is rewritten twice.
-func TestSlimToolBodiesResumeAfterInterrupt(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	s, before := slimFixture(t)
-	first, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 2, OnBatch: func(p ToolBodyMaintProgress) {
-		if p.Rows >= 4 {
-			cancel()
-		}
-	}})
-	assert.True(t, err != nil, "the cancelled pass reports the context error")
-	assert.Eq(t, int64(4), first.Rows)
-	assert.False(t, first.Complete)
-	assert.True(t, first.CursorSession != "", "the interrupted pass keeps its cursor")
-
-	report, err := s.SlimToolBodies(context.Background(), ToolBodyMaintOptions{Batch: 2})
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(5), report.Rows, "the rerun only rewrites what the interrupt left")
-	assert.True(t, report.Complete)
-	for id, want := range before {
-		assert.Eq(t, want, storedEntries(t, s, id), id)
-	}
 }

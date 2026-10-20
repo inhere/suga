@@ -505,7 +505,7 @@ func replaceData(staging, home string, manifest Manifest) error {
 }
 
 // ToolBodyCheck verifies the installed session files against the installed
-// ledger, the same check as `suga data tool-bodies --check`, so a restore that
+// ledger, the same check as `suga data bodies --check`, so a restore that
 // did not bring a tool body file back is reported right away.
 func ToolBodyCheck(ctx context.Context, home string) (store.ToolBodyCheckReport, error) {
 	dbPath := filepath.Join(home, "db", "sessions.db")

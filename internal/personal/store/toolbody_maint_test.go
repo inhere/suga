@@ -9,8 +9,21 @@ import (
 	"github.com/gookit/goutil/x/assert"
 )
 
-// `suga data tool-bodies`: move the historical bodies out, undo them byte for
+// `suga data bodies`: move the historical bodies out, undo them byte for
 // byte, check the ledger against the files (design 2026-10-19, 0.3).
+
+// storedEntries returns the JSON of every entry of a session by seq, so a test
+// can compare what the ledger holds before and after a pass byte for byte.
+func storedEntries(t *testing.T, s *Store, sessionID string) map[int64]string {
+	t.Helper()
+	entries, err := s.ListEntries(context.Background(), sessionID, EntryFilter{})
+	assert.Require(t, assert.NoErr(t, err))
+	out := make(map[int64]string, len(entries))
+	for _, e := range entries {
+		out[e.Seq] = string(e.JSON)
+	}
+	return out
+}
 
 // inlineFixture fills three sessions with tool bodies above the threshold while
 // the store keeps them inline (threshold 0), then opens the same store with the
@@ -162,19 +175,16 @@ func TestToolBodiesMoveSkipsExistingStubs(t *testing.T) {
 	assert.Eq(t, before, storedEntries(t, tiny, "s1"))
 }
 
-// TestToolBodiesAreInvisibleToDedupe: a moved row is a stub, so the P2 passes
-// must leave it alone and must not turn its preview into a deduped row.
-func TestToolBodiesAreInvisibleToDedupe(t *testing.T) {
+// TestMovedStubsStayStubs: a moved row is a stub, so reading the ledger back
+// returns the same bytes and the stub carries no dedupe marker (a ledger the
+// removed P2 dedupe pass rewrote reads the same way).
+func TestMovedStubsStayStubs(t *testing.T) {
 	ctx := context.Background()
 	s, before := inlineFixture(t)
 	report, err := s.MoveToolBodies(ctx, ToolBodyMaintOptions{Batch: 5})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, int64(9), report.Rows)
 
-	_, err = s.DedupeToolResults(ctx, ToolDedupeOptions{})
-	assert.Require(t, assert.NoErr(t, err))
-	_, err = s.UndoToolDedupe(ctx, ToolDedupeOptions{})
-	assert.Require(t, assert.NoErr(t, err))
 	for id, want := range before {
 		assert.Eq(t, want, storedEntries(t, s, id), id)
 	}

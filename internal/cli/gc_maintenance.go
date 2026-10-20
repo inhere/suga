@@ -15,92 +15,9 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// Ledger maintenance jobs of the data governance P1 design (0.3): the FTS
-// shrink and the VACUUM. Both are explicit commands, never startup work, and
-// both take the maintenance lock under run/ so that two of them never rewrite
-// the same file at once. The shrink itself does not need the lock (it writes
-// short batches and coexists with chat), but taking it uniformly keeps the
-// "one maintenance job at a time" rule simple.
-
-// runShrinkFTS runs `suga data shrink-fts`: --status only reports, --abort
-// drops the checkpoint, and the plain form deletes the historical tool rows of
-// entries_fts in batches (tool results are no longer indexed).
-func runShrinkFTS(ctx context.Context, out io.Writer, status, abort bool, batch int) error {
-	repo, err := openCoreStore()
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-
-	if status {
-		report, err := repo.FTSShrinkStatus(ctx)
-		if err != nil {
-			return err
-		}
-		return writeShrinkStatus(out, report)
-	}
-	if abort {
-		if err := repo.ResetFTSShrink(ctx); err != nil {
-			return err
-		}
-		fmt.Fprintln(out, "已清除 FTS 瘦身断点；下次 `suga data shrink-fts` 会从头开始")
-		return nil
-	}
-
-	before, err := repo.FTSShrinkStatus(ctx)
-	if err != nil {
-		return err
-	}
-	if !before.Remaining() {
-		fmt.Fprintln(out, "FTS 无需瘦身：索引中没有 tool 输出行")
-		return nil
-	}
-	fmt.Fprintf(out, "开始瘦身：删除 %d 行 tool 输出索引（%d 字符文本），预计可回收约 %s；Ctrl-C 可中断，重跑续上\n",
-		before.PendingRows, before.PendingChars, humanBytes(before.EstimatedReclaimBytes))
-	report, err := repo.ShrinkFTSToolOutputs(ctx, store.FTSShrinkOptions{
-		Batch: batch,
-		OnBatch: func(p store.FTSShrinkProgress) {
-			fmt.Fprintf(out, "  已扫到 rowid %d/%d，删除 %d 行\n", p.ScannedRowID, p.HighWater, p.Rows)
-		},
-	})
-	if err != nil {
-		// The checkpoint of the last committed batch stands: say what is done
-		// and how to continue instead of only reporting the interruption.
-		fmt.Fprintf(out, "中断于 rowid %d/%d（已删除 %d 行）；重跑 `suga data shrink-fts` 从这里续上：%v\n",
-			report.ScannedRowID, report.HighWater, report.Rows, err)
-		return err
-	}
-	optimized := "无需 optimize"
-	if report.Optimized {
-		optimized = "optimize 1 次"
-	}
-	fmt.Fprintf(out, "瘦身完成：删除 %d 行，%d 个写事务，%s；entries_fts_data %s → %s\n",
-		report.Rows, report.Batches, optimized, humanBytes(report.BytesBefore), humanBytes(report.BytesAfter))
-	after, err := repo.FTSShrinkStatus(ctx)
-	if err != nil {
-		return err
-	}
-	if after.Remaining() {
-		fmt.Fprintf(out, "仍有 %d 行 tool 输出在索引中（并发写入已不再产生新的）；可再跑一次\n", after.PendingRows)
-	}
-	fmt.Fprintln(out, "文件大小要等 `suga data vacuum` 才回落")
-	return nil
-}
-
-// writeShrinkStatus prints what a shrink pass still has to do.
-func writeShrinkStatus(out io.Writer, report store.FTSShrinkStatus) error {
-	state := "未开始"
-	switch {
-	case report.Complete:
-		state = "已完成"
-	case report.Started:
-		state = "进行中"
-	}
-	fmt.Fprintf(out, "FTS 瘦身状态：%s（断点 rowid=%d）\n", state, report.ScannedRowID)
-	fmt.Fprintf(out, "剩余 tool 行：%d（%d 字符文本），预计可回收约 %s\n",
-		report.PendingRows, report.PendingChars, humanBytes(report.EstimatedReclaimBytes))
-	return nil
-}
+// Ledger maintenance jobs of the data governance P1 design (0.3): the VACUUM.
+// It is an explicit command, never startup work, and it takes the maintenance
+// lock under run/ so that two of them never rewrite the same file at once.
 
 // runGCVacuum runs `suga data vacuum`: it refuses to start without the free
 // space a VACUUM needs or while another suga process uses this ledger, then

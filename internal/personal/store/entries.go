@@ -80,7 +80,7 @@ func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEn
 		}
 		if !moveChecked {
 			// The persistent switch is read inside the transaction, so a concurrent
-			// `data tool-bodies --undo` (which holds the same write lock) is honored.
+			// `data bodies --undo` (which holds the same write lock) is honored.
 			if moveEnabled, err = toolBodyMoveEnabled(ctx, tx); err != nil {
 				return nil, err
 			}

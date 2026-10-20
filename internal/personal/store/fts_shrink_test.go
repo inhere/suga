@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gookit/goutil/x/assert"
 )
 
-// Tool results are not indexed any more (the write path skips them), and the
-// `suga data shrink-fts` maintenance command deletes the rows the historical
-// backfill wrote for them (design 0.3: in-place, batched, resumable). These
-// tests cover the write path, the search consequences and the command.
+// Tool results are not indexed any more (the write path skips them), yet a
+// ledger written by v0.35 or older still holds the rows the historical backfill
+// wrote for them. These tests cover the write path, the search consequences and
+// the notice such a legacy ledger carries (the delete pass itself was removed in
+// v0.41.0).
 
 // markedBody builds a body of n characters whose head, middle and tail hold
 // distinct keywords (HEADER, MIDDLE, FOOTER), so a search can tell which part
@@ -108,7 +108,7 @@ type legacySession struct {
 
 // openLegacyLedger opens a ledger whose entries predate the FTS migration and
 // migrates it, so entries_fts holds the full text of every tool result --
-// exactly the state `suga data shrink-fts` has to repair.
+// exactly the state a pre-v0.36 ledger is in.
 func openLegacyLedger(t *testing.T, sessions ...legacySession) *Store {
 	t.Helper()
 	s, _ := openAtCoreSchema(t)
@@ -131,204 +131,18 @@ func toolEntries(t *testing.T, n int) []NewEntry {
 	return out
 }
 
-func TestFTSShrinkCommand(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("status before, during and after", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", append(toolEntries(t, 2),
-			user(t, markedBody("u ", 5000, "x")))})
-		before, err := s.FTSShrinkStatus(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		assert.False(t, before.Started)
-		assert.False(t, before.Complete)
-		assert.Eq(t, int64(2), before.PendingRows)
-		assert.True(t, before.Remaining())
-		assert.True(t, before.EstimatedReclaimBytes > 0, "an estimate is printed")
-
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(2), report.Rows)
-		assert.Eq(t, report.HighWater, report.ScannedRowID)
-		assert.True(t, report.Optimized, "a pass that deleted rows merges the index once")
-		assert.True(t, report.BytesAfter < report.BytesBefore,
-			fmt.Sprintf("entries_fts_data: %d -> %d", report.BytesBefore, report.BytesAfter))
-
-		after, err := s.FTSShrinkStatus(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		assert.True(t, after.Started)
-		assert.True(t, after.Complete)
-		assert.False(t, after.Remaining())
-		assert.Eq(t, int64(0), after.PendingRows)
-		// Only the user row is left in the index, and search agrees.
-		rows := indexedRows(t, s, "old")
-		assert.Require(t, assert.Len(t, rows, 1))
-		assert.Eq(t, EntryUser, rows[0].Role)
-		assert.Eq(t, markedBody("u ", 5000, "x"), rows[0].Text)
-		assert.Empty(t, hitKeys(search(t, s, EntrySearch{Query: "tool 0"})))
-	})
-
-	t.Run("batches delete every tool row and the checkpoint advances", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", append(toolEntries(t, 7), user(t, "keep this"))})
-
-		var seen []int64
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(p FTSShrinkProgress) {
-			seen = append(seen, p.Rows)
-		}})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(7), report.Rows)
-		// 2,000-row batches over 7 rows: four batches of 2 and one of 1.
-		assert.Eq(t, []int64{2, 4, 6, 7}, seen)
-		assert.Eq(t, 4, report.Batches)
-		rows := indexedRows(t, s, "old")
-		assert.Require(t, assert.Len(t, rows, 1))
-		assert.Eq(t, "keep this", rows[0].Text)
-		assert.Eq(t, report.ScannedRowID, ftsCheckpoint(t, s))
-	})
-
-	t.Run("an interrupted pass resumes from its checkpoint", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 10)})
-
-		cancelled, cancel := context.WithCancel(ctx)
-		var first FTSShrinkProgress
-		report, err := s.ShrinkFTSToolOutputs(cancelled, FTSShrinkOptions{Batch: 2, OnBatch: func(p FTSShrinkProgress) {
-			first = p
-			if p.Rows >= 4 {
-				cancel()
-			}
-		}})
-		assert.ErrIs(t, context.Canceled, err)
-		assert.Eq(t, int64(4), first.Rows)
-		assert.Eq(t, int64(4), report.Rows)
-		assert.True(t, report.ScannedRowID < report.HighWater, "the pass stopped before the high-water mark")
-		assert.Eq(t, report.ScannedRowID, ftsCheckpoint(t, s))
-
-		midway, err := s.FTSShrinkStatus(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		assert.False(t, midway.Complete)
-		assert.Eq(t, int64(6), midway.PendingRows)
-
-		var resumed []int64
-		rest, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(p FTSShrinkProgress) {
-			resumed = append(resumed, p.ScannedRowID)
-		}})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(6), rest.Rows)
-		// The checkpoint skips the rowids the first pass already walked: three
-		// batches for the six rows left, starting right after the checkpoint.
-		assert.Eq(t, []int64{report.ScannedRowID + 2, report.ScannedRowID + 4, report.ScannedRowID + 6}, resumed)
-		assert.Eq(t, 3, rest.Batches)
-		left, err := s.FTSShrinkStatus(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		assert.True(t, left.Complete)
-		assert.Eq(t, int64(0), left.PendingRows)
-		assert.Empty(t, indexedRows(t, s, "old"))
-	})
-
-	t.Run("abort drops the checkpoint and the next pass starts over", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 6)})
-
-		cancelled, cancel := context.WithCancel(ctx)
-		_, err := s.ShrinkFTSToolOutputs(cancelled, FTSShrinkOptions{Batch: 2, OnBatch: func(FTSShrinkProgress) { cancel() }})
-		assert.ErrIs(t, context.Canceled, err)
-		assert.True(t, ftsCheckpoint(t, s) > 0)
-
-		assert.NoErr(t, s.ResetFTSShrink(ctx))
-		assert.Eq(t, int64(0), ftsCheckpoint(t, s))
-		status, err := s.FTSShrinkStatus(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		assert.False(t, status.Started)
-
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2})
-		assert.Require(t, assert.NoErr(t, err))
-		// Two rows were already deleted before the abort; the remaining four are
-		// the ones this pass reports.
-		assert.Eq(t, int64(4), report.Rows)
-		assert.Empty(t, indexedRows(t, s, "old"))
-	})
-
-	t.Run("a checkpoint left by the truncating version restarts from the first rowid", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", append(toolEntries(t, 3), user(t, "keep"))})
-		high, err := s.maxFTSRowID(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		// What P1's completed pass left behind: complete, checkpoint at the end,
-		// and the tool rows still in the index (only truncated).
-		assert.Require(t, assert.NoErr(t, s.ensureShrinkState(ctx)))
-		_, err = s.db.ExecContext(ctx, `INSERT INTO fts_shrink_state(id, scanned_rowid, complete, shrunk_rows, started_at, updated_at)
-            VALUES(1, ?, 1, 3, ?, ?)`, high, formatTime(time.Now()), formatTime(time.Now()))
-		assert.Require(t, assert.NoErr(t, err))
-
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(3), report.Rows, "a complete checkpoint does not hide the tool rows")
-		assert.Eq(t, int64(4), report.ScannedRowID)
-	})
-
-	t.Run("appends during the pass are not indexed", func(t *testing.T) {
-		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 4)})
-		createSession(t, s, "live", "/w")
-
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(FTSShrinkProgress) {
-			fresh := markedBody("fresh ", 4000, "y")
-			appendAll(t, s, "live", user(t, fresh), toolMsg(t, fresh, fresh))
-		}})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(4), report.Rows)
-		rows := indexedRows(t, s, "live")
-		assert.Require(t, assert.Len(t, rows, 2), "one user row per batch, no tool rows")
-		for _, row := range rows {
-			assert.Eq(t, EntryUser, row.Role)
-		}
-		assert.Eq(t, []string{"live/1", "live/3"},
-			hitKeys(search(t, s, EntrySearch{Query: "HEADER", SessionIDs: []string{"live"}})))
-	})
-
-	t.Run("a session deleted during the pass leaves no rows behind", func(t *testing.T) {
-		s := openLegacyLedger(t,
-			legacySession{"old", toolEntries(t, 4)},
-			legacySession{"doomed", toolEntries(t, 2)})
-
-		// The deletion happens between two batches, while the pass is running.
-		deleted := false
-		_, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{Batch: 2, OnBatch: func(FTSShrinkProgress) {
-			if !deleted {
-				deleted = true
-				assert.NoErr(t, s.DeleteSession(ctx, "doomed"))
-			}
-		}})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Empty(t, indexedRows(t, s, "doomed"), "the delete trigger still runs during the pass")
-		assert.Empty(t, indexedRows(t, s, "old"))
-	})
-
-	t.Run("a ledger without tool rows is a no-op", func(t *testing.T) {
-		s := openTemp(t)
-		createSession(t, s, "s1", "/w")
-		appendAll(t, s, "s1", toolMsg(t, "short", "short"), user(t, "hi"))
-		status, err := s.FTSShrinkStatus(ctx)
-		assert.Require(t, assert.NoErr(t, err))
-		assert.False(t, status.Remaining())
-
-		report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
-		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, int64(0), report.Rows)
-		assert.False(t, report.Optimized, "nothing was deleted, so nothing is merged")
-		assert.Eq(t, int64(1), int64(len(indexedRows(t, s, "s1"))))
-	})
-}
-
 func TestFTSShrinkPendingNotice(t *testing.T) {
-	ctx := context.Background()
-
 	t.Run("a legacy ledger announces the tool rows in its index", func(t *testing.T) {
 		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 1)})
 		assert.StrContains(t, searchNotice(t, s, "HEADER"), FTSShrinkPendingNotice)
-		// The historical row still matches in full until the pass deletes it.
+		// The historical row still matches in full until it is deleted.
 		assert.Eq(t, []string{"old/1"}, hitKeys(search(t, s, EntrySearch{Query: "MIDDLE"})))
 	})
 
-	t.Run("after the pass the notice is gone", func(t *testing.T) {
+	t.Run("a ledger cleaned by v0.40 says nothing", func(t *testing.T) {
 		s := openLegacyLedger(t, legacySession{"old", toolEntries(t, 1)})
-		_, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
+		// What `suga data shrink-fts` (removed in v0.41.0) left behind.
+		_, err := s.db.Exec(`DELETE FROM entries_fts WHERE role = 'tool'`)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Empty(t, searchNotice(t, s, "HEADER"))
 		assert.Empty(t, hitKeys(search(t, s, EntrySearch{Query: "MIDDLE"})))
@@ -342,75 +156,12 @@ func TestFTSShrinkPendingNotice(t *testing.T) {
 	})
 }
 
-// TestFTSShrinkLargeLedger is the benchmark of the delete pass: 20,000+ entries
-// with the length distribution of a real ledger, a tool row still in the index
-// for most of them, and the pass timed. The measured numbers are logged (the
-// report quotes them).
-func TestFTSShrinkLargeLedger(t *testing.T) {
-	ctx := context.Background()
-	const (
-		toolRows = 20000
-		// Real tool results: 2-8KB of text, the majority around 3KB.
-		minBytes = 2000
-		maxBytes = 8000
-	)
-	entries := make([]NewEntry, 0, toolRows+1000)
-	for i := 0; i < toolRows; i++ {
-		size := minBytes + (i*7919)%(maxBytes-minBytes)
-		body := markedBody(fmt.Sprintf("tool %d ", i), size, "x")
-		entries = append(entries, toolMsg(t, body, body))
-	}
-	for i := 0; i < 500; i++ {
-		size := 200 + (i*104729)%1800
-		entries = append(entries, user(t, markedBody(fmt.Sprintf("user %d ", i), size, "中")),
-			assistant(t, markedBody(fmt.Sprintf("assistant %d ", i), size, "中")))
-	}
-	// A ledger whose entries were written before the FTS migration: the backfill
-	// indexes them in FULL, which is exactly the state `suga data shrink-fts`
-	// has to repair.
-	start := time.Now()
-	s := openLegacyLedger(t, legacySession{"big", entries})
-	backfill := time.Since(start)
-
-	sizeBefore, err := s.ftsDataBytes(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	before, err := s.FTSShrinkStatus(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(toolRows), before.PendingRows)
-
-	start = time.Now()
-	report, err := s.ShrinkFTSToolOutputs(ctx, FTSShrinkOptions{})
-	shrink := time.Since(start)
-	assert.Require(t, assert.NoErr(t, err))
-	sizeAfter, err := s.ftsDataBytes(ctx)
-	assert.Require(t, assert.NoErr(t, err))
-
-	assert.Eq(t, int64(toolRows), report.Rows)
-	assert.True(t, sizeAfter < sizeBefore, fmt.Sprintf("index did not shrink: %d -> %d", sizeBefore, sizeAfter))
-	for _, row := range indexedRows(t, s, "big") {
-		assert.True(t, row.Role == EntryUser || row.Role == EntryAssistant,
-			"only conversation rows remain, got "+row.Role)
-	}
-	t.Logf("legacy index+backfill: %s; delete of %d rows in %d batches: %s; entries_fts_data %d -> %d bytes (-%.1f%%); optimized: %v",
-		backfill, report.Rows, report.Batches, shrink, sizeBefore, sizeAfter,
-		100*float64(sizeBefore-sizeAfter)/float64(sizeBefore), report.Optimized)
-	t.Logf("pending estimate before the pass: %d bytes", before.EstimatedReclaimBytes)
-}
-
 // searchNotice runs one search and returns the notice of the result.
 func searchNotice(t *testing.T, s *Store, query string) string {
 	t.Helper()
 	result, err := s.SearchEntriesPage(context.Background(), EntrySearch{Query: query})
 	assert.Require(t, assert.NoErr(t, err))
 	return result.Notice
-}
-
-// ftsCheckpoint reads the shrink checkpoint (0 when there is none).
-func ftsCheckpoint(t *testing.T, s *Store) int64 {
-	t.Helper()
-	rowid, _, err := s.shrinkCheckpoint(context.Background())
-	assert.Require(t, assert.NoErr(t, err))
-	return rowid
 }
 
 // TestVacuumReturnsSpace covers the --vacuum half of the maintenance command at

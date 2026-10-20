@@ -38,6 +38,23 @@ var legacyCommandHints = map[string]string{
 	"restore":  "data restore",
 }
 
+// dataCommandRemoval is the release the one-time migration forms of `data` were
+// dropped in (the notices v0.39.0 wrote promised v0.41.0, user 2026-10-20).
+const dataCommandRemoval = "v0.41.0"
+
+// removedDataForms maps a removed `data` form to what replaces it: the command
+// that took a renamed form over, "" for the one-time migrations that have no
+// successor. Like legacyCommandHints it only feeds the hint of the
+// unknown-command error; nothing is executed from the old spelling.
+var removedDataForms = map[string]string{
+	"tool-bodies":         "suga data bodies",
+	"dedupe-tool-results": "",
+	"shrink-fts":          "",
+}
+
+// removedBodyJobs are the removed one-time flags of `data bodies`.
+var removedBodyJobs = []string{"--slim", "--rename-files"}
+
 // legacyGCForms maps the `gc` maintenance switch that used to select a
 // subcommand to that subcommand. The order of the checks is the order the old
 // `suga data gc` used to pick its action (shrink-fts, vacuum, compress-spill,
@@ -93,10 +110,18 @@ func legacyCommandHint(args []string) string {
 		return ""
 	}
 	old := args[0]
+	if old == "data" {
+		return removedDataHint(args)
+	}
 	if old == "gc" {
 		// The switch that selected the action decides which subcommand owns it.
 		for _, form := range legacyGCForms {
 			if containsArg(args[1:], form.flag) {
+				if form.sub == "data shrink-fts" {
+					// Its successor went too (v0.41.0): say so instead of
+					// pointing at a command that no longer exists.
+					return removedDataHint([]string{"data", "shrink-fts"})
+				}
 				return hintFor("gc "+form.flag, form.sub)
 			}
 		}
@@ -107,6 +132,33 @@ func legacyCommandHint(args []string) string {
 		return ""
 	}
 	return hintFor(old, moved)
+}
+
+// removedDataHint names the successor of a removed `data` form, or "" when the
+// arguments do not spell one. A one-time migration has no successor: its hint
+// says what it did and that a pre-v0.36 ledger needs the v0.40 release.
+func removedDataHint(args []string) string {
+	if len(args) < 2 {
+		return ""
+	}
+	form := args[1]
+	replacement, ok := removedDataForms[form]
+	if !ok && form == "bodies" {
+		for _, flag := range removedBodyJobs {
+			if containsArg(args[2:], flag) {
+				form, ok = "bodies "+flag, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return ""
+	}
+	hint := "提示：suga data " + form + " 已在 " + dataCommandRemoval + " 移除"
+	if replacement != "" {
+		return hint + "，改用 " + replacement
+	}
+	return hint + "；它只用于把 v0.35 及更早的库迁移到当前格式，若需迁移旧库请用 v0.40"
 }
 
 // hintFor formats the hint shown when an old command form is typed.

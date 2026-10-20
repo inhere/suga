@@ -228,19 +228,16 @@ func TestAssistantBodyWriteFailureRollsBack(t *testing.T) {
 	assert.Eq(t, 0, rows, "the rolled back transaction keeps no row")
 }
 
-// TestSlimLeavesAssistantStubsAlone: --slim narrows tool stubs only; an assistant
-// stub keeps the whole Content (a preview would clip the indexed text).
-func TestSlimLeavesAssistantStubsAlone(t *testing.T) {
-	ctx := context.Background()
+// TestAssistantStubKeepsFullContent: an assistant stub keeps the whole Content
+// (a preview would clip the indexed text), so reading it back needs no rewrite;
+// the removed --slim pass never touched it and nothing narrows it now.
+func TestAssistantStubKeepsFullContent(t *testing.T) {
 	s := openTemp(t)
 	createSession(t, s, "s1", "/w")
-	appended := appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c1"))})
+	msg := bigAssistantMessage("c1")
+	appended := appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, msg)})
 	before, refBefore := storedRow(t, s, "s1", appended[0].Seq)
 	assert.True(t, refBefore != "")
-
-	_, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{})
-	assert.NoErr(t, err)
-	after, refAfter := storedRow(t, s, "s1", appended[0].Seq)
-	assert.Eq(t, before, after, "the assistant stub keeps its bytes")
-	assert.Eq(t, refBefore, refAfter)
+	assert.StrContains(t, before, msg.Content, "the stub keeps the whole content")
+	assert.Eq(t, string(msgJSON(t, msg)), storedEntries(t, s, "s1")[appended[0].Seq], "reading the row returns the original message")
 }

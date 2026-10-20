@@ -74,17 +74,23 @@ func TestLegacyCommandHint(t *testing.T) {
 			{"backup", []string{"backup", "--output", "a.zip"}, "backup", "data backup"},
 			{"restore", []string{"restore", "a.zip"}, "restore", "data restore"},
 			{"gc", []string{"gc", "--older-than", "30d"}, "gc", "data gc"},
-			{"gc shrink-fts", []string{"gc", "--shrink-fts", "--batch", "100"}, "gc --shrink-fts", "data shrink-fts"},
 			{"gc vacuum", []string{"gc", "--vacuum"}, "gc --vacuum", "data vacuum"},
 			{"gc compress-spill", []string{"gc", "--compress-spill", "--apply"}, "gc --compress-spill", "data compress-spill"},
-			// The old precedence wins: shrink-fts before vacuum.
-			{"gc precedence", []string{"gc", "--vacuum", "--shrink-fts"}, "gc --shrink-fts", "data shrink-fts"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				hint := legacyCommandHint(tc.args)
 				assert.StrContains(t, hint, "提示：suga "+tc.old+" 已改为 suga "+tc.new)
 				assert.StrContains(t, hint, "旧写法已在 v0.38 移除")
 			})
+		}
+	})
+
+	t.Run("gc --shrink-fts names the removed migration, not its gone successor", func(t *testing.T) {
+		// The old precedence still wins: shrink-fts before vacuum.
+		for _, args := range [][]string{{"gc", "--shrink-fts", "--batch", "100"}, {"gc", "--vacuum", "--shrink-fts"}} {
+			hint := legacyCommandHint(args)
+			assert.StrContains(t, hint, "提示：suga data shrink-fts 已在 v0.41.0 移除")
+			assert.NotContains(t, hint, "已改为")
 		}
 	})
 
@@ -100,6 +106,35 @@ func TestLegacyCommandHint(t *testing.T) {
 		} {
 			assert.Eq(t, "", legacyCommandHint(args))
 		}
+	})
+}
+
+// TestRemovedDataCommandHint checks the forms v0.39.0 deprecated and v0.41.0
+// removed: they fail as unknown commands or unknown flags, the error names the
+// replacement (or sends a pre-v0.36 ledger to v0.40) and the exit code is not 0.
+func TestRemovedDataCommandHint(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"renamed command", []string{"data", "tool-bodies", "--status"}, "suga data tool-bodies 已在 v0.41.0 移除，改用 suga data bodies"},
+		{"dedupe job", []string{"data", "dedupe-tool-results"}, "若需迁移旧库请用 v0.40"},
+		{"shrink-fts job", []string{"data", "shrink-fts", "--status"}, "若需迁移旧库请用 v0.40"},
+		{"slim job", []string{"data", "bodies", "--slim"}, "若需迁移旧库请用 v0.40"},
+		{"rename-files job", []string{"data", "bodies", "--rename-files"}, "若需迁移旧库请用 v0.40"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr strings.Builder
+			err := RunArgs(newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr), tc.args)
+			requireErrContains(t, err, tc.want)
+			assert.Eq(t, 1, ExitCode(err))
+		})
+	}
+
+	t.Run("the kept jobs still run", func(t *testing.T) {
+		assert.Eq(t, "", removedDataHint([]string{"data", "bodies", "--status"}))
+		assert.Eq(t, "", removedDataHint([]string{"data", "vacuum"}))
 	})
 }
 

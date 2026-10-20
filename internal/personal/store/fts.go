@@ -20,14 +20,14 @@ import (
 // same role/text from an entry:
 //
 //   - AppendEntries, for every new entry, using the constants below;
-//   - the maintenance command `suga data shrink-fts` (fts_shrink.go), which
-//     deletes the tool rows written before tool results left the index.
+//   - the delete pass of `suga data shrink-fts` (removed in v0.41.0), which
+//     deleted the tool rows written before tool results left the index.
 //
 // Tool results are NOT indexed any more: they were ~96% of the index (~130MB on
 // the 2026-10-19 ledger) while searches mostly look at user and assistant
 // messages, and the full text still lives in entries for recall to read.
 // ftsIndexedTypes is the single source of that decision, so the write path and
-// the maintenance command cannot drift apart.
+// the old delete pass cannot drift apart.
 //
 // This expression is deliberately NOT copied into a new migration: the old
 // backfill migration (20261010) stays as it was applied, it indexed tool

@@ -208,14 +208,16 @@ func TestConfigSetAcceptsYAMLListValues(t *testing.T) {
 		assert.Eq(t, string(before), string(after))
 	})
 
-	t.Run("a deprecated key is labelled next to the source", func(t *testing.T) {
-		setupConfigCLI(t, "store:\n  tool_body_inline_bytes: 3072\n")
+	t.Run("a removed key is ignored, not an error", func(t *testing.T) {
+		configPath := setupConfigCLI(t, "store:\n  tool_body_inline_bytes: 3072\n")
 		var stdout, stderr bytes.Buffer
 		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"config", "get", "store.body_inline_bytes"})
 		assert.NoErr(t, err)
-		assert.StrContains(t, stdout.String(), "store.body_inline_bytes = 3072")
-		assert.StrContains(t, stdout.String(), "source = config:")
-		assert.StrContains(t, stdout.String(), "已弃用键 store.tool_body_inline_bytes，将在 "+appconfig.DeprecatedConfigRemoval+" 移除")
+		assert.StrContains(t, stdout.String(), "store.body_inline_bytes = 1024")
+		assert.StrContains(t, stdout.String(), "source = default")
+		assert.False(t, strings.Contains(stdout.String(), "tool_body_inline_bytes"))
+		_, statErr := os.Stat(configPath)
+		assert.NoErr(t, statErr, "the config file is left as it was")
 	})
 }
 

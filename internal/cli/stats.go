@@ -37,7 +37,7 @@ func openCoreStore() (*store.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The threshold of store.tool_body_inline_bytes decides what the maintenance
+	// The threshold of store.body_inline_bytes decides what the maintenance
 	// commands see as pending and what --move moves out.
 	settings, err := appconfig.ReadToolBodySettings()
 	if err != nil {

@@ -56,7 +56,7 @@ type Store struct {
 	// same place.
 	sessionsDir string
 	// toolBodyInlineBytes is the threshold above which a new tool entry body
-	// moves to the session file (store.tool_body_inline_bytes); 0 disables it.
+	// moves to the session file (store.body_inline_bytes); 0 disables it.
 	toolBodyInlineBytes int64
 
 	// searchMu protects the process-local cursor snapshots. They deliberately

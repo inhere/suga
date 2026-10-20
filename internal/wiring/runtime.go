@@ -682,8 +682,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	lockRoot := filepath.Join(home, "run", "locks")
 	processRoot := filepath.Join(home, "run")
-	// store.tool_body_inline_bytes: a tool result body above this many bytes moves
-	// to sessions/<id>/tools.jsonl (0 keeps every body in the ledger). chat, run
+	// store.body_inline_bytes: a tool result body above this many bytes moves
+	// to sessions/<id>/bodies.jsonl (0 keeps every body in the ledger). chat, run
 	// and ACP all open the store here.
 	toolBody, err := appconfig.ReadToolBodySettings()
 	if err != nil {
