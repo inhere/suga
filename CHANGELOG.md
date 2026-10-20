@@ -13,6 +13,9 @@
 - chat 的 GFM 表格（表头行 + `|---|` 分隔行）按显示宽度对齐（中文等宽字符算 2 列，单元格里的粗体与行内代码先渲染再算宽度），表头加粗、分隔线用 `─`；比终端宽的表格或形状不符的 `|` 行块原样输出，不截断。
 - chat 的长代码块折叠：超过 `chat.code_max_lines`（默认 40，`0` 不折叠）行后不再输出，结束时提示 `… 还有 N 行（:code 查看全部）`；新增 `:code`（展开上一条回答里被折叠的块）与 `:code N`（第 N 个块），`:help` 与命令补全同步。
 
+### 变更
+- 会话与回合 id 改为“前缀 + 12 位随机 base32”：会话形如 `s_3k9m2q1p0v7r`，回合形如 `t_7f2m9c0a1p4v`（`crypto/rand`，60 位随机，字母表 `0-9a-v`），不再含本地日期、时间戳与序号——此前一天内创建的会话 id 前 16 位相同，只显示前 8 位（如 gofer）时无法区分、也不能按前缀找到会话。创建会话或回合时若生成的 id 与已有主键冲突，换一个 id 重试（最多 3 次）；`--session-id` 指定的 id 不重试，冲突照旧报错。旧格式 id（`sess_…`、`turn_…`）继续有效：续接、`send`、ACP `session/load`、`inspect`、`export`、`gc` 与短名称都不受影响；会话与回合列表在同一时间戳内按创建顺序排序，不再由 id 决定次序。
+
 ## [0.39.0] - 2026-10-20
 
 会话与集成：`suga sessions` 与 ACP `session/list` 默认只列当前目录的会话；ACP 补齐 list/resume/close、load 回放历史与 set_config_option（切换模型与模式）；子进程与 hook 环境导出 `SUGA_SESSION_ID`/`SUGA_SESSION_NAME`/`SUGA_TURN_ID`；`suga run --image`；日志轮转与 `log.*` 配置。不兼容：移除 v0.36 前的旧顶层命令写法（`suga trace` 等，报错时提示新写法）；一次性迁移命令与旧配置键标记弃用，v0.41.0 移除。
