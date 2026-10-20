@@ -38,6 +38,7 @@ type toolGateProv struct {
 
 	mu    sync.Mutex
 	users []string
+	imgs  []int
 	calls int
 }
 
@@ -57,15 +58,26 @@ func (p *toolGateProv) prompts() []string {
 	return append([]string(nil), p.users...)
 }
 
+// imageCounts is how many pictures the last user message of each request carried
+// (`suga send --image`).
+func (p *toolGateProv) imageCounts() []int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]int(nil), p.imgs...)
+}
+
 func (p *toolGateProv) Generate(ctx context.Context, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
 	last := ""
+	images := 0
 	for _, m := range req.Messages {
 		if m.Role == "user" {
 			last = m.Content
+			images = len(m.Images)
 		}
 	}
 	p.mu.Lock()
 	p.users = append(p.users, last)
+	p.imgs = append(p.imgs, images)
 	p.calls++
 	n := p.calls
 	p.mu.Unlock()
