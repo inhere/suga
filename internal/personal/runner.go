@@ -517,7 +517,7 @@ func (r *Runner) NewSessionWithMeta(ctx context.Context, id, title string, extra
 	// snapshot above (design D2). Without it the session is not created.
 	if err := r.writeStartSegment(ctx, model.ID, seg); err != nil {
 		_ = r.cfg.Repository.DeleteSession(context.WithoutCancel(ctx), model.ID)
-		// The session directory must not outlive the ledger row: its tools.jsonl
+		// The session directory must not outlive the ledger row: its body file
 		// would be an orphan file no stub points at.
 		_ = r.cfg.Repository.DeleteSessionFiles(model.ID)
 		return Session{}, err

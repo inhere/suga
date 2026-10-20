@@ -14,7 +14,7 @@ import (
 // returns the stored entries with their assigned seq (contiguous, per session).
 //
 // A tool or assistant entry whose body is larger than
-// store.tool_body_inline_bytes moves into the session's tools.jsonl inside this
+// store.body_inline_bytes moves into the session body file (tools.jsonl or bodies.jsonl) inside this
 // transaction (design 0.3): the row, the record and the swap to the stub commit
 // together, and a failure of the file write rolls the transaction back after
 // truncating the file to the length it had. The returned entries keep the full
