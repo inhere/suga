@@ -333,10 +333,10 @@ func hookEnv(ctx context.Context, sessionID string, extra func(context.Context) 
 	if sessionID != "" && !envHas(pairs, envSessionID) {
 		pairs = append(pairs, envSessionID+"="+sessionID)
 	}
-	if len(pairs) == 0 {
-		return dropEnv(os.Environ(), exportedEnv)
-	}
 	env := dropEnv(os.Environ(), exportedEnv)
+	if len(pairs) == 0 {
+		return env
+	}
 	out := make([]string, 0, len(env)+len(pairs))
 next:
 	for _, kv := range env {
