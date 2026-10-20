@@ -38,6 +38,7 @@
 | `chat_empty_final.py` | 工具成功后模型连续空回复：检查 chat 正常结束且不打印空的 `▣` 前缀，`suga inspect trace --json` 的回合/模型事件带 `empty_final`；反向验证见脚本 docstring
 | `chat_render.py` | 渲染增强：回答带中文表格与 47 行 go 代码块，检查高亮 ANSI 序列、表格按显示宽度对齐、折叠提示与 `:code`/`:code N`；反向验证：去掉表格缓存对齐用例失败，去掉折叠则折叠用例失败 |
 | `chat_refs.py` | 引用检索 `file_refs`（suga-gxkw 批）：假模型（`refs` 模式）一轮里先按名字查一个 Go 文件、再查整个工作区；检查终端上的两次调用与参数、各自结果的首行，`suga inspect trace --json` 两条 `file_refs` 工具事件（target 与参数摘要），以及 `suga inspect export` 里存下的调用参数与结果正文：Go 结果带 `def/call/sel/ref` 四类与 `call(pkg:db)` 包限定符与固定“不做类型解析”提示，工作区结果带 TS 文件与 `approx` 标记，两个夹具文件里的注释与字符串（`SMOKE_*_CANARY`）都不在结果里；反向验证见脚本 docstring |
+| `chat_session_message.py` | 会话之间互发消息（`session_message` 工具、两个 chat 共用一个 SUGA_HOME）：A 的模型 `send` 给 B，B 自动开一轮并回信，A 再回……第 3 跳（默认 `tools.session_message.max_hops`）到 B 时不再开一轮，B 只显示 `来自会话 <A> 的消息已排队（连续自动回复已达上限…）`，两个会话的回合数与模型请求数都有上限（超时兜底，循环停不下来会判失败）；消息以 `[来自会话 <短名称>（<会话 ID>）的消息] ` 进入对方用户消息；反向验证见脚本 docstring。**本机无 pty，未运行，待在 Linux 容器验证** |
 | `preferred_tools.py` | 配置优先 command/MCP，检查 manifest 的 found/missing/configured reason、chat 环境过滤、`tools.deferred: always` 下 preferred MCP 直显且仍需审批，以及 trace 只记录名字；反向验证见脚本 docstring |
 
 运行：

@@ -19,6 +19,11 @@ Modes (--mode):
         empty streamed completion after the tool result, including resamples.
   preferred  every user message first gets the MCP tool named by --preferred-tool,
         then returns the text --reply. The request log includes visible tool names.
+  session  every user message that names a peer gets one session_message send
+        (--session-text) to it, then the text --reply: the smoke of session to
+        session messages. A received session message names its sender in the tag
+        it carries ("[来自会话 <短名称>（<id>）的消息] "), a person's own line names
+        it as "发给 <短名称>：…"; a message that names nobody only answers.
   adddir  every user message first gets file_read (--read-path), then
         file_write (--write-path with --write-body), then the text --reply:
         the smoke for --add-dir, where both paths live outside the workspace.
@@ -61,6 +66,7 @@ result).
 import argparse
 import http.server
 import json
+import re
 import sys
 import threading
 import time
@@ -160,6 +166,21 @@ def chunked(chunks, size):
         for i in range(0, len(text), size):
             out.append({"choices": [{"delta": {"content": text[i:i + size]}}]})
     return out
+
+
+# The two ways a session-message smoke names its target: the tag a received message
+# carries ("[来自会话 <短名称>（<id>）的消息] ") and the person's own line ("发给
+# <短名称>：<text>"), so no fake server has to know the peers in advance.
+SESSION_TAG = re.compile(r"\[来自会话 (\S+?)（")
+SESSION_TO = re.compile(r"发给 (\S+?)[：:]")
+
+
+def session_target(text):
+    """The short name a session-mode answer goes to: the sender a received session
+    message names in its tag, or the peer the person's own line addresses as
+    "发给 <短名称>：…". "" when the text names nobody."""
+    found = SESSION_TAG.search(text or "") or SESSION_TO.search(text or "")
+    return found.group(1) if found else ""
 
 
 def make_handler(args):
@@ -291,6 +312,16 @@ def make_handler(args):
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "empty-final":
                 chunks = [{"choices": [{"delta": {}}]}]
+            elif args.mode == "session" and not tool_done and session_target(user_text):
+                # One session_message send to the peer the text names, then the answer
+                # of --reply: a reply that starts the peer's turn is what makes the
+                # two chats answer each other up to the hop limit.
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": "session_message",
+                                     "arguments": json.dumps({"action": "send",
+                                                              "to": session_target(user_text),
+                                                              "text": args.session_text})}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "tool" and not tool_done and "[background task" not in str(user_text):
                 shell_args = {"command": args.command}
                 if args.background:
@@ -416,6 +447,8 @@ def main():
     p.add_argument("--preferred-tool", default="preferred_lookup", help="preferred mode: MCP tool to call")
     p.add_argument("--shell-command", default="echo SMOKE_SHELL", help="edit mode: shell_exec command")
     p.add_argument("--agent", action="store_true", help="tool mode: call the agent tool instead of shell_exec")
+    p.add_argument("--session-text", default="SMOKE_SESSION_TEXT",
+                   help="session mode: the text one session_message send carries")
     p.add_argument("--child-delay", type=float, default=0, help="extra seconds before each sub-agent response")
     p.add_argument("--fail-first", type=int, default=0, help="answer the first N requests with HTTP 503")
     p.add_argument("--break-first", type=int, default=0, help="then break the next M streams after half the text")
