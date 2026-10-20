@@ -48,3 +48,19 @@ func TestNewIDUnique(t *testing.T) {
 	}
 	assert.Eq(t, n, len(seen))
 }
+
+// TestNewIDShortenedFormIsDistinct: a shortened id such as the 8 characters
+// gofer shows must tell the sessions created one after another apart (the old
+// time-ordered ids shared their first 16 characters within one day).
+func TestNewIDShortenedFormIsDistinct(t *testing.T) {
+	const n = 100
+	seen := make(map[string]struct{}, n)
+	for i := 0; i < n; i++ {
+		short := NewSessionID()[:8]
+		if _, dup := seen[short]; dup {
+			t.Fatalf("shortened session id %q repeated after %d ids", short, i)
+		}
+		seen[short] = struct{}{}
+	}
+	assert.Eq(t, n, len(seen))
+}
