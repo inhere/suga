@@ -306,6 +306,18 @@ func selectProjectBackend(workspaceRoot string, cfg MemoryConfig) (memory.Store,
 	return st, choice, err
 }
 
+// OpenMemoryStore builds the memory backends of workspaceRoot from the loaded
+// configuration: the same selection the agent runtime uses, so maintenance
+// commands and the agent always see the same entries. It runs no backend
+// command.
+func OpenMemoryStore(workspaceRoot string) (*MemorySetup, error) {
+	cfg, err := loadMemoryConfig()
+	if err != nil {
+		return nil, err
+	}
+	return buildMemory(workspaceRoot, cfg)
+}
+
 func requireHome(cfg MemoryConfig) error {
 	if cfg.SugaHome == "" || !filepath.IsAbs(cfg.SugaHome) {
 		return fmt.Errorf("memory: SUGA_HOME must be an absolute path, got %q", cfg.SugaHome)

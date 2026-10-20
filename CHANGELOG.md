@@ -4,6 +4,9 @@
 
 ## [未发布]
 
+### 新增
+- 记忆索引每行带一句话摘要：索引行为 `- [标题](路径) — 类型：一句话摘要`（摘要为空时与旧格式逐字节相同，旧行照常解析）；`memory` 工具 add/replace 新增 `summary` 参数（add 必填，未给时用正文首句并在结果里提示），提示词里的记忆索引行同样带摘要；新增 `suga memory summaries [--missing] [--fill] [--apply]` 列出缺摘要的条目，`--fill` 用正文首句预览、`--apply` 才写（只改索引行，不动正文）；exec 后备协议增加 `summary` 字段；gofer 后端只有一个摘要槽（已用于标题），索引行不带摘要，补摘要命令会提示该后端无法单独存摘要。
+
 ## [0.39.0] - 2026-10-20
 
 会话与集成：`suga sessions` 与 ACP `session/list` 默认只列当前目录的会话；ACP 补齐 list/resume/close、load 回放历史与 set_config_option（切换模型与模式）；子进程与 hook 环境导出 `SUGA_SESSION_ID`/`SUGA_SESSION_NAME`/`SUGA_TURN_ID`；`suga run --image`；日志轮转与 `log.*` 配置。不兼容：移除 v0.36 前的旧顶层命令写法（`suga trace` 等，报错时提示新写法）；一次性迁移命令与旧配置键标记弃用，v0.41.0 移除。

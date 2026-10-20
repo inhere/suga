@@ -73,10 +73,12 @@
 - **用户记忆**：在 `$SUGA_HOME/memory/user`（files）。
 - **项目记忆后端选择顺序**：`memory.project.backend` 的配置；仓库根有 `MEMORY.md`（files，仓库模式）；仓库根有 `.gofer/tracker`（gofer）；否则用 `$SUGA_HOME/projects/<key>/memory` 下的 files，`<key>` 为仓库目录名加完整路径的短哈希（如 `suga-5cb0fa32`，也显示为作用域 `project:<key>`）。
 - **仓库模式**：索引就是 `MEMORY.md`，每条记忆放在 `.suga/memory/<id>.md`，可随项目提交；根目录的 `MEMORY.md` 不会由 suga 创建。
+- **索引行带摘要**：索引行为 `- [标题](路径) — 类型：一句话摘要`；摘要是可空的元数据，为空时与旧格式逐字节相同，旧格式行照常解析。摘要折成一行，超过 120 字截断加 `…`。`memory` 工具 add/replace 的 `summary` 参数写它（add 必填，未给时用正文首句并提示，replace 留空则保留原摘要）；exec 后端用协议里的 `summary` 字段（旧脚本不返回时为空）；gofer 后端只有一个摘要槽（`--summary`，已用于标题），没有独立字段，索引行不带摘要。
+- **补摘要**：`suga memory summaries --missing` 列出缺摘要的条目，`--fill` 用正文首句预览，`--fill --apply` 才写入；只改 `MEMORY.md` 的索引行，不动条目正文与标题（`--scope user|project` 限定范围）。
 - **gofer 后端**：每条项目记忆是带 `suga` 标签的 gofer memory，只管理这些条目。
 - **exec 后端**：各范围也可用 `exec`（外部命令），键见 `references/config.md` 的 `memory.*`。
 - `suga inspect manifest` 会显示选了哪个后端及原因。
-- **冻结的索引**：记忆索引（仅标题）放在段上下文消息里，本段内不变；本会话写入的内容下一段才可见，开启新段时刷新。正文用 `memory get` 读取。
+- **冻结的索引**：记忆索引（id、类型、标题与一句话摘要）放在段上下文消息里，本段内不变；本会话写入的内容下一段才可见，开启新段时刷新。正文用 `memory get` 读取。
 - **检索**：`memory search` 对 files 后端按相关度排序（用会话库里的 FTS5 派生索引，标题、正文与 `applies_when` 都参与；1–2 个字的词照常命中）。Markdown 仍是唯一真源：索引在搜索前按条目增量同步，可随时重建——手改或删除条目文件、删掉整个会话库后，下一次搜索自动反映/重建；索引未绑定、同步或查询失败时不报错，回退到原来的子串搜索。gofer 后端按标题与正文做多词 AND 的子串匹配（最新在前）；exec 后端由外部命令决定。
 - **适用条件**：条目可选 `applies_when`，写明它适用的版本、环境等条件（数组，每条单行、至多 200 字，最多 10 条）。`memory get` 会显示，参与搜索，但不进索引行（不占索引预算）；旧条目与旧版本互相兼容。
 - **污染与确认**：会话一旦读过外部内容（`web_fetch`、`web_search`、MCP 工具、`session_search`、`recall`，以及 `memory.taint_tools` / `memory.taint_on_spill` 中的工具），就永久标记为已污染，此后写记忆需要确认（`memory.write_tainted`）：chat 在终端询问（`y`、`n`，`a` 表示本会话不再问），ACP 发权限请求，`run` 直接拒绝；`deny` 永不写入，`allow` 不询问。
