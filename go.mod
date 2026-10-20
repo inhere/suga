@@ -13,6 +13,7 @@ require (
 	github.com/gookit/goutil v0.8.3
 	github.com/gookit/ini/v2 v2.3.2
 	github.com/gookit/rotatefile v0.3.3
+	github.com/mattn/go-runewidth v0.0.24
 	golang.org/x/image v0.22.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.49.0
@@ -23,6 +24,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
+	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

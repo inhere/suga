@@ -230,6 +230,43 @@ func TestChatDiffLines(t *testing.T) {
 	}
 }
 
+// TestChatCodeSettings: code highlighting is on and folds after 40 lines unless
+// set; a negative fold limit or a non-number is an error, 0 is the documented
+// "fold nothing".
+func TestChatCodeSettings(t *testing.T) {
+	load := chatConfigLoader(t)
+	t.Run("defaults", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		assert.True(t, ChatCodeHighlightEnabled())
+		lines, err := ChatCodeMaxLines()
+		assert.NoErr(t, err)
+		assert.Eq(t, 40, lines)
+	})
+	t.Run("set", func(t *testing.T) {
+		load(t, "chat:\n  code_highlight: off\n  code_max_lines: 12\n")
+		assert.False(t, ChatCodeHighlightEnabled())
+		lines, err := ChatCodeMaxLines()
+		assert.NoErr(t, err)
+		assert.Eq(t, 12, lines)
+	})
+	t.Run("zero folds nothing", func(t *testing.T) {
+		load(t, "chat:\n  code_max_lines: 0\n")
+		lines, err := ChatCodeMaxLines()
+		assert.NoErr(t, err)
+		assert.Eq(t, 0, lines)
+	})
+	for name, body := range map[string]string{
+		"negative":     "chat:\n  code_max_lines: -1\n",
+		"not a number": "chat:\n  code_max_lines: many\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			load(t, body)
+			_, err := ChatCodeMaxLines()
+			assert.Err(t, err)
+		})
+	}
+}
+
 // chatConfigLoader returns a helper writing body to a fresh SUGA_HOME's
 // config.yaml and loading it.
 func chatConfigLoader(t *testing.T) func(t *testing.T, body string) {

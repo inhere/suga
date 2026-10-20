@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var chatCommands = []string{":session", ":compact", ":add-dir", ":dirs", ":rm-dir", ":diff", ":image", ":checkpoints", ":undo", ":help", ":model", ":usage", ":tasks", ":quit", ":exit"}
+var chatCommands = []string{":session", ":compact", ":add-dir", ":dirs", ":rm-dir", ":diff", ":code", ":image", ":checkpoints", ":undo", ":help", ":model", ":usage", ":tasks", ":quit", ":exit"}
 
 // installCompletion wires the line editor's callback to local chat commands and
 // directory arguments. Completion only acts at the command line and never on a
