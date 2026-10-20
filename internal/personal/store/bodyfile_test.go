@@ -3,11 +3,15 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
+
+	"github.com/inhere/suga/pkg/agentcore/api"
 )
 
 // Body file name and the two migration passes (design 2026-10-20, revisions 3-5):
@@ -139,6 +143,46 @@ func TestBodyFilesCoexist(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, string(first), string(entries[0].JSON), "the digest sends the read to the matching file")
 	})
+}
+
+// TestAssistantBodyOnlyMovedWhenTheStubSaves (revision 8): the move window only
+// approximates the saving (json minus Content), the pass decides on the real stub.
+// A row whose non-Content bytes sit just above the threshold but whose stub would
+// save no more than the threshold stays inline.
+func TestAssistantBodyOnlyMovedWhenTheStubSaves(t *testing.T) {
+	ctx := context.Background()
+	threshold := DefaultToolBodyInlineBytes
+	candidate := api.Message{Role: "assistant", Content: "短的回答"}
+	found := false
+	for n := 900; n < 1600 && !found; n++ {
+		candidate.Reasoning = strings.Repeat("r", n)
+		raw, err := json.Marshal(candidate)
+		assert.Require(t, assert.NoErr(t, err))
+		stub, ok, err := buildToolBodyStub(EntryAssistant, raw)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, ok)
+		found = int64(len(raw)-len(candidate.Content)) > threshold && int64(len(raw)-len(stub)) <= threshold
+	}
+	assert.True(t, found, "no reasoning length separates the estimate from the real saving")
+
+	path := filepath.Join(t.TempDir(), "db", "sessions.db")
+	inline, err := Open(path, WithToolBodyInlineBytes(0))
+	assert.Require(t, assert.NoErr(t, err))
+	createSession(t, inline, "s1", "/w")
+	appended := appendAll(t, inline, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, candidate)})
+	assert.Require(t, assert.NoErr(t, inline.Close()))
+	s, err := Open(path)
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = s.Close() })
+
+	status, err := s.ToolBodyStatus(ctx)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(1), status.AssistantPendingRows, "the SQL window counts it")
+	report, err := s.MoveAssistantBodies(ctx, ToolBodyMaintOptions{})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(0), report.Rows, "the stub saves nothing, so the row stays inline")
+	_, ref := storedRow(t, s, "s1", appended[0].Seq)
+	assert.Eq(t, "", ref)
 }
 
 // TestRemoveToolBodyFilesDropsBothNames: after --undo the session files are no
