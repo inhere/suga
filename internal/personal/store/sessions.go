@@ -80,7 +80,10 @@ func (s *Store) GetSession(ctx context.Context, id string) (Session, error) {
 
 // ListSessions returns all sessions, most recently updated first.
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions ORDER BY updated_at DESC, created_at DESC, id DESC`)
+	// rowid breaks a tie between sessions sharing updated_at (and created_at):
+	// it follows the insert order, while ids are random and would order the
+	// same-instant sessions arbitrarily.
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions ORDER BY updated_at DESC, created_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
