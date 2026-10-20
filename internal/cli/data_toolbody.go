@@ -309,8 +309,8 @@ func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
 	fmt.Fprintf(out, "文件名：%s；旧名文件 %d 个\n", fileNameState, st.LegacyNameFiles)
 	fmt.Fprintf(out, "tool：待移出 %d 条（%s）；已移出 %d 条\n",
 		st.PendingRows, humanBytes(st.PendingBytes), st.MovedRows)
-	fmt.Fprintf(out, "assistant：待移出 %d 条（库内 %s，含推理内容与工具调用参数）；已移出 %d 条\n",
-		st.AssistantPendingRows, humanBytes(st.AssistantPending), st.AssistantMovedRows)
+	fmt.Fprintf(out, "assistant：可移出 %d 条（库内 %s，含推理内容与工具调用参数）；移出不省空间 %d 条（库内 %s，不处理）；已移出 %d 条\n",
+		st.AssistantPendingRows, humanBytes(st.AssistantPending), st.AssistantSkippedRows, humanBytes(st.AssistantSkipped), st.AssistantMovedRows)
 	fmt.Fprintf(out, "会话文件 %d 个（%s）\n", st.Files, humanBytes(st.FileBytes))
 	fmt.Fprintf(out, "--move 状态：tool %s（断点 %s/%d，已移出 %d 条）\n",
 		passState(st.MoveStarted, st.MoveComplete), st.MoveSession, st.MoveSeq, st.MoveRows)

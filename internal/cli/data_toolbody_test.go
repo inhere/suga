@@ -111,7 +111,8 @@ func TestDataBodiesCommandAndRename(t *testing.T) {
 		out, err := runData(t, "bodies", "--status")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.StrContains(t, out, "tool：待移出")
-		assert.StrContains(t, out, "assistant：待移出")
+		assert.StrContains(t, out, "assistant：可移出")
+		assert.StrContains(t, out, "移出不省空间 0 条")
 		assert.StrContains(t, out, "仍是旧名（tools.jsonl）")
 	})
 

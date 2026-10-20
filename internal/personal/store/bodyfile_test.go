@@ -177,7 +177,9 @@ func TestAssistantBodyOnlyMovedWhenTheStubSaves(t *testing.T) {
 
 	status, err := s.ToolBodyStatus(ctx)
 	assert.Require(t, assert.NoErr(t, err))
-	assert.Eq(t, int64(1), status.AssistantPendingRows, "the SQL window counts it")
+	assert.Eq(t, int64(0), status.AssistantPendingRows, "the pass would not move it, so it is not pending")
+	assert.Eq(t, int64(1), status.AssistantSkippedRows, "the SQL window counted it, the stub decides")
+	assert.Eq(t, int64(len(msgJSON(t, candidate))), status.AssistantSkipped, "the skipped figure carries its ledger bytes")
 	report, err := s.MoveAssistantBodies(ctx, ToolBodyMaintOptions{})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, int64(0), report.Rows, "the stub saves nothing, so the row stays inline")

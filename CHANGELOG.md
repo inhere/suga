@@ -18,6 +18,7 @@
 
 ### 修复
 
+- `suga data bodies --status` 的 assistant“待移出”按 SQL 近似计数（`length(json) - length(Content)`），把移出后不省字节、`--move` 永远不会移的条目也算在内（issue suga-t4ou，真实库上虚报 672 条）：改为对近似候选做一次 Go 侧精确判断（只读，用真实桩长度判定），分开展示“可移出 N 条”与“移出不省空间 M 条（不处理）”。
 - `suga config set` 写回 CRLF 换行的配置文件（Windows 常见）时，每个注释行后多出一个空行：解析前先统一为 LF，写回时再按原文件恢复 CRLF。
 
 ## [0.38.0] - 2026-10-20
