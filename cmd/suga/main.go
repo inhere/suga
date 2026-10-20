@@ -44,6 +44,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "load config:", err)
 			os.Exit(1)
 		}
+		// A deprecated key the config file still sets is reported once, on stderr.
+		for _, notice := range appconfig.DeprecatedKeyNotices() {
+			fmt.Fprintln(os.Stderr, notice)
+		}
 	}
 	if !bootstrapExempt(args) && !isInitCommand(args) {
 		wiring.SetupLogging()

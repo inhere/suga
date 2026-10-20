@@ -16,7 +16,8 @@ import (
 // them in batches. --undo is the way back for an older suga, whose providers
 // read only ToolResult.Content.
 
-// newDedupeToolResultsCommand builds `suga data dedupe-tool-results`.
+// newDedupeToolResultsCommand builds the deprecated `suga data dedupe-tool-results`
+// (removed in v0.41.0: it only migrates a v0.35 or older ledger).
 func newDedupeToolResultsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var status, abort, undo bool
 	var batch int
@@ -24,6 +25,9 @@ func newDedupeToolResultsCommand(ctx context.Context, stdout, stderr io.Writer) 
 		if len(c.RemainArgs()) > 0 {
 			return fmt.Errorf("usage: suga data dedupe-tool-results [--status|--abort|--undo] [--batch N]")
 		}
+		// The whole command is the one-time migration of a pre-v0.36 ledger,
+		// --undo and --status included.
+		deprecatedDedupeJob.tell(stderr)
 		return runDedupeToolResults(ctx, stdout, status, abort, undo, batch)
 	})
 	cmd.SetOutput(stderr)

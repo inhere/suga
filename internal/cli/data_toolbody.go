@@ -19,15 +19,19 @@ import (
 // back, so only the storage changed. This command migrates the historical rows
 // and is the way back for an older suga.
 
+// legacyToolBodiesName is the v0.36 name of `data bodies`; it stays an alias
+// until v0.41.0 and says so when used.
+const legacyToolBodiesName = "tool-bodies"
+
 // newToolBodiesCommand builds `suga data bodies` (`tool-bodies` is the v0.36
-// name and an alias of it).
+// name and a deprecated alias of it).
 func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	return newBodiesCommand(ctx, stdout, stderr, "bodies")
 }
 
-// newLegacyToolBodiesCommand builds the `tool-bodies` alias.
+// newLegacyToolBodiesCommand builds the deprecated `tool-bodies` alias.
 func newLegacyToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	return newBodiesCommand(ctx, stdout, stderr, "tool-bodies")
+	return newBodiesCommand(ctx, stdout, stderr, legacyToolBodiesName)
 }
 
 // newBodiesCommand builds one of the two names of the command; both run the same
@@ -54,6 +58,7 @@ func newBodiesCommand(ctx context.Context, stdout, stderr io.Writer, name string
 		if renameFiles && modes > 0 {
 			return fmt.Errorf("--rename-files is a job of its own: it takes the exclusive window and renames every session file")
 		}
+		tellBodiesDeprecations(stderr, name, slim, renameFiles)
 		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, slim: slim, undo: undo, check: check, abort: abort,
 			removeFiles: removeFiles, renameFiles: renameFiles, batch: batch})
 	})
@@ -68,6 +73,22 @@ func newBodiesCommand(ctx context.Context, stdout, stderr io.Writer, name string
 	cmd.BoolVar(&removeFiles, "remove-files", false, "with --undo: delete the session files of sessions that keep no moved body")
 	cmd.IntVar(&batch, "batch", 0, "rows per write transaction (default 100)")
 	return cmd
+}
+
+// tellBodiesDeprecations prints the notice of the deprecated forms of
+// `data bodies`: the v0.36 command name and the two one-time migrations. The
+// other jobs (--status/--move/--undo/--check) stay: --move still moves bodies
+// out after the threshold was lowered, --undo is the way back.
+func tellBodiesDeprecations(stderr io.Writer, name string, slim, renameFiles bool) {
+	if name == legacyToolBodiesName {
+		deprecatedToolBodiesName.tell(stderr)
+	}
+	if slim {
+		deprecatedSlimJob.tell(stderr)
+	}
+	if renameFiles {
+		deprecatedRenameFilesJob.tell(stderr)
+	}
 }
 
 // toolBodiesFlags is what the flags asked for.

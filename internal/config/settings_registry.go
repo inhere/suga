@@ -67,6 +67,10 @@ type ResolvedConfigValue struct {
 	Source     ConfigSource
 	SourceName string
 	Sensitive  bool
+	// DeprecatedKey is the old name the value comes from (for example
+	// store.tool_body_inline_bytes for store.body_inline_bytes): non-empty when the
+	// configuration still sets a deprecated alias, so a caller can label the source.
+	DeprecatedKey string
 }
 
 // Shared values are also consumed by the runtime readers. Keeping the enum
@@ -656,6 +660,7 @@ func ReadConfigValue(key string) (ResolvedConfigValue, error) {
 	return ResolvedConfigValue{
 		Key: key, Type: descriptor.Type, Value: value, Source: source,
 		SourceName: sourceName, Sensitive: descriptor.Sensitive,
+		DeprecatedKey: deprecatedConfigKeyUsed(key),
 	}, nil
 }
 

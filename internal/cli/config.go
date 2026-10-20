@@ -245,14 +245,17 @@ func writeConfigValue(out io.Writer, value appconfig.ResolvedConfigValue) error 
 }
 
 func formatConfigSource(value appconfig.ResolvedConfigValue) string {
+	source := string(value.Source)
 	switch value.Source {
 	case appconfig.SourceConfig:
-		return "config: " + value.SourceName
+		source = "config: " + value.SourceName
 	case appconfig.SourceEnv:
-		return "env:" + value.SourceName
-	default:
-		return string(value.Source)
+		source = "env:" + value.SourceName
 	}
+	if value.DeprecatedKey != "" {
+		source += "（配置里用的是已弃用键 " + value.DeprecatedKey + "，将在 " + appconfig.DeprecatedConfigRemoval + " 移除）"
+	}
+	return source
 }
 
 func formatConfigValue(value any) string {
