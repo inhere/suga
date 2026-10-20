@@ -22,6 +22,9 @@ type sessionsOptions struct {
 	since, until string
 	query, cwd   string
 	asJSON       bool
+	// all lists sessions of every directory; the default scope is the current
+	// working directory (design 2026-10-20, 会话列表默认当前目录).
+	all bool
 	// agents lists sub-agent sessions too (kept out by default: they belong
 	// to the session that started them).
 	agents bool
@@ -34,7 +37,12 @@ func newSessionsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd
 		if words := strings.Join(c.Arg("keywords").Strings(), " "); words != "" {
 			opts.query = strings.TrimSpace(opts.query + " " + words)
 		}
-		return runSessions(ctx, stdout, opts, time.Now())
+		if opts.all && opts.cwd != "" {
+			// Prefix walking (--cwd) reaches into subdirectories; --all has no
+			// directory at all, and the two answer different questions.
+			return fmt.Errorf("--cwd and --all are mutually exclusive")
+		}
+		return runSessions(ctx, stdout, stderr, opts, time.Now())
 	})
 	cmd.Aliases = []string{"ls"}
 	cmd.SetOutput(stderr)
@@ -43,6 +51,7 @@ func newSessionsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd
 	cmd.StringVar(&opts.until, "until", "", "only sessions last active before: 12h, 7d, or a date")
 	cmd.StringVar(&opts.query, "query", "", "keywords (all must match) in the title, id, directory, model or the conversation;;q")
 	cmd.StringVar(&opts.cwd, "cwd", "", "only sessions whose directory starts with this path (. = current directory)")
+	cmd.BoolVar(&opts.all, "all", false, "list sessions of every directory (default: the current directory only)")
 	cmd.BoolVar(&opts.asJSON, "json", false, "write a JSON array")
 	cmd.BoolVar(&opts.agents, "agents", false, "list sub-agent sessions too (each names its parent session)")
 	cmd.AddArg("keywords", "keywords, like --query", false, nil, true)
@@ -66,7 +75,7 @@ type sessionRow struct {
 	Parent string `json:"parent,omitempty"`
 }
 
-func runSessions(ctx context.Context, out io.Writer, opts sessionsOptions, now time.Time) error {
+func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOptions, now time.Time) error {
 	var from, to time.Time
 	var err error
 	if opts.since != "" {
@@ -79,11 +88,21 @@ func runSessions(ctx context.Context, out io.Writer, opts sessionsOptions, now t
 			return fmt.Errorf("--until: %w", err)
 		}
 	}
-	cwd := opts.cwd
+	// Default scope (no --cwd, no --all): the current directory and only it.
+	// Its absolute form is resolved once; SameDir folds the case on Windows.
+	var cwd, here string
+	sameDirScope := opts.cwd == "" && !opts.all
+	cwd = opts.cwd
 	if cwd == "." {
 		if cwd, err = os.Getwd(); err != nil {
 			return err
 		}
+	}
+	if sameDirScope {
+		if here, err = os.Getwd(); err != nil {
+			return err
+		}
+		here = personal.NormalizeDir(here)
 	}
 	repo, err := openCoreStore()
 	if err != nil {
@@ -110,6 +129,17 @@ func runSessions(ctx context.Context, out io.Writer, opts sessionsOptions, now t
 		}
 	}
 	var rows []sessionRow
+	// otherDirs counts the sessions the default scope hides: an empty result
+	// names their number, so a person notices the directory may be wrong.
+	otherDirs := 0
+	if sameDirScope {
+		for _, s := range all {
+			if s.Cwd == "" || store.IsAgentSession(s) || personal.SameDir(s.Cwd, here) {
+				continue
+			}
+			otherDirs++
+		}
+	}
 	for _, s := range all {
 		if !from.IsZero() && s.UpdatedAt.Before(from) || !to.IsZero() && s.UpdatedAt.After(to) {
 			continue
@@ -117,8 +147,17 @@ func runSessions(ctx context.Context, out io.Writer, opts sessionsOptions, now t
 		if store.IsAgentSession(s) && !opts.agents {
 			continue
 		}
-		if cwd != "" && !pathHasPrefix(s.Cwd, cwd) {
-			continue
+		switch {
+		case sameDirScope:
+			// No recorded directory (older sessions) stays out of the default list
+			// as well: --all is the way to see them.
+			if s.Cwd == "" || !personal.SameDir(s.Cwd, here) {
+				continue
+			}
+		case cwd != "":
+			if !pathHasPrefix(s.Cwd, cwd) {
+				continue
+			}
 		}
 		// Older sessions stored the whole first prompt as the title.
 		row := sessionRow{ID: s.ID, Title: personal.SessionTitle(s.Title), Cwd: s.Cwd, Status: s.Status, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
@@ -149,15 +188,37 @@ func runSessions(ctx context.Context, out io.Writer, opts sessionsOptions, now t
 		if rows == nil {
 			rows = []sessionRow{}
 		}
+		writeEmptyHint(errOut, sameDirScope, here, otherDirs, rows)
 		return json.NewEncoder(out).Encode(rows)
 	}
-	return writeSessionRows(out, rows, total)
+	writeEmptyHint(errOut, sameDirScope, here, otherDirs, rows)
+	if len(rows) == 0 {
+		return nil
+	}
+	return writeSessionRows(out, rows, total, here, sameDirScope)
 }
 
-func writeSessionRows(out io.Writer, rows []sessionRow, total int) error {
-	if len(rows) == 0 {
-		_, err := fmt.Fprintln(out, "no sessions")
-		return err
+// emptyScopeHint is the stderr line of an empty result (design 2026-10-20):
+// it is the shared personal.EmptyScopeHint text, so the CLI and the ACP
+// session/list hint agree word for word.
+func emptyScopeHint(dir string, otherDirs int) string {
+	return personal.EmptyScopeHint(dir, otherDirs)
+}
+
+// writeEmptyHint prints the empty-scope hint on stderr — also for --json, so
+// stdout stays machine data. Only the plain default view hints: an empty
+// filtered (--cwd, --since, --query) result reports the filters, not the scope.
+func writeEmptyHint(errOut io.Writer, sameDirScope bool, here string, otherDirs int, rows []sessionRow) {
+	if sameDirScope && len(rows) == 0 {
+		fmt.Fprintln(errOut, emptyScopeHint(here, otherDirs))
+	}
+}
+
+// writeSessionRows renders the table; the header names the scope, so a list
+// read from another directory never looks like the whole catalog.
+func writeSessionRows(out io.Writer, rows []sessionRow, total int, here string, sameDirScope bool) error {
+	if sameDirScope {
+		fmt.Fprintf(out, "当前目录 %s 的会话（--all 列出全部）\n", here)
 	}
 	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "UPDATED\tID\tMODEL\tSUGA\tTITLE\tDIRECTORY")

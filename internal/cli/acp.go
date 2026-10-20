@@ -77,8 +77,31 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 			}
 			return tool
 		}
-		return acpserver.Runtime{Runner: runtime.Runner, Close: runtime.Close, LookupTool: lookup,
-			Policy: runtime.ACPPolicy, ContextWindow: runtime.ContextWindow, Vision: runtime.VisionGate()}, nil
+		models := make([]acpserver.ModelOption, 0, len(runtime.ModelOptions()))
+		for _, m := range runtime.ModelOptions() {
+			models = append(models, acpserver.ModelOption{Ref: m.Ref(), Name: m.Model, Thinking: m.Thinking})
+		}
+		// The model select and its switch ride on the runtime: CurrentModel reads
+		// the runner's live main model, SwitchModel goes through conversation's
+		// :model path (wiring.Runtime.SwitchModel) so persistence and trace agree.
+		rt := acpserver.Runtime{Runner: runtime.Runner, Close: runtime.Close, LookupTool: lookup,
+			Policy: runtime.ACPPolicy, ContextWindow: runtime.ContextWindow, Vision: runtime.VisionGate(),
+			Models: models,
+			CurrentModel: func() string {
+				provider, model, _, _ := runtime.Runner.ModelSettings()
+				if provider == "" || model == "" {
+					return ""
+				}
+				return provider + "/" + model
+			},
+			SwitchModel: func(ctx context.Context, sessionID, ref string) (string, error) {
+				option, err := runtime.SwitchModel(ctx, sessionID, ref)
+				if err != nil {
+					return "", err
+				}
+				return option.Ref(), nil
+			}}
+		return rt, nil
 	}, promptImage)
 }
 

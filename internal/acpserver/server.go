@@ -41,6 +41,16 @@ type Runtime struct {
 	// convention of personal.Config): an ACP prompt that brought image blocks
 	// tells the client once that they turn into text notes on this model.
 	Vision *tools.VisionGate
+	// Models are the selectable main models of this runtime's configuration
+	// (session/set_config_option's model select, design 2026-10-20); empty in
+	// runtimes built without a catalog (tests).
+	Models []ModelOption
+	// CurrentModel returns the provider/model ref a turn of this runtime uses
+	// ("" unknown).
+	CurrentModel func() string
+	// SwitchModel activates ref as sessionID's main model for the next turn
+	// (wiring.Runtime.SwitchModel); nil makes the select's application refused.
+	SwitchModel func(ctx context.Context, sessionID, ref string) (string, error)
 }
 
 func (r Runtime) close() error {
@@ -141,6 +151,14 @@ func (a *Agent) Initialize(_ context.Context, req acp.InitializeRequest) (acp.In
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		AgentCapabilities: acp.AgentCapabilities{
 			LoadSession: true,
+			// session/list, session/resume and session/close are the persistent
+			// session services clients can walk, resume without replay and close
+			// with (design 2026-10-20, ACP coverage).
+			SessionCapabilities: acp.SessionCapabilities{
+				List:   &acp.SessionListCapabilities{},
+				Resume: &acp.SessionResumeCapabilities{},
+				Close:  &acp.SessionCloseCapabilities{},
+			},
 			// Streamable HTTP MCP servers are accepted in session setup; stdio
 			// stays the transport every client can use.
 			McpCapabilities: acp.McpCapabilities{Http: true},
@@ -170,7 +188,13 @@ func (a *Agent) NewSession(ctx context.Context, req acp.NewSessionRequest) (acp.
 	a.mu.Lock()
 	a.sessions[id] = &sessionState{cwd: cwd, servers: servers, mode: "default", always: newSessionPolicy()}
 	a.mu.Unlock()
-	return acp.NewSessionResponse{SessionId: id, Modes: sessionModes("default")}, nil
+	// The option list is built before the runtime closes: it carries the
+	// configured model catalog (session/set_config_option, design 2026-10-20).
+	configOptions := sessionConfigOptions(&runtime, currentModelOf(&runtime), "default")
+	if err := errors.Join(runErr, runtime.close()); err != nil {
+		return acp.NewSessionResponse{}, err
+	}
+	return acp.NewSessionResponse{SessionId: id, Modes: sessionModes("default"), ConfigOptions: configOptions}, nil
 }
 
 func (a *Agent) LoadSession(ctx context.Context, req acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
@@ -183,12 +207,8 @@ func (a *Agent) LoadSession(ctx context.Context, req acp.LoadSessionRequest) (ac
 		return acp.LoadSessionResponse{}, err
 	}
 	model, loadErr := runtime.Runner.LoadSession(ctx, string(req.SessionId))
-	closeErr := runtime.close()
 	if loadErr != nil {
-		return acp.LoadSessionResponse{}, acp.NewInvalidParams(map[string]any{"sessionId": req.SessionId})
-	}
-	if closeErr != nil {
-		return acp.LoadSessionResponse{}, closeErr
+		return acp.LoadSessionResponse{}, refuseWith(acp.NewInvalidParams(map[string]any{"sessionId": req.SessionId}), runtime.close())
 	}
 	// The session was created in the directory the client passed to session/new,
 	// and its tools are confined to that one. Loading it from another directory
@@ -197,21 +217,34 @@ func (a *Agent) LoadSession(ctx context.Context, req acp.LoadSessionRequest) (ac
 	// start a new session with session/new). A session created before cwd was
 	// recorded has none and is accepted; the runner fills it in on the next turn.
 	if recorded := strings.TrimSpace(model.Cwd); recorded != "" && !personal.SameDir(recorded, cwd) {
-		return acp.LoadSessionResponse{}, cwdMismatchError(req.SessionId, recorded, cwd)
+		return acp.LoadSessionResponse{}, refuseWith(cwdMismatchError(req.SessionId, recorded, cwd), runtime.close())
+	}
+	if err := a.checkNotBusy(req.SessionId); err != nil {
+		return acp.LoadSessionResponse{}, refuseWith(err, runtime.close())
+	}
+	// The current segment is replayed as notifications while the runtime (its
+	// store) is still open; the boundaries are loadHistory's (personal.SegmentHistory),
+	// so the client sees the view the next turn's model starts from (design
+	// 2026-10-20, session/load replay).
+	hist, histErr := runtime.Runner.SegmentHistory(ctx, string(req.SessionId))
+	// The option list is built before the runtime closes: it carries the
+	// configured model catalog (session/set_config_option, design 2026-10-20).
+	configOptions := sessionConfigOptions(&runtime, currentModelOf(&runtime), "default")
+	if err := errors.Join(histErr, runtime.close()); err != nil {
+		return acp.LoadSessionResponse{}, err
+	}
+	if err := a.replayHistory(ctx, req.SessionId, hist); err != nil {
+		return acp.LoadSessionResponse{}, err
 	}
 	a.mu.Lock()
 	current := a.sessions[req.SessionId]
-	if current != nil && current.cancel != nil {
-		a.mu.Unlock()
-		return acp.LoadSessionResponse{}, acp.NewInvalidParams(map[string]any{"sessionId": req.SessionId, "reason": "prompt active"})
-	}
 	always := newSessionPolicy()
 	if current != nil && current.always != nil {
 		always = current.always
 	}
 	a.sessions[req.SessionId] = &sessionState{cwd: cwd, servers: servers, mode: "default", always: always}
 	a.mu.Unlock()
-	return acp.LoadSessionResponse{Modes: sessionModes("default")}, nil
+	return acp.LoadSessionResponse{Modes: sessionModes("default"), ConfigOptions: configOptions}, nil
 }
 
 func (a *Agent) SetSessionMode(_ context.Context, req acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
@@ -556,16 +589,4 @@ func (*Agent) Authenticate(context.Context, acp.AuthenticateRequest) (acp.Authen
 }
 func (*Agent) Logout(context.Context, acp.LogoutRequest) (acp.LogoutResponse, error) {
 	return acp.LogoutResponse{}, acp.NewMethodNotFound(acp.AgentMethodLogout)
-}
-func (*Agent) CloseSession(context.Context, acp.CloseSessionRequest) (acp.CloseSessionResponse, error) {
-	return acp.CloseSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionClose)
-}
-func (*Agent) ListSessions(context.Context, acp.ListSessionsRequest) (acp.ListSessionsResponse, error) {
-	return acp.ListSessionsResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionList)
-}
-func (*Agent) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
-	return acp.ResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
-}
-func (*Agent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
-	return acp.SetSessionConfigOptionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionSetConfigOption)
 }

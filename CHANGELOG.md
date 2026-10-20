@@ -18,6 +18,8 @@
 ### 新增
 - 进程日志轮转与配置项：日志写到 `$SUGA_HOME/logs/suga-<YYYYMMDD>.log`（文件名带日期，多进程同一天自然追加同一文件；按大小切分，保留份数与压缩由 `github.com/gookit/rotatefile` 负责）。新增 `log.level`（`debug`|`info`|`warn`|`error`，默认 `info`）、`log.file`（路径或 `off`，默认 `$SUGA_HOME/logs/suga.log`）、`log.stderr`（`auto` 仅 debug 时写 / `always` / `never`）、`log.max_size`（默认 10MB）、`log.keep`（保留份数，默认 5）、`log.compress`（默认 false）；坏值启动报错并指出键名，`SUGA_DEBUG` 非空仍强制 debug 并写 stderr。
 - 回合内的日志行带 `session_id`、`turn_id` 属性（工具事件与预算提示），便于与 `suga trace` 对齐。
+- ACP 覆盖补齐（设计 2026-10-20）：initialize 声明 `sessionCapabilities{list,resume,close}`；`session/list` 按目录过滤（请求 cwd 优先，否则进程工作目录，`_meta.suga/all` 列全部，响应带 `suga/otherDirs` 与空结果 `suga/hint`），每页 50 条带 cursor，排除 archived 与子 agent；`session/load` 按协议回放当前分段（压缩摘要一条思考，用户/助手消息、工具调用与结果最多 2KB 文本，超过 2MB 只回放最近部分并说明）；`session/resume` 同 load 检查但不回放；`session/close` 取消进行中的回合并释放状态，之后 prompt 被拒；`session/set_config_option` 提供 model 与 mode 两个 select，切模型走 `SwitchModel`（回合中拒绝），new/load/resume 响应带同样选项。
+- `suga sessions` 默认只列当前目录的会话：新增 `-a/--all` 列出全部目录；`--cwd <路径>` 前缀过滤保留并与 `--all` 互斥；默认视图结果为空时在 stderr 提示目录可能不对（其它目录共有 N 个）或用 `--all`，`--json` 时 stdout 仍输出 `[]`；表格标题行注明范围。
 
 ### 修复
 

@@ -56,7 +56,7 @@ func (c *testACPClient) SessionUpdate(_ context.Context, update acp.SessionNotif
 	return nil
 }
 
-func connectPersonalACP(t *testing.T, open OpenRuntime, client *testACPClient) *acp.ClientSideConnection {
+func connectPersonalACP(t *testing.T, open OpenRuntime, client acp.Client) *acp.ClientSideConnection {
 	t.Helper()
 	clientToAgentR, clientToAgentW := io.Pipe()
 	agentToClientR, agentToClientW := io.Pipe()

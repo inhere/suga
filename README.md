@@ -141,7 +141,7 @@ Details: [references/observability.md](skills/suga-guide/references/observabilit
 ```text
 suga inspect trace <session> [--turn <id>] [--json]            # timeline: model calls, tools, denials, plans
 suga inspect trace <session> --analyze | --web                 # loop analysis / local web page
-suga sessions [keywords] [--since 7d] [--agents]               # session list
+suga sessions [keywords] [--since 7d] [--agents] [--all | --cwd <path>]  # session list; default: the current directory only (empty result -> stderr hint naming --all)
 suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
 suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP

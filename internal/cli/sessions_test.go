@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,13 +16,18 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// seedSessions creates 12 sessions, one per hour back from now (s00 newest),
-// the even ones under /work/a, s03 titled "schedule fix", s05 with "flaky
-// ping test" in its conversation.
+// helper_placeholder
+
+// seedSessions creates 12 sessions, one per hour back from now (s00 newest):
+// the even ones in the current directory (the default list scope), the odd
+// ones under /work/b, s03 titled "schedule fix", s05 with "flaky ping test"
+// in its conversation.
 func seedSessions(t *testing.T) context.Context {
 	t.Helper()
 	t.Setenv("SUGA_HOME", shortCLIHome(t))
 	t.Setenv("SUGA_HOOKS", "off")
+	homeCwd, err := os.Getwd()
+	assert.Require(t, assert.NoErr(t, err))
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	assert.NoErr(t, err)
 	repo, err := store.Open(dbPath)
@@ -31,7 +38,7 @@ func seedSessions(t *testing.T) context.Context {
 	for i := 0; i < 12; i++ {
 		cwd := "/work/b"
 		if i%2 == 0 {
-			cwd = "/work/a/sub"
+			cwd = homeCwd
 		}
 		title := fmt.Sprintf("task %d", i)
 		if i == 3 {
@@ -59,7 +66,7 @@ func seedSessions(t *testing.T) context.Context {
 
 func listed(t *testing.T, ctx context.Context, args ...string) []string {
 	t.Helper()
-	out, err := runCLI(t, ctx, append([]string{"sessions", "--json"}, args...)...)
+	out, _, err := runCLIAll(t, ctx, append([]string{"sessions", "--json"}, args...)...)
 	assert.Require(t, assert.NoErr(t, err))
 	var rows []sessionRow
 	assert.Require(t, assert.NoErr(t, json.Unmarshal([]byte(out), &rows)))
@@ -70,25 +77,39 @@ func listed(t *testing.T, ctx context.Context, args ...string) []string {
 	return ids
 }
 
+// runCLIAll runs the CLI and returns stdout and stderr separately.
+func runCLIAll(t *testing.T, ctx context.Context, args ...string) (string, string, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs(args)
+	return stdout.String(), stderr.String(), err
+}
+
 func TestSessionsCommand(t *testing.T) {
 	ctx := seedSessions(t)
+	// The current-dir seeds are the even ones; --all sees all 12.
 	t.Run("the last 10, newest first", func(t *testing.T) {
 		ids := listed(t, ctx)
-		assert.Eq(t, 10, len(ids))
+		assert.Eq(t, 6, len(ids))
 		assert.Eq(t, "s00", ids[0])
-		assert.Eq(t, 12, len(listed(t, ctx, "-n", "0")))
-		assert.Eq(t, []string{"s00", "s01", "s02"}, listed(t, ctx, "--limit", "3"))
+		// --all is still capped by the default limit of 10; -n 0 shows everything.
+		assert.Eq(t, 10, len(listed(t, ctx, "--all")))
+		assert.Eq(t, 12, len(listed(t, ctx, "--all", "-n", "0")))
+		assert.Eq(t, []string{"s00", "s02", "s04"}, listed(t, ctx, "--limit", "3"))
 	})
 	t.Run("time range", func(t *testing.T) {
-		assert.Eq(t, 3, len(listed(t, ctx, "--since", "3h")))  // 0h, 1h, 2h ago
-		assert.Eq(t, 2, len(listed(t, ctx, "--until", "10h"))) // 10h, 11h ago
+		assert.Eq(t, 2, len(listed(t, ctx, "--since", "3h")))
+		assert.Eq(t, 3, len(listed(t, ctx, "--since", "3h", "--all")))
+		assert.Eq(t, 1, len(listed(t, ctx, "--until", "10h")))
 		_, err := runCLI(t, ctx, "sessions", "--since", "soon")
 		assert.ErrMsgContains(t, err, "want 12h, 7d or a date")
 	})
 	t.Run("keywords in the fields or the conversation", func(t *testing.T) {
-		assert.Eq(t, []string{"s03"}, listed(t, ctx, "-q", "schedule"))
-		assert.Eq(t, []string{"s03"}, listed(t, ctx, "SCHEDULE", "fix")) // words after the flags, any case
-		out, err := runCLI(t, ctx, "sessions", "--json", "-q", "flaky ping")
+		// s03 lives in /work/b: --all reaches it, the default scope does not.
+		assert.Eq(t, []string{"s03"}, listed(t, ctx, "-q", "schedule", "--all"))
+		assert.Eq(t, []string{}, listed(t, ctx, "-q", "schedule"))
+		assert.Eq(t, []string{"s03"}, listed(t, ctx, "SCHEDULE", "fix", "--all")) // words after the flags, any case
+		out, _, err := runCLIAll(t, ctx, "sessions", "--json", "-q", "flaky ping", "--all")
 		assert.Require(t, assert.NoErr(t, err))
 		var rows []sessionRow
 		assert.NoErr(t, json.Unmarshal([]byte(out), &rows))
@@ -97,21 +118,25 @@ func TestSessionsCommand(t *testing.T) {
 		assert.StrContains(t, rows[0].Match, "flaky ping test")
 		// A mixed Chinese/English query reaches the new term-splitting store path.
 		assert.Eq(t, []string{"s06"}, listed(t, ctx, "-q", "中文 token"))
-		assert.Eq(t, []string{}, listed(t, ctx, "-q", "nothing-like-this"))
+		assert.Eq(t, []string{}, listed(t, ctx, "-q", "nothing-like-this", "--all"))
 	})
 	t.Run("directory prefix", func(t *testing.T) {
-		ids := listed(t, ctx, "--cwd", "/WORK/A", "-n", "0") // case-insensitive, whole path elements
+		ids := listed(t, ctx, "--cwd", "/work/b", "-n", "0") // whole path elements
 		assert.Eq(t, 6, len(ids))
-		assert.Eq(t, 0, len(listed(t, ctx, "--cwd", "/work/a/su")))
+		assert.Eq(t, 0, len(listed(t, ctx, "--cwd", "/work/b/nothing")))
 		assert.True(t, pathHasPrefix(`D:\Work\x\ws`, "d:/work/x"))
 		assert.Eq(t, "…/x/ws", shortDir(`D:\work\x\ws`))
+	})
+	t.Run("--cwd and --all are mutually exclusive", func(t *testing.T) {
+		_, _, err := runCLIAll(t, ctx, "sessions", "--all", "--cwd", "/work/b")
+		assert.ErrMsgContains(t, err, "mutually exclusive")
 	})
 	t.Run("time and cwd filters remain session filters", func(t *testing.T) {
 		// s05's matching entry is recent, but the session was last active five
 		// hours ago. CLI boundaries must use sessions.updated_at, not entries.created_at.
-		assert.Eq(t, []string{"s05"}, listed(t, ctx, "--query", "flaky", "--since", "6h"))
-		assert.Eq(t, []string{"s05"}, listed(t, ctx, "--query", "flaky", "--until", "4h"))
-		assert.Eq(t, []string{}, listed(t, ctx, "--query", "flaky", "--since", "3h"))
+		assert.Eq(t, []string{"s05"}, listed(t, ctx, "--query", "flaky", "--since", "6h", "--all"))
+		assert.Eq(t, []string{"s05"}, listed(t, ctx, "--query", "flaky", "--until", "4h", "--all"))
+		assert.Eq(t, []string{}, listed(t, ctx, "--query", "flaky", "--since", "3h", "--all"))
 
 		// The match is in /work/b; applying --cwd must filter the session after
 		// the conversation search rather than changing the entry search scope.
@@ -119,17 +144,75 @@ func TestSessionsCommand(t *testing.T) {
 		assert.Eq(t, []string{}, listed(t, ctx, "--query", "flaky", "--cwd", "/work/a"))
 	})
 	t.Run("table", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "sessions", "-n", "2")
+		out, _, err := runCLIAll(t, ctx, "sessions", "-n", "2")
 		assert.Require(t, assert.NoErr(t, err))
+		// The header names the scope, so a list read from another directory
+		// never looks like the whole catalog.
+		assert.StrContains(t, out, "当前目录")
+		assert.StrContains(t, out, "（--all 列出全部）")
 		assert.StrContains(t, out, "UPDATED")
 		assert.StrContains(t, out, "cc/flash")
 		assert.StrContains(t, out, "0.14.1")
-		assert.StrContains(t, out, "2 of 12 sessions; -n 0 shows all")
-		out, err = runCLI(t, ctx, "sessions", "flaky")
+		assert.StrContains(t, out, "2 of 6 sessions; -n 0 shows all")
+		out, _, err = runCLIAll(t, ctx, "sessions", "flaky", "--all")
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "↳")
 		assert.True(t, strings.Contains(out, "s05"))
 	})
+	t.Run("empty default view hints on stderr", func(t *testing.T) {
+		// From a directory nothing is recorded for, the default view is empty:
+		// the hint (stderr only) says the directory may be wrong and names --all.
+		t.Chdir("/")
+		out, errOut, err := runCLIAll(t, ctx, "sessions")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, errOut, "当前目录")
+		assert.StrContains(t, errOut, "--all")
+		assert.Eq(t, "", out)
+		// --json keeps stdout machine data ([]) while the hint rides on stderr.
+		out, _, err = runCLIAll(t, ctx, "sessions", "--json")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "[]\n", out)
+		assert.StrContains(t, errOut, "--all")
+	})
+	t.Run("sessions in other directories, hint names their count", func(t *testing.T) {
+		// From a directory nothing is recorded for, the default view is empty
+		// and the hint counts every session somewhere else (all 12 seeds).
+		t.Chdir("/")
+		out, errOut, err := runCLIAll(t, ctx, "sessions")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "", out)
+		assert.StrContains(t, errOut, "其它目录共有 12 个")
+	})
+	t.Run("nothing anywhere, the hint has no count", func(t *testing.T) {
+		// A fresh store holding one session of this directory only: narrowing
+		// time to before it empties the result of every directory (N = 0).
+		ctx2 := seedOnlyHomeSessions(t, 1)
+		out, errOut, err := runCLIAll(t, ctx2, "sessions", "--json", "--until", "12h")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "[]\n", out) // --json form
+		assert.StrContains(t, errOut, "还没有任何会话")
+	})
+}
+
+// seedOnlyHomeSessions seeds n sessions of the current directory into a fresh
+// store and returns the run context; used for hint tests.
+func seedOnlyHomeSessions(t *testing.T, n int) context.Context {
+	t.Helper()
+	t.Setenv("SUGA_HOME", shortCLIHome(t))
+	t.Setenv("SUGA_HOOKS", "off")
+	homeCwd, err := os.Getwd()
+	assert.Require(t, assert.NoErr(t, err))
+	dbPath, err := appconfig.ResolveCoreStorePath()
+	assert.Require(t, assert.NoErr(t, err))
+	repo, err := store.Open(dbPath)
+	assert.Require(t, assert.NoErr(t, err))
+	defer repo.Close()
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		assert.NoErr(t, repo.CreateSession(ctx, store.Session{ID: fmt.Sprintf("h%02d", i),
+			Title: fmt.Sprintf("home task %d", i), Cwd: homeCwd}))
+	}
+	return ctx
 }
 
 func TestSessionsCommandAgentSessions(t *testing.T) {
@@ -145,9 +228,12 @@ func TestSessionsCommandAgentSessions(t *testing.T) {
 		Meta: map[string]any{store.MetaKind: store.KindAgent, store.MetaParentSession: "parent"}}))
 	assert.NoErr(t, repo.Close())
 
-	assert.Eq(t, []string{"parent"}, listed(t, ctx))
-	assert.Eq(t, 2, len(listed(t, ctx, "--agents")))
-	out, err := runCLI(t, ctx, "sessions", "--agents")
+	// The agent sessions have no recorded cwd: the default scope keeps them
+	// out; --all lists the parent, --agents the sub-agent too.
+	assert.Eq(t, []string{}, listed(t, ctx))
+	assert.Eq(t, []string{"parent"}, listed(t, ctx, "--all"))
+	assert.Eq(t, 2, len(listed(t, ctx, "--agents", "--all")))
+	out, _, err := runCLIAll(t, ctx, "sessions", "--agents", "--all")
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, out, "[agent of parent] find callers")
 }
