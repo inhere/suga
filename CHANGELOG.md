@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.37.0] - 2026-10-20
+
+会话库继续瘦身与图片输入：assistant 的推理内容、Metadata 与大工具调用参数移到会话文件（`suga data bodies`，正文文件改名 `bodies.jsonl`），tool 桩瘦身，新增只读的 `suga data usage`；图片输入第一期（`view_image`、vision 三态、chat `:image` 与 Alt+V）；`run.deadline_env` 让模型按真实截止时间安排工作。升级：`suga data bodies --move` → `suga data bodies --rename-files` → `suga data vacuum`（后两步要求没有其它 suga 进程）；回退版本前先 `suga data bodies --undo`。
+
 ### 新增
 
 - assistant 条目里的推理内容、`Metadata` 与大工具调用参数移到会话文件，库里留只含 `Role`、完整 `Content`（全文检索用）与 `ToolCall{CallID, Name}` 的桩；移出条件按桩能省下的字节（`len(json)-len(stub)` 超过 `store.tool_body_inline_bytes`，Content 很大而桩并不更小的条目不移动），全文索引行仍按移出前的整条 JSON 写入，默认读取逐字节还原。`EntryFilter.NoHydrate` 与新的 `Store.HydrateEntries` 让上下文组装只取回真正发送的条目：`loadHistory` 先不取回列出条目、按原有采用规则得到视图后再取回视图里的条目（仍读到桩则报错、不发送），`LastReply` 与压缩时的 `turnItems` 完全不读会话文件，长会话每轮的文件读取只与当前分段有关。
@@ -880,7 +884,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.36.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/inhere/suga/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/inhere/suga/compare/v0.35.1...v0.36.0
 [0.35.1]: https://github.com/inhere/suga/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/inhere/suga/compare/v0.34.0...v0.35.0
