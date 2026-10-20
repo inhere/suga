@@ -68,12 +68,14 @@ const toolBodyUndoWindowSQL = `SELECT session_id, seq, body_ref FROM entries
       AND (session_id > ? OR (session_id = ? AND seq > ?))
     ORDER BY session_id ASC, seq ASC LIMIT ?`
 
-// toolBodySlimWindowSQL reads one batch of stubs with their stored JSON, after
-// the cursor. Which of them is still in the old shape is decided in Go (the
+// toolBodySlimWindowSQL reads one batch of tool stubs with their stored JSON,
+// after the cursor. Which of them is still in the old shape is decided in Go (the
 // shape is not a SQL predicate), so the pass pages over every stub and rewrites
-// only the ones slimToolBodyStub changes.
+// only the ones slimToolBodyStub changes. It reads tool stubs only: assistant
+// entries move out to stubs too (design 2026-10-20), and their stub keeps the
+// full Content for the full-text search, which a preview would clip.
 const toolBodySlimWindowSQL = `SELECT session_id, seq, json, body_ref FROM entries
-    WHERE COALESCE(body_ref, '') <> ''
+    WHERE type = 'tool' AND COALESCE(body_ref, '') <> ''
       AND (session_id > ? OR (session_id = ? AND seq > ?))
     ORDER BY session_id ASC, seq ASC LIMIT ?`
 
