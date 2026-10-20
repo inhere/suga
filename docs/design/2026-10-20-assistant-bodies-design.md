@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # assistant 大字段移到会话文件设计（推理内容与工具调用参数）
 
-> 状态：Draft 0.2 / 已批准，待独立审核
+> 状态：Draft 0.3 / 已批准，按独立审核修订后可实施（“0.3 修订”优先于后文）
 > 日期：2026-10-20
 > 关联：`docs/design/2026-10-19-tool-output-files-design.md`（tool 正文移到会话文件，v0.36.0 已发布）、`docs/design/2026-10-19-data-governance-design.md`、issue `suga-zy9f`
 
@@ -11,8 +11,25 @@
 |---|---|---|---|
 | 0.1 | 2026-10-20 | 监督（Claude） | 用户 2026-10-20：“先做 1 和 2，3 和 4 你出设计”。3 = 旧会话的推理内容（Reasoning 35MB + Responses 加密推理 Metadata 43MB），4 = 大的工具调用参数（30MB，file_write/file_edit 全文为主）。两者都在 assistant 条目里，用同一套机制处理：把 assistant 条目的大字段随整条 JSON 移到会话文件，库里留含完整正文 Content 的小桩；同时让上下文组装只取回当前分段的正文。 |
 | 0.2 | 2026-10-20 | 监督（Claude） | 用户批准：会话文件改名 `bodies.jsonl`（Q3），其余按推荐（Q1、Q2 改名并保留旧名别名、Q4、Q5、Q6）。新增“会话文件改名”一节。 |
+| 0.3 | 2026-10-20 | 监督（Claude） | 按独立审核（9 条：阻断 3、重要 4、建议 2）修订，见“0.3 修订”；它优先于后文。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
+
+## 0.3 修订（独立审核结论，优先于后文）
+
+基准：main a430e8a3。
+
+1. **`--slim` 只处理 tool 桩（阻断，已合入未发版的代码，先修）**：`toolbody_maint.go:75` 的 slim 窗口与 `countSlimToolBodyRows`（`:466`）加 `type='tool'`，`slimToolBodyStub` 只处理 tool；反向用例“assistant 桩经 `--slim` 字节不变”。与 suga-rykn（slim 断点停在末尾）一起作为前置修复先合入。
+2. **firstKept 必须与 `loadHistory` 的采用规则一致（阻断）**：`context.go:154-187` 只采用已完成回合（或无回合的手动 `:compact`）写的压缩记录，`segmentReasonStart` 记录不更新 firstKept。“读最新压缩记录”会偏大，把要发送的条目当桩发给模型。采用方案 b：`loadHistory` 先以“不取回”列出条目，按现有规则得到 `view.items` 后，再调新的 `store.HydrateEntries(ctx, sid, items)` 只取回真正发送的条目；`loadHistory` 末尾断言 `view.items` 里没有桩（有则报错，不发送）。测试：失败回合的压缩记录、start 记录、中途压缩、中断回合回放（`replay.go:115-175` 只用 CallID）之后，下一轮请求逐字节相同。
+3. **assistant 的历史移出用独立断点（阻断）**：`markToolBodyStarted`（`toolbody_maint.go:852-862`）完成后断点停在末尾，扩展窗口扫不到更早的 assistant 行。assistant 用独立 job 键 `move_assistant`；同时约定所有维护断点“完成后再次执行从头开始”（与修订 1 的 suga-rykn 同一规则）。用例：在已完成 tool move 的库上再跑能移出 assistant。
+4. **新文件名由开关控制，不按会话新旧决定（重要）**：新会话直接写 `bodies.jsonl` 会让仍在运行的 v0.36 进程读不到正文（`toolbody.go:194,323-326` 只认旧名，`ErrToolBodyMissing`）并另建 `tools.jsonl`。改为 store_meta 开关 `body_file_name`：`--rename-files` 在独占窗口内改完所有会话后才置位；置位前所有写入仍用 `tools.jsonl`，置位后一律 `bodies.jsonl`。读取始终两个名字都试（sha256 校验）。替代上文“写入”一条。
+5. **两个文件并存的行为（重要）**：读取时记下命中的文件；`--check` 的孤儿统计按 (文件, off, len) 分别算（`:571`）；`toolBodyFiles`、`RemoveToolBodyFiles`（`:675,757`）两个名字都处理；`--rename-files` 遇到两个都在时跳过并报告、不覆盖；每个会话的改名在写锁事务内做（与 `RemoveToolBodyFiles` 相同）。恢复旧备份（`backup.go:470-500` 合并 `sessions/`）后两个文件并存，`--check` 应报 0 孤儿（测试）。
+6. **`data usage` 口径（重要）**：`usage.go:243-246,321,342-345` 的 Reasoning/Metadata/Arguments 移出后只反映库内部分：表头写明“库内”，另加“已移出到文件”的条数与字节（按 `body_ref` 与类型统计）；`usage.go:644`、`data_usage.go:112` 两个文件名都计入，标签不写死。
+7. **只需要 Content 或元数据的读取不取回（重要）**：`EntryFilter` 的取回控制为三态：全部（默认）、不取回、（方案 b 下由 `HydrateEntries` 承担按需取回）。`lastreply.go:28`（只用 Content，桩里完整）与 `compact.go:170` 的 `turnItems`（只看 Metadata 识别注入条目，注入条目是 user 类型不会移出）用“不取回”。测试断言这两处不读文件。
+8. **移出条件按节省字节（建议，采用）**：assistant 条目移出条件改为 `len(json) - len(stub) > 阈值`（Content 大而无推理的条目不移）；move 窗口与 pending SQL（`:61,714`）对 assistant 用近似 `length(json) - length(json_extract(json,'$.Content')) > 阈值`，Go 侧再按精确值判断。
+9. **证据位置更正（建议）**：`ListEntryRefs` 在 `entries.go:211`；视图逻辑在 `context.go:111-205`。
+
+审核确认无问题：FTS 只索引 assistant 的 Content（`fts.go:54-70`）；`fts.go:246` 与 `ListEntryRefs` 只用 `ToolCall.Name/CallID`；压缩摘要与交接走 `loadHistory` 的 items（修订 2 修好后即为完整正文）；`LatestEntry` 只用于 plan；export、traceweb 默认全量取回。
 
 ## 思考模式与范围冻结
 
@@ -142,4 +159,4 @@
 
 ## 结论与人工计划 Gate
 
-用 v0.36 已有的整条移出机制处理 assistant 条目的推理内容与大工具调用参数，桩保留完整 Content 以保证检索不变，并让上下文组装只取回当前分段。用户已于 2026-10-20 批准 Q1–Q6（Q3 改为改名 `bodies.jsonl`）；先做独立审核，再派出实施。
+用 v0.36 已有的整条移出机制处理 assistant 条目的推理内容与大工具调用参数，桩保留完整 Content 以保证检索不变，并让上下文组装只取回当前分段。用户已于 2026-10-20 批准 Q1–Q6（Q3 改为改名 `bodies.jsonl`）；独立审核已完成并写入“0.3 修订”，按它实施；修订 1 与 suga-rykn 作为前置修复先合入。
