@@ -112,6 +112,6 @@
 
 ## 代码块与表格
 
-- 代码块按围栏语言着色（`chat.code_highlight`，默认开；`chat.code_theme` 选 chroma 主题，默认 `suga`，一套深浅背景都可看的 solarized 调色）。流式下逐行着色，跨行的字符串/注释可能着色不准；未知语言、非终端或 `NO_COLOR` 不着色。
+- 代码块按围栏语言着色（`chat.code_highlight`，默认开）：注译、字符串、数字、关键字四类用 16 色 ANSI，其余保持终端本色；支持 go/python/javascript・typescript/shell/json/yaml/sql/rust/java/c・cpp 及其常见别名。流式下逐行着色，块注译跨行延续，行内字符串与行注译不跨行；未知语言、非终端或 `NO_COLOR` 不着色。
 - 一个代码块超过 `chat.code_max_lines`（默认 40，`0` 不折叠）行后不再输出，结束时提示 `… 还有 N 行（:code 查看全部）`；`:code` 展开最近一个被折叠的块，`:code N` 展开上一条回答的第 N 个块。
 - GFM 表格（表头行 + `|---|` 分隔行）按显示宽度对齐（中文算 2 列），表头加粗、分隔线用 `─`；比终端宽的表格原样输出，不截断。

@@ -6,7 +6,7 @@
 
 ### 新增
 
-- chat 的 markdown 渲染增强（issue suga-6mmf，只影响交互式 chat，`run`/stream-json/ACP/转录保持原文）：代码块按围栏语言用 chroma（terminal256）逐行高亮，未知语言、非终端或 `NO_COLOR` 不着色；新增 `chat.code_highlight`（默认开）、`chat.code_theme`（默认内建 `suga` 主题，一套 solarized 调色，深浅背景都可看）。
+- chat 的 markdown 渲染增强（issue suga-6mmf，只影响交互式 chat，`run`/stream-json/ACP/转录保持原文）：代码块按围栏语言逐行着色（自写的轻量高亮，16 色 ANSI：注释、字符串、数字、关键字四类，支持 go/python/js/ts/shell/json/yaml/sql/rust/java/c/cpp），未知语言、非终端或 `NO_COLOR` 不着色；新增 `chat.code_highlight`（默认开）。
 - chat 的 GFM 表格（表头行 + `|---|` 分隔行）按显示宽度对齐（中文等宽字符算 2 列，单元格里的粗体与行内代码先渲染再算宽度），表头加粗、分隔线用 `─`；比终端宽的表格或形状不符的 `|` 行块原样输出，不截断。
 - chat 的长代码块折叠：超过 `chat.code_max_lines`（默认 40，`0` 不折叠）行后不再输出，结束时提示 `… 还有 N 行（:code 查看全部）`；新增 `:code`（展开上一条回答里被折叠的块）与 `:code N`（第 N 个块），`:help` 与命令补全同步。
 
