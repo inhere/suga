@@ -25,7 +25,12 @@ func (r *Runner) LastReply(ctx context.Context, sessionID string) (string, bool,
 	if err != nil {
 		return "", false, err
 	}
-	entries, err := r.cfg.Repository.ListEntries(ctx, sessionID, store.EntryFilter{Types: []string{store.EntryAssistant}})
+	entries, err := r.cfg.Repository.ListEntries(ctx, sessionID, store.EntryFilter{
+		Types: []string{store.EntryAssistant},
+		// Only the Content is read here, and an assistant stub keeps it whole: the
+		// session file is not opened just to show a reply.
+		NoHydrate: true,
+	})
 	if err != nil {
 		return "", false, fmt.Errorf("read session replies: %w", err)
 	}

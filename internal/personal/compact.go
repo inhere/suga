@@ -169,6 +169,10 @@ func (b *contextBuilder) turnItems(ctx context.Context, state *agentcore.RunStat
 	if b.turnItemsCache == nil || b.turnMsgs != len(state.Messages) {
 		entries, err := b.r.cfg.Repository.ListEntries(ctx, b.sessionID, store.EntryFilter{
 			TurnID: b.turnID, Types: []string{store.EntryUser, store.EntryAssistant, store.EntryTool},
+			// Only the metadata head of an injected entry is decoded and the turn's
+			// messages come from memory: an assistant stub keeps its Content and a tool
+			// stub its call id, so no body is read back here.
+			NoHydrate: true,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("list turn entries: %w", err)
