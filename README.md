@@ -54,7 +54,7 @@ Details: [references/chat.md](skills/suga-guide/references/chat.md) (Chinese)
 - **Steering**: while the model works the prompt becomes `↳ ` and Enter adds the line to the running turn; `Esc` stops only the turn, two `Ctrl-C` within 3s quit.
 - **`!` local commands**: `!cmd` runs in the local shell without the model; `!!cmd` also attaches the result to your next message.
 - **Resume preview**: resuming shows the last model reply first; a session left `running` by a killed process is recovered.
-- **Delivery**: `suga send --session <id|short name> <text>` feeds a running chat; `--steer` targets the current turn, `--wait` waits for delivery.
+- **Delivery**: `suga send --session <id|short name> <text>` feeds a running chat; `--steer` targets the current turn, `--wait` waits for delivery, `--image <path>` (repeatable) delivers pictures the same way.
 
 ## Configuration
 

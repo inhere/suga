@@ -42,7 +42,18 @@ exited). Both options leave the text a plain message: it never runs as a command
 Without --wait a queued message returns as soon as it is queued, so an automated
 sender never blocks for the length of the chat's current turn. A message
 discarded on the way (chat exiting) is reported then; chat prints how many it
-dropped.`
+dropped.
+
+--image <path> delivers pictures with the message (repeatable, at most 16). The
+file is read, checked and scaled like run --image / chat :image (a relative path
+is resolved against the sender's working directory) and written into the target
+session's images/ directory; the request carries references only. The target
+tells whether it takes pictures: a process of an older version (its record lists
+no images feature) is refused with exit 5 and nothing is delivered at all - run
+the chat in this version again to use it. With --steer the pictures go into the
+turn running right now, otherwise they ride the next turn it starts. When the
+model of that session cannot see pictures, the message still goes through with
+the first-phase text notes and a warning is printed on stderr (exit 0).`
 
 // sendExamples is shown under "Examples:" by `suga send --help`.
 const sendExamples = `suga send --session 1a2b 你好 世界
@@ -51,6 +62,7 @@ suga send --session 1a2b --text 你好
 echo 你好 | suga send --session 1a2b
 suga send --session 1a2b --wait 你好
 suga send --session 1a2b --steer --wait 只改 README，不要动配置
+suga send --session 1a2b --image shot.png 看看这张
 suga send --session 1a2b -- -hello`
 
 func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
@@ -142,7 +154,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		return nil
 	})
 	send.SetOutput(stderr)
-	send.Usage = "suga send --session <id|name> [--text <text> | <text>...] [--source <label>] [--steer] [--wait]"
+	send.Usage = "suga send --session <id|name> [--text <text> | <text>...] [--image <file>]... [--source <label>] [--steer] [--wait]"
 	send.Example = sendExamples
 	send.LongHelp = sendHelp
 	send.StringVar(&sendSession, "session", "", "session ID, ID prefix, or the short name of a running chat (suga ps)")

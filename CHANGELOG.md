@@ -4,6 +4,9 @@
 
 ## [未发布]
 
+### 新增
+- `suga send --image <路径>`（可重复，最多 16 张）向运行中的会话投递图片：发送端先检查目标进程记录里的能力声明（`features: [images]`），旧版本会话直接报错退出（exit 5，写明会话与 PID、提示在新版本里重新打开该会话）且**什么都不投递**；图片按 `run --image` 同一套校验与缩放后写入**目标会话**的 `sessions/<sid>/images/`（同 sha256 不重写），请求只带 `{ref, sha256, media_type, width, height}` 引用；接收端逐张校验文件存在且 sha256 一致，任一不符则整条拒绝；follow-up 进下一回合的用户消息、`--steer` 进当前回合；当前模型不支持看图时按第一期规则降级为文字说明，并通过 `warning` 让发送端在 stderr 提示（退出码仍为 0）。未带 `--image` 的请求与旧版本逐字节一致。
+
 ## [0.39.0] - 2026-10-20
 
 会话与集成：`suga sessions` 与 ACP `session/list` 默认只列当前目录的会话；ACP 补齐 list/resume/close、load 回放历史与 set_config_option（切换模型与模式）；子进程与 hook 环境导出 `SUGA_SESSION_ID`/`SUGA_SESSION_NAME`/`SUGA_TURN_ID`；`suga run --image`；日志轮转与 `log.*` 配置。不兼容：移除 v0.36 前的旧顶层命令写法（`suga trace` 等，报错时提示新写法）；一次性迁移命令与旧配置键标记弃用，v0.41.0 移除。
