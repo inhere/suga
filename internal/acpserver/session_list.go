@@ -29,8 +29,10 @@ const (
 )
 
 // closeWaitTimeout bounds how long session/close waits for a running turn to
-// notice its cancellation; the turn cancels on its own context.
-const closeWaitTimeout = 30 * time.Second
+// notice its cancellation; the turn cancels on its own context. A variable so
+// the close-during-turn tests can shrink it instead of sleeping tens of
+// seconds (the behaviour under test is the waiting, not the length).
+var closeWaitTimeout = 30 * time.Second
 
 // ListSessions answers session/list: the sessions of the requested directory
 // (the request's cwd, else this process's working directory — the directory

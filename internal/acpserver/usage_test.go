@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/gookit/goutil/x/assert"
@@ -58,8 +57,7 @@ func TestUsageUpdateRunAndSession(t *testing.T) {
 	client := &testACPClient{selected: "reject"}
 	tool := &countingTool{}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, tool), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.NoErr(t, err)
 	_, err = conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("a")}})
@@ -116,8 +114,7 @@ func TestCancelledTurnStillSendsUsageUpdate(t *testing.T) {
 	provider := &blockingACPProvider{started: make(chan struct{})}
 	client := &testACPClient{}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, nil), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.NoErr(t, err)
 	done := make(chan acp.PromptResponse, 1)
@@ -160,8 +157,7 @@ func TestCancelledTurnReportsCompletedCallUsage(t *testing.T) {
 	provider := &toolThenBlockProvider{blocked: make(chan struct{})}
 	client := &testACPClient{}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, &countingTool{name: "file_read"}), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.NoErr(t, err)
 	done := make(chan acp.PromptResponse, 1)
@@ -201,8 +197,7 @@ func TestContextWindowForModel(t *testing.T) {
 func TestUsageUpdateContinuesAfterSessionLoad(t *testing.T) {
 	provider := &growingUsageProvider{Provider: mock.NewProvider(mock.Final("one"), mock.Final("two"))}
 	open := testACPRuntime(t, provider, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	cwd := t.TempDir()
 
 	firstClient := &testACPClient{}
@@ -234,8 +229,7 @@ func TestUsageUpdateAfterSessionLoadEarlyFailure(t *testing.T) {
 	provider := &growingUsageProvider{Provider: mock.NewProvider(mock.Final("one"), mock.Final("two"))}
 	failRules := &atomic.Bool{}
 	open := testACPRuntimeWith(t, provider, nil, acpTestOptions{failRules: failRules})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	cwd := t.TempDir()
 
 	first := connectPersonalACP(t, open, &testACPClient{})

@@ -1,8 +1,10 @@
 package acpserver
 
 import (
+	"context"
 	"os"
 	"testing"
+	"time"
 )
 
 // TestMain isolates tests from the real ~/.suga and from a configured hook command:
@@ -18,4 +20,16 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)
+}
+
+// testCtx is the one hang guard of the connection tests: it bounds a broken
+// test instead of measuring any latency, so 30s is comfortably wider than the
+// old per-test budgets (10s, 15s, enough for a loaded Windows host,
+// suag-5o5g) while t.Cleanup unwinds the context after every test without
+// repeating the defer in each test.
+func testCtx(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	return ctx
 }

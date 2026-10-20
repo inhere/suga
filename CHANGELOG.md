@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 内部
+
+- `session/close` 等待回合退出的 `closeWaitTimeout`（默认 30s）从常量改为包级变量：测试可把等待窗口调小，默认值与行为不变（测试增补，无生产语义变化）。
+
 ## [0.39.0] - 2026-10-20
 
 会话与集成：`suga sessions` 与 ACP `session/list` 默认只列当前目录的会话；ACP 补齐 list/resume/close、load 回放历史与 set_config_option（切换模型与模式）；子进程与 hook 环境导出 `SUGA_SESSION_ID`/`SUGA_SESSION_NAME`/`SUGA_TURN_ID`；`suga run --image`；日志轮转与 `log.*` 配置。不兼容：移除 v0.36 前的旧顶层命令写法（`suga trace` 等，报错时提示新写法）；一次性迁移命令与旧配置键标记弃用，v0.41.0 移除。

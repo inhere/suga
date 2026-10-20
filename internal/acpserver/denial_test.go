@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/gookit/goutil/x/assert"
@@ -48,8 +47,7 @@ func promptOnce(t *testing.T, open OpenRuntime, client *testACPClient, mode acp.
 	conn := connectPersonalACP(t, open, client)
 	// A hang guard, not a latency check: a slow Windows CI runner took 6.4s for
 	// session setup plus a cancelled permission prompt.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	if mode != "" {
