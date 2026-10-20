@@ -668,10 +668,6 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	// every model call (design D8).
 	meter := r.newRunUsageMeter(ctx, model.ID, turnID, req.Emit)
 	ctx = withRunUsage(ctx, meter)
-	// Sub-agents of this session count their usage in this run (usage.go).
-	// The meter is called at the end with whichever meter is current, so a
-	// retried turn id (see below) replaces it with one naming the stored turn.
-	defer func() { activateMeter(model.ID, meter)() }()
 	result := RunResult{SessionID: model.ID, TurnID: turnID, RunID: turnID}
 	history, err := r.loadHistory(ctx, model.ID)
 	if err != nil {
@@ -706,6 +702,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 		meter = r.newRunUsageMeter(ctx, model.ID, turnID, req.Emit)
 		ctx = withRunUsage(ctx, meter)
 	}
+	// Sub-agents of this session count their usage in this run (usage.go). The
+	// meter is activated last, so it is the one the turn is stored under.
+	defer activateMeter(model.ID, meter)()
 	// Collect this turn's per-call usage (the session total comes from model events).
 	usage := &usageCollector{cost: func(u agentcore.Usage) float64 {
 		return costOf(r.cfg.Price, r.cfg.ProviderName, r.cfg.Model, u)
