@@ -54,6 +54,27 @@ func isBusy(err error) bool {
 	return strings.Contains(msg, "database is locked") || strings.Contains(msg, "database table is locked")
 }
 
+// IsDuplicateKey reports whether err is a primary-key or unique constraint
+// violation, i.e. the id of the inserted row is already taken. A caller that
+// generated the id can retry the insert with a fresh one; every other error is
+// returned as is.
+func IsDuplicateKey(err error) bool {
+	if err == nil {
+		return false
+	}
+	var se sqlerr
+	if errors.As(err, &se) {
+		switch se.Code() {
+		case 1555, 2067: // SQLITE_CONSTRAINT_PRIMARYKEY, SQLITE_CONSTRAINT_UNIQUE
+			return true
+		}
+		return false
+	}
+	// Fallback for an error wrapped into a plain error by a caller.
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "PRIMARY KEY must be unique")
+}
+
 // beginWriteTx begins the store's write transaction (BEGIN IMMEDIATE) and
 // retries only the begin while the database stays busy. The caller owns the
 // returned transaction and must Commit or Rollback it.

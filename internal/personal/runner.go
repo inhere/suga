@@ -474,11 +474,36 @@ func (r *Runner) NewSession(ctx context.Context, id, title string) (Session, err
 
 // NewSessionWithMeta is NewSession with extra meta stored as the session is
 // created (a sub-agent session names its parent from the start, so it is
-// never listed as a session of its own, not even after a crash).
+// never listed as a session of its own, not even after a crash). Without an id
+// one is generated per attempt: a generated id already taken (a primary-key
+// conflict) is replaced by a fresh one, at most maxIDAttempts times; an id the
+// caller supplied is never retried.
 func (r *Runner) NewSessionWithMeta(ctx context.Context, id, title string, extra map[string]any) (Session, error) {
-	if id == "" {
-		id = NewSessionID()
+	attempts := maxIDAttempts
+	if id != "" {
+		attempts = 1
 	}
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if id == "" {
+			id = newSessionID()
+		}
+		model, err := r.insertSession(ctx, id, title, extra)
+		if err == nil {
+			return model, nil
+		}
+		if !store.IsDuplicateKey(err) {
+			return Session{}, err
+		}
+		lastErr = err
+		id = ""
+	}
+	return Session{}, fmt.Errorf("create personal session: %w", lastErr)
+}
+
+// insertSession is one attempt of NewSessionWithMeta: it builds the session
+// model with its first segment and inserts it.
+func (r *Runner) insertSession(ctx context.Context, id, title string, extra map[string]any) (Session, error) {
 	if err := validateSessionID(id); err != nil {
 		return Session{}, err
 	}
@@ -630,7 +655,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 
 	// run_id == turn_id: the store's agentcore adapter keys run state and
 	// messages by turn id, and the turn row must exist before the runtime saves.
-	turnID := NewTurnID()
+	turnID := newTurnID()
 	turnStart := time.Now()
 	ctx = withObserveScope(ctx, model.ID, turnID)
 	// Records written while this turn runs carry session_id and turn_id, so a
@@ -644,7 +669,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	meter := r.newRunUsageMeter(ctx, model.ID, turnID, req.Emit)
 	ctx = withRunUsage(ctx, meter)
 	// Sub-agents of this session count their usage in this run (usage.go).
-	defer activateMeter(model.ID, meter)()
+	// The meter is called at the end with whichever meter is current, so a
+	// retried turn id (see below) replaces it with one naming the stored turn.
+	defer func() { activateMeter(model.ID, meter)() }()
 	result := RunResult{SessionID: model.ID, TurnID: turnID, RunID: turnID}
 	history, err := r.loadHistory(ctx, model.ID)
 	if err != nil {
@@ -664,8 +691,20 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	if agentID == "" {
 		agentID = "suga"
 	}
-	if err := r.cfg.Repository.CreateTurn(ctx, store.Turn{ID: turnID, SessionID: model.ID, Status: store.TurnRunning}); err != nil {
+	// The turn row is inserted here (run_id == turn_id); a generated id that is
+	// already taken is replaced by a fresh one, and the turn-scoped values built
+	// above are derived again from the id actually stored.
+	storedTurnID, err := r.createTurn(ctx, model.ID, turnID)
+	if err != nil {
 		return r.withSessionUsage(ctx, model.ID, result), fmt.Errorf("create turn: %w", err)
+	}
+	if storedTurnID != turnID {
+		turnID = storedTurnID
+		result.TurnID, result.RunID = turnID, turnID
+		ctx = withObserveScope(ctx, model.ID, turnID)
+		ctx = withTurnLogger(ctx, model.ID, turnID)
+		meter = r.newRunUsageMeter(ctx, model.ID, turnID, req.Emit)
+		ctx = withRunUsage(ctx, meter)
 	}
 	// Collect this turn's per-call usage (the session total comes from model events).
 	usage := &usageCollector{cost: func(u agentcore.Usage) float64 {
