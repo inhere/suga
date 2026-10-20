@@ -227,7 +227,7 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	cmd.Var((*cflag.Strings)(&opts.MCPConfigs), "mcp-config", "Claude-style JSON MCP server config")
 	cmd.Var((*cflag.Strings)(&opts.AddDirs), "add-dir", "extra absolute directory for this session as \"<directory>[:ro|:rw]\" (default :ro), repeatable; SUGA_ADD_DIRS adds more")
 	cmd.BoolVar(&opts.AllowCwdChange, "allow-cwd-change", false, "continue a resumed session in the current directory even if it was created in another one")
-	cmd.Var((*cflag.Strings)(&opts.ImagePaths), "image", "image file attached to this prompt (chat :image pipeline), repeatable")
+	cmd.Var((*cflag.Strings)(&opts.ImagePaths), "image", "image file attached to this prompt (same checks, scaling and storage as chat :image)")
 	if mode == "run" {
 		cmd.BoolVar(&opts.Injected, "injected", false, "mark this turn's prompt as not typed by a person")
 		cmd.IntVar(&opts.MaxSteps, "max-steps", 0, "max tool steps in this turn, >= 1 (overrides SUGA_MAX_STEPS and max_steps); sub-agent agents.max_steps is unaffected")
