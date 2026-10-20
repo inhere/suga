@@ -298,8 +298,8 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// Output that may land while the input line is on screen (hook notices, errors)
 	// goes through the input source: it is printed above the line and the line is
 	// repainted, instead of sitting on top of it (design N4). The process log is not
-	// among them any more: it goes to <SUGA_HOME>/logs/suga.log and never to the
-	// terminal (internal/wiring/logging.go), so nothing has to be rerouted for it.
+	// among them any more: it goes to <SUGA_HOME>/logs/suga-<date>.log and never to
+	// the terminal (internal/wiring/logging.go), so nothing has to be rerouted for it.
 	errOut := steerOut{source: inputSource, fallback: stderr}
 	// All conversation output goes through the renderer (and the input source,
 	// which keeps the line editor's screen state consistent).
