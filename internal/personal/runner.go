@@ -380,6 +380,10 @@ func New(cfg Config) (*Runner, error) {
 	return runner, nil
 }
 
+// SessionsDir returns the per-session file root ($SUGA_HOME/sessions): images of a
+// session live below <SessionsDir>/<session_id>/images (design 0.3).
+func (r *Runner) SessionsDir() string { return r.cfg.SessionsDir }
+
 func (r *Runner) ProcessRoot() string { return r.cfg.ProcessRoot }
 
 // ProviderName and Model identify the provider config id and model this runner
