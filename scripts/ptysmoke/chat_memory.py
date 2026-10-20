@@ -65,7 +65,7 @@ def scenario(s):
     m = s.mark(); time.sleep(0.5); s.send(CTRL_C)
     s.check("ctrl-c once: hint", s.until(r"再按一次 Ctrl\+C 退出", m))
     m = s.mark(); s.send(CTRL_C)
-    s.check("ctrl-c twice: exit", s.until(r"续接：suga chat --resume sess_", m))
+    s.check("ctrl-c twice: exit", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
 
 
 def main():

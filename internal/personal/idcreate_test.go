@@ -3,6 +3,7 @@ package personal
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 	"github.com/inhere/suga/internal/personal/store"
@@ -59,6 +60,40 @@ func TestRunRetriesTakenTurnID(t *testing.T) {
 		assert.Eq(t, 3, calls)
 		assert.StrContains(t, err.Error(), "create turn")
 	})
+}
+
+// TestOldFormatIDsStayUsable: a session and a turn written by an older version
+// (sess_... / turn_...) are loaded and continued like a new one; nothing in the
+// read path looks at the id format.
+func TestOldFormatIDsStayUsable(t *testing.T) {
+	ctx := context.Background()
+	repo := openObserveRepo(t)
+	runner, err := New(Config{Repository: repo, Provider: mock.NewProvider(
+		mock.Final("ok"), mock.Final("again"),
+	)})
+	assert.Require(t, assert.NoErr(t, err))
+	const oldSession = "sess_261020_1iu81hh7i8v0014"
+	const oldTurn = "turn_261020_1iu81hh7i8v0015"
+	created, err := runner.NewSession(ctx, oldSession, "old")
+	assert.Require(t, assert.NoErr(t, err))
+	at := time.Now().UTC().Add(-time.Minute)
+	assert.NoErr(t, repo.CreateTurn(ctx, store.Turn{
+		ID: oldTurn, SessionID: oldSession, Status: store.TurnCompleted, StartedAt: at, EndedAt: at,
+	}))
+
+	loaded, err := runner.LoadSession(ctx, oldSession)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, created.ID, loaded.ID)
+	res, err := runner.Run(ctx, RunRequest{SessionID: oldSession, Prompt: "next"})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, oldSession, res.SessionID)
+
+	// The old turn stays first and the new one follows it.
+	turns, err := repo.ListTurns(ctx, oldSession)
+	assert.NoErr(t, err)
+	assert.Require(t, assert.Len(t, turns, 2))
+	assert.Eq(t, oldTurn, turns[0].ID)
+	assert.Eq(t, res.TurnID, turns[1].ID)
 }
 
 // TestNewSessionRetriesTakenSessionID checks the same retry for created

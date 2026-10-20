@@ -90,7 +90,9 @@ const (
 	promptMarker  = "❯ "
 	abortMarker   = "已中断本轮"
 	steerMarker   = "[插话]"
-	resumeMarker  = "续接：suga chat --resume sess_"
+	// The id part is only "s" in the marker: it matches ids of both formats
+	// (s_... now, sess_... from older versions).
+	resumeMarker  = "续接：suga chat --resume s"
 	confirmWindow = 3 * time.Second
 )
 

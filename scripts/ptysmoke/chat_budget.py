@@ -43,7 +43,7 @@ def request_count(lines):
 
 
 def session_from(text):
-    found = re.search(r"续接：suga chat --resume (sess_\S+)", text)
+    found = re.search(r"续接：suga chat --resume ((?:sess_|s_)\S+)", text)
     return found.group(1) if found else ""
 
 
@@ -53,9 +53,9 @@ def exit_chat(s, mark):
     for _ in range(3):
         time.sleep(0.25)
         s.send(CTRL_C)
-        if s.until(r"续接：suga chat --resume sess_", mark, timeout=1):
+        if s.until(r"续接：suga chat --resume (?:sess_|s_)", mark, timeout=1):
             break
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume sess_", mark))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", mark))
 
 
 def start_group(binary, work, port, args, env_extra=None):

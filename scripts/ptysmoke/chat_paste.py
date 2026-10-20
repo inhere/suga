@@ -191,7 +191,7 @@ def scenario(s, log):
     m = s.mark()
     time.sleep(0.3)
     s.send("\x04")  # Ctrl-D leaves chat
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume sess_", m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
 
 
 def main():

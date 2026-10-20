@@ -67,7 +67,7 @@ func TestChatAddDirCommands(t *testing.T) {
 		assert.StrContains(t, stdout, "附加目录：无")
 		assert.StrContains(t, stdout, "已授权："+dir+"（读写）")
 		assert.StrContains(t, stdout, "  "+dir+"（读写 · 会话中追加）")
-		found := regexp.MustCompile(`session id: (sess_\S+)`).FindStringSubmatch(stderr)
+		found := regexp.MustCompile(`session id: ((?:sess_|s_)\S+)`).FindStringSubmatch(stderr)
 		assert.Require(t, assert.Len(t, found, 2))
 		assert.Eq(t, []any{map[string]any{"path": dir, "mode": "rw", "source": "session"}},
 			sessionAddDirs(t, found[1]))
@@ -85,7 +85,7 @@ func TestChatAddDirCommands(t *testing.T) {
 		assert.StrContains(t, stdout, "已授权："+dir+"（只读）")
 		assert.StrContains(t, stdout, "已撤销："+dir)
 		assert.StrContains(t, stdout, "附加目录：无")
-		found := regexp.MustCompile(`session id: (sess_\S+)`).FindStringSubmatch(stderr)
+		found := regexp.MustCompile(`session id: ((?:sess_|s_)\S+)`).FindStringSubmatch(stderr)
 		assert.Require(t, assert.Len(t, found, 2))
 		assert.Empty(t, sessionAddDirs(t, found[1]))
 	})

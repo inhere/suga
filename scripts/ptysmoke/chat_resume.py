@@ -222,7 +222,7 @@ def main():
         first.close(grace=0)  # killed mid-turn: nothing resets the running status
         sid = last_session(binary, env, ws)
         first.check("session id", bool(sid))
-        sid = sid or "sess_missing"
+        sid = sid or "s_missing"
 
         # Continuing only reads the session: the preview, no model call and
         # nothing recovered yet (the session is still running afterwards).

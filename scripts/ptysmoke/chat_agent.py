@@ -44,8 +44,8 @@ def start_fake(port, *extra):
 
 def exit_chat(s):
     m = s.mark(); time.sleep(0.3); s.send(CTRL_C); time.sleep(0.3); s.send(CTRL_C)
-    s.until(r"续接：suga chat --resume sess_", m)
-    found = re.search(r"--resume (sess_\S+)", s.text(m))
+    s.until(r"续接：suga chat --resume (?:sess_|s_)", m)
+    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 
@@ -81,7 +81,7 @@ def sync_scenario(s, binary, env, full=False):
     events = trace_events(binary, env, session) if session else []
     agent = next((e for e in events if e.get("kind") == "tool" and e.get("name") == "agent"), {})
     child = (agent.get("attrs") or {}).get("child_session_id", "")
-    s.check("sync trace: agent event names the sub-agent session", child.startswith("sess_"))
+    s.check("sync trace: agent event names the sub-agent session", child.startswith(("sess_", "s_")))
     s.check("sync trace: stop=final", (agent.get("attrs") or {}).get("stop") == "final")
     listed = [r["id"] for r in sessions(binary, env)]
     s.check("sync: sessions hides the sub-agent session", session in listed and child not in listed)
@@ -110,7 +110,7 @@ def cancel_scenario(s, binary, env, label="cancel", steering=True):
         check("chat stays after one Ctrl-C", not s.contains(r"续接：", m))
         time.sleep(0.3)
         s.send(CTRL_C)  # the first press counts: within the confirmation window
-    check("chat ends with the resume line", s.until(r"续接：suga chat --resume sess_", m, timeout=15))
+    check("chat ends with the resume line", s.until(r"续接：suga chat --resume (?:sess_|s_)", m, timeout=15))
     check("never shows the raw context canceled", not s.contains(r"context canceled", m))
     s.pump(0.5)
     rows = sessions(binary, env, "--agents")
