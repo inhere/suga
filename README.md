@@ -158,7 +158,7 @@ suga ps | suga inspect manifest                                # running chats /
 
 - `run --output-format stream-json` emits cumulative `usage` after each model call, `retry` on retries, and `wrap_up` on the `result` of a turn ended by a limit.
 - `trace --web` opens the session store read-only (a missing or uninitialized store is an error; nothing is created or migrated); its auto refresh switch is off by default, and once on pulls only new steps: every 5s while a turn runs, every 15s when idle (to notice the next turn).
-- Diagnostic logs go only to `$SUGA_HOME/logs/suga.log`; `SUGA_DEBUG=1` also writes them to stderr.
+- Diagnostic logs go to `$SUGA_HOME/logs/suga-<YYYYMMDD>.log` (one file per day and machine, rotated by size); `log.level`, `log.file`, `log.stderr`, `log.max_size`, `log.keep`, `log.compress` configure them, and `SUGA_DEBUG=1` forces debug and also writes them to stderr. Records of a turn carry `session_id` and `turn_id`.
 
 ## Development
 

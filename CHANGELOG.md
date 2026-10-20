@@ -15,6 +15,9 @@
 - `suga data tool-bodies`：改用 `suga data bodies`；`--move`、`--undo`、`--check`、`--status` 不弃用（`--move` 仍用于阈值调小后把正文移出，`--undo` 是回滚手段）。
 - 一次性迁移命令 `suga data dedupe-tool-results`（含 `--undo`）、`suga data shrink-fts`、`suga data bodies --slim`、`suga data bodies --rename-files`：用于把 v0.35 及更早的库迁移到当前格式，已迁移的库不需要。
 - 配置键 `store.tool_body_inline_bytes`：改用 `store.body_inline_bytes`；配置里仍用旧键时，加载后在 stderr 提示一次，`suga config` 在来源处标注“已弃用键”。
+### 新增
+- 进程日志轮转与配置项：日志写到 `$SUGA_HOME/logs/suga-<YYYYMMDD>.log`（文件名带日期，多进程同一天自然追加同一文件；按大小切分，保留份数与压缩由 `github.com/gookit/rotatefile` 负责）。新增 `log.level`（`debug`|`info`|`warn`|`error`，默认 `info`）、`log.file`（路径或 `off`，默认 `$SUGA_HOME/logs/suga.log`）、`log.stderr`（`auto` 仅 debug 时写 / `always` / `never`）、`log.max_size`（默认 10MB）、`log.keep`（保留份数，默认 5）、`log.compress`（默认 false）；坏值启动报错并指出键名，`SUGA_DEBUG` 非空仍强制 debug 并写 stderr。
+- 回合内的日志行带 `session_id`、`turn_id` 属性（工具事件与预算提示），便于与 `suga trace` 对齐。
 
 ### 修复
 

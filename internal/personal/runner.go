@@ -633,6 +633,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	turnID := NewTurnID()
 	turnStart := time.Now()
 	ctx = withObserveScope(ctx, model.ID, turnID)
+	// Records written while this turn runs carry session_id and turn_id, so a
+	// log line can be lined up with `suga trace` (see logscope.go).
+	ctx = withTurnLogger(ctx, model.ID, turnID)
 	ctx = context.WithValue(ctx, turnInputKey{}, turnInput{chars: len(req.Prompt), injected: req.Injected})
 	// Refused tool calls are counted per turn in ctx (see denial.go).
 	ctx, denials := withTurnDenials(ctx)
@@ -814,14 +817,14 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 		budget.onBudget = func(ctx context.Context, snapshot BudgetSnapshot, reason string) {
 			r.rec.record(ctx, budgetEvent(result.SessionID, result.TurnID, "exceeded", snapshot, reason))
 			if err := emit(ctx, sink, Event{Kind: "budget", SessionID: result.SessionID, TurnID: result.TurnID, RunID: result.RunID, Budget: &snapshot}); err != nil {
-				slog.Warn("emit budget event", "session_id", result.SessionID, "err", err)
+				turnLogger(ctx).Warn("emit budget event", "err", err)
 			}
 		}
 		budget.onWarning = func(ctx context.Context, message string) {
 			snapshot := meter.budgetSnapshot()
 			r.rec.record(ctx, budgetWarningEvent(result.SessionID, result.TurnID, snapshot, message))
 			if err := emit(ctx, sink, Event{Kind: "budget", SessionID: result.SessionID, TurnID: result.TurnID, RunID: result.RunID, Text: message, Budget: &snapshot}); err != nil {
-				slog.Warn("emit budget warning", "session_id", result.SessionID, "err", err)
+				turnLogger(ctx).Warn("emit budget warning", "err", err)
 			}
 		}
 		hooks = append(hooks, budget)
@@ -898,7 +901,7 @@ type toolEventHook struct {
 func (h toolEventHook) publish(ctx context.Context, event Event) {
 	event.SessionID, event.TurnID, event.RunID = h.sessionID, h.turnID, h.runID
 	if err := emit(ctx, h.sink, event); err != nil {
-		slog.Warn("emit tool event", "session_id", h.sessionID, "kind", event.Kind, "tool", event.ToolName, "err", err)
+		turnLogger(ctx).Warn("emit tool event", "kind", event.Kind, "tool", event.ToolName, "err", err)
 	}
 }
 

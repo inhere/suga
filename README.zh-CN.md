@@ -147,7 +147,7 @@ suga ps | suga inspect manifest                                # 运行中的 ch
 
 - `run --output-format stream-json` 每次模型调用后输出累计 `usage`，重试输出 `retry`，上限收尾时 `result` 带 `wrap_up`。
 - `trace --web` 只以只读方式打开会话库（库不存在或未初始化时报错，不创建、不迁移）；“自动刷新”默认关闭，打开后只拉取新增：回合进行中每 5 秒，空闲时每 15 秒检查新回合。
-- 诊断日志只写 `$SUGA_HOME/logs/suga.log`；`SUGA_DEBUG=1` 同时写 stderr。
+- 诊断日志写在 `$SUGA_HOME/logs/suga-<YYYYMMDD>.log`（每天一个文件，按大小切分）；`log.level`、`log.file`、`log.stderr`、`log.max_size`、`log.keep`、`log.compress` 可配，`SUGA_DEBUG=1` 强制 debug 并同时写 stderr。回合内的日志行带 `session_id`、`turn_id`。
 
 ## 开发
 

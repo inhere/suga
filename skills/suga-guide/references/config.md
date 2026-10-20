@@ -224,6 +224,21 @@ chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区
 
 事件：SessionStart、UserPromptSubmit、PostToolUse、Stop、SessionEnd、Interrupt。`SUGA_HOOKS=off` 整体关闭。
 
+## `log.*`（进程日志）
+
+| 键 | 默认 | 含义 |
+|---|---|---|
+| `log.level` | `info` | 最低记录级别：`debug`、`info`、`warn`、`error`；`debug` 在 `log.stderr: auto` 下也把记录同时写到 stderr |
+| `log.file` | `$SUGA_HOME/logs/suga.log` | 日志路径；实际写入的是在扩展名前加日期的文件，如 `suga-20261020.log`（同一天的所有进程追加同一文件）。`off` 关闭文件日志 |
+| `log.stderr` | `auto` | `auto` 仅在 debug 时也写 stderr（即 `SUGA_DEBUG` 非空或 `log.level: debug`）；`always` 总是写；`never` 不写（日志文件打不开时仍回退到 stderr，避免静默） |
+| `log.max_size` | `10485760`（10MB） | 单个日志文件达到该字节数后切分并重新打开当前文件 |
+| `log.keep` | `5` | 保留的切分文件份数（按数量清理，30 秒内改动的文件不动）；`0` 不清理 |
+| `log.compress` | `false` | 把已切分的旧文件 gzip 压缩（`*.gz`） |
+
+- 轮转用 `github.com/gookit/rotatefile`，模式为按大小 + `ModeCreate`：切分时把当前文件改名为 `<名>_<序号>.log` 再重新打开 `<名>.log`，文件名带日期让同一天的各进程自然写同一个文件、跨天自然换文件。多进程（chat 与 gofer 拉起的多个 run/ACP）同时追加是常态：一条记录一次写入，行不会互相穿插；某个进程切分时，其他进程仍持有旧文件的句柄，它们的行会继续落进切分出来的文件（不丢），写入失败时本进程会重建 writer 重试一次。Windows 只允许在所有句柄都允许删除时改名（Go 的 `os.OpenFile` 不允许），所以多个 suga 进程同时持有日志时，部分切分会被跳过（文件继续增长直到有一次改名成功），行不会丢；没进程长期占用时（常见的单个 chat）切分正常。
+- 坏值（如 `log.level: loud`、`log.max_size: 10MB`）在启动时直接报错并指出键名。
+- 日志记录位于 `$SUGA_HOME/logs/`，不进入会话库；运行一个回合时的记录带 `session_id`、`turn_id` 属性，便于与 `suga trace` 对齐。
+
 ## 上手、初始化与配置命令
 
 ### `suga init`
@@ -287,7 +302,7 @@ suga models --json
 | `SUGA_MODEL` | 主模型，`<provider>/<model>`；被 `--model` 覆盖，覆盖配置 `model` |
 | `SUGA_HOOKS` | `off` 时整体关闭 chat hooks |
 | `SUGA_APPEND_SYSTEM_PROMPT` | 默认的追加系统提示（命令行的 `--append-system-prompt` 优先；非空时也覆盖会话已保存的那份） |
-| `SUGA_DEBUG` | 非空时打开 debug 日志并**同时写 stderr**（含 `DEBUG MODE ENABLED` 行与 `log_file` 路径）；默认只写 `$SUGA_HOME/logs/suga.log`，终端保持干净 |
+| `SUGA_DEBUG` | 非空时打开 debug 日志并**同时写 stderr**（含 `DEBUG MODE ENABLED` 行与 `log_file` 路径）；默认按 `log.*` 配置只写 `$SUGA_HOME/logs/suga-<日期>.log`，终端保持干净 |
 | `SUGA_PROVIDER` | **已移除**：仍有值时启动报错，改用 `SUGA_MODEL=<provider>/<model>` |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` | 三个内置预设的默认密钥变量 |
 | `{VAR}` | 配置里 `api_key`、`base_url`、`headers` 的值支持 `${VAR}`，来自进程环境或 `$SUGA_HOME/.env` |
@@ -309,7 +324,7 @@ suga models --json
 | `run/` | chat 进程登记与锁（`suga ps`、`suga send` 用；进程记录里的 `name` 是会话短名称 `<目录名>-xy`，如 `suga-k7`） |
 | `skills/` | 释放的内置 skill 与用户自己的 skill |
 | `transcripts/` | chat 会话记录（`transcripts: false` 关闭） |
-| `logs/suga.log` | 进程日志（0600、追加、不轮转）；默认只写文件，`SUGA_DEBUG` 时同时写 stderr |
+| `logs/suga-<YYYYMMDD>.log` | 进程日志（0600、追加）：文件名带日期，按 `log.max_size` 切分，切分文件按 `log.keep` 保留；默认只写文件，debug（`SUGA_DEBUG` 或 `log.level: debug`）时同时写 stderr，`log.file: off` 关闭 |
 | `AGENTS.md` | 用户级项目规则（每级规则文件之外额外读取） |
 | `output-rules.yaml` | 用户级输出整理规则 |
 
