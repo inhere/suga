@@ -1,6 +1,7 @@
 package axconfig
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -189,6 +190,11 @@ func readConfigForEdit(path string) ([]byte, os.FileInfo, error) {
 }
 
 func parseConfigDocument(content []byte, path string) (*ast.File, *ast.MappingNode, error) {
+	// Parse LF text: the parser keeps the \r of a CRLF comment line in the
+	// comment, and rendering it back wrote "# comment\r\r\n" - an extra blank
+	// line after every comment. renderConfigDocument restores CRLF from the
+	// original bytes.
+	content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
 	file, err := parser.ParseBytes(content, parser.ParseComments)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse config %q: %w", path, err)

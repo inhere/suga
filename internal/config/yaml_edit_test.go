@@ -53,6 +53,10 @@ func TestWriteConfigValuePreservesASTDetails(t *testing.T) {
 			assert.StrContains(t, text, "context_window: 256000")
 			assert.StrContains(t, text, "fallback_models:")
 			assert.True(t, strings.Index(text, "model: new") < strings.Index(text, "providers:"))
+			// No blank line may appear: a CRLF comment kept its \r and came back as
+			// "# comment\r\r\n", i.e. a comment line followed by an empty line.
+			assert.False(t, strings.Contains(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n"), "a blank line was added:\n"+text)
+			assert.False(t, strings.Contains(strings.ReplaceAll(text, "\r\n", ""), "\r"), "a stray \\r was left")
 			if tc.lineBreak == "\r\n" {
 				assert.True(t, strings.Contains(text, "\r\n"))
 				assert.False(t, strings.Contains(strings.ReplaceAll(text, "\r\n", ""), "\n"))

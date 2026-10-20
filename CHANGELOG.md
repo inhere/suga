@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- `suga config set` 写回 CRLF 换行的配置文件（Windows 常见）时，每个注释行后多出一个空行：解析前先统一为 LF，写回时再按原文件恢复 CRLF。
+
 ## [0.38.0] - 2026-10-20
 
 ACP 图片输入（图片第二期）：`initialize` 声明 `promptCapabilities.image`，`session/prompt` 的图片块按顺序附到用户消息，gofer 等 ACP 客户端可直接传图；`deepseek-v4.1-flash` 与 `glm-5.3-flash` 列入支持看图的模型。
