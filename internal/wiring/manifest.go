@@ -35,6 +35,7 @@ type Manifest struct {
 	MCPServers    []ManifestMCPServer   `json:"mcp_servers"`
 	Preferred     []ManifestPreferred   `json:"preferred_tools"`
 	Skills        ManifestSkills        `json:"skills"`
+	Context       ManifestContext       `json:"context"`
 	Memory        []ManifestMemory      `json:"memory"`
 	Output        ManifestOutput        `json:"output"`
 	Taint         ManifestTaint         `json:"taint"`
@@ -101,10 +102,27 @@ type ManifestPreferred struct {
 	Reason  string `json:"reason"`
 }
 
-// ManifestSkills reports the skill roots and how many skills were found.
+// ManifestSkills reports the skill roots and how many skills were found, plus
+// the load diagnostics: SKILL.md files that were skipped (parse or validation
+// error) and same-name skills shadowed by an earlier root.
 type ManifestSkills struct {
-	Roots []string `json:"roots"`
-	Count int      `json:"count"`
+	Roots    []string               `json:"roots"`
+	Count    int                    `json:"count"`
+	Skipped  []ManifestSkillSkipped `json:"skipped"`
+	Shadowed []ManifestSkillShadow  `json:"shadowed"`
+}
+
+// ManifestSkillSkipped is one SKILL.md that was found but not registered.
+type ManifestSkillSkipped struct {
+	Path string `json:"path"`
+	Err  string `json:"err"`
+}
+
+// ManifestSkillShadow is one same-name skill that lost to an earlier root.
+type ManifestSkillShadow struct {
+	Name   string `json:"name"`
+	Winner string `json:"winner"`
+	Loser  string `json:"loser"`
 }
 
 // ManifestMemory is the backend serving one memory scope.
@@ -196,8 +214,11 @@ type ManifestInput struct {
 	Preferred  []PreferredToolStatus
 	SkillRoots []capskills.Root
 	Skills     *capskills.Registry
-	Memory     *MemorySetup
-	Policy     memoryWritePolicy
+	// Context is the resident context size report (built by the caller from the
+	// same sources the session uses).
+	Context ManifestContext
+	Memory  *MemorySetup
+	Policy  memoryWritePolicy
 
 	// Approval is the exact file snapshot used to assemble the runtime policy.
 	Approval ApprovalRules
@@ -226,7 +247,8 @@ func BuildManifest(in ManifestInput) Manifest {
 		MCPServers:    []ManifestMCPServer{},
 		Preferred:     []ManifestPreferred{},
 		Memory:        []ManifestMemory{},
-		Skills:        ManifestSkills{Roots: []string{}},
+		Skills:        ManifestSkills{Roots: []string{}, Skipped: []ManifestSkillSkipped{}, Shadowed: []ManifestSkillShadow{}},
+		Context:       in.Context,
 		// A standalone manifest starts no server, so this keeps the empty list
 		// that means "no runtime conflict discovered".
 		ToolConflicts: []ManifestToolConflict{},
@@ -272,6 +294,12 @@ func BuildManifest(in ManifestInput) Manifest {
 	}
 	if in.Skills != nil {
 		m.Skills.Count = in.Skills.Len()
+		for _, s := range in.Skills.Skipped() {
+			m.Skills.Skipped = append(m.Skills.Skipped, ManifestSkillSkipped(s))
+		}
+		for _, s := range in.Skills.Shadowed() {
+			m.Skills.Shadowed = append(m.Skills.Shadowed, ManifestSkillShadow(s))
+		}
 	}
 	if in.Memory != nil {
 		for _, c := range []MemoryBackendChoice{in.Memory.User, in.Memory.Project} {
@@ -455,7 +483,8 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		Version: buildVersion, Settings: st.models, Registry: reg,
 		MCPServers: mcpServers, Preferred: preferred,
 		SkillRoots: skillRoots(workspace), Skills: skillReg,
-		Memory: st.memSetup, Policy: st.memPolicy, Approval: approval,
+		Context: BuildManifestContext(loadResidentContext(workspace, preferred, skillReg, mem)),
+		Memory:  st.memSetup, Policy: st.memPolicy, Approval: approval,
 		ToolsApproval: manifestToolsApprovalAction(),
 		InlineBytes:   st.inlineBytes, SpillBytes: st.spillBytes, SessionsDir: st.sessionsDir,
 		TaintTools: st.taintTools, TaintOnSpill: st.taintOnSpill,

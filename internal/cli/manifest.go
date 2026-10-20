@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -108,6 +109,14 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 	for _, r := range m.Skills.Roots {
 		fmt.Fprintf(&b, "  root %s\n", r)
 	}
+	for _, s := range m.Skills.Skipped {
+		fmt.Fprintf(&b, "  skipped %s: %s\n", s.Path, s.Err)
+	}
+	for _, s := range m.Skills.Shadowed {
+		fmt.Fprintf(&b, "  shadowed %s: %s overrides %s\n", s.Name, s.Winner, s.Loser)
+	}
+
+	writeManifestContext(&b, m.Context)
 
 	b.WriteString("\nMemory\n")
 	for _, mem := range m.Memory {
@@ -137,4 +146,61 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 
 	_, err := io.WriteString(out, b.String())
 	return err
+}
+
+// writeManifestContext writes the resident context section: the bytes and
+// estimated tokens of every part sent with each request, the per-file split of
+// the rules, the truncation and the parts over their soft threshold with the
+// action they suggest.
+func writeManifestContext(b *strings.Builder, c wiring.ManifestContext) {
+	b.WriteString("\nResident context (bytes, estimated tokens; soft limits)\n")
+	tw := tabwriter.NewWriter(b, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "  PART\tBYTES\t~TOKENS\tLIMIT")
+	for _, p := range []struct {
+		name string
+		part wiring.ManifestContextPart
+	}{
+		{"system_prompt", c.SystemPrompt}, {"environment", c.Environment}, {"rules", c.Rules},
+		{"memory_index", c.MemoryIndex}, {"skills", c.Skills}, {"append_prompt", c.AppendPrompt},
+		{"deferred_tools", c.DeferredTools},
+	} {
+		limit := ""
+		if p.part.LimitBytes > 0 {
+			limit = strconv.Itoa(p.part.LimitBytes)
+			if p.part.Over {
+				limit += " OVER"
+			}
+		}
+		fmt.Fprintf(tw, "  %s\t%d\t%d\t%s\n", p.name, p.part.Bytes, p.part.Tokens, limit)
+	}
+	fmt.Fprintf(tw, "  total\t%d\t%d\t%d\n", c.TotalBytes, c.TotalTokens, wiring.ResidentTotalSoftBytes)
+	_ = tw.Flush()
+
+	for _, f := range c.Rules.Files {
+		flags := ""
+		if f.Included {
+			flags += " included"
+		}
+		if f.Truncated {
+			flags += " TRUNCATED"
+		}
+		fmt.Fprintf(b, "  rule file %s: %d bytes ~%d tokens%s\n", f.Path, f.Bytes, f.Tokens, flags)
+	}
+	if t := c.Rules.Truncated; t != nil {
+		fmt.Fprintf(b, "  rules truncated: 已截断（原 %d 字节，保留 %d）\n", t.OriginalBytes, t.KeptBytes)
+	}
+	if c.MemoryIndex.Note != "" {
+		fmt.Fprintf(b, "  memory_index note: %s\n", c.MemoryIndex.Note)
+	}
+	if c.DeferredTools.Note != "" {
+		fmt.Fprintf(b, "  deferred_tools note: %s\n", c.DeferredTools.Note)
+	}
+	for _, name := range c.OverBudget {
+		if name == "total" {
+			fmt.Fprintf(b, "  over soft limit total: %d/%d bytes — %s\n", c.TotalBytes, wiring.ResidentTotalSoftBytes, wiring.TotalSuggestion())
+			continue
+		}
+		part := c.Part(name)
+		fmt.Fprintf(b, "  over soft limit %s: %d/%d bytes — %s\n", name, part.Bytes, part.LimitBytes, part.Suggestion)
+	}
 }
