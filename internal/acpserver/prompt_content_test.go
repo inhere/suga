@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/gookit/goutil/x/assert"
@@ -64,8 +63,7 @@ func driveImagePrompt(t *testing.T, cwd string, noVision bool, blocks []acp.Cont
 	provider := &capturePromptProvider{}
 	client := &testACPClient{}
 	conn := connectPersonalACP(t, testACPRuntimeWith(t, provider, nil, acpTestOptions{noVision: noVision}), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	_, err = conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: blocks})
@@ -124,8 +122,7 @@ func TestPromptImageBlocks(t *testing.T) {
 			dbPath: filepath.Join(cwd, "db", "sessions.db"),
 		})
 		conn := connectPersonalACP(t, open, client)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		ctx := testCtx(t)
 		created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 		assert.Require(t, assert.NoErr(t, err))
 		_, err = conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{
@@ -153,8 +150,7 @@ func TestPromptImageNoteWithoutVision(t *testing.T) {
 	provider := &capturePromptProvider{}
 	client := &testACPClient{}
 	conn := connectPersonalACP(t, testACPRuntimeWith(t, provider, nil, acpTestOptions{noVision: true}), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	_, err = conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{

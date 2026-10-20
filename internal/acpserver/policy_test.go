@@ -156,8 +156,7 @@ func TestToolUpdatesDoNotRepeatDiff(t *testing.T) {
 	provider := mock.NewProvider(mock.ToolCall("edit-1", "file_write", map[string]any{"path": "t.txt", "content": "after\n"}), mock.Final("done"))
 	client := &testACPClient{selected: "allow"}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, &countingTool{writePath: path}), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	assert.NoErr(t, err)
 	_, err = conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("edit")}})

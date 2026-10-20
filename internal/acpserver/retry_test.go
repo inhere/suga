@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/gookit/goutil/x/assert"
@@ -34,8 +33,7 @@ func (retryingProvider) Stream(ctx context.Context, _ *agentcore.GenerateRequest
 func TestPersonalACPRetryIsAThought(t *testing.T) {
 	client := &testACPClient{}
 	conn := connectPersonalACP(t, testACPRuntime(t, retryingProvider{}, nil), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	response, err := conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("hi")}})

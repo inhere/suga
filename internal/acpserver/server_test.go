@@ -276,8 +276,7 @@ func TestPersonalACPRequiresPermissionBeforeToolExecution(t *testing.T) {
 			provider := mock.NewProvider(mock.ToolCall("edit-1", "file_write", map[string]any{"path": "test.txt"}), mock.Final("done"))
 			client := &testACPClient{selected: selected}
 			conn := connectPersonalACP(t, testACPRuntime(t, provider, tool), client)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+			ctx := testCtx(t)
 			created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 			if err != nil {
 				t.Fatal(err)
@@ -324,8 +323,7 @@ func TestPersonalACPEmitsUsagePlanAndEditDetails(t *testing.T) {
 	)}
 	client := &testACPClient{selected: "allow"}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, tool), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	if err != nil {
 		t.Fatal(err)
@@ -392,8 +390,7 @@ func TestPersonalACPPlanComesFromUpdatePlanTool(t *testing.T) {
 			)
 			client := &testACPClient{selected: "reject"}
 			conn := connectPersonalACP(t, testACPRuntime(t, provider, nil), client)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+			ctx := testCtx(t)
 			created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 			assert.Require(t, assert.NoErr(t, err))
 			_, err = conn.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: created.SessionId, ModeId: mode})
@@ -478,8 +475,7 @@ func TestPersonalACPReadOnlyRejectsToolWithoutPermissionRequest(t *testing.T) {
 	tool := &countingTool{}
 	client := &testACPClient{selected: "allow"}
 	conn := connectPersonalACP(t, testACPRuntime(t, mock.NewProvider(mock.ToolCall("edit-1", "file_write", nil), mock.Final("done")), tool), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	if err != nil {
 		t.Fatal(err)
@@ -504,8 +500,7 @@ func TestPersonalACPPermissionFailureDoesNotExecuteTool(t *testing.T) {
 	tool := &countingTool{}
 	client := &testACPClient{permissionErr: context.DeadlineExceeded}
 	conn := connectPersonalACP(t, testACPRuntime(t, mock.NewProvider(mock.ToolCall("edit-1", "file_write", nil), mock.Final("done")), tool), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	if err != nil {
 		t.Fatal(err)
@@ -598,8 +593,7 @@ func (p *blockingACPProvider) Generate(ctx context.Context, _ *agentcore.Generat
 func TestPersonalACPCancelEndsActivePrompt(t *testing.T) {
 	provider := &blockingACPProvider{started: make(chan struct{})}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, nil), &testACPClient{})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	if err != nil {
 		t.Fatal(err)
@@ -659,8 +653,7 @@ func TestPersonalACPMCPToolNamedLikeReadToolStillAsks(t *testing.T) {
 			provider := mock.NewProvider(mock.ToolCall("call-1", tc.name, map[string]any{}), mock.Final("done"))
 			client := &testACPClient{selected: "allow"}
 			conn := connectPersonalACP(t, testACPRuntime(t, provider, tool), client)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+			ctx := testCtx(t)
 			created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 			assert.NoErr(t, err)
 			_, err = conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("go")}})
@@ -678,8 +671,7 @@ func TestPersonalACPBudgetWrapUpUsesEndTurnAndMetadata(t *testing.T) {
 	client := &testACPClient{}
 	open := testACPRuntimeWith(t, provider, nil, acpTestOptions{budget: personal.BudgetSettings{Tokens: 5, Scope: "turn"}})
 	conn := connectPersonalACP(t, open, client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	response, err := conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("budget")}})
@@ -702,8 +694,7 @@ func TestPersonalACPProviderTruncationKeepsEndTurn(t *testing.T) {
 	provider := &truncatedACPProvider{Provider: mock.NewProvider(mock.Final("cut")), truncateOn: 1}
 	client := &testACPClient{}
 	conn := connectPersonalACP(t, testACPRuntime(t, provider, nil), client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	response, err := conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("truncate")}})
@@ -716,8 +707,7 @@ func TestPersonalACPBudgetWrapUpAndTruncationKeepEndTurn(t *testing.T) {
 	client := &testACPClient{}
 	open := testACPRuntimeWith(t, provider, nil, acpTestOptions{budget: personal.BudgetSettings{Tokens: 5, Scope: "turn"}})
 	conn := connectPersonalACP(t, open, client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	assert.Require(t, assert.NoErr(t, err))
 	response, err := conn.Prompt(ctx, acp.PromptRequest{SessionId: created.SessionId, Prompt: []acp.ContentBlock{acp.TextBlock("truncate wrap-up")}})

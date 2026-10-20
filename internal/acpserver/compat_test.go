@@ -138,8 +138,7 @@ func TestACPGoSDKSupportsClientSessionAndPermissionContract(t *testing.T) {
 		permission: make(chan acp.RequestPermissionRequest, 2),
 	}
 	conn := connectCompat(t, agent, client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 
 	initialized, err := conn.Initialize(ctx, acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber})
 	if err != nil {
@@ -188,8 +187,7 @@ func TestACPGoSDKCancelEndsAnActivePrompt(t *testing.T) {
 	agent := &compatAgent{started: make(chan struct{})}
 	client := &compatClient{updates: make(chan acp.SessionNotification, 1), permission: make(chan acp.RequestPermissionRequest, 1)}
 	conn := connectCompat(t, agent, client)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := testCtx(t)
 
 	created, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
 	if err != nil {
