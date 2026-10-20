@@ -20,6 +20,7 @@
 - 回合内的日志行带 `session_id`、`turn_id` 属性（工具事件与预算提示），便于与 `suga trace` 对齐。
 - ACP 覆盖补齐（设计 2026-10-20）：initialize 声明 `sessionCapabilities{list,resume,close}`；`session/list` 按目录过滤（请求 cwd 优先，否则进程工作目录，`_meta.suga/all` 列全部，响应带 `suga/otherDirs` 与空结果 `suga/hint`），每页 50 条带 cursor，排除 archived 与子 agent；`session/load` 按协议回放当前分段（压缩摘要一条思考，用户/助手消息、工具调用与结果最多 2KB 文本，超过 2MB 只回放最近部分并说明）；`session/resume` 同 load 检查但不回放；`session/close` 取消进行中的回合并释放状态，之后 prompt 被拒；`session/set_config_option` 提供 model 与 mode 两个 select，切模型走 `SwitchModel`（回合中拒绝），new/load/resume 响应带同样选项。
 - `suga sessions` 默认只列当前目录的会话：新增 `-a/--all` 列出全部目录；`--cwd <路径>` 前缀过滤保留并与 `--all` 互斥；默认视图结果为空时在 stderr 提示目录可能不对（其它目录共有 N 个）或用 `--all`，`--json` 时 stdout 仍输出 `[]`；表格标题行注明范围。
+- `suga run --image <路径>`（可重复，顺序保留）把图片直接附到本条用户消息：与 chat `:image` 同一套校验、缩放与落盘（`sessions/<id>/images/`），相对路径按 run 的工作目录解析；当前模型不支持看图、或任何一张图读取失败时在回合开始前报错退出（exit 1，写明第几张与原因，并提示用 `--model` 或配置 `vision`），不静默丢图。`--output stream-json` 的首行 session 事件在有图时带 `images` 张数（无 `--image` 时该行逐字节不变）。
 
 ### 修复
 

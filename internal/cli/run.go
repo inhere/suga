@@ -65,6 +65,13 @@ type personalOptions struct {
 	// when it was created in another one (--allow-cwd-change). Without it, a
 	// resume elsewhere is refused (chat asks first when it has a terminal).
 	AllowCwdChange bool
+	// ImagePaths are the run's --image values (repeatable, order kept). They are
+	// prepared before the first turn and ride with Prompt
+	// (personal.RunRequest.Images, the chat :image pipeline).
+	ImagePaths []string
+	// Images are the prepared image parts of ImagePaths. runPersonalWithOptions
+	// sets them once the runtime is assembled; tests may set them directly.
+	Images []agentcore.ImagePart
 	// setupSession runs once the session is open and before the first turn: the
 	// CLI publishes the session's added directories there.
 	setupSession func(ctx context.Context, sessionID string) error
@@ -172,6 +179,14 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 		return runChat(ctx, runtime, opts, stdin, stdout, stderr, taskManager, taskWake)
 	}
 	opts.tasks = taskManager
+	// The --image pictures are read before the turn starts: an unusable one
+	// (not readable, model of the run cannot see) fails the run without
+	// creating a session or asking the model anything.
+	images, err := prepareRunImages(runtime, opts.ImagePaths)
+	if err != nil {
+		return err
+	}
+	opts.Images = images
 	return executePersonalRun(ctx, runtime.Runner, opts, stdout, stderr)
 }
 
@@ -212,6 +227,7 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	cmd.Var((*cflag.Strings)(&opts.MCPConfigs), "mcp-config", "Claude-style JSON MCP server config")
 	cmd.Var((*cflag.Strings)(&opts.AddDirs), "add-dir", "extra absolute directory for this session as \"<directory>[:ro|:rw]\" (default :ro), repeatable; SUGA_ADD_DIRS adds more")
 	cmd.BoolVar(&opts.AllowCwdChange, "allow-cwd-change", false, "continue a resumed session in the current directory even if it was created in another one")
+	cmd.Var((*cflag.Strings)(&opts.ImagePaths), "image", "image file attached to this prompt (same checks, scaling and storage as chat :image)")
 	if mode == "run" {
 		cmd.BoolVar(&opts.Injected, "injected", false, "mark this turn's prompt as not typed by a person")
 		cmd.IntVar(&opts.MaxSteps, "max-steps", 0, "max tool steps in this turn, >= 1 (overrides SUGA_MAX_STEPS and max_steps); sub-agent agents.max_steps is unaffected")
@@ -254,6 +270,9 @@ func validatePersonalOptions(mode string, opts personalOptions) error {
 	if mode == "chat" && opts.Prompt != "" {
 		return fmt.Errorf("--prompt is only supported in run mode")
 	}
+	if mode == "chat" && len(opts.ImagePaths) > 0 {
+		return fmt.Errorf("--image is only supported in run mode")
+	}
 	if mode == "chat" && opts.OutputFormat != "text" {
 		return fmt.Errorf("chat mode requires text output")
 	}
@@ -287,7 +306,13 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	var encoder *json.Encoder
 	if opts.OutputFormat == "stream-json" {
 		encoder = json.NewEncoder(stdout)
-		if err := encoder.Encode(output.WithModel(output.SessionLine(sessionID), runModelRef(runner))); err != nil {
+		// The first line records how many pictures this prompt carries; a run
+		// without --image keeps the line byte-for-byte as it was.
+		session := output.SessionLine(sessionID)
+		if len(opts.Images) > 0 {
+			session["images"] = len(opts.Images)
+		}
+		if err := encoder.Encode(output.WithModel(session, runModelRef(runner))); err != nil {
 			return err
 		}
 	} else {
@@ -323,7 +348,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		return encoder.Encode(line)
 	}
 	runStart := time.Now()
-	result, err := runner.Run(ctx, personal.RunRequest{SessionID: sessionID, Prompt: opts.Prompt, Injected: opts.Injected, Emit: emit})
+	result, err := runner.Run(ctx, personal.RunRequest{SessionID: sessionID, Prompt: opts.Prompt, Images: opts.Images, Injected: opts.Injected, Emit: emit})
 	if err == nil && result.State == personal.RunCompleted && opts.tasks != nil {
 		result, err = finishBackgroundTasks(ctx, runner, opts.tasks, sessionID, result, emit, live, stderr)
 	}

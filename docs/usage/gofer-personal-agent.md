@@ -337,6 +337,13 @@ Suga 的 ACP 服务端支持图片内容块（第二期）：
 - 当前模型不支持看图时：图片仍照常落盘，请求里换成文字说明，并在回复前以一次 agent 思考通知告知客户端（“附带的 N 张图片已转为文字说明”）。会话中途 `:model` 类切换由下一次 prompt 重新判断。
 - acpprobe（`scripts/acpprobe/acp_probe.py`）可用 `--prompt-with-image "<文本>|<PNG 路径>"` 发一个带图片块的 prompt，开始时打印 initialize 的实际声明。
 
+### CLI 图片输入（`run --image`）
+
+- `suga run --image <路径>`（可重复，顺序保留）把图片直接附到本条用户消息，不必先让模型调 `view_image`：校验、缩放与落盘与 chat `:image` 相同（PNG/JPEG/GIF/WebP，长边 `images.max_side`，落盘到 `sessions/<id>/images/`，数据库只存引用），相对路径按 run 的工作目录解析。
+- 当前模型不支持看图、或任何一张图读取失败（不存在、格式不支持、超限）时，run 在开始回合前报错退出（exit 1）：错误写明第几张与路径/原因，并提示用 `--model` 指定支持看图的模型或为该模型配置 `vision`，不会静默丢图。
+- `--output stream-json` 的首行 session 事件在有图时多一个 `images` 字段（张数）；无 `--image` 时该行与原来逐字节一致。
+- gofer 的命令行形态可按路径传图：`suga run --model <provider>/<model> --image <绝对路径> -p "描述这张图"`（图片在发送端读取、按 chat `:image` 的规则校验后随本条消息发出）。`suga send --image` 尚未支持：投递协议（`internal/personal/process`）只携带文本，需要附图时用 run 或 ACP 图片块。
+
 ### ACP 用量上报
 
 每次模型调用结束后以及每轮结束（含被取消的回合）都发送 `usage_update`：`_meta` 顶层的扁平键 `input_tokens`/`output_tokens`/`cache_read_tokens`/`cache_write_tokens`/`total_tokens`/`cost_usd`/`tool_calls` 为**本次 run 的累计值**（run 口径，Gofer 只读这些扁平键，所以预算按 run 计）；另附嵌套对象 `_meta.run`（同一 run 值）和 `_meta.session`（会话累计，含本次 run；无 `tool_calls`）；顶层 `cost.amount` 仍为**会话累计值**；顶层 `used` 是最近一次模型请求的上下文 token 数，`size` 是模型上下文窗口。窗口取 `providers.<id>.models.<model>.context_window`（可选配置），否则按实际生效的模型（`--model`/`SUGA_MODEL` 覆盖后的值）名取保守默认（claude 200k、gpt-4.1 1M、gpt-5 400k、gpt-4o/deepseek 128k），未知模型为 128k。会话累计（`_meta.session`）保存在会话 metadata（`sessions.metadata_json`），`session/load` 或重启后从已保存值继续累计。`input_tokens` 不含缓存，缓存另报 `cache_read_tokens`/`cache_write_tokens`，`total_tokens` = input + output + cache_read + cache_write（与 Gofer 口径一致）。
