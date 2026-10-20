@@ -36,6 +36,10 @@ func renderMemorySection(index string) string {
 	return memoryIndexNote + "\n\n" + index
 }
 
+// RenderMemorySection is the exported form of renderMemorySection: the
+// resident context report measures the same section the segment context sends.
+func RenderMemorySection(index string) string { return renderMemorySection(index) }
+
 // memorySnapshot reads the memory index through Config.MemoryIndex and
 // renders the segment context section with its sha256. ok is false when there
 // is no memory source or nothing could be read; a failure is only logged and

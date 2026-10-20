@@ -105,6 +105,14 @@ Details: [references/sessions.md#skills](skills/suga-guide/references/sessions.m
 - Scanned in order: `<workspace>/.agents/skills`, `<workspace>/skills`, `~/.suga/skills`, `~/.agents/skills`; the first of a name wins.
 - The built-in `suga-guide` is unpacked on first run and refreshed on upgrade only while you have not changed its files.
 - Beyond `skills.list_max` only names are listed; the model loads one by name or searches with `skill(query=…)`; `skills.always_load` keeps a body in every prompt.
+- `suga inspect manifest` lists the `SKILL.md` files it skipped (parse or frontmatter error) and same-name skills shadowed by an earlier root, with the winner and the loser; chat says the counts once when it opens a session.
+
+## Resident context
+
+- Every request carries the system prompt plus the segment context: environment, project rules, memory index, skills list, additional instructions and the deferred-tools listing. `suga inspect manifest` reports the bytes and estimated tokens of each part and the total, with per-file sizes for the rules (`--json`: `context.*`).
+- Soft limits (warnings, nothing is dropped): rules 32KB, memory index 8KB, skills list 8KB, total 64KB. A part over its limit is marked `OVER` with the action that brings it down (trim rules, `suga memory summaries`, fewer always-listed skills).
+- Rules are hard-capped at 64KB per file and 128KB in total; when that cuts content, the manifest shows `已截断（原 X 字节，保留 Y）` and chat says it once at session start (run and ACP only log it).
+- Keep resident text scarce: general short rules in `AGENTS.md`, anything with a trigger scenario as a skill, deterministic steps as a script or hook.
 
 ## Memory
 

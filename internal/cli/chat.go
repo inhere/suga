@@ -59,9 +59,18 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		return chat.ModelOption{Provider: option.Provider, Model: option.Model, Thinking: option.Thinking,
 			ContextWindow: option.ContextWindow, MaxOutputTokens: option.MaxOutputTokens}, nil
 	}
+	// Resident context warnings (rules truncated, soft thresholds crossed,
+	// skipped or shadowed skills): chat says each once at session start. run and
+	// ACP log the same facts in wiring.Open instead.
+	var contextNotices []string
+	if runtime.Resident != nil {
+		report := runtime.Resident(ctx)
+		contextNotices = wiring.ContextNotices(report.Context, report.Skills)
+	}
 	return chat.Run(ctx, runtime.Runner, chat.Options{
 		SessionID: opts.SessionID, ResumeID: opts.ResumeID, FromID: opts.FromID,
-		Asker: runtime.Asker, WriteTools: runtime.WriteTools,
+		ContextNotices: contextNotices,
+		Asker:          runtime.Asker, WriteTools: runtime.WriteTools,
 		Thinking: runtime.Thinking, ContextWindow: runtime.ContextWindow,
 		Markdown:       appconfig.ChatMarkdownEnabled(),
 		Spinner:        appconfig.ChatSpinnerEnabled(),

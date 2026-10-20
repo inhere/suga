@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,6 +141,10 @@ type Runtime struct {
 	// read it at every call, so the front end fills it once the session is known
 	// (ApplyAddDirs).
 	AddDirs *native.AddDirs
+	// Resident reports the resident context of this runtime (system prompt,
+	// environment, rules, memory index, skills, append prompt, deferred tools)
+	// for the manifest and the chat start notice; nil leaves both without it.
+	Resident func(context.Context) ResidentReport
 
 	repo         *store.Store
 	capabilities defaultCapabilities
@@ -594,10 +599,17 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	// suga_manifest is read-only local data, so it is registered in every
 	// mode. It reports the live registry (MCP tools included) when called.
-	capabilities.Registry.Register(NewManifestTool(func(context.Context) (any, error) {
+	// resident is assigned below, once the visibility layer (deferred tools)
+	// exists; the tool only reads it when it is called.
+	var resident func(context.Context) ResidentReport
+	capabilities.Registry.Register(NewManifestTool(func(mctx context.Context) (any, error) {
 		mcpServers, err := appconfig.ReadMCPServerSettings()
 		if err != nil {
 			return nil, err
+		}
+		residentInput := ResidentReport{}
+		if resident != nil {
+			residentInput = resident(mctx)
 		}
 		return BuildManifest(ManifestInput{
 			Version: buildVersion, Settings: settings, Registry: capabilities.Registry,
@@ -605,7 +617,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			ToolConflicts: capabilities.Conflicts(),
 			Preferred:     preferredTools,
 			SkillRoots:    skillRoots(workspace), Skills: skillReg,
-			Memory: memSetup, Policy: memPolicy, Approval: refreshManifestApprovalRules(approval.RuleSource),
+			Context: residentInput.Context,
+			Memory:  memSetup, Policy: memPolicy, Approval: refreshManifestApprovalRules(approval.RuleSource),
 			ToolsApproval: manifestToolsApprovalAction(),
 			InlineBytes:   rs.inlineBytes, SpillBytes: rs.spillBytes, SessionsDir: sessionsDir,
 			TaintTools: taintTools, TaintOnSpill: taintOnSpill,
@@ -624,6 +637,30 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		return nil, err
 	}
 	var toolRegistry agentcore.ToolRegistry = vis
+	// resident builds the resident context report from the live sources: the
+	// same environment, rules, skills and deferred-tools texts the runner puts
+	// into a segment, measured by the manifest and the chat start notice. It
+	// runs no memory backend command when a scope uses gofer/exec.
+	resident = func(rctx context.Context) ResidentReport {
+		sugaHome, _ := appconfig.ResolveSugaHome()
+		rules, _, ruleStats, rerr := personal.LoadRulesDetailed(ruleCWD, sugaHome, opts.NoProjectRules, ruleFile)
+		if rerr != nil {
+			rules, ruleStats = "", personal.RuleStats{}
+		}
+		index, indexNote := residentMemoryIndex(rctx, mem)
+		skillsText, _ := skillsPrompt(skillReg, readSkillPolicy())
+		return NewResidentReport(ResidentContext{
+			SystemPrompt:    basePrompt(),
+			Environment:     environmentPrompt(opts),
+			Rules:           rules,
+			RuleStats:       ruleStats,
+			MemoryIndex:     personal.RenderMemorySection(index),
+			MemoryIndexNote: indexNote,
+			Skills:          skillsText,
+			AppendPrompt:    appendSystemPrompt(opts.AppendSystemPrompt),
+			DeferredTools:   vis.PromptSection(),
+		}, skillReg)
+	}
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	if err != nil {
 		_ = capabilities.Close()
@@ -759,7 +796,16 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	memSetup.Bind(repo)
 	memHost.bind(runner, repo)
 	sessionEnv.Bind(runner)
+	// run and ACP have no chat terminal: their resident context warnings go to
+	// the log once per process, so stdout and the ACP stream stay unchanged.
+	if !opts.ChatMode {
+		report := resident(ctx)
+		for _, notice := range ContextNotices(report.Context, report.Skills) {
+			slog.Warn("resident context", "notice", notice)
+		}
+	}
 	rt := &Runtime{Runner: runner, Registry: capabilities.Registry, PreferredTools: preferredTools,
+		Resident: resident,
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string) {
 			policyAction, hit := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
 			if hit != nil {

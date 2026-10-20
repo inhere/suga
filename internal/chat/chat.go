@@ -155,6 +155,11 @@ type Options struct {
 	// workspace and output limits shell_exec uses; nil leaves the prefix an
 	// ordinary message (run, ACP, a chat without one).
 	Local *native.LocalCommand
+	// ContextNotices are the resident context warnings of this chat (rules
+	// truncated, a soft threshold crossed, skipped or shadowed skills). Run
+	// prints each once, on stderr, when the session is open; they never change
+	// what the model receives. A nil slice prints nothing.
+	ContextNotices []string
 }
 
 // markInteractivelyUsed records that this chat continued a session a
@@ -215,6 +220,12 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		sessionID, createdAtStartup = model.ID, true
 	}
 	fmt.Fprintln(stderr, "session id:", sessionID)
+	// Resident context warnings (rules truncated, soft thresholds crossed,
+	// skipped or shadowed skills) are said once per session start. run and ACP
+	// only log them, so this stays off their stdout/ACP output.
+	for _, notice := range opts.ContextNotices {
+		fmt.Fprintln(stderr, notice)
+	}
 	if opts.SetupSession != nil {
 		if err := opts.SetupSession(ctx, sessionID); err != nil {
 			return err

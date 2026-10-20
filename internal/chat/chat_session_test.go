@@ -40,6 +40,20 @@ func newCLITestRunner(t *testing.T, provider agentcore.Provider, hooks ...agentc
 	return runner, repo
 }
 
+// TestPersonalChatContextNoticeOnce: the resident context warnings chat is given
+// are printed once at session start, on stderr, and never enter the
+// conversation output.
+func TestPersonalChatContextNoticeOnce(t *testing.T) {
+	runner, _ := newCLITestRunner(t, mock.NewProvider(mock.Final("hi")))
+	var stdout, stderr bytes.Buffer
+	notice := "提示：项目规则已截断（原 10 字节，保留 5）；运行 suga inspect manifest 查看各来源文件。"
+	err := Run(context.Background(), runner, Options{ContextNotices: []string{notice}},
+		strings.NewReader(":quit\n"), &stdout, &stderr, nil)
+	assert.NoErr(t, err)
+	assert.Eq(t, 1, strings.Count(stderr.String(), notice))
+	assert.False(t, strings.Contains(stdout.String(), "inspect manifest"))
+}
+
 func TestPersonalChatReusesOneSession(t *testing.T) {
 	runner, repo := newCLITestRunner(t, mock.NewProvider(mock.Final("first"), mock.Final("second")))
 	var stdout, stderr bytes.Buffer

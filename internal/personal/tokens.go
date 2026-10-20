@@ -31,6 +31,12 @@ const (
 // narrow bytes a quarter token each. The sum is kept in quarter tokens and rounded
 // up, so a short text never estimates as zero.
 func tokensOfText(s string) int {
+	return EstimateTokens(s)
+}
+
+// EstimateTokens is the token estimate of one text, for the resident context
+// report (the same estimator the context budget uses).
+func EstimateTokens(s string) int {
 	if s == "" {
 		return 0
 	}

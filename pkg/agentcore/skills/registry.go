@@ -19,6 +19,42 @@ const maxSkillDepth = 3
 type Registry struct {
 	skills []Skill
 	byName map[string]int
+	// skipped and shadowed are the load diagnostics: a SKILL.md that could not
+	// be parsed, and a skill a higher-priority root kept. They let the manifest
+	// and the chat start notice explain a skill that is installed but absent.
+	skipped  []SkippedSkill
+	shadowed []ShadowedSkill
+}
+
+// SkippedSkill is a SKILL.md that was found but not registered, with the
+// reason (a parse or validation error).
+type SkippedSkill struct {
+	Path string
+	Err  string
+}
+
+// ShadowedSkill is a skill whose name was already registered by an earlier
+// root: Winner is the SKILL.md that stays in effect, Loser the dropped one.
+type ShadowedSkill struct {
+	Name   string
+	Winner string
+	Loser  string
+}
+
+// Skipped reports the SKILL.md files that could not be registered.
+func (r *Registry) Skipped() []SkippedSkill {
+	if r == nil {
+		return nil
+	}
+	return append([]SkippedSkill(nil), r.skipped...)
+}
+
+// Shadowed reports the same-name skills dropped in favour of an earlier root.
+func (r *Registry) Shadowed() []ShadowedSkill {
+	if r == nil {
+		return nil
+	}
+	return append([]ShadowedSkill(nil), r.shadowed...)
 }
 
 // NewRegistry returns an empty registry.
@@ -110,10 +146,16 @@ func LoadRoots(roots []Root) *Registry {
 			s, _, err := ParseFile(path)
 			if err != nil {
 				slog.Warn("skip invalid skill", "path", path, "err", err)
+				reg.skipped = append(reg.skipped, SkippedSkill{Path: path, Err: err.Error()})
 				continue
 			}
 			s.Path, s.Dir, s.Workspace = path, filepath.Dir(path), r.Workspace
-			reg.Register(s)
+			if !reg.Register(s) {
+				// A later root never replaces an earlier skill of the same name;
+				// record both paths so the manifest can say which one won.
+				winner, _ := reg.Get(s.Name)
+				reg.shadowed = append(reg.shadowed, ShadowedSkill{Name: s.Name, Winner: winner.Path, Loser: path})
+			}
 		}
 	}
 	return reg
