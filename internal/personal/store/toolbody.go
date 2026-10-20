@@ -21,7 +21,9 @@ import (
 // Tool body files (design 2026-10-19-tool-output-files, 0.3).
 //
 // A tool entry whose JSON exceeds the inline threshold moves out of the ledger
-// into one append-only file per session, sessions/<id>/tools.jsonl:
+// into one append-only file per session, sessions/<id>/bodies.jsonl (the name of
+// v0.36 was tools.jsonl, which is still read and, until `data bodies
+// --rename-files` switched the write name, still written):
 //
 //	{"seq":N,"sha256":"<hex>","json":<entry JSON raw bytes>}\n
 //
@@ -35,7 +37,7 @@ import (
 // record and the swap to the stub commit together, so a body never lives only in
 // the file while the row still looks inline, and never the other way round. A
 // record written before a crash of the commit is an orphan: harmless (a later
-// seq points at its own offset) and reported by `suga data tool-bodies --check`.
+// seq points at its own offset) and reported by `suga data bodies --check`.
 //
 // An assistant entry above the threshold moves out the same way (design
 // 2026-10-20-assistant-bodies): its record holds the whole message (Reasoning,
