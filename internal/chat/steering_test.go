@@ -136,7 +136,7 @@ func (h *steerHarness) turnInjected(t *testing.T, index int) bool {
 // startTurn runs one turn in the background and returns its result channel.
 func (h *steerHarness) startTurn() <-chan error {
 	done := make(chan error, 1)
-	go func() { done <- h.state.runTurn("干活", false) }()
+	go func() { done <- h.state.runTurn("干活", false, nil) }()
 	return done
 }
 

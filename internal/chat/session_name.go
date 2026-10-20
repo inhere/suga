@@ -49,8 +49,10 @@ func resolveChatShortName(stored string, records []personalprocess.Record, dir s
 // the server plus the effective name for the banner, `suga ps` and the exit
 // summary. The name is generated and stored on the first registration and reused
 // by every resume. deliver is where the socket hands an incoming message
-// (chatState.deliverMessage, which resolves the request's mode).
-func registerChatProcess(sessionID string, runner *personal.Runner, deliver personalprocess.DeliverWaitFunc, stderr io.Writer) (*personalprocess.Server, string, error) {
+// (chatState.deliverMessage, which resolves the request's mode). The record
+// declares FeatureImages, so a `suga send --image` sender knows this receiver
+// takes pictures (design send --image D2).
+func registerChatProcess(sessionID string, runner *personal.Runner, deliver personalprocess.DeliverImagesFunc, stderr io.Writer) (*personalprocess.Server, string, error) {
 	ctx := context.Background()
 	stored, err := runner.SessionShortName(ctx, sessionID)
 	if err != nil {
@@ -62,7 +64,8 @@ func registerChatProcess(sessionID string, runner *personal.Runner, deliver pers
 	}
 	cwd, _ := os.Getwd()
 	name, save, notice := resolveChatShortName(stored, records, chatNameDir(runner, sessionID, cwd), personalprocess.RandomSuffix)
-	server, err := personalprocess.StartWait(runner.ProcessRoot(), sessionID, name, cwd, deliver)
+	server, err := personalprocess.StartWaitImages(runner.ProcessRoot(), sessionID, name, cwd,
+		[]string{personalprocess.FeatureImages}, deliver)
 	if err != nil {
 		return nil, "", err
 	}

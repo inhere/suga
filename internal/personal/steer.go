@@ -66,6 +66,10 @@ type Steer struct {
 	Text string
 	// Source names where the steer came from: "keyboard", "send:<from>".
 	Source string
+	// Images are the pictures delivered with the message (`suga send --steer
+	// --image`): they enter the user message of this turn with their references
+	// only, and the request view reads the bytes back from the session directory.
+	Images []agentcore.ImagePart
 }
 
 // steerInbox is the pending steers of one session plus the ones the running
@@ -286,7 +290,7 @@ func steerInboxOf(ctx context.Context) *steerInbox {
 // and id in the metadata (isSteerItem tells it apart from the turn's own
 // messages, see injectedItemKeys).
 func SteerMessage(s Steer) agentcore.Message {
-	return agentcore.Message{Role: "user", Content: s.Text, Metadata: map[string]any{
+	return agentcore.Message{Role: "user", Content: s.Text, Images: s.Images, Metadata: map[string]any{
 		metaSteer: true, metaSteerSource: s.Source, metaSteerID: s.ID,
 	}}
 }

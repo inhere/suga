@@ -538,7 +538,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			continue
 		}
 		// The turn itself, from the idle pause to its Stop hook (chat_turn.go).
-		if err := state.runTurn(line, injected); err != nil {
+		if err := state.runTurn(line, injected, in.images); err != nil {
 			if errors.Is(err, errExitChat) {
 				// A second Ctrl-C during a turn: leave chat like the second one at
 				// the prompt does, with the usual summary on the way out.
@@ -582,6 +582,9 @@ func ensureTranscriptFile(path, sessionID string) {
 type chatInput struct {
 	line                                     string
 	hasLine, stopDone, injected, interrupted bool
+	// images are the pictures of a `suga send --image` delivery: they ride with the
+	// turn this input starts.
+	images []agentcore.ImagePart
 }
 
 func nextChatInput(ctx context.Context, source *chatInputSource, render *Renderer, waiting sugahooks.Wait, lost *string) (chatInput, error) {
@@ -625,7 +628,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 			}
 			render.External(delivery.line)
 			delivery.settle(nil)
-			return chatInput{line: delivery.line, hasLine: true, injected: true, interrupted: interrupted}, nil
+			return chatInput{line: delivery.line, hasLine: true, injected: true, interrupted: interrupted, images: delivery.images}, nil
 		default:
 		}
 		select {
@@ -668,7 +671,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 			}
 			render.External(delivery.line)
 			delivery.settle(nil)
-			return chatInput{line: delivery.line, hasLine: true, injected: delivery.injected, interrupted: interrupted}, nil
+			return chatInput{line: delivery.line, hasLine: true, injected: delivery.injected, interrupted: interrupted, images: delivery.images}, nil
 		case <-ctx.Done():
 			return chatInput{interrupted: interrupted}, ctx.Err()
 		}

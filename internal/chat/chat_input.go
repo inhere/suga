@@ -13,6 +13,7 @@ import (
 
 	"github.com/inhere/suga/internal/chat/lineedit"
 	"github.com/inhere/suga/internal/personal/process"
+	"github.com/inhere/suga/pkg/agentcore"
 	"golang.org/x/term"
 )
 
@@ -31,6 +32,9 @@ type chatInputEvent struct {
 	// settled (deliveries only) reports the final fate of a queued delivery: nil once it starts
 	// a turn, an error if it is discarded at exit. Buffered(1); nil when nobody waits.
 	settled chan error
+	// images (deliveries only) are the pictures a `suga send --image` message
+	// carries; they ride with the turn this delivery starts.
+	images []agentcore.ImagePart
 }
 
 // settle reports the delivery's final fate to a waiting sender; never blocks.
@@ -231,11 +235,18 @@ func (s *chatInputSource) Deliver(text, from string) (bool, error) {
 // DeliverWait enqueues a message for the chat loop. settled yields nil once the message starts
 // a turn, or process.ErrDiscarded if the chat exits while it is still queued.
 func (s *chatInputSource) DeliverWait(text, from string) (bool, <-chan error, error) {
+	return s.DeliverImages(text, from, nil)
+}
+
+// DeliverImages enqueues a message that carries pictures for the chat loop: they
+// are attached to the turn the delivery starts (`suga send --image`, design
+// send --image D3).
+func (s *chatInputSource) DeliverImages(text, from string, images []agentcore.ImagePart) (bool, <-chan error, error) {
 	if strings.TrimSpace(text) == "" {
 		return false, nil, fmt.Errorf("delivery text is empty")
 	}
 	settled := make(chan error, 1)
-	event := chatInputEvent{line: deliveryLine(text, from), injected: true, settled: settled}
+	event := chatInputEvent{line: deliveryLine(text, from), injected: true, settled: settled, images: images}
 	// Hold mu across the closed check and the enqueue so DiscardQueued cannot miss a delivery.
 	s.mu.Lock()
 	defer s.mu.Unlock()

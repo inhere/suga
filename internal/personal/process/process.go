@@ -34,6 +34,25 @@ type Record struct {
 	ProcStart string `json:"proc_start,omitempty"`
 	Host      string `json:"host"`
 	State     string `json:"state"`
+	// Features lists what this process accepts beyond plain text (FeatureImages
+	// for `suga send --image`). A record written by an older version has no
+	// field, and an older receiver would silently drop an images request, so a
+	// sender checks the feature before it sends anything (design send --image D2).
+	Features []string `json:"features,omitempty"`
+}
+
+// FeatureImages is the Record.Features entry of a process that accepts
+// Request.Images (`suga send --image`).
+const FeatureImages = "images"
+
+// HasFeature reports whether the record declares feature in its Features.
+func (r Record) HasFeature(feature string) bool {
+	for _, have := range r.Features {
+		if have == feature {
+			return true
+		}
+	}
+	return false
 }
 
 // Delivery modes of a Request (Request.Mode).
@@ -47,6 +66,20 @@ const (
 	ModeSteer = "steer"
 )
 
+// ImageRef names one image `suga send --image` delivers: the sender writes the
+// file into the target session's images directory and the request carries the
+// reference only (the request body stays far below the 1 MiB limit, design D1).
+// The receiver checks the file and its sha256 before the picture enters the
+// message.
+type ImageRef struct {
+	// Ref is the part reference below the session directory, images/<sha256>.<ext>.
+	Ref       string `json:"ref"`
+	SHA256    string `json:"sha256"`
+	MediaType string `json:"media_type,omitempty"`
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+}
+
 type Request struct {
 	Type      string `json:"type"`
 	SessionID string `json:"session_id,omitempty"`
@@ -59,6 +92,10 @@ type Request struct {
 	// right now, anything else (an absent field included, the shape every older
 	// client sends) queues it for the next turn.
 	Mode string `json:"mode,omitempty"`
+	// Images are the pictures delivered with the text, as references only. An
+	// older server ignores the unknown field, which the sender's feature check
+	// prevents (Record.Features).
+	Images []ImageRef `json:"images,omitempty"`
 }
 
 type Response struct {
@@ -69,6 +106,9 @@ type Response struct {
 	Queued  bool   `json:"queued,omitempty"`
 	Steered bool   `json:"steered,omitempty"`
 	Error   string `json:"error,omitempty"`
+	// Warning reports something the receiver did to accept the message that the
+	// sender should show (the model cannot see images, so they became a note).
+	Warning string `json:"warning,omitempty"`
 }
 
 // Delivery is the acknowledgement of one accepted message: exactly one of Queued
@@ -77,11 +117,20 @@ type Response struct {
 type Delivery struct {
 	Queued  bool
 	Steered bool
+	// Warning is what the receiver did to accept the message that the sender
+	// should show (an empty one says nothing).
+	Warning string
 }
 
 // DeliverFunc hands one message to the process the server belongs to. mode is the
 // Request.Mode of the sender (ModeFollowUp when it sent none).
 type DeliverFunc func(mode, text, from string) (Delivery, error)
+
+// DeliverImagesFunc is a DeliverWaitFunc that also receives the images of the
+// request (Record.Features carrying FeatureImages). A server started without one
+// answers images requests with "images_unsupported", so an old receiver never
+// takes the text and drops the pictures.
+type DeliverImagesFunc func(mode, text, from string, images []ImageRef) (Delivery, <-chan error, error)
 
 // DeliverWaitFunc is a DeliverFunc that can also report the final fate of an accepted message:
 // settled (may be nil) yields nil once the message is delivered or starts a turn (OK), or an
@@ -115,6 +164,21 @@ func Start(root, sessionID, name, cwd string, deliver DeliverFunc) (*Server, err
 		delivery, err := deliver(mode, text, from)
 		return delivery, nil, err
 	})
+}
+
+// StartFeatures is Start with the Record.Features the process declares: the
+// features a sender checks before it relies on them (FeatureImages).
+func StartFeatures(root, sessionID, name, cwd string, features []string, deliver DeliverFunc) (*Server, error) {
+	return startServer(root, sessionID, name, cwd, features, nil, func(mode, text, from string) (Delivery, <-chan error, error) {
+		delivery, err := deliver(mode, text, from)
+		return delivery, nil, err
+	})
+}
+
+// StartWaitImages is StartWait with the Record.Features the process declares and a
+// deliver func that also takes the request's images (`suga send --image`).
+func StartWaitImages(root, sessionID, name, cwd string, features []string, deliver DeliverImagesFunc) (*Server, error) {
+	return startServer(root, sessionID, name, cwd, features, deliver, nil)
 }
 
 // SecureDir restricts an existing directory to the current user: 0700 on
@@ -183,6 +247,13 @@ func trustedSocket(socket, root string, pid int) bool {
 }
 
 func StartWait(root, sessionID, name, cwd string, deliver DeliverWaitFunc) (*Server, error) {
+	return startServer(root, sessionID, name, cwd, nil, nil, deliver)
+}
+
+// startServer is what every Start variant runs: the record declares features,
+// and either deliverImages (a receiver that takes pictures) or deliver (a text
+// only one) handles a request.
+func startServer(root, sessionID, name, cwd string, features []string, deliverImages DeliverImagesFunc, deliver DeliverWaitFunc) (*Server, error) {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(sessionID) == "" {
 		return nil, fmt.Errorf("process registration requires root and session ID")
 	}
@@ -218,14 +289,14 @@ func StartWait(root, sessionID, name, cwd string, deliver DeliverWaitFunc) (*Ser
 	}
 	_ = os.Chmod(socket, 0o600)
 	host, _ := os.Hostname()
-	record := Record{PID: pid, SessionID: sessionID, Name: name, CWD: cwd, Kind: "chat", Socket: socket, StartedAt: time.Now().UTC(), ProcStart: procStart, Host: host, State: "idle"}
+	record := Record{PID: pid, SessionID: sessionID, Name: name, CWD: cwd, Kind: "chat", Socket: socket, StartedAt: time.Now().UTC(), ProcStart: procStart, Host: host, State: "idle", Features: features}
 	server := &Server{root: root, record: record, listener: listener, done: make(chan struct{}), closing: make(chan struct{})}
 	if err := server.writeRecord(); err != nil {
 		_ = listener.Close()
 		_ = os.Remove(socket)
 		return nil, err
 	}
-	go server.serve(deliver)
+	go server.serve(deliver, deliverImages)
 	return server, nil
 }
 
@@ -283,18 +354,18 @@ func (s *Server) writeRecord() error {
 	return os.Rename(tmp, filepath.Join(s.root, fmt.Sprintf("%d.json", s.record.PID)))
 }
 
-func (s *Server) serve(deliver DeliverWaitFunc) {
+func (s *Server) serve(deliver DeliverWaitFunc, deliverImages DeliverImagesFunc) {
 	defer close(s.done)
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			return
 		}
-		go s.handle(conn, deliver)
+		go s.handle(conn, deliver, deliverImages)
 	}
 }
 
-func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc) {
+func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages DeliverImagesFunc) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	var request Request
@@ -310,8 +381,14 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc) {
 		_ = json.NewEncoder(conn).Encode(Response{Error: "invalid_request"})
 		return
 	}
-	if deliver == nil {
+	if deliver == nil && deliverImages == nil {
 		_ = json.NewEncoder(conn).Encode(Response{Error: "delivery_unavailable"})
+		return
+	}
+	// Images need a receiver that knows them: answering with an error instead of
+	// taking the text is what keeps a picture from being dropped silently.
+	if len(request.Images) > 0 && deliverImages == nil {
+		_ = json.NewEncoder(conn).Encode(Response{Error: codeImagesUnsupported})
 		return
 	}
 	// An absent mode is the follow-up behaviour every client that predates the
@@ -320,10 +397,18 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc) {
 	if mode == "" {
 		mode = ModeFollowUp
 	}
-	delivery, settled, err := deliver(mode, request.Text, request.From)
+	deliverFunc := deliver
+	if deliverImages != nil {
+		deliverFunc = func(mode, text, from string) (Delivery, <-chan error, error) {
+			return deliverImages(mode, text, from, request.Images)
+		}
+	}
+	delivery, settled, err := deliverFunc(mode, request.Text, request.From)
 	if err != nil {
 		code := "delivery_failed"
-		if errors.Is(err, ErrQueueFull) {
+		if errors.Is(err, ErrImageRejected) {
+			code = codeImageRejected
+		} else if errors.Is(err, ErrQueueFull) {
 			code = "queue_full"
 		} else if errors.Is(err, ErrSessionClosed) {
 			code = codeSessionClosed
@@ -332,7 +417,7 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc) {
 		return
 	}
 	encoder := json.NewEncoder(conn)
-	_ = encoder.Encode(Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered})
+	_ = encoder.Encode(Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered, Warning: delivery.Warning})
 	if !request.Wait || settled == nil || (!delivery.Queued && !delivery.Steered) {
 		return
 	}
@@ -342,7 +427,7 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc) {
 	select {
 	case err := <-settled:
 		if err == nil {
-			_ = encoder.Encode(Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered})
+			_ = encoder.Encode(Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered, Warning: delivery.Warning})
 		} else {
 			_ = encoder.Encode(Response{Queued: delivery.Queued, Steered: delivery.Steered, Error: codeDiscarded})
 		}
@@ -350,6 +435,24 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc) {
 		_ = encoder.Encode(Response{Queued: delivery.Queued, Steered: delivery.Steered, Error: codeSessionClosed})
 	}
 }
+
+// codeImagesUnsupported is the response of a server that does not know
+// Request.Images at all (it ignores the unknown field of a Request otherwise):
+// the sender learns that nothing was taken.
+const codeImagesUnsupported = "images_unsupported"
+
+// ErrImagesUnsupported is what Send returns when the receiving process cannot
+// take the request's images (an older version): nothing was delivered.
+var ErrImagesUnsupported = errors.New("receiving process does not support images")
+
+// ErrImageRejected is what a receiver reports when it refuses the images of a
+// request (a missing file, a sha256 that does not match what the sender named):
+// the whole message is refused, nothing is delivered.
+var ErrImageRejected = errors.New("delivered image rejected")
+
+// codeImageRejected is the response code of a receiver that refused the images of
+// a request; a sender turns it back into ErrImageRejected.
+const codeImageRejected = "image_rejected"
 
 // ErrQueueFull reports a full delivery queue (of the running turn's steers, or of
 // the messages waiting for the next turn): the sender is told to try again later
@@ -418,6 +521,12 @@ func Send(record Record, request Request) (Response, error) {
 	var response Response
 	if err := decoder.Decode(&response); err != nil {
 		return Response{}, err
+	}
+	if response.Error == codeImagesUnsupported {
+		return response, ErrImagesUnsupported
+	}
+	if response.Error == codeImageRejected {
+		return response, ErrImageRejected
 	}
 	if response.Error == "queue_full" {
 		return response, ErrQueueFull

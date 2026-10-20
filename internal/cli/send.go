@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/gookit/goutil/cflag"
 	"github.com/gookit/goutil/cflag/capp"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 )
@@ -41,7 +42,18 @@ exited). Both options leave the text a plain message: it never runs as a command
 Without --wait a queued message returns as soon as it is queued, so an automated
 sender never blocks for the length of the chat's current turn. A message
 discarded on the way (chat exiting) is reported then; chat prints how many it
-dropped.`
+dropped.
+
+--image <path> delivers pictures with the message (repeatable, at most 16). The
+file is read, checked and scaled like run --image / chat :image (a relative path
+is resolved against the sender's working directory) and written into the target
+session's images/ directory; the request carries references only. The target
+tells whether it takes pictures: a process of an older version (its record lists
+no images feature) is refused with exit 5 and nothing is delivered at all - run
+the chat in this version again to use it. With --steer the pictures go into the
+turn running right now, otherwise they ride the next turn it starts. When the
+model of that session cannot see pictures, the message still goes through with
+the first-phase text notes and a warning is printed on stderr (exit 0).`
 
 // sendExamples is shown under "Examples:" by `suga send --help`.
 const sendExamples = `suga send --session 1a2b 你好 世界
@@ -50,11 +62,13 @@ suga send --session 1a2b --text 你好
 echo 你好 | suga send --session 1a2b
 suga send --session 1a2b --wait 你好
 suga send --session 1a2b --steer --wait 只改 README，不要动配置
+suga send --session 1a2b --image shot.png 看看这张
 suga send --session 1a2b -- -hello`
 
 func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 	var sendSession, sendText, sendSource string
 	var sendWait, sendSteer bool
+	var sendImages []string
 	send := capp.NewCmd("send", "Send text to a local Suga chat process", func(c *capp.Cmd) error {
 		// The session check runs before any stdin read, so a missing --session
 		// fails at once instead of blocking on input.
@@ -89,10 +103,16 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		if sendSteer {
 			mode = personalprocess.ModeSteer
 		}
+		// The pictures come first: a target that cannot take them fails the whole
+		// message before anything is delivered (design send --image D2/D3).
+		images, err := sendImageRefs(record, sendImages)
+		if err != nil {
+			return err
+		}
 		// --wait keeps the connection until the message reached the model or starts a
 		// turn (or was discarded, exit 3). Without it a queued message returns at
 		// once, so an automated sender never blocks for the length of the current turn.
-		response, err := personalprocess.Send(record, personalprocess.Request{Text: text, From: sendSource, Wait: sendWait, Mode: mode})
+		response, err := personalprocess.Send(record, personalprocess.Request{Text: text, From: sendSource, Wait: sendWait, Mode: mode, Images: images})
 		if errors.Is(err, personalprocess.ErrNotOnline) {
 			return processExitError{code: 3, err: err}
 		}
@@ -101,8 +121,19 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 			// of messages waiting for the next turn, is full (design D11).
 			return processExitError{code: 1, err: fmt.Errorf("queue_full: %w", err)}
 		}
+		if errors.Is(err, personalprocess.ErrImagesUnsupported) {
+			// The receiver does not know Request.Images at all: nothing of the message
+			// was taken (design send --image D2).
+			return processExitError{code: 5, err: fmt.Errorf("目标会话 %s（进程 %d）的 suga 版本不支持附图，未投递消息；请在新版本里重新打开该会话：%w",
+				record.SessionID, record.PID, err)}
+		}
 		if err != nil {
 			return err
+		}
+		if response.Warning != "" {
+			// Accepted with a caveat (the model cannot see pictures, so they became a
+			// text note): the sender shows it and still exits 0.
+			fmt.Fprintln(stderr, "提示："+response.Warning)
 		}
 		switch {
 		case response.Steered && !sendWait:
@@ -123,7 +154,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		return nil
 	})
 	send.SetOutput(stderr)
-	send.Usage = "suga send --session <id|name> [--text <text> | <text>...] [--source <label>] [--steer] [--wait]"
+	send.Usage = "suga send --session <id|name> [--text <text> | <text>...] [--image <file>]... [--source <label>] [--steer] [--wait]"
 	send.Example = sendExamples
 	send.LongHelp = sendHelp
 	send.StringVar(&sendSession, "session", "", "session ID, ID prefix, or the short name of a running chat (suga ps)")
@@ -131,6 +162,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 	send.StringVar(&sendSource, "source", "cli", "source label the chat shows before the text as [来自 <source>]; text already starting with a [...] tag is shown as is{[]}")
 	send.BoolVar(&sendWait, "wait", false, "wait until the message reaches the running turn or starts a turn; exit 3 if it is discarded{[]}")
 	send.BoolVar(&sendSteer, "steer", false, "insert the text into the turn running right now; queue it for the next turn when there is none{[]}")
+	send.Var((*cflag.Strings)(&sendImages), "image", "image file delivered with the message (repeatable, at most 16; same checks and scaling as chat :image)")
 	return send
 }
 
