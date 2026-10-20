@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.38.0] - 2026-10-20
+
+ACP 图片输入（图片第二期）：`initialize` 声明 `promptCapabilities.image`，`session/prompt` 的图片块按顺序附到用户消息，gofer 等 ACP 客户端可直接传图；`deepseek-v4.1-flash` 与 `glm-5.3-flash` 列入支持看图的模型。
+
 ### 新增
 
 - ACP 图片输入第二期：配置里有任一支持看图的模型时，`initialize` 声明 `promptCapabilities.image`；`session/prompt` 的 image 内容块（base64 或本地文件 URI）走与 view_image 相同的校验与缩放，按顺序附到用户消息（文本里留“[图片 N]”占位，坏图写明原因，仅无文本且无可用图片时才拒绝整条 prompt）。
@@ -901,7 +905,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.37.1...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/inhere/suga/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/inhere/suga/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/inhere/suga/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/inhere/suga/compare/v0.35.1...v0.36.0
