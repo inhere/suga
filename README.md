@@ -49,7 +49,8 @@ suga chat                                         # interactive chat in the curr
 
 Details: [references/chat.md](skills/suga-guide/references/chat.md) (Chinese)
 
-- **Local commands**: `:session`, `:compact`, `:quit`/`:exit`, `:diff [N]`, `:model [p/m]`, `:add-dir`/`:dirs`/`:rm-dir`, `:image <路径|clear>`（附图到下一条消息）, `:help`, `:usage`, `:tasks`; keyboard input only.
+- **Local commands**: `:session`, `:compact`, `:quit`/`:exit`, `:diff [N]`, `:code [N]`, `:model [p/m]`, `:add-dir`/`:dirs`/`:rm-dir`, `:image <路径|clear>`（附图到下一条消息）, `:help`, `:usage`, `:tasks`; keyboard input only.
+- **Rendering**: answers are rendered as terminal markdown (`chat.markdown`); code blocks are highlighted by the language of their fence (`chat.code_highlight`, `chat.code_theme`) and folded after `chat.code_max_lines` lines, `:code [N]` shows a folded block of the last answer whole; GFM tables are aligned by display width (CJK counts two columns).
 - **Input**: Up/Down history, Ctrl+R reverse search, Tab completion for `:` commands and directories; newline with `Ctrl+Enter`/`Ctrl+J` (Windows) or `Alt+Enter`; `Alt+V` pastes the clipboard's picture onto the same queue as `:image`.
 - **Steering**: while the model works the prompt becomes `↳ ` and Enter adds the line to the running turn; `Esc` stops only the turn, two `Ctrl-C` within 3s quit.
 - **`!` local commands**: `!cmd` runs in the local shell without the model; `!!cmd` also attaches the result to your next message.
