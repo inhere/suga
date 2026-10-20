@@ -146,6 +146,21 @@ func (a *AgentStorage) storeImage(sessionID string, part api.ImagePart) (api.Ima
 	return part, nil
 }
 
+// StoreImage writes one picture into imagesDir (a session's images directory)
+// under its content-addressed name and returns the part that names it (Ref,
+// SHA256, MediaType) without any bytes. It is the same atomic write
+// AppendMessages does, exposed for a sender that fills the directory of another
+// session (`suga send --image`): a file of the same sha256 is not written again.
+func StoreImage(imagesDir string, data []byte, mediaType string) (api.ImagePart, error) {
+	sum := sha256.Sum256(data)
+	sha := hex.EncodeToString(sum[:])
+	part := api.ImagePart{SHA256: sha, MediaType: mediaType, Ref: ImageRef(sha, mediaType)}
+	if err := writeImageFile(imagesDir, filepath.Base(part.Ref), data); err != nil {
+		return part, err
+	}
+	return part, nil
+}
+
 // writeImageFile writes data to dir/name through a temporary file in the same
 // directory, synced and renamed, so a crash never leaves a truncated image
 // behind. An existing file of the same name is left untouched (same sha256).
