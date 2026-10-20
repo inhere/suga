@@ -84,6 +84,19 @@ func TestHookCommandSessionEnv(t *testing.T) {
 		client.Call(api.WithSessionID(context.Background(), "sess-ctx"), Event{Name: "PostToolUse", SessionID: "sess-event"})
 		assert.Eq(t, "sess-ctx|||gofer-9", readHookEnv(t, logPath))
 	})
+	t.Run("the event session's short name is resolved", func(t *testing.T) {
+		logPath := filepath.Join(t.TempDir(), "hook-env.txt")
+		t.Setenv("GOFER_SESSION_ID", "gofer-9")
+		client := hookEnvClient(t, logPath, WithExtraEnv(func(ctx context.Context) []string {
+			session := api.SessionIDFrom(ctx)
+			if session == "" {
+				return nil
+			}
+			return []string{"SUGA_SESSION_NAME=name-" + session}
+		}))
+		client.Call(context.Background(), Event{Name: "SessionStart", SessionID: "sess-start"})
+		assert.Eq(t, "sess-start|name-sess-start||gofer-9", readHookEnv(t, logPath))
+	})
 	t.Run("an inherited session variable is not passed on", func(t *testing.T) {
 		logPath := filepath.Join(t.TempDir(), "hook-env.txt")
 		t.Setenv("SUGA_SESSION_ID", "parent-session")

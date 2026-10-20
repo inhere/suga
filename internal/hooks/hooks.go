@@ -24,6 +24,8 @@ import (
 	"unicode/utf8"
 
 	gkconfig "github.com/gookit/config/v2"
+
+	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
 )
 
 // Event is one hook invocation payload.
@@ -265,6 +267,12 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
+	// The session of the event is the session of the command even when chat's own
+	// ctx carries none (SessionStart, UserPromptSubmit, Stop): the provider reads
+	// it from here, so the short name of that session is resolved too.
+	if event.SessionID != "" && agentcoreapi.SessionIDFrom(ctx) == "" {
+		ctx = agentcoreapi.WithSessionID(ctx, event.SessionID)
+	}
 	input, err := json.Marshal(event)
 	if err != nil {
 		return Response{}, err
