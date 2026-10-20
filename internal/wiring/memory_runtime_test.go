@@ -51,7 +51,7 @@ type memEnv struct {
 
 func newMemEnv(t *testing.T, policy memoryWritePolicy, readOnly bool, confirm MemoryConfirmFunc) *memEnv {
 	t.Helper()
-	workspace := t.TempDir()
+	workspace := gitWorkspace(t)
 	assert.Require(t, assert.NoErr(t, os.MkdirAll(filepath.Join(workspace, ".git"), 0o700)))
 	setup, err := buildMemory(workspace, MemoryConfig{SugaHome: t.TempDir()})
 	assert.Require(t, assert.NoErr(t, err))
@@ -371,7 +371,7 @@ func TestOpenWiresMemory(t *testing.T) {
 		return err
 	}
 	for _, readOnly := range []bool{false, true} {
-		rt, err := Open(context.Background(), Options{Workspace: t.TempDir(), RuleCWD: t.TempDir(), MemoryReadOnly: readOnly})
+		rt, err := Open(context.Background(), Options{Workspace: gitWorkspace(t), RuleCWD: t.TempDir(), MemoryReadOnly: readOnly})
 		assert.Require(t, assert.NoErr(t, err))
 		err = call(rt)
 		if readOnly {
@@ -386,4 +386,15 @@ func TestOpenWiresMemory(t *testing.T) {
 		assert.StrContains(t, model.Meta["memory_index_content"].(string), "## 记忆索引")
 		assert.NoErr(t, rt.Close())
 	}
+}
+
+// gitWorkspace is a temporary workspace that is its own git root. Project
+// memory resolves the git root above the workspace, so a temp directory that
+// happens to live inside a repository (TMPDIR set to the worktree's tmp/) would
+// otherwise write the test's memories into that repository's MEMORY.md.
+func gitWorkspace(t *testing.T) string {
+	t.Helper()
+	ws := t.TempDir()
+	assert.Require(t, assert.NoErr(t, os.MkdirAll(filepath.Join(ws, ".git"), 0o700)))
+	return ws
 }
