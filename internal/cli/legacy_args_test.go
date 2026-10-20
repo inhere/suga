@@ -1,72 +1,18 @@
 package cli
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
 )
 
-// TestRewriteLegacyArgs covers the argument rewrite of the v0.36 command-group
-// move (design 2026-10-19-cli-command-groups-design.md): every old top-level
-// command reaches its new group, `suga inspect trace …` is rewritten without a notice,
-// and the forms that must NOT be rewritten stay as typed.
-func TestRewriteLegacyArgs(t *testing.T) {
-	t.Run("moved top-level commands", func(t *testing.T) {
-		for _, tc := range []struct {
-			name   string
-			args   []string
-			want   []string
-			notice bool
-		}{
-			{"manifest", []string{"manifest", "--json"}, []string{"inspect", "manifest", "--json"}, true},
-			{"stats", []string{"stats", "--since", "7d"}, []string{"inspect", "stats", "--since", "7d"}, true},
-			{"export", []string{"export", "s1"}, []string{"inspect", "export", "s1"}, true},
-			{"backup", []string{"backup", "--output", "a.zip"}, []string{"data", "backup", "--output", "a.zip"}, true},
-			{"restore", []string{"restore", "a.zip"}, []string{"data", "restore", "a.zip"}, true},
-			// Q2: trace is used a lot, its rewrite stays silent.
-			{"trace is silent", []string{"trace", "s1", "--json"}, []string{"inspect", "trace", "s1", "--json"}, false},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				got, notice := RewriteLegacyArgs(tc.args)
-				assert.Eq(t, tc.want, got)
-				assert.Eq(t, tc.notice, notice != "")
-				if tc.notice {
-					assert.StrContains(t, notice, "已改为 suga "+joinArgs(tc.want[:2])+"，旧写法将在 v0.38 移除")
-				}
-			})
-		}
-	})
-
-	t.Run("gc splits into data subcommands", func(t *testing.T) {
-		for _, tc := range []struct {
-			name string
-			args []string
-			want []string
-			note string
-		}{
-			{"older-than", []string{"gc", "--older-than", "30d", "--apply"},
-				[]string{"data", "gc", "--older-than", "30d", "--apply"}, "gc"},
-			{"retention", []string{"gc", "--retention"}, []string{"data", "gc", "--retention"}, "gc"},
-			{"shrink-fts", []string{"gc", "--shrink-fts", "--batch", "100"},
-				[]string{"data", "shrink-fts", "--batch", "100"}, "gc --shrink-fts"},
-			{"shrink-fts status", []string{"gc", "--status", "--shrink-fts"},
-				[]string{"data", "shrink-fts", "--status"}, "gc --shrink-fts"},
-			{"abort", []string{"gc", "--abort", "--shrink-fts"}, []string{"data", "shrink-fts", "--abort"}, "gc --shrink-fts"},
-			{"vacuum", []string{"gc", "--vacuum"}, []string{"data", "vacuum"}, "gc --vacuum"},
-			{"compress-spill", []string{"gc", "--compress-spill", "--apply"},
-				[]string{"data", "compress-spill", "--apply"}, "gc --compress-spill"},
-			// The old precedence wins: shrink-fts before vacuum before compress-spill.
-			{"precedence", []string{"gc", "--vacuum", "--shrink-fts"}, []string{"data", "shrink-fts", "--vacuum"}, "gc --shrink-fts"},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				got, notice := RewriteLegacyArgs(tc.args)
-				assert.Eq(t, tc.want, got)
-				assert.StrContains(t, notice, "提示：suga "+tc.note+" 已改为 suga ")
-				assert.StrContains(t, notice, "旧写法将在 v0.38 移除")
-			})
-		}
-	})
-
+// TestNormalizeArgs covers the option-in-front rewrite: since v0.36 a first
+// argument that is a chat option means `suga chat …` (design
+// 2026-10-19-cli-command-groups-design.md D6). The old top-level commands are
+// not rewritten any more (v0.38 removed them, see TestLegacyCommandHint).
+func TestNormalizeArgs(t *testing.T) {
 	t.Run("chat options work without chat", func(t *testing.T) {
 		for _, tc := range []struct {
 			name string
@@ -80,14 +26,12 @@ func TestRewriteLegacyArgs(t *testing.T) {
 			{"empty", []string{}, []string{}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				got, notice := RewriteLegacyArgs(tc.args)
-				assert.Eq(t, tc.want, got)
-				assert.Eq(t, "", notice)
+				assert.Eq(t, tc.want, NormalizeArgs(tc.args))
 			})
 		}
 	})
 
-	t.Run("no rewrite", func(t *testing.T) {
+	t.Run("left as typed", func(t *testing.T) {
 		for _, tc := range []struct {
 			name string
 			args []string
@@ -101,24 +45,95 @@ func TestRewriteLegacyArgs(t *testing.T) {
 			{"new groups", []string{"inspect", "trace", "s1"}},
 			{"new data path", []string{"data", "gc", "--older-than", "30d"}},
 			{"config", []string{"config", "get", "model"}},
+			// An old command name is not rewritten either: it must fail.
+			{"old trace", []string{"trace", "s1", "--json"}},
+			{"old gc", []string{"gc", "--vacuum"}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				got, notice := RewriteLegacyArgs(tc.args)
-				assert.Eq(t, tc.args, got)
-				assert.Eq(t, "", notice)
+				assert.Eq(t, tc.args, NormalizeArgs(tc.args))
 			})
 		}
 	})
 }
 
-// joinArgs renders a short command path for the expected notice.
-func joinArgs(args []string) string {
-	out := ""
-	for i, arg := range args {
-		if i > 0 {
-			out += " "
+// TestLegacyCommandHint covers the static table that only feeds the hint of an
+// unknown command: every old form names the new spelling, everything else has
+// no hint.
+func TestLegacyCommandHint(t *testing.T) {
+	t.Run("old forms name the new spelling", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			args []string
+			old  string
+			new  string
+		}{
+			{"trace", []string{"trace", "s1"}, "trace", "inspect trace"},
+			{"stats", []string{"stats", "--since", "7d"}, "stats", "inspect stats"},
+			{"export", []string{"export", "s1"}, "export", "inspect export"},
+			{"manifest", []string{"manifest", "--json"}, "manifest", "inspect manifest"},
+			{"backup", []string{"backup", "--output", "a.zip"}, "backup", "data backup"},
+			{"restore", []string{"restore", "a.zip"}, "restore", "data restore"},
+			{"gc", []string{"gc", "--older-than", "30d"}, "gc", "data gc"},
+			{"gc shrink-fts", []string{"gc", "--shrink-fts", "--batch", "100"}, "gc --shrink-fts", "data shrink-fts"},
+			{"gc vacuum", []string{"gc", "--vacuum"}, "gc --vacuum", "data vacuum"},
+			{"gc compress-spill", []string{"gc", "--compress-spill", "--apply"}, "gc --compress-spill", "data compress-spill"},
+			// The old precedence wins: shrink-fts before vacuum.
+			{"gc precedence", []string{"gc", "--vacuum", "--shrink-fts"}, "gc --shrink-fts", "data shrink-fts"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				hint := legacyCommandHint(tc.args)
+				assert.StrContains(t, hint, "提示：suga "+tc.old+" 已改为 suga "+tc.new)
+				assert.StrContains(t, hint, "旧写法已在 v0.38 移除")
+			})
 		}
-		out += arg
-	}
-	return out
+	})
+
+	t.Run("no hint for current forms", func(t *testing.T) {
+		for _, args := range [][]string{
+			nil,
+			{},
+			{"inspect", "trace", "s1"},
+			{"data", "gc", "--vacuum"},
+			{"data", "bodies", "--status"},
+			{"chat", "--resume", "x"},
+			{"nope"},
+		} {
+			assert.Eq(t, "", legacyCommandHint(args))
+		}
+	})
+}
+
+// TestRunArgsOldFormError checks the real dispatch path: an old top-level
+// command reaches the command tree as typed, fails there as an unknown command,
+// and the error names the new spelling.
+func TestRunArgsOldFormError(t *testing.T) {
+	t.Run("old form fails with the hint", func(t *testing.T) {
+		var stdout, stderr strings.Builder
+		err := RunArgs(newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr), []string{"trace", "s1", "--json"})
+		requireErrContains(t, err, `input not exists command "trace"`)
+		requireErrContains(t, err, "已改为 suga inspect trace")
+		assert.Eq(t, 1, ExitCode(err))
+		assert.Eq(t, "", stdout.String())
+	})
+
+	t.Run("unknown command without a hint", func(t *testing.T) {
+		var stdout, stderr strings.Builder
+		err := RunArgs(newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr), []string{"nope"})
+		requireErrContains(t, err, `input not exists command "nope"`)
+		assert.False(t, strings.Contains(err.Error(), "提示："))
+	})
+
+	t.Run("current command runs", func(t *testing.T) {
+		var stdout, stderr strings.Builder
+		err := RunArgs(newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr), []string{"version"})
+		assert.NoErr(t, err)
+		assert.StrContains(t, stdout.String(), "suga dev")
+	})
+}
+
+// requireErrContains asserts err is non-nil and its message holds want.
+func requireErrContains(t *testing.T, err error, want string) {
+	t.Helper()
+	assert.Require(t, assert.Err(t, err))
+	assert.StrContains(t, err.Error(), want)
 }
