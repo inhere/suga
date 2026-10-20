@@ -3,11 +3,12 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -632,9 +633,9 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 				report.addProblem(err.Error())
 				continue
 			}
-			// The record is counted against the file the read came from: two files of
-			// one session may hold records at the same offset.
-			used[row.SessionID][toolBodyCheckUsedKey(filepath.Base(reader.hit), ref)] = true
+			// The record counts as used whatever file it was read from: an exact copy
+			// under the other name refers to the same bytes.
+			used[row.SessionID][toolBodyCheckUsedKey(ref)] = true
 			report.Checked++
 		}
 		for _, r := range readers {
@@ -655,7 +656,7 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
-		orphans, bytes, err := countToolBodyOrphans(file.path, file.name, used[file.sessionID])
+		orphans, bytes, err := countToolBodyOrphans(file.path, used[file.sessionID])
 		if err != nil {
 			report.addProblem(err.Error())
 			continue
@@ -666,11 +667,12 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 	return report, nil
 }
 
-// toolBodyCheckUsedKey is the orphan key of one stub: the file it points into and
-// the record span. Two files of one session may hold the same offset, so the name
-// belongs to the key.
-func toolBodyCheckUsedKey(name string, ref BodyRef) string {
-	return fmt.Sprintf("%s@%d,%d", name, ref.Off, ref.Len)
+// toolBodyCheckUsedKey is the orphan key of one stub: the record span and its
+// digest. Two files of one session may hold the same offset; a record under the
+// other name that does not hash to the same bytes is still an orphan, an exact
+// copy of a referenced record is not.
+func toolBodyCheckUsedKey(ref BodyRef) string {
+	return fmt.Sprintf("%d,%d,%s", ref.Off, ref.Len, strings.ToLower(ref.SHA256))
 }
 
 // addProblem keeps the first few failures (a broken ledger can have thousands).
@@ -681,8 +683,8 @@ func (r *ToolBodyCheckReport) addProblem(msg string) {
 }
 
 // countToolBodyOrphans walks the records of one file and counts those the stubs
-// of the session do not reference; name is the file name the stub keys carry.
-func countToolBodyOrphans(path, name string, used map[string]bool) (int64, int64, error) {
+// of the session do not reference (by span and digest).
+func countToolBodyOrphans(path string, used map[string]bool) (int64, int64, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, 0, fmt.Errorf("read %s: %w", path, err)
@@ -700,7 +702,11 @@ func countToolBodyOrphans(path, name string, used map[string]bool) (int64, int64
 		if !ok {
 			continue
 		}
-		if used == nil || !used[toolBodyCheckUsedKey(name, BodyRef{Off: off, Len: length})] {
+		// The record is matched by span and digest, so an exact copy under the other
+		// file name is not an orphan and a different record at the same offset is.
+		bodyStart := bytes.Index(line, []byte(`,"json":`)) + len(`,"json":`)
+		ref := BodyRef{Off: off, Len: length, SHA256: fmt.Sprintf("%x", sha256.Sum256(line[bodyStart:len(line)-1]))}
+		if used == nil || !used[toolBodyCheckUsedKey(ref)] {
 			orphans++
 			orphanBytes += length
 		}
