@@ -209,6 +209,15 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.approval_rules.project_trust", Type: ConfigTypeStringMap, Writable: true, Reader: "approval_rules"},
 	{Pattern: "gc.retention.interactive", Type: ConfigTypeDuration, Writable: true, Reader: "gc_retention"},
 	{Pattern: "gc.retention.noninteractive", Type: ConfigTypeDuration, Writable: true, Reader: "gc_retention"},
+	// log.* configures the process logger (internal/wiring/logging.go): level,
+	// the rotating file (or off), the stderr copy, the rotation size, how many
+	// rotated files are kept and whether they are compressed.
+	{Pattern: "log.level", Type: ConfigTypeEnum, Writable: true, Reader: "log"},
+	{Pattern: "log.file", Type: ConfigTypeString, Writable: true, Reader: "log"},
+	{Pattern: "log.stderr", Type: ConfigTypeEnum, Writable: true, Reader: "log"},
+	{Pattern: "log.max_size", Type: ConfigTypeInt64, Writable: true, Reader: "log"},
+	{Pattern: "log.keep", Type: ConfigTypeInt, Writable: true, Reader: "log"},
+	{Pattern: "log.compress", Type: ConfigTypeBool, Writable: true, Reader: "log"},
 }
 
 var (
@@ -422,6 +431,10 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = []string{ToolsApprovalAsk, ToolsApprovalAuto}
 	case key == "memory.write":
 		allowed = []string{MemoryWriteAuto, MemoryWriteOff}
+	case key == "log.level":
+		allowed = LogLevels
+	case key == "log.stderr":
+		allowed = []string{LogStderrAuto, LogStderrAlways, LogStderrNever}
 	case key == "memory.write_tainted":
 		allowed = []string{MemoryTaintedAsk, MemoryTaintedDeny, MemoryTaintedAllow}
 	case key == "memory.user.backend":
@@ -580,6 +593,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadRuleFileName()
 	case "tool_body":
 		_, err = ReadToolBodySettings()
+	case "log":
+		_, err = ReadLogSettings()
 	case "":
 		return nil
 	default:
