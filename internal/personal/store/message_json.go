@@ -35,8 +35,8 @@ func EncodeMessage(m api.Message) ([]byte, error) {
 	}
 	// The fields are listed in the order api.Message declares them, so the
 	// stored JSON differs from a plain encoding only by the omitted body and the
-	// marker (TestEncodeMessageMatchesMessageFields guards the field list, and
-	// `suga data dedupe-tool-results --undo` restores the plain bytes).
+	// marker (TestEncodeMessageMatchesMessageFields guards the field list; the
+	// removed `--undo` job of data dedupe-tool-results produced the plain bytes).
 	return json.Marshal(dedupedMessage{
 		Role:     m.Role,
 		Content:  m.Content,

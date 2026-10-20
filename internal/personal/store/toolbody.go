@@ -136,8 +136,8 @@ type assistantBodyStub struct {
 // a lost file still see which call it was. Everything else lives in the record
 // (the full JSON the readers restore); a stub keeps no Arguments, no Reasoning
 // and no second copy of the preview. It deliberately carries no
-// ResultSameAsContent marker: a stub is not a deduped row and the P2 rewrites
-// skip it (entries.body_ref non-empty).
+// ResultSameAsContent marker: a stub is not a deduped row and the body-file
+// writes skip it (entries.body_ref non-empty).
 type toolBodyStub struct {
 	Role       string              `json:"Role"`
 	Content    string              `json:"Content,omitempty"`
