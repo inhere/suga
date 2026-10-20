@@ -149,7 +149,7 @@ chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
-| `store.body_inline_bytes` | `1024` | tool 结果正文超过此字节数时移出数据库，写进 `$SUGA_HOME/sessions/<id>/tools.jsonl`，库里只留元数据、前 256 字符预览与文件偏移，读取时透明取回；`0` 表示全部留在库里。旧名 `store.tool_body_inline_bytes` 仍可读，已弃用、v0.41.0 移除，加载配置时提示一次。回退到旧版本前先执行 `suga data bodies --undo` |
+| `store.body_inline_bytes` | `1024` | tool 结果正文超过此字节数时移出数据库，写进 `$SUGA_HOME/sessions/<id>/bodies.jsonl`（v0.40 前改过名的库仍是 `tools.jsonl`），库里只留元数据、短预览与文件偏移，读取时透明取回；`0` 表示全部留在库里。旧名 `store.tool_body_inline_bytes` 在 v0.41.0 移除：加载配置时警告一次并忽略该键（不报错，旧配置文件照常启动）。回退到旧版本前先执行 `suga data bodies --undo` |
 
 ## `gc.*`
 | 配置项 | 默认 | 说明 |
@@ -369,8 +369,6 @@ suga inspect stats [--session <id>] [--since 7d] [--json]
 suga inspect export <session> [--redact] [-o <file>]
 suga data gc --older-than 30d [--apply]
 suga data gc --retention [--apply]
-suga data shrink-fts [--status|--abort]
-suga data dedupe-tool-results [--status|--abort|--undo]
 suga data bodies [--status|--move|--undo|--check|--remove-files]
 suga data vacuum
 suga data usage [--json] [--top N]

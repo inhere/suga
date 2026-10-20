@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 不兼容
+
+- 移除 v0.39.0 标记弃用、约定在 v0.41.0 移除的项（用户 2026-10-20 确认按计划移除）：`suga data tool-bodies`（改用 `suga data bodies`）、`suga data dedupe-tool-results`（含 `--undo`/`--status`/`--abort`）、`suga data shrink-fts`、`suga data bodies --slim`、`suga data bodies --rename-files`，以及配置键 `store.tool_body_inline_bytes`。旧写法敲出来报错（退出码非 0）并提示“已在 v0.41.0 移除，改用 … / 若需迁移旧库请用 v0.40”；旧配置键在加载时警告一次并被忽略（不报错，旧配置文件照常启动）。读取兼容保留：去重消息（`ResultSameAsContent` 标记）、旧文件名 `tools.jsonl`、旧形状桩照常读取，`data bodies --status/--move/--undo/--check` 仍在；尚未迁移的 v0.35 及更早的库需要先用 suga v0.40 跑一次性迁移。
+
 ## [0.40.0] - 2026-10-20
 
 chat 渲染、记忆与投递：代码块轻量高亮（自写 16 色，不引入 chroma）、GFM 表格按显示宽度对齐、长代码块折叠与 `:code`；记忆索引每行带一句话摘要与 `suga memory summaries`；`suga send --image` 向运行中的会话投递图片（进程记录声明能力，旧版本会话报错而不丢图）；`:image`/`run --image`/`send --image` 的路径不再限制在工作区内；新会话与回合 ID 改为 `s_`/`t_` + 12 位随机（旧 ID 继续有效）。

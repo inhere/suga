@@ -124,7 +124,7 @@ Details: [references/sessions.md](skills/suga-guide/references/sessions.md) (Chi
 - `--session-id` creates or reuses a session, `--resume` requires it to exist (exit code 4 otherwise), `run --from` starts a new one carrying over the summary and plan.
 - Resuming from another directory asks first (switch to the original / continue here / cancel); without a terminal use `--allow-cwd-change`.
 - Near the context window or on `:compact` a new segment starts with a handoff summary (fixed sections); old segments stay reachable through `session_search` / `recall`, and `session_search` with `kind: handoff` finds the summaries themselves.
-- `session_search` covers user and assistant messages and compaction/handoff summaries; tool outputs are not indexed - read them with `recall`. A ledger from before this change still holds historical tool rows: `suga data shrink-fts` deletes them, then `suga data vacuum` returns the file space.
+- `session_search` covers user and assistant messages and compaction/handoff summaries; tool outputs are not indexed - read them with `recall`. A ledger from before this change still holds historical tool rows: `suga data shrink-fts` was removed in v0.41.0, so cleaning such a ledger needs suga v0.40; `suga data vacuum` then returns the file space.
 - An interrupted turn is replayed up to its last complete tool call, with a short recap.
 - Optional history folding (`context.fold_every`); idle chat compacts in the background (`context.idle_after`).
 - The system prompt holds only stable content; environment, rules (`AGENTS.md`), memory index and skills list go into each segment's context message.
@@ -147,9 +147,7 @@ suga sessions [keywords] [--since 7d] [--agents] [--all | --cwd <path>]  # sessi
 suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
 suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP
-suga data shrink-fts [--status|--abort]                        #（已弃用，v0.41.0 移除）只用于把 v0.35 及更早的库迁移到当前格式
-suga data dedupe-tool-results [--status|--undo]                 #（已弃用，v0.41.0 移除）旧库的 tool 结果改为单份存储（--undo 还原）
-suga data bodies [--status|--move|--slim|--undo|--check|--rename-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (alias: tool-bodies, 已弃用，v0.41.0 移除); --rename-files 与 --slim 也已弃用（v0.41.0 移除，一次性迁移）
+suga data bodies [--status|--move|--undo|--check|--remove-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (the v0.36 name tool-bodies, --slim, --rename-files and the one-time migrations shrink-fts / dedupe-tool-results were removed in v0.41.0: a pre-v0.36 ledger needs suga v0.40 for them)
 suga data vacuum                                               # rewrite the db file, truncate the WAL
 suga data usage [--json] [--top N]                             # read-only: where the db file, entries, events, FTS and session dirs hold their bytes
 suga data backup --output <file>.suga-backup.zip               # verified online backup; spill excluded by default
