@@ -189,10 +189,15 @@ def scenario(s, home, binary, env, ws, log):
     s.check("the model request carries the text with an image part", log.wait_image(TEXT))
     s.check("the turn answers", s.until(r"▣ " + REPLY, m, timeout=60))
 
-    data = open(os.path.join(ws, "shot.png"), "rb").read()
-    sha = hashlib.sha256(data).hexdigest()
     files = images_of(home, sid)
-    s.check("the session's images directory holds the picture", files == [sha + ".png"])
+    s.check("the session's images directory holds one picture", len(files) == 1)
+    # The store names every file after the sha256 of the bytes it holds (the
+    # sender scales the picture first, so this is checked against the stored
+    # file itself rather than against the source).
+    stored = files[0] if files else ""
+    path = os.path.join(home, "sessions", sid, "images", stored) if stored else ""
+    digest = hashlib.sha256(open(path, "rb").read()).hexdigest() if stored else ""
+    s.check("the file is named after its content", stored == digest + ".png")
     return sid
 
 
