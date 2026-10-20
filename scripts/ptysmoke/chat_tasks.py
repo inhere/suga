@@ -65,7 +65,10 @@ def run_scenario(s, binary, env, ws):
     s.check("run: exit 0", out.returncode == 0)
     s.check("run: task killed at exit, named on stderr", "killed background task at exit: t1 killed" in out.stderr)
     s.check("run: did not wait for the 30s task", took < 20)
-    sessions = subprocess.run([binary, "sessions", "--json", "-n", "1"], capture_output=True, text=True, env=env, timeout=30)
+    # sessions lists the current directory's sessions by default: ask from ws,
+    # the directory the run worked in.
+    sessions = subprocess.run([binary, "sessions", "--json", "-n", "1"], capture_output=True, text=True, env=env,
+                              cwd=ws, timeout=30)
     sid = re.search(r'"id":"([^"]+)"', sessions.stdout)
     events = trace_events(binary, env, sid.group(1)) if sid else []
     turns = [e for e in events if e.get("kind") == "turn"]
