@@ -67,10 +67,6 @@ type ResolvedConfigValue struct {
 	Source     ConfigSource
 	SourceName string
 	Sensitive  bool
-	// DeprecatedKey is the old name the value comes from (for example
-	// store.tool_body_inline_bytes for store.body_inline_bytes): non-empty when the
-	// configuration still sets a deprecated alias, so a caller can label the source.
-	DeprecatedKey string
 }
 
 // Shared values are also consumed by the runtime readers. Keeping the enum
@@ -91,7 +87,6 @@ const (
 
 var configKeyDescriptors = []ConfigKey{
 	{Pattern: "store.body_inline_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tool_body"},
-	{Pattern: "store.tool_body_inline_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tool_body"},
 	{Pattern: "model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "compact_model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "fallback_models", Type: ConfigTypeStringList, Writable: true, Reader: "model"},
@@ -684,7 +679,6 @@ func ReadConfigValue(key string) (ResolvedConfigValue, error) {
 	return ResolvedConfigValue{
 		Key: key, Type: descriptor.Type, Value: value, Source: source,
 		SourceName: sourceName, Sensitive: descriptor.Sensitive,
-		DeprecatedKey: deprecatedConfigKeyUsed(key),
 	}, nil
 }
 
@@ -701,7 +695,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		return effectiveProviderValue(key)
 	}
 	switch key {
-	case "store.body_inline_bytes", "store.tool_body_inline_bytes":
+	case "store.body_inline_bytes":
 		settings, err := ReadToolBodySettings()
 		return settings.InlineBytes, gkconfig.Get(key) != nil, err
 	case "model", "compact_model", "fallback_models":

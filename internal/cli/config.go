@@ -252,9 +252,6 @@ func formatConfigSource(value appconfig.ResolvedConfigValue) string {
 	case appconfig.SourceEnv:
 		source = "env:" + value.SourceName
 	}
-	if value.DeprecatedKey != "" {
-		source += "（配置里用的是已弃用键 " + value.DeprecatedKey + "，将在 " + appconfig.DeprecatedConfigRemoval + " 移除）"
-	}
 	return source
 }
 
