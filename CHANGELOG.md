@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- `suga inspect trace <会话> --transcript [--turn <id>] [--no-reasoning] [--max-observation <字节>] [-o <文件>]`：把会话（或一个回合）渲染成模型可读的纯文本——按存储顺序，每条记录一个带标签的块（`[user]`、`[assistant]`、带参数 JSON 的 `[assistant → tool_call <工具>]`、`[tool_result <工具> ok|error]`、`[compaction summary]`、`[context update]`、`[plan]`、`[handoff]`、`[image: <ref> 宽×高]`，推理单独 `[reasoning]`）；只截断单条工具结果，上限 `--max-observation` 默认 10000 字节且下限也是 10000（更小的值报错说明下限），截断处写 `…[transcript renderer: 截去 N 字节，完整内容见 suga inspect trace <会话> --json 或 ref entry:<会话>:<seq>]` 并在 UTF-8 字符边界切分，用户消息、助手正文与摘要不截断；与 `--json`、`--analyze` 互斥，新旧会话 id 都可用，移出到会话文件的正文会先还原再渲染。
+
 ## [0.40.0] - 2026-10-20
 
 chat 渲染、记忆与投递：代码块轻量高亮（自写 16 色，不引入 chroma）、GFM 表格按显示宽度对齐、长代码块折叠与 `:code`；记忆索引每行带一句话摘要与 `suga memory summaries`；`suga send --image` 向运行中的会话投递图片（进程记录声明能力，旧版本会话报错而不丢图）；`:image`/`run --image`/`send --image` 的路径不再限制在工作区内；新会话与回合 ID 改为 `s_`/`t_` + 12 位随机（旧 ID 继续有效）。

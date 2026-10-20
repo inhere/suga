@@ -8,6 +8,7 @@
 suga inspect trace <session> [--turn <id>] [--json]                                          # 时间线：模型调用、工具、拒绝、计划
 suga sessions [关键词] [-n 10] [--since 7d] [--until 2026-10-01] [--all/--cwd .] [--agents] [--json]  # 会话列表，最新在前；默认只列当前目录的会话（空结果提示目录不对或用 --all 列出全部），--cwd <路径> 按前缀过滤（与 --all 互斥）；关键词匹配标题、id、目录、模型或对话内容；--agents 连子会话一起列出
 suga inspect trace <session> --analyze [--json]                                              # 循环分析：步数、并行调用、重复读、重复命令、首次通过后的测试、子 agent
+suga inspect trace <session> --transcript [--turn <id>] [--no-reasoning] [--max-observation <字节>] [-o <文件>]  # 给模型/人看的纯文本轨迹（见下）
 suga inspect trace <session> --web [--addr 127.0.0.1:0]                                      # 本机网页：时间线（后台任务横条、任务通知标注、子 agent 行及其子会话 trace 命令）、详情、上下文组成、分析、本机环境（Ctrl-C 结束）
 suga inspect stats [--session <id>] [--since 7d] [--json] # 调用次数、耗时、token、缓存命中
 suga inspect export <session> [--redact] [-o <file>]      # 以 jsonl 导出会话内容与事件
@@ -50,6 +51,16 @@ suga inspect manifest [--json] [--model <p/m>]            # 模型、工具、MC
 - 本会话子 agent 的开销（调用次数、步数、工具调用数、token、成本与耗时）：`agent_calls`、`agent_steps`、`agent_tool_calls`、`agent_input_tokens`、`agent_cache_read_tokens`、`agent_output_tokens`、`agent_cost_usd`、`agent_ms`；`agent_stops` 记录各结束原因的分布。
 - 有后台任务时还会补充：任务运行期间循环用于模型与工具调用的时间（`background_overlap_ms`，即省下的等待，只计后台命令，不含监听与 Stop hook；重叠的前台调用只算一次）、`task wait` 的次数与阻塞时长，以及其中在任务启动后立刻 wait 的次数（`immediate_waits`，把后台当前台用）。
 - 按种类补充：watch 任务数及其运行与变化次数（`watch_tasks`、`watch_runs`、`watch_changes`），以及后台 Stop hook 的运行次数（`stop_hooks`）。
+
+## `suga inspect trace --transcript`
+
+把会话（或 `--turn` 指定的一个回合）渲染成模型可读的纯文本：按存储顺序，每条记录一个带标签的块，块之间空一行。
+
+- 标签：`[user]`、`[assistant]`、`[assistant → tool_call <工具>]`（下一行是参数 JSON）、`[tool_result <工具> ok|error]`（工具结果没带名字时用对应调用的名字）、`[compaction summary]`（附 `first_kept_seq` 与 token 前后）、`[context update]`（只列变了的段上下文部分及其字节数，正文在后续消息里）、`[plan]`、`[handoff]`、`[image: <ref> 宽×高]`；助手的推理单独一个 `[reasoning]` 块，`--no-reasoning` 省略。
+- **截断只针对单条工具结果**：超过 `--max-observation` 字节（默认 10000，下限也是 10000，更小的值直接报错说明下限）时，在 UTF-8 字符边界截断，并追加 `…[transcript renderer: 截去 N 字节，完整内容见 suga inspect trace <会话> --json 或 ref entry:<会话>:<seq>]`。这个标记是**渲染器加的，不是工具输出的一部分**，不要据它诊断：截断太狠会让模型把缺口当成执行的缺陷。用户消息、助手正文、摘要一律不截。
+- 移出到会话文件（`sessions/<id>/bodies.jsonl`）的正文会先还原再渲染，只有上面的上限会截它；`ref entry:<会话>:<序号>` 指 `suga inspect export <会话>` 里 `seq` 相同的那一行。
+- `--transcript` 与 `--json`、`--analyze` 互斥；`-o <文件>` 写 0600 文件而不打到 stdout；新旧会话 id（`s_…`/`sess_…`）都可用。
+- 典型用法：把一条或几条轨迹交给复盘 agent，让它按轨迹时刻提改动（见 `local/analysis/2026-10-20-harness2-exploration.md` 的 3.1、3.3）。
 
 ## `suga inspect stats`
 
