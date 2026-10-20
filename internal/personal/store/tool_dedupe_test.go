@@ -169,9 +169,12 @@ func TestToolDedupeRestartsAfterComplete(t *testing.T) {
 	assert.True(t, first.Complete)
 	assert.Eq(t, int64(len(dedupeSessions)), first.Rows)
 
-	// A new double-stored row appears after the finish, past the cursor.
+	// A new double-stored row appears after the finish, at a key before the
+	// finished cursor ("a0" sorts before "s1"): a pass that resumes at the cursor
+	// would never see it.
+	newSession(t, s, "a0")
 	call := &api.ToolCall{CallID: "cNew", Name: "shell"}
-	_, err = s.AppendEntries(ctx, "s3", NewEntry{Type: EntryTool, JSON: msgJSON(t, api.Message{Role: "tool",
+	_, err = s.AppendEntries(ctx, "a0", NewEntry{Type: EntryTool, JSON: msgJSON(t, api.Message{Role: "tool",
 		Content: "same-new", ToolCall: call, ToolResult: &api.ToolResult{CallID: "cNew", Name: "shell", Content: "same-new"}})})
 	assert.Require(t, assert.NoErr(t, err))
 

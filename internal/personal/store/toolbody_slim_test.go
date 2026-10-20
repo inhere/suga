@@ -300,12 +300,14 @@ func TestSlimToolBodiesRestartsAfterComplete(t *testing.T) {
 	assert.True(t, first.Complete)
 	assert.Eq(t, int64(9), first.Rows)
 
-	// A new old-shape stub appears after the finish: its key (s3/7) is past the
-	// finished cursor, so a pass that resumes at the cursor would never see it.
+	// A new old-shape stub appears after the finish, at a key before the finished
+	// cursor ("a0" sorts before "s1"): a pass that resumes at the cursor s3/6
+	// would never see it.
+	createSession(t, s, "a0", "/w")
 	msg := bigToolMessage("cNew")
-	appended := appendAll(t, s, "s3", NewEntry{Type: EntryTool, JSON: msgJSON(t, msg)})
+	appended := appendAll(t, s, "a0", NewEntry{Type: EntryTool, JSON: msgJSON(t, msg)})
 	_, err = s.db.Exec(`UPDATE entries SET json = ? WHERE session_id = ? AND seq = ?`,
-		string(oldStubJSON(t, msg)), "s3", appended[0].Seq)
+		string(oldStubJSON(t, msg)), "a0", appended[0].Seq)
 	assert.Require(t, assert.NoErr(t, err))
 
 	again, err := s.SlimToolBodies(ctx, ToolBodyMaintOptions{Batch: 8})
