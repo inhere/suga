@@ -4,19 +4,25 @@
 
 ## [未发布]
 
+## [0.40.0] - 2026-10-20
+
+chat 渲染、记忆与投递：代码块轻量高亮（自写 16 色，不引入 chroma）、GFM 表格按显示宽度对齐、长代码块折叠与 `:code`；记忆索引每行带一句话摘要与 `suga memory summaries`；`suga send --image` 向运行中的会话投递图片（进程记录声明能力，旧版本会话报错而不丢图）；`:image`/`run --image`/`send --image` 的路径不再限制在工作区内；新会话与回合 ID 改为 `s_`/`t_` + 12 位随机（旧 ID 继续有效）。
+
 ### 内部
 
 - `session/close` 等待回合退出的 `closeWaitTimeout`（默认 30s）从常量改为包级变量：测试可把等待窗口调小，默认值与行为不变（测试增补，无生产语义变化）。
+
 ### 新增
+
 - 记忆索引每行带一句话摘要：索引行为 `- [标题](路径) — 类型：一句话摘要`（摘要为空时与旧格式逐字节相同，旧行照常解析）；`memory` 工具 add/replace 新增 `summary` 参数（add 必填，未给时用正文首句并在结果里提示），提示词里的记忆索引行同样带摘要；新增 `suga memory summaries [--missing] [--fill] [--apply]` 列出缺摘要的条目，`--fill` 用正文首句预览、`--apply` 才写（只改索引行，不动正文）；exec 后备协议增加 `summary` 字段；gofer 后端只有一个摘要槽（已用于标题），索引行不带摘要，补摘要命令会提示该后端无法单独存摘要。
 - chat 的 markdown 渲染增强（issue suga-6mmf，只影响交互式 chat，`run`/stream-json/ACP/转录保持原文）：代码块按围栏语言逐行着色（自写的轻量高亮，16 色 ANSI：注释、字符串、数字、关键字四类，支持 go/python/js/ts/shell/json/yaml/sql/rust/java/c/cpp），未知语言、非终端或 `NO_COLOR` 不着色；新增 `chat.code_highlight`（默认开）。
 - chat 的 GFM 表格（表头行 + `|---|` 分隔行）按显示宽度对齐（中文等宽字符算 2 列，单元格里的粗体与行内代码先渲染再算宽度），表头加粗、分隔线用 `─`；比终端宽的表格或形状不符的 `|` 行块原样输出，不截断。
 - chat 的长代码块折叠：超过 `chat.code_max_lines`（默认 40，`0` 不折叠）行后不再输出，结束时提示 `… 还有 N 行（:code 查看全部）`；新增 `:code`（展开上一条回答里被折叠的块）与 `:code N`（第 N 个块），`:help` 与命令补全同步。
 - `suga send --image <路径>`（可重复，最多 16 张）向运行中的会话投递图片：发送端先检查目标进程记录里的能力声明（`features: [images]`），旧版本会话直接报错退出（exit 5，写明会话与 PID、提示在新版本里重新打开该会话）且**什么都不投递**；图片按 `run --image` 同一套校验与缩放后写入**目标会话**的 `sessions/<sid>/images/`（同 sha256 不重写），请求只带 `{ref, sha256, media_type, width, height}` 引用；接收端逐张校验文件存在且 sha256 一致，任一不符则整条拒绝；follow-up 进下一回合的用户消息、`--steer` 进当前回合；当前模型不支持看图时按第一期规则降级为文字说明，并通过 `warning` 让发送端在 stderr 提示（退出码仍为 0）。未带 `--image` 的请求与旧版本逐字节一致。
-### 变更
-- `:image`、`run --image`、`send --image` 的路径由使用者输入，不再限制在工作区内（仍只读普通文件，大小、像素与格式上限不变）；模型调用的 `view_image` 仍限制在工作区与已加入的目录内。
 
 ### 变更
+
+- `:image`、`run --image`、`send --image` 的路径由使用者输入，不再限制在工作区内（仍只读普通文件，大小、像素与格式上限不变）；模型调用的 `view_image` 仍限制在工作区与已加入的目录内。
 - 会话与回合 id 改为“前缀 + 12 位随机 base32”：会话形如 `s_3k9m2q1p0v7r`，回合形如 `t_7f2m9c0a1p4v`（`crypto/rand`，60 位随机，字母表 `0-9a-v`），不再含本地日期、时间戳与序号——此前一天内创建的会话 id 前 16 位相同，只显示前 8 位（如 gofer）时无法区分、也不能按前缀找到会话。创建会话或回合时若生成的 id 与已有主键冲突，换一个 id 重试（最多 3 次）；`--session-id` 指定的 id 不重试，冲突照旧报错。旧格式 id（`sess_…`、`turn_…`）继续有效：续接、`send`、ACP `session/load`、`inspect`、`export`、`gc` 与短名称都不受影响；会话与回合列表在同一时间戳内按创建顺序排序，不再由 id 决定次序。
 
 ## [0.39.0] - 2026-10-20
@@ -949,7 +955,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.39.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/inhere/suga/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/inhere/suga/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/inhere/suga/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/inhere/suga/compare/v0.37.0...v0.37.1
