@@ -173,7 +173,7 @@ func TestUsageReport(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, int64(1), rep.Entries.Tool.Stub.Rows)
 		assert.Eq(t, int64(1), rep.Entries.Tool.Inline.Rows)
-		assert.Contains(t, rep.Entries.Suggestion, "suga data tool-bodies --move")
+		assert.Contains(t, rep.Entries.Suggestion, "suga data bodies --move")
 	})
 
 	t.Run("events by kind", func(t *testing.T) {

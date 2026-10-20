@@ -4,25 +4,40 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/gookit/goutil/cflag/capp"
+	appconfig "github.com/inhere/suga/internal/config"
 
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// Tool body files (design 2026-10-19, tool-output-files 0.3). Since this version
-// a tool result above store.tool_body_inline_bytes lives in
-// sessions/<id>/tools.jsonl instead of the ledger; ListEntries hands it back, so
-// only the storage changed. This command migrates the historical rows and is the
-// way back for an older suga.
+// Tool body files (design 2026-10-19, tool-output-files 0.3; design 2026-10-20,
+// assistant-bodies). Since those versions an entry above store.body_inline_bytes
+// lives in sessions/<id>/bodies.jsonl instead of the ledger (a tool result, or an
+// assistant reply with its reasoning and call arguments); ListEntries hands it
+// back, so only the storage changed. This command migrates the historical rows
+// and is the way back for an older suga.
 
-// newToolBodiesCommand builds `suga data tool-bodies`.
+// newToolBodiesCommand builds `suga data bodies` (`tool-bodies` is the v0.36
+// name and an alias of it).
 func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	var status, move, undo, check, removeFiles, abort, slim bool
+	return newBodiesCommand(ctx, stdout, stderr, "bodies")
+}
+
+// newLegacyToolBodiesCommand builds the `tool-bodies` alias.
+func newLegacyToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+	return newBodiesCommand(ctx, stdout, stderr, "tool-bodies")
+}
+
+// newBodiesCommand builds one of the two names of the command; both run the same
+// jobs.
+func newBodiesCommand(ctx context.Context, stdout, stderr io.Writer, name string) *capp.Cmd {
+	var status, move, undo, check, removeFiles, abort, slim, renameFiles bool
 	var batch int
-	cmd := capp.NewCmd("tool-bodies", "Move tool result bodies out of the ledger into sessions/<id>/tools.jsonl (--move), narrow old stubs (--slim), restore them (--undo), verify (--check)", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd(name, "Move tool results and assistant replies out of the ledger into sessions/<id>/bodies.jsonl (--move), rename old tools.jsonl files (--rename-files), narrow old stubs (--slim), restore them (--undo), verify (--check)", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga data tool-bodies [--status|--move|--slim|--undo|--check|--abort] [--remove-files] [--batch N]")
+			return fmt.Errorf("usage: suga data bodies [--status|--move|--slim|--undo|--check|--rename-files|--abort] [--remove-files] [--batch N]")
 		}
 		modes := 0
 		for _, on := range []bool{status, move, slim, undo, check, abort} {
@@ -36,11 +51,16 @@ func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.C
 		if removeFiles && !undo {
 			return fmt.Errorf("--remove-files only applies to --undo")
 		}
-		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, slim: slim, undo: undo, check: check, abort: abort, removeFiles: removeFiles, batch: batch})
+		if renameFiles && modes > 0 {
+			return fmt.Errorf("--rename-files is a job of its own: it takes the exclusive window and renames every session file")
+		}
+		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, slim: slim, undo: undo, check: check, abort: abort,
+			removeFiles: removeFiles, renameFiles: renameFiles, batch: batch})
 	})
 	cmd.SetOutput(stderr)
 	cmd.BoolVar(&status, "status", false, "report what would move, what moved and how large the files are")
-	cmd.BoolVar(&move, "move", false, "move the historical tool bodies into the session files (resumable)")
+	cmd.BoolVar(&move, "move", false, "move the historical tool results and assistant replies into the session files (resumable)")
+	cmd.BoolVar(&renameFiles, "rename-files", false, "rename sessions/*/tools.jsonl to bodies.jsonl (exclusive window, resumable; new writes use the new name afterwards)")
 	cmd.BoolVar(&slim, "slim", false, "narrow the stubs an older version wrote to the current shape (resumable, touches no file)")
 	cmd.BoolVar(&undo, "undo", false, "restore every moved body into the ledger and keep new ones inline (do this before running an older suga)")
 	cmd.BoolVar(&check, "check", false, "verify every stub against its record and report orphans (report only)")
@@ -52,12 +72,15 @@ func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.C
 
 // toolBodiesFlags is what the flags asked for.
 type toolBodiesFlags struct {
-	status, move, slim, undo, check, abort, removeFiles bool
-	batch                                               int
+	status, move, slim, undo, check, abort, removeFiles, renameFiles bool
+	batch                                                            int
 }
 
-// runToolBodies runs one job of `suga data tool-bodies`.
+// runToolBodies runs one job of `suga data bodies`.
 func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error {
+	if f.renameFiles {
+		return runRenameBodyFiles(ctx, out)
+	}
 	repo, err := openCoreStore()
 	if err != nil {
 		return err
@@ -68,7 +91,7 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 		if err := repo.ResetToolBodyState(ctx); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "已清除 tool 正文文件断点；下次 --move / --undo 会从头开始")
+		fmt.Fprintln(out, "已清除正文文件断点；下次 --move / --undo 会从头开始")
 		return nil
 	}
 	if f.check {
@@ -93,14 +116,19 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 		}
 		return nil
 	case f.move:
-		return runMoveToolBodies(ctx, out, repo, before, f.batch)
+		// Tool and assistant rows keep independent checkpoints: a ledger whose tool
+		// rows moved (that pass is complete) still has its assistant rows to move.
+		if err := runMoveToolBodies(ctx, out, repo, before, f.batch); err != nil {
+			return err
+		}
+		return runMoveAssistantBodies(ctx, out, repo, before, f.batch)
 	case f.slim:
 		return runSlimToolBodies(ctx, out, repo, before, f.batch)
 	}
-	return fmt.Errorf("usage: suga data tool-bodies [--status|--move|--slim|--undo|--check|--abort]")
+	return fmt.Errorf("usage: suga data bodies [--status|--move|--slim|--undo|--check|--rename-files|--abort]")
 }
 
-// runMoveToolBodies moves the historical bodies out in batches.
+// runMoveToolBodies moves the historical tool bodies out in batches.
 func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
 	if before.PendingRows == 0 {
 		fmt.Fprintln(out, "tool 正文无需移出：没有超过阈值的库内 tool 结果")
@@ -115,11 +143,37 @@ func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(out, "中断于 %s/%d（已移出 %d 条）；重跑 `suga data tool-bodies --move` 从这里续上：%v\n",
+		fmt.Fprintf(out, "中断于 %s/%d（已移出 %d 条）；重跑 `suga data bodies --move` 从这里续上：%v\n",
 			report.CursorSession, report.CursorSeq, report.Rows, err)
 		return err
 	}
 	fmt.Fprintf(out, "移出完成：%d 条 tool 结果（%s）写入会话文件，%d 个写事务\n", report.Rows, humanBytes(report.Bytes), report.Batches)
+	return nil
+}
+
+// runMoveAssistantBodies moves the historical assistant bodies out. It has its
+// own checkpoint (move_assistant), so it runs even when the tool pass of the same
+// database finished already.
+func runMoveAssistantBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
+	if before.AssistantPendingRows == 0 {
+		fmt.Fprintln(out, "assistant 正文无需移出：没有超过阈值的库内推理内容或工具调用参数")
+		fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`；会话文件在备份里始终包含")
+		return nil
+	}
+	fmt.Fprintf(out, "开始移出：%d 条 assistant 条目（库内 %s）将写入会话文件，Ctrl-C 可中断，重跑续上\n",
+		before.AssistantPendingRows, humanBytes(before.AssistantPending))
+	report, err := repo.MoveAssistantBodies(ctx, store.ToolBodyMaintOptions{
+		Batch: batch,
+		OnBatch: func(p store.ToolBodyMaintProgress) {
+			fmt.Fprintf(out, "  已扫到 %s/%d，移出 %d 条（%s）\n", p.SessionID, p.Seq, p.Rows, humanBytes(p.Bytes))
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(out, "中断于 %s/%d（已移出 %d 条）；重跑 `suga data bodies --move` 从这里续上：%v\n",
+			report.CursorSession, report.CursorSeq, report.Rows, err)
+		return err
+	}
+	fmt.Fprintf(out, "移出完成：%d 条 assistant 条目（%s）写入会话文件，%d 个写事务\n", report.Rows, humanBytes(report.Bytes), report.Batches)
 	fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`；会话文件在备份里始终包含")
 	return nil
 }
@@ -141,7 +195,7 @@ func runSlimToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(out, "中断于 %s/%d（已瘦身 %d 个）；重跑 `suga data tool-bodies --slim` 从这里续上：%v\n",
+		fmt.Fprintf(out, "中断于 %s/%d（已瘦身 %d 个）；重跑 `suga data bodies --slim` 从这里续上：%v\n",
 			report.CursorSession, report.CursorSeq, report.Rows, err)
 		return err
 	}
@@ -154,10 +208,11 @@ func runSlimToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 // runUndoToolBodies restores every moved body and, with --remove-files, deletes
 // the files of sessions that keep none.
 func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, f toolBodiesFlags) error {
-	if before.MovedRows == 0 {
-		fmt.Fprintln(out, "已还原：没有移出到会话文件的 tool 结果")
+	if before.MovedRows+before.AssistantMovedRows == 0 {
+		fmt.Fprintln(out, "已还原：没有移出到会话文件的正文")
 	} else {
-		fmt.Fprintf(out, "开始还原：%d 条 tool 结果将写回库内（先关闭「新写入移出」开关），Ctrl-C 可中断，重跑续上\n", before.MovedRows)
+		fmt.Fprintf(out, "开始还原：%d 条 tool 结果与 %d 条 assistant 条目将写回库内（先关闭「新写入移出」开关），Ctrl-C 可中断，重跑续上\n",
+			before.MovedRows, before.AssistantMovedRows)
 		report, err := repo.UndoToolBodies(ctx, store.ToolBodyMaintOptions{
 			Batch: f.batch,
 			OnBatch: func(p store.ToolBodyMaintProgress) {
@@ -165,11 +220,11 @@ func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 			},
 		})
 		if err != nil {
-			fmt.Fprintf(out, "中断于 %s/%d（已还原 %d 条）；重跑 `suga data tool-bodies --undo` 从这里续上：%v\n",
+			fmt.Fprintf(out, "中断于 %s/%d（已还原 %d 条）；重跑 `suga data bodies --undo` 从这里续上：%v\n",
 				report.CursorSession, report.CursorSeq, report.Rows, err)
 			return err
 		}
-		fmt.Fprintf(out, "还原完成：%d 条 tool 结果写回库内，%d 个写事务\n", report.Rows, report.Batches)
+		fmt.Fprintf(out, "还原完成：%d 条正文写回库内，%d 个写事务\n", report.Rows, report.Batches)
 	}
 	if !f.removeFiles {
 		fmt.Fprintln(out, "新写入已不再移出（`--move` 可重新打开）；会话文件仍保留，可加 --remove-files 删除")
@@ -183,42 +238,87 @@ func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 	return nil
 }
 
-// writeToolBodyStatus prints what --status found.
+// runRenameBodyFiles renames sessions/*/tools.jsonl to bodies.jsonl inside the
+// exclusive window of `gc --vacuum`: an older suga still running would recreate
+// the legacy file for a session it holds open, and its offsets would then point
+// into a file this version no longer writes.
+func runRenameBodyFiles(ctx context.Context, out io.Writer) error {
+	home, err := appconfig.ResolveSugaHome()
+	if err != nil {
+		return err
+	}
+	repo, err := openCoreStore()
+	if err != nil {
+		return err
+	}
+	defer repo.Close()
+	window, err := acquireMaintenanceWindow(filepath.Join(home, "run"))
+	if err != nil {
+		return err
+	}
+	defer window.Release()
+	report, err := repo.RenameBodyFiles(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "已改名 %d 个会话文件为 %s\n", report.Renamed, store.BodyFileName)
+	if len(report.Skipped) > 0 {
+		fmt.Fprintf(out, "跳过 %d 个会话（两个文件都在，未覆盖，读取按 sha256 区分）：\n", len(report.Skipped))
+		for _, id := range report.Skipped {
+			fmt.Fprintf(out, "  %s\n", id)
+		}
+	}
+	if report.SwitchSet {
+		fmt.Fprintf(out, "新写入已改用 %s；可再跑一次确认没有遗漏\n", store.BodyFileName)
+	}
+	return nil
+}
+
+// writeToolBodyStatus prints what --status found, one line per entry type.
 func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
 	switchState := "已打开"
 	if !st.MoveEnabled {
 		switchState = "已关闭（--undo 之后）"
 	}
-	fmt.Fprintf(out, "tool 正文文件：阈值 %s，新写入移出开关%s\n", humanBytes(st.InlineBytes), switchState)
-	fmt.Fprintf(out, "待移出：%d 条（%s）；已移出：%d 条；会话文件 %d 个（%s）\n",
-		st.PendingRows, humanBytes(st.PendingBytes), st.MovedRows, st.Files, humanBytes(st.FileBytes))
-	moveState := "未开始"
-	switch {
-	case st.MoveComplete:
-		moveState = "已完成"
-	case st.MoveStarted:
-		moveState = "进行中"
+	fmt.Fprintf(out, "正文文件：阈值 %s，新写入移出开关%s\n", humanBytes(st.InlineBytes), switchState)
+	fileNameState := fmt.Sprintf("仍是旧名（%s）；`suga data bodies --rename-files` 可改名", store.LegacyBodyFileName)
+	if st.BodyFileNameEnabled {
+		fileNameState = fmt.Sprintf("已改用 %s", store.BodyFileName)
 	}
-	fmt.Fprintf(out, "--move 状态：%s（断点 %s/%d，已移出 %d 条）\n", moveState, st.MoveSession, st.MoveSeq, st.MoveRows)
+	fmt.Fprintf(out, "文件名：%s；旧名文件 %d 个\n", fileNameState, st.LegacyNameFiles)
+	fmt.Fprintf(out, "tool：待移出 %d 条（%s）；已移出 %d 条\n",
+		st.PendingRows, humanBytes(st.PendingBytes), st.MovedRows)
+	fmt.Fprintf(out, "assistant：待移出 %d 条（库内 %s，含推理内容与工具调用参数）；已移出 %d 条\n",
+		st.AssistantPendingRows, humanBytes(st.AssistantPending), st.AssistantMovedRows)
+	fmt.Fprintf(out, "会话文件 %d 个（%s）\n", st.Files, humanBytes(st.FileBytes))
+	fmt.Fprintf(out, "--move 状态：tool %s（断点 %s/%d，已移出 %d 条）\n",
+		passState(st.MoveStarted, st.MoveComplete), st.MoveSession, st.MoveSeq, st.MoveRows)
+	fmt.Fprintf(out, "--move 状态：assistant %s（断点 %s/%d，已移出 %d 条）\n",
+		passState(st.AssistantMoveStarted, st.AssistantMoveComplete),
+		st.AssistantMoveSession, st.AssistantMoveSeq, st.AssistantMoveRows)
 	if st.SlimRows > 0 {
 		fmt.Fprintf(out, "旧形状的桩：%d 个（--slim 可回收 %s；完成后 `suga data vacuum` 缩小库文件）\n",
 			st.SlimRows, humanBytes(st.SlimReclaimBytes))
 	} else {
 		fmt.Fprintln(out, "旧形状的桩：无（桩已是当前形状）")
 	}
-	undoState := "未开始"
+	fmt.Fprintf(out, "--undo 状态：%s（已还原 %d 条）\n", passState(st.UndoStarted, st.UndoComplete), st.UndoRows)
+}
+
+// passState names the state of one maintenance checkpoint.
+func passState(started, complete bool) string {
 	switch {
-	case st.UndoComplete:
-		undoState = "已完成"
-	case st.UndoStarted:
-		undoState = "进行中"
+	case complete:
+		return "已完成"
+	case started:
+		return "进行中"
 	}
-	fmt.Fprintf(out, "--undo 状态：%s（已还原 %d 条）\n", undoState, st.UndoRows)
+	return "未开始"
 }
 
 // writeToolBodyCheck prints the verification result.
 func writeToolBodyCheck(out io.Writer, report store.ToolBodyCheckReport) {
-	fmt.Fprintf(out, "校验了 %d 条移出的 tool 结果：%d 条读不回正文\n", report.Checked, report.Missing)
+	fmt.Fprintf(out, "校验了 %d 条移出的正文（tool 与 assistant）：%d 条读不回正文\n", report.Checked, report.Missing)
 	if report.OrphanRecords > 0 {
 		fmt.Fprintf(out, "孤儿记录 %d 条（%s）：没有桩指向它们，是提交前中断留下的，可忽略；需要清理时请先备份\n",
 			report.OrphanRecords, humanBytes(report.OrphanBytes))
@@ -230,5 +330,5 @@ func writeToolBodyCheck(out io.Writer, report store.ToolBodyCheckReport) {
 		fmt.Fprintln(out, "结论：库内桩与会话文件一致")
 		return
 	}
-	fmt.Fprintln(out, "结论：有正文读不回，先别回退版本；可从备份恢复会话文件，或用 `tool-bodies --undo` 还原仍可读的部分")
+	fmt.Fprintln(out, "结论：有正文读不回，先别回退版本；可从备份恢复会话文件，或用 `data bodies --undo` 还原仍可读的部分")
 }
