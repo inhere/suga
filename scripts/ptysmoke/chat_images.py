@@ -166,6 +166,11 @@ def vision_on_scenario(s, ws, log):
     s.line("看图说说这两张")
     s.check("the turn answers", s.until(r"▣ " + REPLY, m) and s.until(r"tokens · ", m))
     s.check("the model received the message text", log.wait_user("看图说说"))
+    # The pictures ride in the same user message as image parts (OpenAI chat
+    # shape: content is a list holding image_url parts), not only in the store.
+    sent = [e for e in log.entries if "看图说说" in str(e.get("user", ""))]
+    s.check("the model request carries both pictures as image parts",
+            bool(sent) and str(sent[-1].get("user")).count("image_url") >= 2)
 
 
 def exit_and_session(s):
