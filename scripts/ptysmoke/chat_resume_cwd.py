@@ -65,7 +65,7 @@ def session_row(binary, env, cwd, sid):
 
 
 def trace_events(binary, env, cwd, sid):
-    out = subprocess.run([binary, "trace", sid, "--json"], capture_output=True, text=True,
+    out = subprocess.run([binary, "inspect", "trace", sid, "--json"], capture_output=True, text=True,
                          env=env, cwd=cwd, timeout=60)
     events = []
     for line in out.stdout.splitlines():
@@ -221,7 +221,7 @@ def main():
         stay.check("stay-in-b: the trace records one move from A to B",
                    len(moved) == 1 and (moved[0].get("attrs") or {}).get("from") == ws_a
                    and (moved[0].get("attrs") or {}).get("to") == ws_b)
-        trace_text = subprocess.run([binary, "trace", session_id], capture_output=True, text=True,
+        trace_text = subprocess.run([binary, "inspect", "trace", session_id], capture_output=True, text=True,
                                     env=env, cwd=ws_b, timeout=60).stdout
         stay.check("stay-in-b: `suga inspect trace` shows the move in one line",
                    any("session_cwd_changed" in line and ws_a in line and ws_b in line

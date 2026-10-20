@@ -44,7 +44,7 @@ def approve(s, start, label):
 
 
 def trace_events(binary, env, session, cwd):
-    out = subprocess.run([binary, "trace", session, "--json"], capture_output=True,
+    out = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True,
                          text=True, env=env, cwd=cwd, timeout=60)
     events = []
     for line in out.stdout.splitlines():

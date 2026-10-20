@@ -83,7 +83,7 @@ def yaml_string(value):
 
 
 def trace_events(binary, env, cwd, session):
-    out = subprocess.run([binary, "trace", session, "--json"], capture_output=True,
+    out = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True,
                          text=True, env=env, cwd=cwd, timeout=60)
     events = []
     for line in out.stdout.splitlines():
@@ -96,7 +96,7 @@ def trace_events(binary, env, cwd, session):
 
 def manifest_checks(binary, env, cwd):
     """Run the no-runtime manifest before the MCP server is allowed to start."""
-    out = subprocess.run([binary, "manifest", "--json"], capture_output=True,
+    out = subprocess.run([binary, "inspect", "manifest", "--json"], capture_output=True,
                          text=True, env=env, cwd=cwd, timeout=60)
     checks = [("manifest command succeeds", out.returncode == 0)]
     try:

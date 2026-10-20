@@ -54,7 +54,7 @@ def scenario(s):
 
 
 def trace_events(binary, env, session):
-    out = subprocess.run([binary, "trace", session, "--json"], capture_output=True, text=True, env=env, timeout=60)
+    out = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True, text=True, env=env, timeout=60)
     events = []
     for line in out.stdout.splitlines():
         try:

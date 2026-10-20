@@ -120,7 +120,7 @@ def check_trace(s, events):
 
 def export_rows(binary, env, session):
     """The session's entries and events as the `suga inspect export` jsonl rows."""
-    out = subprocess.run([binary, "export", session], capture_output=True, text=True, env=env, timeout=60)
+    out = subprocess.run([binary, "inspect", "export", session], capture_output=True, text=True, env=env, timeout=60)
     rows = []
     for line in out.stdout.splitlines():
         try:
