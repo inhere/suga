@@ -204,6 +204,10 @@ func (f *logFile) Write(p []byte) (int, error) {
 	written := n >= len(p)
 	writer, openErr := rotatefile.NewWriter(&f.cfg)
 	if openErr == nil {
+		// Close the replaced writer: it may still hold the file open (rotatefile
+		// reopens it after a failed rename), and every leaked handle keeps the
+		// file from being renamed or removed on Windows.
+		_ = f.w.Close()
 		f.w = writer
 	}
 	if written {
