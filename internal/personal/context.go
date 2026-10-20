@@ -127,6 +127,9 @@ func (r *Runner) loadHistory(ctx context.Context, sessionID string) (historyView
 	}
 	entries, err := r.cfg.Repository.ListEntries(ctx, sessionID, store.EntryFilter{
 		Types: []string{store.EntryUser, store.EntryAssistant, store.EntryTool, store.EntryCompaction, store.EntryHandoff, store.EntryContextUpdate},
+		// The bodies of the entries before the current segment are never sent: they
+		// are read back for the items only, once the view is known (below).
+		NoHydrate: true,
 	})
 	if err != nil {
 		return historyView{}, fmt.Errorf("load session history: %w", err)
@@ -182,6 +185,12 @@ func (r *Runner) loadHistory(ctx context.Context, sessionID string) (historyView
 			view.summary, view.fromHandoff, firstKept = rec.Summary, false, rec.FirstKeptSeq
 		}
 	}
+	// pending holds the items whose body has to come back from the session file and
+	// pendingAt their index in view.items. Only those are read: an entry cut away
+	// by the compaction point stays a stub, so a long session reads no more than its
+	// current segment (design 2026-10-20, revision 2b).
+	var pending []store.Entry
+	var pendingAt []int
 	for _, e := range entries {
 		if e.Type == store.EntryCompaction || e.Type == store.EntryHandoff || e.Seq < firstKept {
 			continue
@@ -197,11 +206,25 @@ func (r *Runner) loadHistory(ctx context.Context, sessionID string) (historyView
 		if !done[e.TurnID] && !replay[e.Seq] {
 			continue
 		}
-		var m agentcore.Message
-		if err := json.Unmarshal(e.JSON, &m); err != nil {
-			return historyView{}, fmt.Errorf("decode history entry %d: %w", e.Seq, err)
+		view.items = append(view.items, ctxItem{seq: e.Seq})
+		pending = append(pending, e)
+		pendingAt = append(pendingAt, len(view.items)-1)
+	}
+	if err := r.cfg.Repository.HydrateEntries(ctx, sessionID, pending); err != nil {
+		return historyView{}, fmt.Errorf("read the kept bodies: %w", err)
+	}
+	for i := range pending {
+		// A stub that comes back from the store is a bug that would send the model a
+		// message without its Reasoning, Metadata and tool call arguments: refuse to
+		// build the view instead (design 2026-10-20, revision 2).
+		if pending[i].Stub() {
+			return historyView{}, fmt.Errorf("history entry %d is still a stub: refusing to send a body-less message", pending[i].Seq)
 		}
-		view.items = append(view.items, ctxItem{msg: m, seq: e.Seq})
+		var m agentcore.Message
+		if err := json.Unmarshal(pending[i].JSON, &m); err != nil {
+			return historyView{}, fmt.Errorf("decode history entry %d: %w", pending[i].Seq, err)
+		}
+		view.items[pendingAt[i]].msg = m
 	}
 	return view, nil
 }
