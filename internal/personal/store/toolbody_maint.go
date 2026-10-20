@@ -293,7 +293,7 @@ func (s *Store) moveToolBodyBatch(ctx context.Context, job string, opts ToolBody
 		if movedBytes > 0 && movedBytes+int64(len(row.JSON)) > toolBodyBatchBytes {
 			break // keep the transaction short, the rest is the next batch
 		}
-		stub, ok, err := buildToolBodyStub(row.JSON)
+		stub, ok, err := buildToolBodyStub(EntryTool, row.JSON)
 		if err != nil {
 			return 0, 0, nil, false, fmt.Errorf("build stub of %s/%d: %w", row.SessionID, row.Seq, err)
 		}

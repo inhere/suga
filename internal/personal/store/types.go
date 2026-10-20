@@ -139,9 +139,15 @@ type Entry struct {
 	CreatedAt time.Time
 
 	// bodyRef is the entries.body_ref column of a row whose body moved to the
-	// session file; it is internal on purpose, JSON is always the restored body.
+	// session file (see Entry.Stub); it is internal on purpose, JSON is always the
+	// restored body and the ref is cleared as soon as a reader reads it back.
 	bodyRef string
 }
+
+// Stub reports whether the entry is a stub whose body still lives in the session
+// file: such an entry holds only the fields a stub keeps (see
+// buildToolBodyStub), not the bytes the row had before it moved.
+func (e Entry) Stub() bool { return e.bodyRef != "" }
 
 // NewEntry is the input form of Entry for AppendEntries.
 type NewEntry struct {
@@ -169,6 +175,12 @@ type EntryFilter struct {
 	TurnID   string
 	Types    []string
 	Limit    int
+	// NoHydrate returns the stubs as stored instead of reading the moved bodies
+	// back from the session file. Use it when only the Content or the metadata of
+	// the entries is read (an assistant stub keeps the whole Content, a tool stub
+	// keeps the call id/name), and call Store.HydrateEntries for the entries that
+	// do go on to a reader that needs the full body.
+	NoHydrate bool
 }
 
 // Event is one observability record (model call, tool call, turn ...).

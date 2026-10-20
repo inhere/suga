@@ -35,6 +35,12 @@ import (
 // the file while the row still looks inline, and never the other way round. A
 // record written before a crash of the commit is an orphan: harmless (a later
 // seq points at its own offset) and reported by `suga data tool-bodies --check`.
+//
+// An assistant entry above the threshold moves out the same way (design
+// 2026-10-20-assistant-bodies): its record holds the whole message (Reasoning,
+// Metadata and the tool call arguments are the large fields), while the stub
+// keeps the full Content the full-text search indexes and the call id/name the
+// link extraction reads.
 
 const (
 	// DefaultToolBodyInlineBytes is store.tool_body_inline_bytes: entry JSON
@@ -99,6 +105,18 @@ func parseBodyRef(value string) (BodyRef, error) {
 	return BodyRef{Off: off, Len: length, SHA256: parts[2]}, nil
 }
 
+// assistantBodyStub is the stored shape of a moved assistant entry: the role,
+// the full Content (the full-text search indexes it, so a stub must carry it
+// unchanged) and the call id/name a reader links on. Reasoning, Metadata and the
+// call arguments are what made the entry large; they live in the record only.
+// A stub keeps no IsError/Result bytes and no preview: they are not needed to
+// recognize the message and the full text search must not see a clipped one.
+type assistantBodyStub struct {
+	Role     string            `json:"Role"`
+	Content  string            `json:"Content,omitempty"`
+	ToolCall *toolBodyStubCall `json:"ToolCall,omitempty"`
+}
+
 // toolBodyStub is the stored shape of a moved tool entry: only what SQL still
 // reads from a row (Role, and the CallIDs the link extraction in
 // ListEntryRefs pulls with json_extract), plus one short preview so a human and
@@ -129,13 +147,26 @@ type toolBodyStubResult struct {
 	IsError bool   `json:"IsError,omitempty"`
 }
 
-// buildToolBodyStub returns the stub of one tool entry body. ok is false when the
-// body cannot be decoded as a message: such a row is never moved out, so a
-// foreign row keeps exactly what it had.
-func buildToolBodyStub(raw []byte) (stub []byte, ok bool, err error) {
+// buildToolBodyStub returns the stub of one entry body, shaped by its type: a
+// tool entry keeps a preview of its output (see toolBodyStub), an assistant
+// entry keeps its whole Content (FTS reads it) and drops Reasoning, Metadata and
+// the call arguments (see assistantBodyStub). ok is false when the body cannot be
+// decoded as a message: such a row is never moved out, so a foreign row keeps
+// exactly what it had.
+func buildToolBodyStub(typ string, raw []byte) (stub []byte, ok bool, err error) {
 	var m api.Message
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, false, nil
+	}
+	if typ == EntryAssistant {
+		out := assistantBodyStub{Role: m.Role, Content: m.Content}
+		if m.ToolCall != nil {
+			out.ToolCall = &toolBodyStubCall{CallID: m.ToolCall.CallID, Name: m.ToolCall.Name}
+		}
+		if stub, err = json.Marshal(out); err != nil {
+			return nil, false, err
+		}
+		return stub, true, nil
 	}
 	out := toolBodyStub{Role: m.Role, Content: previewText(m.Content)}
 	if m.ToolCall != nil {
@@ -417,6 +448,17 @@ func parseToolBodyHeaderAt(head []byte) (int64, bool) {
 	return seq, true
 }
 
+// HydrateEntries replaces the stubs among entries with the bodies their records
+// hold; entries that are inline stay as they are. Callers that list entries
+// without their bodies (EntryFilter.NoHydrate) use it to fetch exactly the ones
+// they send on. A session without a stub in entries costs no file access.
+func (s *Store) HydrateEntries(ctx context.Context, sessionID string, entries []Entry) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.restoreToolBodies(sessionID, entries)
+}
+
 // restoreToolBodies replaces the stubs of entries with the bodies their records
 // hold, opening one file per session. A session without stubs costs no file
 // access at all (Types without tool included).
@@ -448,6 +490,8 @@ func (s *Store) restoreToolBodies(sessionID string, entries []Entry) error {
 			return err
 		}
 		entries[i].JSON = body
+		// The entry holds the body again: it is no longer a stub (Entry.Stub).
+		entries[i].bodyRef = ""
 	}
 	return nil
 }

@@ -13,11 +13,14 @@ import (
 // AppendEntries appends a batch to the session log in one transaction and
 // returns the stored entries with their assigned seq (contiguous, per session).
 //
-// A tool entry whose body is larger than store.tool_body_inline_bytes moves into
-// the session's tools.jsonl inside this transaction (design 0.3): the row, the
-// record and the swap to the stub commit together, and a failure of the file
-// write rolls the transaction back after truncating the file to the length it
-// had. The returned entries keep the full body.
+// A tool or assistant entry whose body is larger than
+// store.tool_body_inline_bytes moves into the session's tools.jsonl inside this
+// transaction (design 0.3): the row, the record and the swap to the stub commit
+// together, and a failure of the file write rolls the transaction back after
+// truncating the file to the length it had. The returned entries keep the full
+// body. An assistant entry moves only when its stub saves more than the threshold
+// (design 2026-10-20, revision 8): a big Content without large Reasoning/Metadata
+// stays inline, since the stub has to keep the Content anyway.
 func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEntry) ([]Entry, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -86,12 +89,15 @@ func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEn
 		if !moveEnabled {
 			continue
 		}
-		stub, ok, err := buildToolBodyStub(body)
+		stub, ok, err := buildToolBodyStub(e.Type, body)
 		if err != nil {
 			return nil, fmt.Errorf("build tool body stub: %w", err)
 		}
 		if !ok {
 			continue // an undecodable row keeps its body inline
+		}
+		if e.Type == EntryAssistant && int64(len(body)-len(stub)) <= s.toolBodyInlineBytes {
+			continue // the stub has to keep the Content: only real savings move the row
 		}
 		if writer == nil {
 			if writer, err = s.openToolBodyWriter(sessionID); err != nil {
@@ -125,14 +131,15 @@ func (s *Store) AppendEntries(ctx context.Context, sessionID string, in ...NewEn
 	return out, nil
 }
 
-// toolBodyCandidate reports whether an entry is one the store moves out: a tool
-// entry above the threshold, with moving enabled and a session id that can own a
-// file.
+// toolBodyCandidate reports whether an entry is one the store considers moving
+// out by its size alone: a tool or assistant entry whose JSON is above the
+// threshold. An assistant entry is judged again by the bytes its stub saves once
+// the stub is built (see AppendEntries).
 func (s *Store) toolBodyCandidate(typ string, body []byte) bool {
-	if s.toolBodyInlineBytes <= 0 || typ != EntryTool || int64(len(body)) <= s.toolBodyInlineBytes {
+	if s.toolBodyInlineBytes <= 0 || int64(len(body)) <= s.toolBodyInlineBytes {
 		return false
 	}
-	return true
+	return typ == EntryTool || typ == EntryAssistant
 }
 
 // toolBodyMove is one record written in a transaction, waiting for the swap of
@@ -195,6 +202,11 @@ func (s *Store) ListEntries(ctx context.Context, sessionID string, f EntryFilter
 	}
 	// Moved bodies come back from the session file, one open per call (no file is
 	// touched when no row of the result carries a stub, e.g. Types without tool).
+	// NoHydrate leaves the stubs in place for a caller that only reads Content or
+	// metadata, or that fetches the bodies it sends on with HydrateEntries.
+	if f.NoHydrate {
+		return out, nil
+	}
 	if err := s.restoreToolBodies(sessionID, out); err != nil {
 		return nil, err
 	}
