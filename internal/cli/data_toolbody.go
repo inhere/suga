@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/gookit/goutil/cflag/capp"
-	appconfig "github.com/inhere/suga/internal/config"
 
 	"github.com/inhere/suga/internal/personal/store"
 )
@@ -19,54 +17,35 @@ import (
 // back, so only the storage changed. This command migrates the historical rows
 // and is the way back for an older suga.
 
-// legacyToolBodiesName is the v0.36 name of `data bodies`; it stays an alias
-// until v0.41.0 and says so when used.
-const legacyToolBodiesName = "tool-bodies"
+// legacyToolBodiesName is the v0.36 name of `data bodies`. It was an alias until
+// v0.41.0, which removed it: typing it now fails with a hint (legacy_args.go).
 
-// newToolBodiesCommand builds `suga data bodies` (`tool-bodies` is the v0.36
-// name and a deprecated alias of it).
+// newToolBodiesCommand builds `suga data bodies`.
 func newToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	return newBodiesCommand(ctx, stdout, stderr, "bodies")
-}
-
-// newLegacyToolBodiesCommand builds the deprecated `tool-bodies` alias.
-func newLegacyToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	return newBodiesCommand(ctx, stdout, stderr, legacyToolBodiesName)
-}
-
-// newBodiesCommand builds one of the two names of the command; both run the same
-// jobs.
-func newBodiesCommand(ctx context.Context, stdout, stderr io.Writer, name string) *capp.Cmd {
-	var status, move, undo, check, removeFiles, abort, slim, renameFiles bool
+	var status, move, undo, check, removeFiles, abort bool
 	var batch int
-	cmd := capp.NewCmd(name, "Move tool results and assistant replies out of the ledger into sessions/<id>/bodies.jsonl (--move), rename old tools.jsonl files (--rename-files), narrow old stubs (--slim), restore them (--undo), verify (--check); tool-bodies is the old name of this command", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("bodies", "Move tool results and assistant replies out of the ledger into sessions/<id>/bodies.jsonl (--move), restore them (--undo), verify (--check)", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga data bodies [--status|--move|--slim|--undo|--check|--rename-files|--abort] [--remove-files] [--batch N]")
+			return fmt.Errorf("usage: suga data bodies [--status|--move|--undo|--check|--abort] [--remove-files] [--batch N]")
 		}
 		modes := 0
-		for _, on := range []bool{status, move, slim, undo, check, abort} {
+		for _, on := range []bool{status, move, undo, check, abort} {
 			if on {
 				modes++
 			}
 		}
 		if modes > 1 {
-			return fmt.Errorf("--status, --move, --slim, --undo, --check and --abort are different jobs; pass one of them")
+			return fmt.Errorf("--status, --move, --undo, --check and --abort are different jobs; pass one of them")
 		}
 		if removeFiles && !undo {
 			return fmt.Errorf("--remove-files only applies to --undo")
 		}
-		if renameFiles && modes > 0 {
-			return fmt.Errorf("--rename-files is a job of its own: it takes the exclusive window and renames every session file")
-		}
-		tellBodiesDeprecations(stderr, name, slim, renameFiles)
-		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, slim: slim, undo: undo, check: check, abort: abort,
-			removeFiles: removeFiles, renameFiles: renameFiles, batch: batch})
+		return runToolBodies(ctx, stdout, toolBodiesFlags{status: status, move: move, undo: undo, check: check, abort: abort,
+			removeFiles: removeFiles, batch: batch})
 	})
 	cmd.SetOutput(stderr)
 	cmd.BoolVar(&status, "status", false, "report what would move, what moved and how large the files are")
 	cmd.BoolVar(&move, "move", false, "move the historical tool results and assistant replies into the session files (resumable)")
-	cmd.BoolVar(&renameFiles, "rename-files", false, "rename sessions/*/tools.jsonl to bodies.jsonl (exclusive window, resumable; new writes use the new name afterwards)")
-	cmd.BoolVar(&slim, "slim", false, "narrow the stubs an older version wrote to the current shape (resumable, touches no file)")
 	cmd.BoolVar(&undo, "undo", false, "restore every moved body into the ledger and keep new ones inline (do this before running an older suga)")
 	cmd.BoolVar(&check, "check", false, "verify every stub against its record and report orphans (report only)")
 	cmd.BoolVar(&abort, "abort", false, "drop the progress checkpoints so the next pass starts over")
@@ -75,33 +54,14 @@ func newBodiesCommand(ctx context.Context, stdout, stderr io.Writer, name string
 	return cmd
 }
 
-// tellBodiesDeprecations prints the notice of the deprecated forms of
-// `data bodies`: the v0.36 command name and the two one-time migrations. The
-// other jobs (--status/--move/--undo/--check) stay: --move still moves bodies
-// out after the threshold was lowered, --undo is the way back.
-func tellBodiesDeprecations(stderr io.Writer, name string, slim, renameFiles bool) {
-	if name == legacyToolBodiesName {
-		deprecatedToolBodiesName.tell(stderr)
-	}
-	if slim {
-		deprecatedSlimJob.tell(stderr)
-	}
-	if renameFiles {
-		deprecatedRenameFilesJob.tell(stderr)
-	}
-}
-
 // toolBodiesFlags is what the flags asked for.
 type toolBodiesFlags struct {
-	status, move, slim, undo, check, abort, removeFiles, renameFiles bool
-	batch                                                            int
+	status, move, undo, check, abort, removeFiles bool
+	batch                                         int
 }
 
 // runToolBodies runs one job of `suga data bodies`.
 func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error {
-	if f.renameFiles {
-		return runRenameBodyFiles(ctx, out)
-	}
 	repo, err := openCoreStore()
 	if err != nil {
 		return err
@@ -143,10 +103,8 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 			return err
 		}
 		return runMoveAssistantBodies(ctx, out, repo, before, f.batch)
-	case f.slim:
-		return runSlimToolBodies(ctx, out, repo, before, f.batch)
 	}
-	return fmt.Errorf("usage: suga data bodies [--status|--move|--slim|--undo|--check|--rename-files|--abort]")
+	return fmt.Errorf("usage: suga data bodies [--status|--move|--undo|--check|--abort]")
 }
 
 // runMoveToolBodies moves the historical tool bodies out in batches.
@@ -199,33 +157,6 @@ func runMoveAssistantBodies(ctx context.Context, out io.Writer, repo *store.Stor
 	return nil
 }
 
-// runSlimToolBodies narrows the old-shape stubs of a release before this one. It
-// is a separate job from --move (whose window is "inline bodies", which a stub is
-// not): only the stub rows change, the files and their body_ref stay untouched.
-func runSlimToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
-	if before.SlimRows == 0 {
-		fmt.Fprintln(out, "旧形状的桩已全部瘦身：没有需要改写的桩")
-		return nil
-	}
-	fmt.Fprintf(out, "开始瘦身：%d 个旧形状的桩（预计回收 %s），Ctrl-C 可中断，重跑续上\n",
-		before.SlimRows, humanBytes(before.SlimReclaimBytes))
-	report, err := repo.SlimToolBodies(ctx, store.ToolBodyMaintOptions{
-		Batch: batch,
-		OnBatch: func(p store.ToolBodyMaintProgress) {
-			fmt.Fprintf(out, "  已扫到 %s/%d，瘦身 %d 个（回收 %s）\n", p.SessionID, p.Seq, p.Rows, humanBytes(p.Bytes))
-		},
-	})
-	if err != nil {
-		fmt.Fprintf(out, "中断于 %s/%d（已瘦身 %d 个）；重跑 `suga data bodies --slim` 从这里续上：%v\n",
-			report.CursorSession, report.CursorSeq, report.Rows, err)
-		return err
-	}
-	fmt.Fprintf(out, "瘦身完成：%d 个桩改写为当前形状（回收 %s），%d 个写事务；会话文件未改动\n",
-		report.Rows, humanBytes(report.Bytes), report.Batches)
-	fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`")
-	return nil
-}
-
 // runUndoToolBodies restores every moved body and, with --remove-files, deletes
 // the files of sessions that keep none.
 func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, f toolBodiesFlags) error {
@@ -259,42 +190,6 @@ func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 	return nil
 }
 
-// runRenameBodyFiles renames sessions/*/tools.jsonl to bodies.jsonl inside the
-// exclusive window of `gc --vacuum`: an older suga still running would recreate
-// the legacy file for a session it holds open, and its offsets would then point
-// into a file this version no longer writes.
-func runRenameBodyFiles(ctx context.Context, out io.Writer) error {
-	home, err := appconfig.ResolveSugaHome()
-	if err != nil {
-		return err
-	}
-	repo, err := openCoreStore()
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-	window, err := acquireMaintenanceWindow(filepath.Join(home, "run"))
-	if err != nil {
-		return err
-	}
-	defer window.Release()
-	report, err := repo.RenameBodyFiles(ctx)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "已改名 %d 个会话文件为 %s\n", report.Renamed, store.BodyFileName)
-	if len(report.Skipped) > 0 {
-		fmt.Fprintf(out, "跳过 %d 个会话（两个文件都在，未覆盖，读取按 sha256 区分）：\n", len(report.Skipped))
-		for _, id := range report.Skipped {
-			fmt.Fprintf(out, "  %s\n", id)
-		}
-	}
-	if report.SwitchSet {
-		fmt.Fprintf(out, "新写入已改用 %s；可再跑一次确认没有遗漏\n", store.BodyFileName)
-	}
-	return nil
-}
-
 // writeToolBodyStatus prints what --status found, one line per entry type.
 func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
 	switchState := "已打开"
@@ -302,7 +197,7 @@ func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
 		switchState = "已关闭（--undo 之后）"
 	}
 	fmt.Fprintf(out, "正文文件：阈值 %s，新写入移出开关%s\n", humanBytes(st.InlineBytes), switchState)
-	fileNameState := fmt.Sprintf("仍是旧名（%s）；`suga data bodies --rename-files` 可改名", store.LegacyBodyFileName)
+	fileNameState := fmt.Sprintf("仍是旧名（%s）；v0.40 的 --rename-files 可改名", store.LegacyBodyFileName)
 	if st.BodyFileNameEnabled {
 		fileNameState = fmt.Sprintf("已改用 %s", store.BodyFileName)
 	}
@@ -317,12 +212,6 @@ func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
 	fmt.Fprintf(out, "--move 状态：assistant %s（断点 %s/%d，已移出 %d 条）\n",
 		passState(st.AssistantMoveStarted, st.AssistantMoveComplete),
 		st.AssistantMoveSession, st.AssistantMoveSeq, st.AssistantMoveRows)
-	if st.SlimRows > 0 {
-		fmt.Fprintf(out, "旧形状的桩：%d 个（--slim 可回收 %s；完成后 `suga data vacuum` 缩小库文件）\n",
-			st.SlimRows, humanBytes(st.SlimReclaimBytes))
-	} else {
-		fmt.Fprintln(out, "旧形状的桩：无（桩已是当前形状）")
-	}
 	fmt.Fprintf(out, "--undo 状态：%s（已还原 %d 条）\n", passState(st.UndoStarted, st.UndoComplete), st.UndoRows)
 }
 

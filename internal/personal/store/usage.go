@@ -719,7 +719,7 @@ func usageSuggestions(rep *UsageReport) {
 		}
 	}
 	if toolRows > 0 {
-		rep.FTS.Suggestion = fmt.Sprintf("索引里还有 %d 行 tool 结果，`suga data shrink-fts` 删除它们", toolRows)
+		rep.FTS.Suggestion = fmt.Sprintf("索引里还有 %d 行 tool 结果，旧库可用 v0.40 的 `suga data shrink-fts` 删除它们", toolRows)
 	} else if rep.FTS.Bytes > 0 {
 		rep.FTS.Suggestion = "索引已无 tool 行；删除会话后执行 `suga data vacuum` 让文件回落"
 	}

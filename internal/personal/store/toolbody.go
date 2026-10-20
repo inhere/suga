@@ -22,8 +22,8 @@ import (
 //
 // A tool entry whose JSON exceeds the inline threshold moves out of the ledger
 // into one append-only file per session, sessions/<id>/bodies.jsonl (the name of
-// v0.36 was tools.jsonl, which is still read and, until `data bodies
-// --rename-files` switched the write name, still written):
+// v0.36 was tools.jsonl, which is still read and still written for a ledger that
+// v0.40 never renamed):
 //
 //	{"seq":N,"sha256":"<hex>","json":<entry JSON raw bytes>}\n
 //
@@ -46,15 +46,15 @@ import (
 // link extraction reads.
 
 const (
-	// DefaultToolBodyInlineBytes is store.tool_body_inline_bytes: entry JSON
+	// DefaultToolBodyInlineBytes is store.body_inline_bytes: entry JSON
 	// above this many bytes moves to the session file. 0 keeps everything inline.
 	DefaultToolBodyInlineBytes int64 = 1024
 	// BodyFileName is the current append-only file of one session's moved bodies.
 	BodyFileName = "bodies.jsonl"
-	// LegacyBodyFileName is the v0.36 file name. Until `data bodies
-	// --rename-files` sets the switch every write still uses it, so a suga of the
-	// previous version running next to this one keeps reading its own files; the
-	// reader tries both names. (v0.38 dropped the ToolBodyFileName alias of it.)
+	// LegacyBodyFileName is the v0.36 file name. A ledger v0.40 never renamed still
+	// writes it, so a suga of the previous version running next to this one keeps
+	// reading its own files; the reader tries both names. (v0.38 dropped the
+	// ToolBodyFileName alias of it.)
 	LegacyBodyFileName = "tools.jsonl"
 	// toolBodyPreviewRunes bounds the preview a stub keeps of a tool result, so a
 	// lost file still shows what the call was and how its output began. It is the
@@ -75,10 +75,10 @@ const (
 	// toolBodyMoveKey is the persistent switch: "0" keeps new tool bodies inline
 	// (set by `data bodies --undo`), any other value moves them out.
 	toolBodyMoveKey = "tool_body_move"
-	// bodyFileNameKey is the persistent switch of the file name: it is set to
-	// BodyFileName by `--rename-files` once every session was renamed, and read on
-	// every write, so a pair of processes never splits one session's offsets over
-	// two files.
+	// bodyFileNameKey is the persistent switch of the file name: a v0.40
+	// `--rename-files` set it to BodyFileName once every session was renamed, and it
+	// is read on every write, so a pair of processes never splits one session's
+	// offsets over two files.
 	bodyFileNameKey = "body_file_name"
 )
 
@@ -199,31 +199,6 @@ func buildToolBodyStub(typ string, raw []byte) (stub []byte, ok bool, err error)
 	return stub, true, nil
 }
 
-// slimToolBodyStub narrows a stub written by an older version (one that kept the
-// call arguments, the reasoning and a second preview) to the shape
-// buildToolBodyStub writes now. It needs no body: the fields it keeps are already
-// in the stub, and the preview of a 256-rune preview is the first 120 runes of
-// the output. changed is false when the row is in the current shape already, so
-// the pass skips it and a rerun writes nothing.
-func slimToolBodyStub(raw []byte) (slim []byte, changed bool) {
-	var old toolBodyStub
-	if err := json.Unmarshal(raw, &old); err != nil {
-		return nil, false // not a stub of ours: left as it is
-	}
-	if old.Role != "tool" {
-		// Not a tool stub: assistant entries are moved out to stubs too (design
-		// 2026-10-20) and their stub keeps the full Content for the full-text
-		// search, which a preview would clip. Left as it is.
-		return nil, false
-	}
-	slim, err := json.Marshal(toolBodyStub{Role: old.Role, Content: previewText(old.Content),
-		ToolCall: old.ToolCall, ToolResult: old.ToolResult})
-	if err != nil {
-		return nil, false
-	}
-	return slim, !bytes.Equal(slim, raw)
-}
-
 // previewText cuts s to the preview length in runes (never in the middle of a
 // multi-byte character) and marks the cut.
 func previewText(s string) string {
@@ -234,10 +209,9 @@ func previewText(s string) string {
 	return string(runes[:toolBodyPreviewRunes]) + "…"
 }
 
-// toolBodyPath is the current write file. Before --rename-files it is always
-// the legacy name so an older running suga remains compatible; afterwards it is
-// always the current name (revision 4: the switch, not the age of a session,
-// decides).
+// toolBodyPath is the current write file: the file name switch decides (a ledger
+// renamed by v0.40's --rename-files writes bodies.jsonl, one that was not writes
+// the legacy name, which every older version reads).
 func (s *Store) toolBodyPath(sessionID string) (string, bool) {
 	name := LegacyBodyFileName
 	var value string
@@ -252,8 +226,9 @@ func (s *Store) toolBodyPath(sessionID string) (string, bool) {
 	return s.toolBodyPathName(sessionID, name)
 }
 
-// bodyFileNameSwitch reports whether writes use BodyFileName (set by
-// `--rename-files` after every session was renamed).
+// bodyFileNameSwitch reports whether writes use BodyFileName (set by v0.40's
+// --rename-files after every session was renamed; still read so a renamed ledger
+// keeps writing the name its offsets point into).
 func (s *Store) bodyFileNameSwitch(ctx context.Context) (bool, error) {
 	var value string
 	err := s.db.QueryRowContext(ctx, `SELECT value FROM store_meta WHERE key = ?`, bodyFileNameKey).Scan(&value)
@@ -264,23 +239,6 @@ func (s *Store) bodyFileNameSwitch(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("read body file name switch: %w", err)
 	}
 	return value == BodyFileName, nil
-}
-
-// SetBodyFileNameSwitch records the file name new writes use. It is written once
-// by --rename-files, after the last session was renamed.
-func (s *Store) SetBodyFileNameSwitch(ctx context.Context, useCurrent bool) error {
-	if err := s.ensureStoreMeta(ctx); err != nil {
-		return err
-	}
-	value := LegacyBodyFileName
-	if useCurrent {
-		value = BodyFileName
-	}
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO store_meta(key, value) VALUES(?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value`, bodyFileNameKey, value); err != nil {
-		return fmt.Errorf("write body file name switch: %w", err)
-	}
-	return nil
 }
 
 func (s *Store) toolBodyPathName(sessionID, name string) (string, bool) {

@@ -10,28 +10,8 @@ import (
 
 // The ledger maintenance jobs that used to be switches of `suga data gc` are their
 // own subcommands since v0.36: each one has a single job, its own help and no
-// mutually exclusive flags. The work itself stays in runShrinkFTS (gc_maintenance.go)
+// mutually exclusive flags. The work itself stays in runGCVacuum (gc_maintenance.go)
 // and runGCCompressSpill (gc_spill.go).
-
-// newShrinkFTSCommand builds the deprecated `suga data shrink-fts`: delete the
-// historical tool rows of entries_fts (tool results are no longer indexed).
-// Removed in v0.41.0: it only migrates a v0.35 or older ledger.
-func newShrinkFTSCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	var status, abort bool
-	var batch int
-	cmd := capp.NewCmd("shrink-fts", "Delete the historical tool-output FTS rows (resumable, Ctrl-C keeps the progress)", func(c *capp.Cmd) error {
-		if len(c.RemainArgs()) > 0 {
-			return fmt.Errorf("usage: suga data shrink-fts [--status|--abort] [--batch N]")
-		}
-		deprecatedShrinkFTSJob.tell(stderr)
-		return runShrinkFTS(ctx, stdout, status, abort, batch)
-	})
-	cmd.SetOutput(stderr)
-	cmd.BoolVar(&status, "status", false, "report how many tool rows the index still holds")
-	cmd.BoolVar(&abort, "abort", false, "drop the progress checkpoint so the next run starts over")
-	cmd.IntVar(&batch, "batch", 0, "rows deleted per write transaction (default 2000)")
-	return cmd
-}
 
 // newVacuumCommand builds `suga data vacuum`: rewrite the database file to
 // return the space a deletion freed.

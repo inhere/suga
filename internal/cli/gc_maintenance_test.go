@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,11 +14,9 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// TestGCMaintenanceCommand covers `suga data shrink-fts` and `suga data vacuum`
-// through the CLI (data governance P1). The ledger is isolated in a temp
-// SUGA_HOME, and the historical tool row is put into the index by hand: the
-// write path no longer indexes tool results, only the old backfill did.
-func TestGCMaintenanceCommand(t *testing.T) {
+// TestGCVacuumCommand covers `suga data vacuum` through the CLI (data
+// governance P1). The ledger is isolated in a temp SUGA_HOME.
+func TestGCVacuumCommand(t *testing.T) {
 	home := shortCLIHome(t)
 	t.Setenv("SUGA_HOME", home)
 	t.Setenv("SUGA_HOOKS", "off")
@@ -27,8 +24,7 @@ func TestGCMaintenanceCommand(t *testing.T) {
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	assert.Require(t, assert.NoErr(t, err))
 
-	// One tool entry the old backfill indexed in full, as a ledger written before
-	// tool results left the index holds it.
+	// A ledger with one sizeable entry, so VACUUM has a file to rewrite.
 	repo, err := store.Open(dbPath)
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.CreateSession(ctx, store.Session{ID: "s1", Title: "s1", Cwd: "/w"}))
@@ -36,49 +32,6 @@ func TestGCMaintenanceCommand(t *testing.T) {
 	_, err = repo.AppendEntries(ctx, "s1", store.NewEntry{Type: store.EntryTool, JSON: []byte(body)})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.Close())
-	insertFTSToolRow(t, dbPath, "s1", 1, strings.Repeat("中", 3000))
-
-	t.Run("maintenance flags need their own subcommand", func(t *testing.T) {
-		_, err := runCLI(t, ctx, "data", "gc", "--status")
-		assert.ErrMsgContains(t, err, "status")
-		_, err = runCLI(t, ctx, "data", "shrink-fts", "extra")
-		assert.ErrMsgContains(t, err, "usage")
-	})
-
-	t.Run("status reports the pending rows", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "data", "shrink-fts", "--status")
-		assert.NoErr(t, err)
-		assert.StrContains(t, out, "未开始")
-		assert.StrContains(t, out, "剩余 tool 行：1")
-	})
-
-	t.Run("shrink deletes the row and status turns complete", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "data", "shrink-fts")
-		assert.NoErr(t, err)
-		assert.StrContains(t, out, "瘦身完成")
-		assert.StrContains(t, out, "删除 1 行")
-		assert.StrContains(t, out, "suga data vacuum")
-		assert.Eq(t, 0, ftsRowCount(t, dbPath, "s1"))
-
-		out, err = runCLI(t, ctx, "data", "shrink-fts", "--status")
-		assert.NoErr(t, err)
-		assert.StrContains(t, out, "已完成")
-		assert.StrContains(t, out, "剩余 tool 行：0")
-
-		// A second run has nothing left to delete.
-		out, err = runCLI(t, ctx, "data", "shrink-fts")
-		assert.NoErr(t, err)
-		assert.StrContains(t, out, "无需瘦身")
-	})
-
-	t.Run("abort clears the checkpoint", func(t *testing.T) {
-		out, err := runCLI(t, ctx, "data", "shrink-fts", "--abort")
-		assert.NoErr(t, err)
-		assert.StrContains(t, out, "已清除")
-		out, err = runCLI(t, ctx, "data", "shrink-fts", "--status")
-		assert.NoErr(t, err)
-		assert.StrContains(t, out, "未开始")
-	})
 
 	t.Run("vacuum refuses while another suga process uses the ledger", func(t *testing.T) {
 		runDir := filepath.Join(home, "run")
@@ -119,27 +72,4 @@ func TestVacuumSpaceCheck(t *testing.T) {
 	t.Run("accepts with enough space", func(t *testing.T) {
 		assert.NoErr(t, requireVacuumSpace(1000, 2*uint64(1000)))
 	})
-}
-
-// insertFTSToolRow indexes one tool entry the way the historical backfill did.
-func insertFTSToolRow(t *testing.T, dbPath, sessionID string, seq int64, text string) {
-	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
-	assert.Require(t, assert.NoErr(t, err))
-	defer db.Close()
-	_, err = db.Exec(`INSERT INTO entries_fts(session_id, seq, role, text) VALUES (?, ?, 'tool', ?)`,
-		sessionID, seq, text)
-	assert.Require(t, assert.NoErr(t, err))
-}
-
-// ftsRowCount counts the index rows of one session.
-func ftsRowCount(t *testing.T, dbPath, sessionID string) int {
-	t.Helper()
-	db, err := sql.Open("sqlite", dbPath)
-	assert.Require(t, assert.NoErr(t, err))
-	defer db.Close()
-	var n int
-	assert.Require(t, assert.NoErr(t, db.QueryRow(
-		`SELECT COUNT(*) FROM entries_fts WHERE session_id = ?`, sessionID).Scan(&n)))
-	return n
 }

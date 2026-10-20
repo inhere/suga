@@ -426,8 +426,8 @@ func normalizeSQL(s string) string {
 // deletes come from the same constants, while no migration backfills
 // entries_fts any more. A new startup backfill is the full-table work that hung
 // v0.31.0, and the two historical backfills stay as they were applied: they
-// indexed tool results in full, and `suga data shrink-fts` is what deletes those
-// rows.
+// indexed tool results in full, and the delete pass of the removed
+// `suga data shrink-fts` is what cleaned those rows up.
 func TestFTSExpressionsMatchMigration(t *testing.T) {
 	t.Run("only the two historical backfills touch entries_fts", func(t *testing.T) {
 		backfills := ftsBackfillMigrations(t)
@@ -440,12 +440,10 @@ func TestFTSExpressionsMatchMigration(t *testing.T) {
 		}
 	})
 
-	t.Run("write path and shrink command share the indexed types", func(t *testing.T) {
+	t.Run("write path skips tool results", func(t *testing.T) {
 		// Tool results are read with recall: they never enter the index.
 		assert.Eq(t, `'user', 'assistant', 'compaction', 'handoff'`, ftsIndexedTypes)
 		assert.NotContains(t, ftsSourceSelect(""), "'tool'")
-		assert.StrContains(t, normalizeSQL(ftsShrinkDeleteSQL), normalizeSQL(`DELETE FROM entries_fts`))
-		assert.StrContains(t, normalizeSQL(ftsShrinkDeleteSQL), normalizeSQL(`role = 'tool'`))
 	})
 
 	t.Run("backfill and AppendEntries index the same rows", func(t *testing.T) {

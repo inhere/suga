@@ -71,7 +71,7 @@ func TestGroupHelpListsLeaves(t *testing.T) {
 		leaves []string
 	}{
 		{group: "inspect", leaves: []string{"trace", "stats", "export", "manifest"}},
-		{group: "data", leaves: []string{"gc", "shrink-fts", "vacuum", "compress-spill", "backup", "restore"}},
+		{group: "data", leaves: []string{"gc", "bodies", "vacuum", "compress-spill", "backup", "restore"}},
 	} {
 		t.Run(tc.group, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
