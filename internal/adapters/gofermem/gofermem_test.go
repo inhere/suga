@@ -373,6 +373,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 		Kind: memory.KindProject, Prov: memory.Provenance{SessionID: "sess-1"}})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, "release-flow", e.ID)
+	assert.Eq(t, "- tag first - then push", e.Summary)
 	assert.False(t, e.Updated.IsZero())
 
 	t.Run("set arguments follow the mapping", func(t *testing.T) {
@@ -693,6 +694,7 @@ func TestLegacyGoferFallback(t *testing.T) {
 		Body: "- tag first", Kind: memory.KindProject, Prov: memory.Provenance{SessionID: "s1"}})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, "release-flow", e.ID)
+	assert.Eq(t, "", e.Summary) // the legacy mapping keeps the slot for the title
 
 	t.Run("set keeps the title in --summary", func(t *testing.T) {
 		w := f.writeCalls() // the refused --title attempt is logged too; the retry lands

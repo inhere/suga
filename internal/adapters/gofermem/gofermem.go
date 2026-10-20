@@ -426,7 +426,10 @@ func (s *Store) set(ctx context.Context, k memory.Kind, id string, op memory.Op)
 		}
 		return memory.Entry{}, err
 	}
-	e := memory.Entry{ID: id, Title: op.Title, Body: op.Body, Kind: k, Updated: s.now().UTC(), Prov: op.Prov}
+	e := memory.Entry{ID: id, Title: op.Title, Summary: summary, Body: op.Body, Kind: k, Updated: s.now().UTC(), Prov: op.Prov}
+	if s.legacy.Load() {
+		e.Summary = "" // legacy gofers keep the title in the summary slot
+	}
 	var r record
 	if json.Unmarshal(out, &r) == nil && r.Key == key {
 		if t := r.updated(); !t.IsZero() {
