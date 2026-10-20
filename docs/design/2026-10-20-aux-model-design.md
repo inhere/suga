@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 辅助小模型设计（工具输出整理与命令检查）——按数据收窄
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.1 / 暂停（用户 2026-10-20：先标记暂停放一放；issue suag-5qb4 置 blocked）
 > 日期：2026-10-20
 > 关联：issue `suag-5qb4`；`suag-dtom`（危险删除拦截，已完成）；`docs/research/2026-10-18-explore-efficiency.md` §5
 
