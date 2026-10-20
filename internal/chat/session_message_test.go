@@ -84,9 +84,47 @@ func TestHeldSessionMessagesJoinTheNextTurn(t *testing.T) {
 	assert.Eq(t, 0, len(state.takeHeldSessionMessages()))
 }
 
-// TestTurnHopsStartAtZeroForThePersonsOwnTurn: a turn the person starts carries no
-// depth, and runOneTurn takes the depth of the delivery it runs for (design
-// session_message D3).
+// TestDeliverSessionMessageHoldsAtTheLimit: a session message one hop short of
+// tools.session_message.max_hops starts no turn - nothing is queued for the chat
+// loop, the message waits in the held queue and the person is told why - while a
+// message below the limit is delivered as usual and carries its depth.
+func TestDeliverSessionMessageHoldsAtTheLimit(t *testing.T) {
+	gkcResetForSessionMessage(t)
+	h := newSendSteerHarness(t, newToolGateProv())
+	from := process.SessionFromPrefix + "ab12"
+
+	t.Run("below the limit starts a turn", func(t *testing.T) {
+		delivery, _, err := h.state.deliverMessage(process.ModeFollowUp, "工作目录里有什么？", from, "suga-k7", 2, nil)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.False(t, delivery.Queued)
+		assert.Require(t, assert.Eq(t, 1, len(h.source.deliveries)))
+		event := <-h.source.deliveries
+		assert.Eq(t, 2, event.hops)
+		assert.Eq(t, "suga-k7", event.fromName)
+		assert.StrContains(t, event.line, "[来自会话 suga-k7（ab12）的消息] 工作目录里有什么？")
+		assert.Eq(t, 0, h.state.heldSessionCount())
+	})
+
+	t.Run("at the limit only queues", func(t *testing.T) {
+		before := len(h.source.deliveries)
+		delivery, settled, err := h.state.deliverMessage(process.ModeFollowUp, "第三跳", from, "suga-k7", 3, nil)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, delivery.Queued)
+		assert.Nil(t, settled)
+		// No turn starts: nothing entered the chat loop's delivery queue.
+		assert.Eq(t, before, len(h.source.deliveries))
+		assert.Eq(t, 1, h.state.heldSessionCount())
+		assert.StrContains(t, h.out.String(), "已排队")
+		assert.StrContains(t, h.out.String(), "suga-k7")
+	})
+}
+
+// gkcResetForSessionMessage keeps the hop limit at its default for the test.
+func gkcResetForSessionMessage(t *testing.T) {
+	t.Helper()
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+}
 func TestTurnHopsStartAtZeroForThePersonsOwnTurn(t *testing.T) {
 	state := &chatState{}
 	assert.Eq(t, 0, state.turnHops)
