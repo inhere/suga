@@ -86,6 +86,8 @@ const (
 )
 
 var configKeyDescriptors = []ConfigKey{
+	{Pattern: "store.body_inline_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tool_body"},
+	{Pattern: "store.tool_body_inline_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tool_body"},
 	{Pattern: "model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "compact_model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "fallback_models", Type: ConfigTypeStringList, Writable: true, Reader: "model"},
@@ -576,6 +578,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadPreferredTools()
 	case "rules":
 		_, err = ReadRuleFileName()
+	case "tool_body":
+		_, err = ReadToolBodySettings()
 	case "":
 		return nil
 	default:
@@ -668,6 +672,9 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		return effectiveProviderValue(key)
 	}
 	switch key {
+	case "store.body_inline_bytes", "store.tool_body_inline_bytes":
+		settings, err := ReadToolBodySettings()
+		return settings.InlineBytes, gkconfig.Get(key) != nil, err
 	case "model", "compact_model", "fallback_models":
 		settings, err := ReadModelSettings("")
 		if err != nil {

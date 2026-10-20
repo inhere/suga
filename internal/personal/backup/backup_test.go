@@ -164,6 +164,11 @@ func TestCreateAlwaysIncludesToolBodyFiles(t *testing.T) {
 	assert.NoErr(t, os.WriteFile(filepath.Join(home, "sessions", "s1", "outputs", "x.txt"), []byte("spill"), 0o600))
 	bodyPath := filepath.Join(home, "sessions", "s1", store.ToolBodyFileName)
 	assert.NoErr(t, os.WriteFile(bodyPath, []byte("tool body record\n"), 0o600))
+	// A session renamed by `data bodies --rename-files` keeps its own name in the
+	// archive, and a second session with the old name is collected too.
+	assert.NoErr(t, os.MkdirAll(filepath.Join(home, "sessions", "s2"), 0o700))
+	renamed := []byte("renamed body record\n")
+	assert.NoErr(t, os.WriteFile(filepath.Join(home, "sessions", "s2", store.BodyFileName), renamed, 0o600))
 	repo, err := store.Open(filepath.Join(home, "db", "sessions.db"))
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.Close())
@@ -174,14 +179,18 @@ func TestCreateAlwaysIncludesToolBodyFiles(t *testing.T) {
 	// The tool body file is in the archive although spill is excluded, and it is
 	// not counted as omitted spill bytes.
 	assert.Eq(t, "excluded", manifest.Spill.Policy)
-	assert.Eq(t, 1, manifest.ToolBodies.FileCount)
-	assert.Eq(t, int64(len("tool body record\n")), manifest.ToolBodies.Bytes)
+	assert.Eq(t, 2, manifest.ToolBodies.FileCount)
+	assert.Eq(t, int64(len("tool body record\n")+len(renamed)), manifest.ToolBodies.Bytes)
 	assert.Eq(t, int64(len("spill")), manifest.Spill.OmittedBytes)
 	zr, err := zip.OpenReader(archive)
 	assert.Require(t, assert.NoErr(t, err))
 	defer zr.Close()
 	found := false
+	foundRenamed := false
 	for _, f := range zr.File {
+		if f.Name == "sessions/s2/"+store.BodyFileName {
+			foundRenamed = true
+		}
 		if f.Name != "sessions/s1/"+store.ToolBodyFileName {
 			continue
 		}
@@ -194,6 +203,7 @@ func TestCreateAlwaysIncludesToolBodyFiles(t *testing.T) {
 		assert.Eq(t, "tool body record\n", string(body))
 	}
 	assert.True(t, found, "the archive must hold the tool body file")
+	assert.True(t, foundRenamed, "a bodies.jsonl file is collected under its own name")
 	// --include-spill adds the output file but does not count the body file as spill.
 	manifest, err = Create(context.Background(), Options{Home: home, Output: archive, IncludeSpill: true})
 	assert.Require(t, assert.NoErr(t, err))

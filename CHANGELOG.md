@@ -17,6 +17,8 @@
 
 ### 变更
 
+- tool 正文文件改名为 `bodies.jsonl`（旧名 `tools.jsonl` 继续读写兼容），命令 `suga data tool-bodies` 改名为 `suga data bodies`（旧名保留为别名），配置 `store.tool_body_inline_bytes` 改名为 `store.body_inline_bytes`（旧名继续生效，两者都设时新名优先，`suga config` 的来源也按旧名显示为配置文件）。升级步骤：`suga data bodies --move`（移出历史 tool 与 assistant 正文）→ `--rename-files`（在独占窗口内把 `tools.jsonl` 改名为 `bodies.jsonl`，全部改完才把新写入切到新名）→ `suga data vacuum`（缩小库文件）；回滚到旧版本前先 `suga data bodies --undo`。
+- `--move` 同时移出 assistant 条目（独立断点 `move_assistant`，与 tool 的断点互不影响，在已移完 tool 的库上再跑仍能移出 assistant），`--status` 按 tool / assistant 分行报告待移出与已移出，`--undo` 与 `--check` 两类都处理；`--check` 的孤儿按（文件, off, len）统计，两个文件并存时不会误报。`data usage` 的 Reasoning / Metadata / 工具调用参数标为“库内”，另列出已移出到文件的条数与字节，会话目录两个文件名都计入且标签按实际文件名显示。
 - tool 正文移出后留在库里的“桩”只保留 `Role`、`ToolCall{CallID, Name}`、`ToolResult{CallID, Name, IsError}` 与一份 120 字的 `Content` 预览（不再带 `ToolCall.Arguments`、`Reasoning` 和重复的 `ToolResult.Preview`）：读取路径始终从 `tools.jsonl` 取回完整 JSON，桩只给 SQL 取 CallID 用，旧形状在真实库上平均 1.5KB/条（3.3 万条约 50MB）。新增 `suga data tool-bodies --slim`：把旧版本写下的桩按 `(session_id, seq)` 分批改写成新形状，断点可续、重跑幂等，只改库内行、不动会话文件与 `body_ref`；`--status` 报告仍是旧形状的桩数量与预计回收字节。完成后执行 `suga data vacuum` 缩小库文件。
 
 ### 修复

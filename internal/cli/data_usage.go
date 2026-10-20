@@ -74,19 +74,19 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 		fmt.Fprintf(tw, "  %s\t%d 条\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
 	}
 	if rep.Entries.Assistant.Rows > 0 {
-		fmt.Fprintf(tw, "assistant 字段\t%d 条\t%s\n", rep.Entries.Assistant.Rows, humanBytes(rep.Entries.Assistant.Bytes))
+		fmt.Fprintf(tw, "assistant 字段（库内）\t%d 条\t%s\n", rep.Entries.Assistant.Rows, humanBytes(rep.Entries.Assistant.Bytes))
 		for _, stat := range rep.Entries.Assistant.Fields {
 			fmt.Fprintf(tw, "  %s\t\t%s\n", stat.Name, humanBytes(stat.Bytes))
 		}
 	}
 	if len(rep.Entries.Assistant.MetadataKeys) > 0 {
-		fmt.Fprintln(tw, "Metadata 键\t\t")
+		fmt.Fprintln(tw, "Metadata 键（库内）\t\t")
 		for _, stat := range rep.Entries.Assistant.MetadataKeys {
 			fmt.Fprintf(tw, "  %s\t\t%s\n", stat.Name, humanBytes(stat.Bytes))
 		}
 	}
 	if len(rep.Entries.Assistant.Tools) > 0 {
-		fmt.Fprintln(tw, "工具调用参数\t调用次数\t")
+		fmt.Fprintln(tw, "工具调用参数（库内）\t调用次数\t")
 		for _, stat := range rep.Entries.Assistant.Tools {
 			fmt.Fprintf(tw, "  %s\t%d 次\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
 		}
@@ -94,6 +94,12 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	if rep.Entries.Tool.Stub.Rows+rep.Entries.Tool.Inline.Rows > 0 {
 		fmt.Fprintf(tw, "tool 结果（桩）\t%d 条\t%s\n", rep.Entries.Tool.Stub.Rows, humanBytes(rep.Entries.Tool.Stub.Bytes))
 		fmt.Fprintf(tw, "tool 结果（库内）\t%d 条\t%s\n", rep.Entries.Tool.Inline.Rows, humanBytes(rep.Entries.Tool.Inline.Bytes))
+	}
+	// The bodies that left the ledger live in the session files: their count and
+	// the file bytes say how much the ledger no longer holds.
+	if rep.Entries.Tool.Stub.Rows+rep.Entries.MovedAssistant.Rows > 0 {
+		fmt.Fprintf(tw, "已移出到文件\ttool %d 条 / assistant %d 条\t%s\n",
+			rep.Entries.Tool.Stub.Rows, rep.Entries.MovedAssistant.Rows, humanBytes(rep.Sessions.Tools.Bytes))
 	}
 	// events
 	fmt.Fprintf(tw, "events（attrs_json + error）\t%d 条\t%s\n", rep.Events.Rows, humanBytes(rep.Events.Bytes))
@@ -109,7 +115,11 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	}
 	// sessions directory
 	fmt.Fprintf(tw, "会话目录\t%d 个（库内 %d 个会话）\t\n", rep.Sessions.Dirs, rep.Sessions.InStore)
-	fmt.Fprintf(tw, "  tools.jsonl\t%d 个文件\t%s\n", rep.Sessions.Tools.Files, humanBytes(rep.Sessions.Tools.Bytes))
+	// One line per body file name found: a store restored from an old backup can
+	// hold both tools.jsonl and bodies.jsonl.
+	for _, stat := range rep.Sessions.BodyFiles {
+		fmt.Fprintf(tw, "  %s\t%d 个文件\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
+	}
 	fmt.Fprintf(tw, "  outputs/\t%d 个文件（.gz %d）\t%s\n", rep.Sessions.Outputs.Files, rep.Sessions.OutputsGz.Files, humanBytes(rep.Sessions.Outputs.Bytes))
 	fmt.Fprintf(tw, "  images/\t%d 个文件\t%s\n", rep.Sessions.Images.Files, humanBytes(rep.Sessions.Images.Bytes))
 	fmt.Fprintf(tw, "  snapshots/\t%d 个文件\t%s\n", rep.Sessions.Snapshots.Files, humanBytes(rep.Sessions.Snapshots.Bytes))

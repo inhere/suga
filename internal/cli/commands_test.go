@@ -30,7 +30,7 @@ func TestCLIRegistersPersonalCommands(t *testing.T) {
 	}
 	// The two groups name their subcommands in the one-line description.
 	assert.StrContains(t, stdout.String(), "trace / stats / export / manifest")
-	assert.StrContains(t, stdout.String(), "gc / shrink-fts / dedupe-tool-results / tool-bodies / vacuum / compress-spill / backup / restore")
+	assert.StrContains(t, stdout.String(), "gc / shrink-fts / dedupe-tool-results / bodies (tool-bodies) / vacuum / compress-spill / backup / restore")
 }
 
 func TestCLIRegistersProcessCommandsAndSendExitCodes(t *testing.T) {

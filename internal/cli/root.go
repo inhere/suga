@@ -85,17 +85,18 @@ func newInspectCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 }
 
 // newDataCommand builds the `data` group: the data maintenance commands (gc,
-// shrink-fts, dedupe-tool-results, tool-bodies, vacuum, compress-spill, backup,
+// shrink-fts, dedupe-tool-results, bodies, vacuum, compress-spill, backup,
 // restore) that used to sit at the top level or as switches of `gc`, plus the
 // read-only `usage` report.
 func newDataCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, version string) *capp.Cmd {
-	data := capp.NewCmd("data", "Maintain local data: usage / gc / shrink-fts / dedupe-tool-results / tool-bodies / vacuum / compress-spill / backup / restore")
+	data := capp.NewCmd("data", "Maintain local data: usage / gc / shrink-fts / dedupe-tool-results / bodies (tool-bodies) / vacuum / compress-spill / backup / restore")
 	data.SetOutput(stderr)
 	data.Add(
 		newDataGCCommand(ctx, stdout, stderr),
 		newShrinkFTSCommand(ctx, stdout, stderr),
 		newDedupeToolResultsCommand(ctx, stdout, stderr),
 		newToolBodiesCommand(ctx, stdout, stderr),
+		newLegacyToolBodiesCommand(ctx, stdout, stderr),
 		newVacuumCommand(ctx, stdout, stderr),
 		newCompressSpillCommand(ctx, stdout, stderr),
 		newDataUsageCommand(ctx, stdout, stderr),

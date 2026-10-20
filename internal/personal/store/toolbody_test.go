@@ -150,7 +150,7 @@ func TestToolBodyMissingAndTamperedRecordsAreErrors(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, os.Remove(path)))
 		_, err := s.ListEntries(ctx, "s1", EntryFilter{})
 		assert.True(t, errors.Is(err, ErrToolBodyMissing), "want ErrToolBodyMissing, got %v", err)
-		assert.StrContains(t, err.Error(), "has no tools.jsonl")
+		assert.StrContains(t, err.Error(), "has no bodies.jsonl and no tools.jsonl")
 	})
 
 	t.Run("tampered record", func(t *testing.T) {

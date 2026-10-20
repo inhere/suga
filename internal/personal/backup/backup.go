@@ -469,10 +469,10 @@ func replaceData(staging, home string, manifest Manifest) error {
 		installed = append(installed, rel)
 	}
 	// Spill files are intentionally merged rather than replacing the whole
-	// sessions root. A tool body file (sessions/<id>/tools.jsonl) is installed the
-	// same way, but it may already exist: Windows cannot rename over an existing
-	// file, so the old copy moves into the rollback directory first and restore()
-	// puts it back if the install fails.
+	// sessions root. A body file (sessions/<id>/bodies.jsonl or tools.jsonl) is
+	// installed under the name the manifest recorded, but it may already exist:
+	// Windows cannot rename over an existing file, so the old copy moves into the
+	// rollback directory first and restore() puts it back if the install fails.
 	for _, f := range manifest.Files {
 		if !strings.HasPrefix(f.Path, "sessions/") {
 			continue
@@ -594,9 +594,10 @@ func collectTree(m *Manifest, home, root, zipRoot, source string) error {
 	})
 }
 
-// collectToolBodies adds the tool body files (sessions/<id>/tools.jsonl) to
-// every backup, with or without --include-spill: the stub in the ledger only
-// names an offset in this file, so it is the single copy of the tool result.
+// collectToolBodies adds the body files (sessions/<id>/bodies.jsonl, and the
+// tools.jsonl name of version 0.36) to every backup, with or without
+// --include-spill: the stub in the ledger only names an offset in this file, so it
+// is the single copy of the body.
 func collectToolBodies(m *Manifest, home, root string) error {
 	info, err := os.Lstat(root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -615,7 +616,7 @@ func collectToolBodies(m *Manifest, home, root string) error {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("refusing symlink %s", path)
 		}
-		if info.IsDir() || info.Name() != store.ToolBodyFileName {
+		if info.IsDir() || (info.Name() != store.BodyFileName && info.Name() != store.LegacyBodyFileName) {
 			return nil
 		}
 		rel, err := filepath.Rel(home, path)
@@ -623,8 +624,8 @@ func collectToolBodies(m *Manifest, home, root string) error {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		// Only sessions/<id>/tools.jsonl is a tool body file; a deeper or
-		// differently placed file of the same name is left to the spill pass.
+		// Only sessions/<id>/<body file> is a body file; a deeper or differently
+		// placed file of the same name is left to the spill pass.
 		if parts := strings.Split(rel, "/"); len(parts) != 3 || parts[0] != "sessions" {
 			return nil
 		}

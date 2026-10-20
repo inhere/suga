@@ -22,20 +22,24 @@ func DefaultToolBodySettings() ToolBodySettings {
 	return ToolBodySettings{InlineBytes: 1024}
 }
 
-// ReadToolBodySettings reads store.tool_body_inline_bytes. A negative value is an
-// error, so a typo cannot silently disable or enable the feature.
+// ReadToolBodySettings reads the new key first; the old key remains a compatible alias.
 func ReadToolBodySettings() (ToolBodySettings, error) {
 	settings := DefaultToolBodySettings()
-	raw := gkconfig.Get("store.tool_body_inline_bytes")
+	key := "store.body_inline_bytes"
+	raw := gkconfig.Get(key)
+	if raw == nil {
+		key = "store.tool_body_inline_bytes"
+		raw = gkconfig.Get(key)
+	}
 	if raw == nil {
 		return settings, nil
 	}
 	value, err := configInt64(raw)
 	if err != nil {
-		return settings, fmt.Errorf("store.tool_body_inline_bytes: %w", err)
+		return settings, fmt.Errorf("%s: %w", key, err)
 	}
 	if value < 0 {
-		return settings, fmt.Errorf("store.tool_body_inline_bytes must be 0 or more, got %d", value)
+		return settings, fmt.Errorf("%s must be 0 or more, got %d", key, value)
 	}
 	settings.InlineBytes = value
 	return settings, nil
