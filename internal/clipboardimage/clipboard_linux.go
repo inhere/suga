@@ -3,7 +3,9 @@
 package clipboardimage
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os/exec"
 )
 
@@ -30,9 +32,31 @@ func readLinuxClipboard() ([]byte, string, error) {
 
 // readType runs one clipboard reader; a wayland/xdg session can fail for
 // reasons of its own (no WAYLAND_DISPLAY), so callers fall through to the next.
+// The output is read through maxClipboardBytes: a clipboard holding something
+// huge is refused instead of being buffered whole.
 func readType(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
-	return cmd.Output()
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	n, readErr := io.Copy(&buf, io.LimitReader(out, maxClipboardBytes+1))
+	if n > maxClipboardBytes {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("剪贴板数据超过 %d 字节，不读取", maxClipboardBytes)
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, err
+	}
+	if readErr != nil {
+		return nil, readErr
+	}
+	return buf.Bytes(), nil
 }
 
 // installed reports whether a reader binary is on PATH.

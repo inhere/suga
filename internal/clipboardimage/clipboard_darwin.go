@@ -36,6 +36,9 @@ close access fd`, name)
 		}
 		return nil, "", fmt.Errorf("读取剪贴板失败（osascript）：%s", strings.TrimSpace(string(out)))
 	}
+	if info, err := os.Stat(name); err == nil && info.Size() > maxClipboardBytes {
+		return nil, "", fmt.Errorf("剪贴板数据 %d 字节，超过 %d 字节，不读取", info.Size(), maxClipboardBytes)
+	}
 	data, err := os.ReadFile(name)
 	if err != nil {
 		return nil, "", fmt.Errorf("读取剪贴板暂存文件：%w", err)

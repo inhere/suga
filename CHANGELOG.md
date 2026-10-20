@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- Linux/macOS 的 Alt+V 剪贴板读取也受 40MB 上限约束（之前只有 Windows 生效：Linux 下 `wl-paste`/`xclip` 的输出整段读入内存）；同时修复 CI 在 Linux 上的 staticcheck 告警（U1000）。
+
 ## [0.37.0] - 2026-10-20
 
 会话库继续瘦身与图片输入：assistant 的推理内容、Metadata 与大工具调用参数移到会话文件（`suga data bodies`，正文文件改名 `bodies.jsonl`），tool 桩瘦身，新增只读的 `suga data usage`；图片输入第一期（`view_image`、vision 三态、chat `:image` 与 Alt+V）；`run.deadline_env` 让模型按真实截止时间安排工作。升级：`suga data bodies --move` → `suga data bodies --rename-files` → `suga data vacuum`（后两步要求没有其它 suga 进程）；回退版本前先 `suga data bodies --undo`。
