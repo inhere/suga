@@ -1,7 +1,6 @@
 package acpserver
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"

@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/gookit/goutil/x/assert"
