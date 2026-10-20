@@ -3,7 +3,9 @@ package chat
 import (
 	"errors"
 	"fmt"
+	"strings"
 
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -27,7 +29,7 @@ import (
 // the next turn otherwise (the chat is idle, the turn is already closing, or
 // chat.steering is off); every other mode queues the message, which is what every
 // client that predates Request.Mode asks for.
-func (s *chatState) deliverMessage(mode, text, from string, refs []personalprocess.ImageRef) (personalprocess.Delivery, <-chan error, error) {
+func (s *chatState) deliverMessage(mode, text, from, fromName string, hops int, refs []personalprocess.ImageRef) (personalprocess.Delivery, <-chan error, error) {
 	// The pictures of `suga send --image` are checked before anything is queued: a
 	// reference whose file is gone or whose bytes changed refuses the whole message
 	// (design send --image).
@@ -36,9 +38,16 @@ func (s *chatState) deliverMessage(mode, text, from string, refs []personalproce
 		return personalprocess.Delivery{}, nil, err
 	}
 	warning := s.deliveryWarning(len(images))
+	// A session message that has used up the automatic replies is held for the
+	// person's next turn instead of starting one (design session_message D3).
+	if hops >= appconfig.SessionMessageMaxHops() && strings.HasPrefix(from, personalprocess.SessionFromPrefix) {
+		s.holdSessionMessage(deliveryLineFor(text, from, fromName))
+		s.render.Hint(sessionQueuedHint(fromName, hops))
+		return personalprocess.Delivery{Queued: true, Warning: warning}, nil, nil
+	}
 	if mode == personalprocess.ModeSteer {
 		settled := make(chan error, 1)
-		accepted, err := s.insertSendSteer(text, from, images, settled)
+		accepted, err := s.insertSendSteer(deliveryLineFor(text, from, fromName), from, images, settled)
 		if errors.Is(err, personal.ErrSteerQueueFull) {
 			// The session socket answers queue_full only for its own ErrQueueFull:
 			// a full steering inbox is the same refusal to the sender.
@@ -51,7 +60,7 @@ func (s *chatState) deliverMessage(mode, text, from string, refs []personalproce
 			return personalprocess.Delivery{Steered: true, Warning: warning}, settled, nil
 		}
 	}
-	queued, settled, err := s.source.DeliverImages(text, from, images)
+	queued, settled, err := s.source.DeliverImages(text, from, fromName, hops, images)
 	if err != nil {
 		return personalprocess.Delivery{}, nil, err
 	}
@@ -80,7 +89,7 @@ func (s *chatState) deliveryWarning(images int) string {
 // message for the next turn instead, and the turn must not see it at all (it would
 // run it a second time). ErrSteerQueueFull is the full inbox (design D11): the
 // message is neither inserted nor queued.
-func (s *chatState) insertSendSteer(text, from string, images []agentcore.ImagePart, settled chan error) (bool, error) {
+func (s *chatState) insertSendSteer(line, from string, images []agentcore.ImagePart, settled chan error) (bool, error) {
 	turn := s.currentTurn()
 	if turn == nil {
 		return false, nil
@@ -89,7 +98,7 @@ func (s *chatState) insertSendSteer(text, from string, images []agentcore.ImageP
 	// model sees exactly that text (design "send：--steer"); the source names the
 	// sender, so the chat shows it back with the same label. The pictures of the
 	// delivery ride with it.
-	msg := personal.Steer{ID: s.nextSendSteerID(), Text: deliveryLine(text, from),
+	msg := personal.Steer{ID: s.nextSendSteerID(), Text: line,
 		Source: "send:" + safeSender(from), Images: images}
 	accepted, err := turn.insertFromElsewhere(msg)
 	if err != nil {

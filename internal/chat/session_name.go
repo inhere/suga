@@ -64,8 +64,12 @@ func registerChatProcess(sessionID string, runner *personal.Runner, deliver pers
 	}
 	cwd, _ := os.Getwd()
 	name, save, notice := resolveChatShortName(stored, records, chatNameDir(runner, sessionID, cwd), personalprocess.RandomSuffix)
+	// The record declares FeatureImages, so a `suga send --image` sender knows this receiver
+	// takes pictures (design send --image D2), and FeatureHops, so a session message sender
+	// knows this chat holds a message at the automatic-reply limit instead of starting a turn
+	// (design session_message).
 	server, err := personalprocess.StartWaitImages(runner.ProcessRoot(), sessionID, name, cwd,
-		[]string{personalprocess.FeatureImages}, deliver)
+		[]string{personalprocess.FeatureImages, personalprocess.FeatureHops}, deliver)
 	if err != nil {
 		return nil, "", err
 	}
