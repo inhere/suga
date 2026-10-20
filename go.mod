@@ -12,6 +12,7 @@ require (
 	github.com/gookit/gopty v0.1.1
 	github.com/gookit/goutil v0.8.3
 	github.com/gookit/ini/v2 v2.3.2
+	github.com/gookit/rotatefile v0.3.0
 	golang.org/x/image v0.22.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.49.0

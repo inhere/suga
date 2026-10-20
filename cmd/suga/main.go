@@ -48,7 +48,10 @@ func main() {
 		}
 	}
 	if !bootstrapExempt(args) && !isInitCommand(args) {
-		wiring.SetupLogging()
+		if err := wiring.SetupLogging(); err != nil {
+			fmt.Fprintln(os.Stderr, "load log config:", err)
+			os.Exit(1)
+		}
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
