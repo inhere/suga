@@ -139,8 +139,8 @@ def scenario(s):
     s.send(CTRL_C)
     time.sleep(0.3)
     s.send(CTRL_C)
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume sess_", m))
-    found = re.search(r"--resume (sess_\S+)", s.text(m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 

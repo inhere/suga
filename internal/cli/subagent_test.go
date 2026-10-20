@@ -112,7 +112,9 @@ func TestRunWithSubAgent(t *testing.T) {
 	t.Run("the report is the tool result", func(t *testing.T) {
 		assert.Eq(t, 2, fake.childCalls)
 		assert.StrContains(t, fake.parentLast, "REPORT: Foo is defined in a.go:3")
-		assert.StrContains(t, fake.parentLast, "[sub-agent sess_")
+		// Both id formats: s_... now, sess_... from older versions.
+		assert.Eq(t, true, strings.Contains(fake.parentLast, "[sub-agent s_") ||
+			strings.Contains(fake.parentLast, "[sub-agent sess_"))
 		assert.StrContains(t, fake.parentLast, "stop=final")
 	})
 	t.Run("progress and usage reach the run", func(t *testing.T) {

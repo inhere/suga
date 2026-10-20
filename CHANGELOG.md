@@ -16,6 +16,9 @@
 ### 变更
 - `:image`、`run --image`、`send --image` 的路径由使用者输入，不再限制在工作区内（仍只读普通文件，大小、像素与格式上限不变）；模型调用的 `view_image` 仍限制在工作区与已加入的目录内。
 
+### 变更
+- 会话与回合 id 改为“前缀 + 12 位随机 base32”：会话形如 `s_3k9m2q1p0v7r`，回合形如 `t_7f2m9c0a1p4v`（`crypto/rand`，60 位随机，字母表 `0-9a-v`），不再含本地日期、时间戳与序号——此前一天内创建的会话 id 前 16 位相同，只显示前 8 位（如 gofer）时无法区分、也不能按前缀找到会话。创建会话或回合时若生成的 id 与已有主键冲突，换一个 id 重试（最多 3 次）；`--session-id` 指定的 id 不重试，冲突照旧报错。旧格式 id（`sess_…`、`turn_…`）继续有效：续接、`send`、ACP `session/load`、`inspect`、`export`、`gc` 与短名称都不受影响；会话与回合列表在同一时间戳内按创建顺序排序，不再由 id 决定次序。
+
 ## [0.39.0] - 2026-10-20
 
 会话与集成：`suga sessions` 与 ACP `session/list` 默认只列当前目录的会话；ACP 补齐 list/resume/close、load 回放历史与 set_config_option（切换模型与模式）；子进程与 hook 环境导出 `SUGA_SESSION_ID`/`SUGA_SESSION_NAME`/`SUGA_TURN_ID`；`suga run --image`；日志轮转与 `log.*` 配置。不兼容：移除 v0.36 前的旧顶层命令写法（`suga trace` 等，报错时提示新写法）；一次性迁移命令与旧配置键标记弃用，v0.41.0 移除。

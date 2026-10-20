@@ -43,8 +43,8 @@ def scenario(s, ws):
     m = s.mark(); time.sleep(0.5); s.send(CTRL_C)
     s.check("ctrl-c once: hint", s.until(r"再按一次 Ctrl\+C 退出", m))
     m = s.mark(); s.send(CTRL_C)
-    s.check("ctrl-c twice: exit", s.until(r"续接：suga chat --resume sess_", m))
-    match = re.search(r"--resume (sess_\S+)", s.text(m))
+    s.check("ctrl-c twice: exit", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+    match = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
     return match.group(1) if match else ""
 
 

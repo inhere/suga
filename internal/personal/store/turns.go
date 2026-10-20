@@ -67,7 +67,10 @@ func (s *Store) ListTurns(ctx context.Context, sessionID string, statuses ...str
 			args = append(args, st)
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, q+` ORDER BY started_at ASC, id ASC`, args...)
+	// Ties on started_at are broken by rowid (the insert order), so turns
+	// created within the same stored instant keep their creation order even
+	// though ids are random.
+	rows, err := s.db.QueryContext(ctx, q+` ORDER BY started_at ASC, rowid ASC`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list turns: %w", err)
 	}

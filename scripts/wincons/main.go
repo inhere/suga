@@ -87,10 +87,12 @@ const (
 	// What the scenarios wait for in the chat's output: the prompt, the notice
 	// that only this turn ended, the line of an inserted message, and the resume
 	// command chat prints on its way out (its absence means chat is still there).
-	promptMarker  = "❯ "
-	abortMarker   = "已中断本轮"
-	steerMarker   = "[插话]"
-	resumeMarker  = "续接：suga chat --resume sess_"
+	promptMarker = "❯ "
+	abortMarker  = "已中断本轮"
+	steerMarker  = "[插话]"
+	// The id part is only "s" in the marker: it matches ids of both formats
+	// (s_... now, sess_... from older versions).
+	resumeMarker  = "续接：suga chat --resume s"
 	confirmWindow = 3 * time.Second
 )
 

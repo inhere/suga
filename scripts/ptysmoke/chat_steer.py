@@ -300,7 +300,7 @@ def steer_notice(text, suffix=STEER_WAITING):
 def session_id_of(s):
     """The session id chat printed at startup: the address `suga send --session`
     takes."""
-    found = re.search(r"session id: (sess_\S+)", s.text())
+    found = re.search(r"session id: ((?:sess_|s_)\S+)", s.text())
     return found.group(1) if found else ""
 
 
@@ -402,10 +402,10 @@ class Scenario:
         for _ in range(3):
             time.sleep(0.3)
             self.session.send(CTRL_C)
-            if self.session.until(r"续接：suga chat --resume sess_", m, timeout=1):
+            if self.session.until(r"续接：suga chat --resume (?:sess_|s_)", m, timeout=1):
                 break
-        self.session.until(r"续接：suga chat --resume sess_", m)
-        found = re.search(r"--resume (sess_\S+)", self.session.text(m))
+        self.session.until(r"续接：suga chat --resume (?:sess_|s_)", m)
+        found = re.search(r"--resume ((?:sess_|s_)\S+)", self.session.text(m))
         return found.group(1) if found else ""
 
     def wait_file(self, name, seconds):
@@ -1136,7 +1136,7 @@ def off_scenario(c):
     c.check("typing during the turn inserts nothing", not s.contains(r"\[插话\]", m))
     m = s.mark()
     s.send(CTRL_C)
-    c.check("one ctrl-c still ends the chat", s.until(r"续接：suga chat --resume sess_", m))
+    c.check("one ctrl-c still ends the chat", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
 
 
 def run(name, binary, work, port, fake_args, tool, tools_extra, extra, scenario, keep, reply,

@@ -78,7 +78,7 @@ def scenario(s, ws, steering):
         # Cooked console: the turn is interrupted and chat itself ends with its
         # summary right away (the tool process tree dies with it).
         s.check("ctrl-c: turn interrupted", s.until(r"已中断", m, timeout=15))
-        s.check("ctrl-c: chat exits with the summary", s.until(r"续接：suga chat --resume sess_", m))
+        s.check("ctrl-c: chat exits with the summary", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
         s.check("ctrl-c: chat process ended", not s.pump(5.0))
         time.sleep(1.0)
         s.check("ctrl-c: the tool's command was cut short", not os.path.exists(finished))
@@ -114,7 +114,7 @@ def scenario(s, ws, steering):
     s.send(CTRL_C)
     time.sleep(0.3)
     s.send(CTRL_C)
-    s.check("exit: chat ends", s.until(r"续接：suga chat --resume sess_", m, timeout=20))
+    s.check("exit: chat ends", s.until(r"续接：suga chat --resume (?:sess_|s_)", m, timeout=20))
     s.check("exit: chat process ended", not s.pump(5.0))
     time.sleep(1.0)
     s.check("exit: the tool's command was cut short", not os.path.exists(finished))

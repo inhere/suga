@@ -54,7 +54,7 @@ func TestChatModelCommandThroughCLIAndResume(t *testing.T) {
 	mu.Lock()
 	assert.Eq(t, []string{"m2"}, models)
 	mu.Unlock()
-	session := regexp.MustCompile(`session id: (sess_[^\s]+)`).FindStringSubmatch(stderr.String())
+	session := regexp.MustCompile(`session id: ((?:sess_|s_)[^\s]+)`).FindStringSubmatch(stderr.String())
 	assert.Require(t, assert.Len(t, session, 2))
 
 	stdout.Reset()

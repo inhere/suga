@@ -150,7 +150,7 @@ def scenario(s, log, binary, env):
 
     # 5. A delivered "!cmd" is an ordinary message: chat shows it and the model
     # answers it (nothing runs).
-    sid = re.search(r"session id: (sess_\S+)", s.text(0))
+    sid = re.search(r"session id: ((?:sess_|s_)\S+)", s.text(0))
     session = sid.group(1) if sid else ""
     s.check("session id", bool(session))
     if session:
@@ -220,7 +220,7 @@ def read_only_group(binary, work, port, fake_ro):
     s.send(CTRL_C)
     time.sleep(0.3)
     s.send(CTRL_C)
-    s.check("read-only chat: exit", s.until(r"续接：suga chat --resume sess_", m))
+    s.check("read-only chat: exit", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
     return s
 
 
@@ -266,7 +266,7 @@ def main():
         s.send(CTRL_C)
         time.sleep(0.3)
         s.send(CTRL_C)
-        s.check("exit: resume command", s.until(r"续接：suga chat --resume sess_", m))
+        s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
         s.close()
         if session:
             check_trace(s, trace_events(binary, env, session))

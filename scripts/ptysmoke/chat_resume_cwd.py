@@ -100,7 +100,7 @@ def create_session(s):
     m = s.mark()
     s.line(":exit")
     s.check("create: exit summary names the resume command", s.until(r"续接：suga chat --resume ", m))
-    found = re.search(r"--resume (sess_\S+)", s.text(m))
+    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 
@@ -195,7 +195,7 @@ def main():
         sessions.append(first)
         session_id = create_session(first)
         first.check("create: session id", bool(session_id))
-        session_id = session_id or "sess_missing"
+        session_id = session_id or "s_missing"
         first.close()
         first.check("create: the session records directory A",
                     session_row(binary, env, ws_a, session_id).get("cwd") == ws_a)

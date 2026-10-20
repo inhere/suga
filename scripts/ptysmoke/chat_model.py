@@ -126,7 +126,7 @@ def main():
         first.check("next request uses m2", wait_models(fake, 1) == ["m2"])
         first.line(":quit")
         time.sleep(0.3)
-        session = re.search(r"session id: (sess_\S+)", first.text())
+        session = re.search(r"session id: ((?:sess_|s_)\S+)", first.text())
         first.check("session id is printed", session is not None)
         sid = session.group(1) if session else ""
     finally:
