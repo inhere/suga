@@ -77,6 +77,14 @@ type rendererOptions struct {
 	// change itself arrives with the tool_call event (personal.Config.DiffPreview).
 	Diff      bool
 	DiffLines int
+	// CodeHighlight colors a fenced code block by the language of its fence
+	// (config chat.code_highlight, on by default), CodeTheme names the chroma
+	// style (chat.code_theme) and CodeMaxLines folds a block after that many lines
+	// (chat.code_max_lines, default 40; 0 folds nothing), naming :code for the
+	// rest. All three need the markdown rendering and a colored terminal.
+	CodeHighlight bool
+	CodeTheme     string
+	CodeMaxLines  int
 	// InputLineUp is true while chat keeps its input line on screen for the whole
 	// turn running (chat.steering with a terminal). The output then works around
 	// that line (r3 M1): the streamed text leaves only complete lines - the line
@@ -224,6 +232,9 @@ func (r *Renderer) resetLive() {
 	// so a pipe, a redirected output or NO_COLOR keeps the raw text.
 	if r.opts.Markdown && r.opts.Color {
 		r.live.SetMarkdown(true)
+		// Code highlighting and folding, and the terminal width a table must fit
+		// in (:code, mdcode.go, mdtable.go).
+		r.live.SetCode(r.opts.CodeHighlight, r.opts.CodeTheme, r.opts.CodeMaxLines, r.highlightWidth())
 	}
 	r.memory = nil
 }

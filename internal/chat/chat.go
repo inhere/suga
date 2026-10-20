@@ -89,6 +89,14 @@ type Options struct {
 	// chat (personal.Config.DiffPreview).
 	Diff      bool
 	DiffLines int
+	// CodeHighlight colors a fenced code block by the language of its fence
+	// (config chat.code_highlight, on by default), CodeTheme names the chroma
+	// style (chat.code_theme) and CodeMaxLines folds a block after that many lines
+	// (chat.code_max_lines, default 40; 0 folds nothing), the rest being shown by
+	// the :code command. Like Markdown they need a colored terminal.
+	CodeHighlight bool
+	CodeTheme     string
+	CodeMaxLines  int
 	// terminalTitleOut is where the title sequences go (nil: the chat output);
 	// tests point it at a buffer to check when the title changes without a
 	// terminal.
@@ -325,6 +333,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		WriteTools: opts.WriteTools, Markdown: opts.Markdown, Spinner: opts.Spinner,
 		AgentProgress: opts.AgentProgress,
 		Diff:          opts.Diff, DiffLines: opts.DiffLines,
+		CodeHighlight: opts.CodeHighlight, CodeTheme: opts.CodeTheme, CodeMaxLines: opts.CodeMaxLines,
 		HighlightInput: opts.HighlightInput, HighlightWidth: inputSource.highlightWidth,
 		// The input line stays on screen while a turn runs: the streamed text then
 		// leaves only complete lines, and the waiting line becomes a status line above
@@ -514,6 +523,10 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		case isDiffCommand(line):
 			// Show a file change of this session again, in full (:diff [N]).
 			render.ShowDiff(strings.TrimPrefix(line, diffCmd))
+			continue
+		case isCodeCommand(line):
+			// Show a code block of the last answer in full (:code [N]).
+			render.ShowCode(strings.TrimPrefix(line, codeCmd))
 			continue
 		case isImageCommand(line), isModelCommand(line), line == ":help", line == ":usage", line == ":tasks":
 			// The reference, this session's usage and its background tasks

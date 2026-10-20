@@ -15,6 +15,7 @@ const (
 :compact 压缩上下文
 :add-dir/:dirs/:rm-dir 管理附加目录
 :diff [N] 显示文件改动
+:code [N] 展开上一条回答的代码块
 :image <路径|clear> 管理待发图片（附到下一条消息）
 :checkpoints 列出写操作快照
 :undo [N] [force] 回滚文件改动

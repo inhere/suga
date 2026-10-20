@@ -97,6 +97,48 @@ func ChatDiffLines() (int, error) {
 	return n, nil
 }
 
+// DefaultChatCodeMaxLines is how many lines of one code block chat shows
+// before it folds the rest (chat.code_max_lines) when the key is not set.
+const DefaultChatCodeMaxLines = 40
+
+// DefaultChatCodeTheme is the chroma style of code highlighting
+// (chat.code_theme) when the key is not set. It is the solarized based palette
+// internal/output registers: its hues stay readable on a dark and on a light
+// terminal.
+const DefaultChatCodeTheme = "suga"
+
+// ChatCodeHighlightEnabled reports whether chat colors a fenced code block by
+// the language its fence names (chat.code_highlight, on by default). It takes
+// the same values as chat.markdown; an unknown language, a non-terminal output
+// or NO_COLOR keeps the plain text anyway.
+func ChatCodeHighlightEnabled() bool {
+	return chatSwitch("chat.code_highlight")
+}
+
+// ChatCodeTheme reads chat.code_theme: the chroma style name used by code
+// highlighting (the empty key means DefaultChatCodeTheme).
+func ChatCodeTheme() string {
+	value := strings.TrimSpace(gkconfig.String("chat.code_theme"))
+	if value == "" {
+		return DefaultChatCodeTheme
+	}
+	return value
+}
+
+// ChatCodeMaxLines reads chat.code_max_lines: how many lines of one code block
+// chat shows before it folds the rest and names :code. 0 shows the block whole.
+func ChatCodeMaxLines() (int, error) {
+	if gkconfig.Get("chat.code_max_lines") == nil {
+		return DefaultChatCodeMaxLines, nil
+	}
+	raw := strings.TrimSpace(gkconfig.String("chat.code_max_lines"))
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("chat.code_max_lines must be a whole number >= 0, got %q", raw)
+	}
+	return n, nil
+}
+
 // ChatAskOutsideDirs reports whether an interactive chat asks the person to
 // authorize a directory a file tool wants to reach outside the workspace and the
 // session's added directories (chat.ask_outside_dirs, on by default). It takes
