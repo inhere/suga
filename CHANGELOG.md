@@ -18,6 +18,11 @@
 
 - tool 正文移出后留在库里的“桩”只保留 `Role`、`ToolCall{CallID, Name}`、`ToolResult{CallID, Name, IsError}` 与一份 120 字的 `Content` 预览（不再带 `ToolCall.Arguments`、`Reasoning` 和重复的 `ToolResult.Preview`）：读取路径始终从 `tools.jsonl` 取回完整 JSON，桩只给 SQL 取 CallID 用，旧形状在真实库上平均 1.5KB/条（3.3 万条约 50MB）。新增 `suga data tool-bodies --slim`：把旧版本写下的桩按 `(session_id, seq)` 分批改写成新形状，断点可续、重跑幂等，只改库内行、不动会话文件与 `body_ref`；`--status` 报告仍是旧形状的桩数量与预计回收字节。完成后执行 `suga data vacuum` 缩小库文件。
 
+### 修复
+
+- `tool-bodies --slim` 只处理 tool 桩：assistant 条目也会移出成桩，其桩保留完整 `Content` 给全文检索，`--slim` 不再把它截成 120 字预览（窗口 SQL 加 `type = 'tool'`，`slimToolBodyStub` 遇到非 tool 行原样返回），`--status` 也不把这类桩算作旧形状。
+- 维护命令的断点在上一轮**已完成**（`complete=1`）时不再从停在末尾的断点续上，而是从头重扫：中断（未完成）仍续跑。受益于同一处的有 `tool-bodies --move` / `--slim` / `--undo`（`tool_body_state`）与 `dedupe-tool-results` 及其 `--undo`（`tool_dedupe_state`）；`shrink-fts` 此前已有同样的完成即重扫逻辑，无此问题。
+
 ## [0.36.0] - 2026-10-19
 
 会话库数据治理：全文检索只覆盖用户与 AI 消息，tool 结果不再双份存储，大 tool 结果正文移到会话文件 `tools.jsonl`（用户真实库副本上 779MB → 308MB），并新增备份恢复、按来源的保留期与分批 GC；CLI 分组为 `suga inspect …` / `suga data …`，顶层直接接受 chat 选项；`suga run` 的 stream-json 首尾行带 `model`；`file_refs` 的 `context`；更多输出精简规则；会话 socket 路径过长时改用短的备用目录。

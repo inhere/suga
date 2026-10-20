@@ -231,3 +231,33 @@ func TestToolBodiesResumeAfterInterrupt(t *testing.T) {
 		assert.Eq(t, want, storedEntries(t, s, id), id)
 	}
 }
+
+// TestMoveToolBodiesRestartsAfterComplete: a move pass that completed sits on the
+// last row; a rerun must scan from the start again so it sees the inline rows
+// written since it finished (a resumed cursor would hide them, suga-rykn).
+func TestMoveToolBodiesRestartsAfterComplete(t *testing.T) {
+	s, _ := inlineFixture(t) // MoveToolBodies has not run yet in this fixture
+	ctx := context.Background()
+	first, err := s.MoveToolBodies(ctx, ToolBodyMaintOptions{Batch: 8})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.True(t, first.Complete)
+	assert.Eq(t, int64(9), first.Rows)
+
+	// A tool row written after the finish moves out at append (the switch is on);
+	// one the finished pass never saw is restored back to the inline shape (full
+	// json, no body_ref), at a key before the finished cursor ("a0" sorts before
+	// "s1"): a pass that resumes at the cursor s3/6 would never see it.
+	createSession(t, s, "a0", "/w")
+	big := msgJSON(t, bigToolMessage("cNew"))
+	appended := appendAll(t, s, "a0", NewEntry{Type: EntryTool, JSON: big})
+	_, err = s.db.Exec(`UPDATE entries SET json = ?, body_ref = NULL WHERE session_id = ? AND seq = ?`,
+		string(big), "a0", appended[0].Seq)
+	assert.Require(t, assert.NoErr(t, err))
+
+	again, err := s.MoveToolBodies(ctx, ToolBodyMaintOptions{Batch: 8})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.True(t, again.Complete)
+	assert.Eq(t, int64(1), again.Rows, "the rerun scans from the start and moves the new row")
+	_, ref := storedRow(t, s, "a0", appended[0].Seq)
+	assert.True(t, ref != "", "the rerun moved the new row out")
+}

@@ -166,6 +166,12 @@ func slimToolBodyStub(raw []byte) (slim []byte, changed bool) {
 	if err := json.Unmarshal(raw, &old); err != nil {
 		return nil, false // not a stub of ours: left as it is
 	}
+	if old.Role != "tool" {
+		// Not a tool stub: assistant entries are moved out to stubs too (design
+		// 2026-10-20) and their stub keeps the full Content for the full-text
+		// search, which a preview would clip. Left as it is.
+		return nil, false
+	}
 	slim, err := json.Marshal(toolBodyStub{Role: old.Role, Content: previewText(old.Content),
 		ToolCall: old.ToolCall, ToolResult: old.ToolResult})
 	if err != nil {

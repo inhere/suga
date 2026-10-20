@@ -156,6 +156,37 @@ func TestToolDedupeResumesAfterInterrupt(t *testing.T) {
 	assert.Eq(t, int64(0), status.PendingRows)
 }
 
+// TestToolDedupeRestartsAfterComplete: a completed pass sits on the last tool
+// entry; a rerun must scan from the start again so it sees the double-stored rows
+// written since it finished (a resumed cursor would hide them, suga-rykn). The
+// --undo job shares the same runToolRewrite loop.
+func TestToolDedupeRestartsAfterComplete(t *testing.T) {
+	ctx := context.Background()
+	s := openTemp(t)
+	dedupeFixture(t, s)
+	first, err := s.DedupeToolResults(ctx, ToolDedupeOptions{Batch: 2})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.True(t, first.Complete)
+	assert.Eq(t, int64(len(dedupeSessions)), first.Rows)
+
+	// A new double-stored row appears after the finish, at a key before the
+	// finished cursor ("a0" sorts before "s1"): a pass that resumes at the cursor
+	// would never see it.
+	newSession(t, s, "a0")
+	call := &api.ToolCall{CallID: "cNew", Name: "shell"}
+	_, err = s.AppendEntries(ctx, "a0", NewEntry{Type: EntryTool, JSON: msgJSON(t, api.Message{Role: "tool",
+		Content: "same-new", ToolCall: call, ToolResult: &api.ToolResult{CallID: "cNew", Name: "shell", Content: "same-new"}})})
+	assert.Require(t, assert.NoErr(t, err))
+
+	again, err := s.DedupeToolResults(ctx, ToolDedupeOptions{Batch: 2})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.True(t, again.Complete)
+	assert.Eq(t, int64(1), again.Rows, "the rerun scans from the start and rewrites the new row")
+	status, err := s.ToolDedupeStatus(ctx)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int64(0), status.PendingRows)
+}
+
 // TestToolDedupeKeepsReadPaths stores a real conversation (a tool call and its
 // result) through the agent storage, dedupes it, and checks that the messages
 // LoadMessages returns and the hits session_search reports are the same before

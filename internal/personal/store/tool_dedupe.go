@@ -197,6 +197,13 @@ func (s *Store) runToolRewrite(ctx context.Context, job string, opts ToolDedupeO
 	if err != nil {
 		return ToolDedupeReport{}, err
 	}
+	if cursor.Complete {
+		// A completed pass must not resume: rows were written since it finished
+		// (new double-stored results for dedupe, new marker rows for --undo) and
+		// they can sit at any (session_id, seq) key. Start over;
+		// markToolDedupeStarted drops the saved cursor with it.
+		cursor = cursorState{}
+	}
 	report := ToolDedupeReport{CursorSession: cursor.SessionID, CursorSeq: cursor.Seq}
 	if err := s.markToolDedupeStarted(ctx, job); err != nil {
 		return report, err
@@ -387,12 +394,18 @@ func (s *Store) ensureToolDedupeState(ctx context.Context) error {
 }
 
 // markToolDedupeStarted writes the job's checkpoint row as an unfinished pass,
-// keeping the cursor of an earlier run so a rerun continues.
+// keeping the cursor of an earlier unfinished run so a rerun continues. The
+// cursor of an earlier completed (complete = 1) run is dropped instead: that
+// pass ended at the last row, so a rerun must scan the new rows from the start.
 func (s *Store) markToolDedupeStarted(ctx context.Context, job string) error {
 	now := formatTime(time.Now())
 	_, err := s.db.ExecContext(ctx, `INSERT INTO tool_dedupe_state(job, scanned_session, scanned_seq, complete, rows, started_at, updated_at)
         VALUES(?, '', 0, 0, 0, ?, ?)
-        ON CONFLICT(job) DO UPDATE SET complete = 0, rows = 0, started_at = excluded.started_at, updated_at = excluded.updated_at`,
+        ON CONFLICT(job) DO UPDATE SET
+          complete = 0, rows = 0,
+          scanned_session = CASE WHEN tool_dedupe_state.complete = 1 THEN '' ELSE tool_dedupe_state.scanned_session END,
+          scanned_seq = CASE WHEN tool_dedupe_state.complete = 1 THEN 0 ELSE tool_dedupe_state.scanned_seq END,
+          started_at = excluded.started_at, updated_at = excluded.updated_at`,
 		job, now, now)
 	if err != nil {
 		return fmt.Errorf("start tool dedupe %q: %w", job, err)
