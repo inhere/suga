@@ -120,6 +120,9 @@ func TestTraceTranscriptCommand(t *testing.T) {
 		_, err = run("inspect", "trace", "s_tx", "--transcript", "--analyze")
 		assert.Require(t, assert.Err(t, err))
 		assert.StrContains(t, err.Error(), "use one of them")
+		_, err = run("inspect", "trace", "s_tx", "--transcript", "--web")
+		assert.Require(t, assert.Err(t, err))
+		assert.StrContains(t, err.Error(), "use one of them")
 	})
 
 	t.Run("-o writes the file instead of stdout", func(t *testing.T) {

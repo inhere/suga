@@ -23,6 +23,9 @@ func newTraceCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	trace := capp.NewCmd("trace", "Show the turn/model/tool/denial timeline of a session", func(c *capp.Cmd) error {
 		sessionID := c.Arg("session").String()
 		if traceWeb {
+			if traceTranscript {
+				return fmt.Errorf("--transcript and --web both choose an output: use one of them")
+			}
 			return runTraceWeb(ctx, stdout, sessionID, traceAddr)
 		}
 		return runTrace(ctx, stdout, sessionID, traceOptions{
