@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # assistant 大字段移到会话文件设计（推理内容与工具调用参数）
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 已批准，待独立审核
 > 日期：2026-10-20
 > 关联：`docs/design/2026-10-19-tool-output-files-design.md`（tool 正文移到会话文件，v0.36.0 已发布）、`docs/design/2026-10-19-data-governance-design.md`、issue `suga-zy9f`
 
@@ -10,6 +10,7 @@
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-20 | 监督（Claude） | 用户 2026-10-20：“先做 1 和 2，3 和 4 你出设计”。3 = 旧会话的推理内容（Reasoning 35MB + Responses 加密推理 Metadata 43MB），4 = 大的工具调用参数（30MB，file_write/file_edit 全文为主）。两者都在 assistant 条目里，用同一套机制处理：把 assistant 条目的大字段随整条 JSON 移到会话文件，库里留含完整正文 Content 的小桩；同时让上下文组装只取回当前分段的正文。 |
+| 0.2 | 2026-10-20 | 监督（Claude） | 用户批准：会话文件改名 `bodies.jsonl`（Q3），其余按推荐（Q1、Q2 改名并保留旧名别名、Q4、Q5、Q6）。新增“会话文件改名”一节。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -59,7 +60,7 @@
 
 - 移出条件：`type='assistant'` 且条目 JSON 超过阈值（沿用 `store.tool_body_inline_bytes`，默认 1,024 字节；配置名可改为 `store.body_inline_bytes` 并兼容旧名，见 Q2）。
 - 桩保留：`Role`、**完整 `Content`**、`ToolCall{CallID, Name}`（不带 Arguments）；不带 `Reasoning`、`Metadata`。`body_ref` 列与 tool 桩相同。
-- 正文仍写进同一个会话文件（`tools.jsonl`，名字保留以兼容；见 Q3），记录格式与校验不变（原始字节、seq、sha256）。
+- 正文写进会话文件 `bodies.jsonl`（见“会话文件改名”），记录格式与校验不变（原始字节、seq、sha256）。
 - 新写入在 `AppendEntries` 写事务内移出（与 tool 相同的顺序与回滚）；FTS 行在改桩**之前**由原 JSON 写入，内容与现在相同。
 
 ### 2. 上下文组装只取回当前分段
@@ -75,7 +76,18 @@
 - 历史迁移分批在写事务内，断点可续、幂等；`--undo` 逐字节还原 assistant 条目。
 - 完成后提示 `suga data vacuum`。
 
-### 4. 不采用的方案
+### 5. 会话文件改名（`tools.jsonl` → `bodies.jsonl`）
+
+文件名只有一处常量 `store.ToolBodyFileName`（`internal/personal/store/toolbody.go:44`，备份 `internal/personal/backup/backup.go:618` 引用它）；`entries.body_ref` 只记 `<off>,<len>,<sha256>`，不含文件名，所以改名不需要改写库里的引用，偏移量在改名后仍然有效。
+
+- 常量改为 `BodyFileName = "bodies.jsonl"`，旧名保留为 `LegacyBodyFileName = "tools.jsonl"`。
+- **写入**：会话目录里已有 `tools.jsonl` 而没有 `bodies.jsonl` 时继续追加到旧文件（一个会话始终只有一个正文文件，偏移量不分裂）；否则写 `bodies.jsonl`。
+- **读取**：先按引用读 `bodies.jsonl` 并校验 sha256，不存在或不符再读 `tools.jsonl`。sha256 校验保证即使两个文件同时存在也不会读错。
+- **迁移**：`suga data bodies --rename-files`，在独占窗口内（与 vacuum 相同，要求没有其它 suga 进程）逐个会话把 `tools.jsonl` 改名为 `bodies.jsonl`；断点可续、幂等；`--status` 显示仍是旧名的会话数。不做启动时自动改名：升级后仍在运行的旧版本进程会按旧名重新创建文件，独占窗口可以排除这种情况。
+- **备份**：两个名字都收进归档、恢复按原名安装；`--check` 与 `data usage` 两个名字都认。
+- **回滚**：`--undo` 两个名字都能读；回退到旧版本前先执行 `--undo`（与现有顺序相同）。
+
+### 6. 不采用的方案
 
 - **直接丢弃旧会话的推理内容**：最省空间，但续聊时 provider 会丢掉之前的推理上下文（Responses 的加密推理、Claude 的 thinking 签名），且不可逆。移到文件同样把数据库变小，又不丢数据，所以不采用；如果以后会话文件也嫌大，再单独设计“按保留期清理会话文件里的推理”。
 
@@ -88,7 +100,8 @@
 - `internal/personal/store/toolbody.go`：桩生成按条目类型分支（tool / assistant），读取路径不变。
 - `internal/personal/store/entries.go`：`EntryFilter.HydrateFromSeq`。
 - `internal/personal/context.go`：按 `first_kept_seq` 限定取回。
-- `internal/personal/store/toolbody_maint.go`、`internal/cli/data_toolbody.go`：维护命令扩展。
+- `internal/personal/store/toolbody_maint.go`、`internal/cli/data_toolbody.go`：维护命令扩展（`suga data bodies`，`tool-bodies` 为别名）与 `--rename-files`。
+- `internal/personal/backup/backup.go`：两个文件名都收进归档。
 
 ## 决策
 
@@ -111,6 +124,7 @@
 - 上下文：同一会话在移出前后、压缩前后，组装出的请求逐字节相同（前缀哈希不变）；长会话每轮读文件字节数只与当前分段相关（可观测）。
 - 交接与压缩摘要：移出前后生成的摘要输入相同。
 - 维护命令：assistant 的 `--move/--undo/--check/--status`、断点续跑、幂等。
+- 改名：旧名文件继续追加、新会话写新名、两个文件并存时按 sha256 读对、`--rename-files` 断点续跑与独占窗口、备份恢复两个名字。
 - FTS：`shrink-fts`、回填测试在 assistant 桩存在时结果不变。
 - 真实库副本：`--status`、`--move`、`vacuum` 的耗时与前后大小，抽查导出、trace、恢复一个会话继续对话（真实模型，一轮）。
 - 反向验证：桩里去掉 Content 后 FTS 用例失败；去掉 `HydrateFromSeq` 判断后“压缩点前不读文件”用例失败。
@@ -119,13 +133,13 @@
 
 | # | 问题 | 当前倾向 |
 |---|---|---|
-| Q1 | 采用“整条移出 + 桩保留完整 Content”而不是丢弃推理内容？ | 是 |
-| Q2 | 命令与配置名：沿用 `suga data tool-bodies` 与 `store.tool_body_inline_bytes`，还是改名 `suga data bodies` / `store.body_inline_bytes`（旧名保留为别名）？ | 改名并保留旧名别名（名字更准确） |
-| Q3 | 会话文件名：沿用 `tools.jsonl` 还是改名 `bodies.jsonl`？ | 沿用 `tools.jsonl`（已发布、备份与检查都认它；改名需迁移，收益小） |
-| Q4 | 上下文组装只取回当前分段（同时惠及 tool 正文）？ | 是 |
-| Q5 | 阈值沿用 1,024 字节？ | 是 |
-| Q6 | 实施前独立审核？ | 是 |
+| Q1 | 采用“整条移出 + 桩保留完整 Content”而不是丢弃推理内容？ | 已定：是 |
+| Q2 | 命令与配置名：沿用 `suga data tool-bodies` 与 `store.tool_body_inline_bytes`，还是改名 `suga data bodies` / `store.body_inline_bytes`（旧名保留为别名）？ | 已定：改名并保留旧名别名 |
+| Q3 | 会话文件名：沿用 `tools.jsonl` 还是改名 `bodies.jsonl`？ | **已定：改名 `bodies.jsonl`**（用户 2026-10-20），方案见“会话文件改名” |
+| Q4 | 上下文组装只取回当前分段（同时惠及 tool 正文）？ | 已定：是 |
+| Q5 | 阈值沿用 1,024 字节？ | 已定：是 |
+| Q6 | 实施前独立审核？ | 已定：是 |
 
 ## 结论与人工计划 Gate
 
-用 v0.36 已有的整条移出机制处理 assistant 条目的推理内容与大工具调用参数，桩保留完整 Content 以保证检索不变，并让上下文组装只取回当前分段。用户批准 Q1–Q6 后先做独立审核，再派出实施；批准前不改代码。
+用 v0.36 已有的整条移出机制处理 assistant 条目的推理内容与大工具调用参数，桩保留完整 Content 以保证检索不变，并让上下文组装只取回当前分段。用户已于 2026-10-20 批准 Q1–Q6（Q3 改为改名 `bodies.jsonl`）；先做独立审核，再派出实施。
