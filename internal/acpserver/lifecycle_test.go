@@ -69,9 +69,6 @@ func TestACPResumeAndClose(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Require(t, assert.True(t, resp.Modes != nil))
 		assert.Eq(t, true, len(resp.ConfigOptions) > 0)
-		// No history rode along: resume is load without the replay (the agent
-		// client's own SessionUpdate is the only collector on this connection).
-		assert.Eq(t, 0, 1 - 1)
 	})
 	t.Run("resume refuses another directory with load's reason", func(t *testing.T) {
 		_, err := conn.ResumeSession(ctx, acp.ResumeSessionRequest{SessionId: created.SessionId, Cwd: dirB, McpServers: []acp.McpServer{}})

@@ -157,7 +157,7 @@ func (c *replayClient) SessionUpdate(_ context.Context, n acp.SessionNotificatio
 	if c.armed {
 		c.loadReplay = append(c.loadReplay, kind)
 	}
-	return c.testACPClient.SessionUpdate(nil, n)
+	return c.testACPClient.SessionUpdate(context.TODO(), n)
 }
 
 func textOf(block acp.ContentBlock) string {
