@@ -138,7 +138,7 @@ def session_id_of(s):
     """The session id chat printed at startup: what `suga send --session` takes."""
     import re
 
-    found = re.search(r"session id: (sess_\S+)", s.text())
+    found = re.search(r"session id: ((?:sess_|s_)\S+)", s.text())
     return found.group(1) if found else ""
 
 
@@ -167,8 +167,8 @@ def exit_chat(s):
     s.send(CTRL_C)
     time.sleep(0.3)
     s.send(CTRL_C)
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume sess_", m))
-    found = re.search(r"--resume (sess_\S+)", s.text(m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 
