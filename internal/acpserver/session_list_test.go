@@ -90,6 +90,9 @@ func TestACPListSessions(t *testing.T) {
 	})
 	t.Run("pagination: cursor splits a long list", func(t *testing.T) {
 		t.Chdir(t.TempDir())
+		// A fresh SUGA_HOME per run: -count=3 replays the fixed p*ids against the
+		// same store otherwise, and the second run dies on the unique ids.
+		t.Setenv("SUGA_HOME", testutil.Dir(t))
 		dbPath, err := appconfig.ResolveCoreStorePath()
 		assert.Require(t, assert.NoErr(t, err))
 		repo, err := store.Open(dbPath)

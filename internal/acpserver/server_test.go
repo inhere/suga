@@ -58,6 +58,15 @@ func (c *testACPClient) SessionUpdate(_ context.Context, update acp.SessionNotif
 
 func connectPersonalACP(t *testing.T, open OpenRuntime, client acp.Client) *acp.ClientSideConnection {
 	t.Helper()
+	_, conn := connectPersonalACPAgent(t, open, client)
+	return conn
+}
+
+// connectPersonalACPAgent also hands out the Agent, for the tests that assert
+// on the process state a close released (sessions map) instead of only on the
+// client-visible protocol replies.
+func connectPersonalACPAgent(t *testing.T, open OpenRuntime, client acp.Client) (*Agent, *acp.ClientSideConnection) {
+	t.Helper()
 	clientToAgentR, clientToAgentW := io.Pipe()
 	agentToClientR, agentToClientW := io.Pipe()
 	agent := New(open, false)
@@ -69,7 +78,7 @@ func connectPersonalACP(t *testing.T, open OpenRuntime, client acp.Client) *acp.
 		_ = agentToClientW.Close()
 		_ = agentToClientR.Close()
 	})
-	return conn
+	return agent, conn
 }
 
 func testACPRuntime(t *testing.T, provider agentcore.Provider, tool *countingTool) OpenRuntime {
