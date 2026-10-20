@@ -50,7 +50,10 @@ def exit_chat(s):
 
 
 def sessions(binary, env, *args):
-    out = subprocess.run([binary, "sessions", "--json", "-n", "0", *args], capture_output=True, text=True, env=env, timeout=30)
+    # --all: sessions lists the current directory's sessions by default, and
+    # this scenario's chat ran in its own workspace.
+    out = subprocess.run([binary, "sessions", "--json", "-n", "0", "--all", *args], capture_output=True, text=True,
+                         env=env, timeout=30)
     try:
         return json.loads(out.stdout or "[]")
     except ValueError:
