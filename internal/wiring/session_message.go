@@ -109,16 +109,7 @@ func (m *sessionMessenger) Send(ctx context.Context, to, text, mode string) (nat
 	if mode == "" {
 		mode = personalprocess.ModeFollowUp
 	}
-	request := personalprocess.Request{
-		Text: text,
-		// The receiver labels the message with the sender's short name and shows
-		// the full ID too (design session_message "来源标记").
-		From:     personalprocess.SessionFromPrefix + senderID(sender, self),
-		FromName: sender.Name,
-		// h+1: this message extends the chain of the turn it is sent in.
-		Hops: personal.TurnHops(ctx) + 1,
-		Mode: mode,
-	}
+	request := sessionMessageRequest(ctx, sender, self, text, mode)
 	response, err := personalprocess.Send(record, request)
 	switch {
 	case errors.Is(err, personalprocess.ErrNotOnline):
@@ -155,4 +146,18 @@ func senderID(record personalprocess.Record, fromCtx string) string {
 		return record.SessionID
 	}
 	return fromCtx
+}
+
+// sessionMessageRequest is the request one session message becomes: the sender's
+// full session ID and short name (design session_message "来源标记"), and the hop
+// depth of this turn plus one, so a message a hops-h turn sends counts as h+1 and
+// the receiver stops the chain at tools.session_message.max_hops.
+func sessionMessageRequest(ctx context.Context, sender personalprocess.Record, selfSessionID, text, mode string) personalprocess.Request {
+	return personalprocess.Request{
+		Text:     text,
+		From:     personalprocess.SessionFromPrefix + senderID(sender, selfSessionID),
+		FromName: sender.Name,
+		Hops:     personal.TurnHops(ctx) + 1,
+		Mode:     mode,
+	}
 }

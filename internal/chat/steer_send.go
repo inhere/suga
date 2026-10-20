@@ -3,9 +3,7 @@ package chat
 import (
 	"errors"
 	"fmt"
-	"strings"
 
-	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -40,7 +38,7 @@ func (s *chatState) deliverMessage(mode, text, from, fromName string, hops int, 
 	warning := s.deliveryWarning(len(images))
 	// A session message that has used up the automatic replies is held for the
 	// person's next turn instead of starting one (design session_message D3).
-	if hops >= appconfig.SessionMessageMaxHops() && strings.HasPrefix(from, personalprocess.SessionFromPrefix) {
+	if shouldHoldSessionMessage(from, hops) {
 		s.holdSessionMessage(deliveryLineFor(text, from, fromName))
 		s.render.Hint(sessionQueuedHint(fromName, hops))
 		return personalprocess.Delivery{Queued: true, Warning: warning}, nil, nil

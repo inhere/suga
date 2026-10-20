@@ -408,6 +408,12 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		if n := inputSource.DiscardQueued(); n > 0 {
 			fmt.Fprintf(stderr, "Warning: %d queued message(s) were discarded on exit and not run.\n", n)
 		}
+		// Session messages held at the automatic-reply limit never ran either: the
+		// person learns how many were still waiting when chat ends (design
+		// session_message).
+		if n := state.heldSessionCount(); n > 0 {
+			fmt.Fprintf(stderr, "Warning: %d session message(s) were still waiting for your next input on exit.\n", n)
+		}
 		// Messages `suga send --steer` inserted into the last turn: they will not run
 		// either, and their senders are told here (steer_send.go) rather than by a
 		// dropped connection.

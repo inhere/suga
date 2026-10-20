@@ -3,6 +3,9 @@ package chat
 import (
 	"fmt"
 	"strings"
+
+	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/personal/process"
 )
 
 // The receiving side of session_message (design 2026-10-21 session_message):
@@ -38,6 +41,16 @@ func (s *chatState) heldSessionCount() int {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	return len(s.sessionHeld)
+}
+
+// shouldHoldSessionMessage reports whether a delivery starts no turn: only a
+// message another suga session sent can be held, and only once its hop depth
+// reaches tools.session_message.max_hops (design session_message D3).
+func shouldHoldSessionMessage(from string, hops int) bool {
+	if !strings.HasPrefix(from, process.SessionFromPrefix) {
+		return false
+	}
+	return hops >= appconfig.SessionMessageMaxHops()
 }
 
 // sessionQueuedHint is what chat shows the person when a session message was held:
