@@ -125,6 +125,30 @@ func gkcResetForSessionMessage(t *testing.T) {
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)
 }
+
+// TestHeldSessionMessageRunsWithTheNextTurnPath: a held session message reaches the
+// model of the next turn the person starts, ahead of their own line, so it is
+// handled then and not before (design session_message D3 "等用户下一次输入时一起
+// 处理").
+func TestHeldSessionMessageRunsWithTheNextTurnPath(t *testing.T) {
+	gkcResetForSessionMessage(t)
+	h := newSteerHarness(t, newGateProv())
+	held := "[来自会话 suga-k7（ab12）的消息] 工作目录里有什么？"
+	h.state.holdSessionMessage(held)
+
+	done := make(chan error, 1)
+	go func() { done <- h.state.runTurn("干活", false, nil) }()
+	<-h.cast.started()
+	prompts := h.cast.prompts()
+	assert.Require(t, assert.True(t, len(prompts) > 0))
+	assert.StrContains(t, prompts[0], held)
+	assert.StrContains(t, prompts[0], "干活")
+	// Taken once: the message does not run a second time.
+	assert.Eq(t, 0, h.state.heldSessionCount())
+	h.cast.letGo()
+	assert.NoErr(t, <-done)
+}
+
 func TestTurnHopsStartAtZeroForThePersonsOwnTurn(t *testing.T) {
 	state := &chatState{}
 	assert.Eq(t, 0, state.turnHops)
