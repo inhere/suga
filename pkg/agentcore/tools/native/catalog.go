@@ -74,6 +74,13 @@ type Env struct {
 	// short name and the turn); the tools and chat's local commands call it at
 	// every run, so it may still be nil or return nothing when they are built.
 	ExtraEnv func(context.Context) []string
+	// SessionMessenger is the host side of the session_message tool (the running
+	// chat sessions of this SUGA_HOME); nil keeps the tool out of the catalog
+	// (tools.session_message.enabled, SUGA_SESSION_MESSAGE=off).
+	SessionMessenger SessionMessenger
+	// TurnID names the turn ctx belongs to ("" outside a turn): the per-turn send
+	// limit of session_message resets with every turn.
+	TurnID func(context.Context) string
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -158,6 +165,12 @@ func Catalog() []Spec {
 			t.SetNetworkProxy(env.NetworkProxy)
 			t.maxOut = env.RawBytes
 			return t
+		}},
+		{Name: sessionMessageToolName, New: func(env Env) api.Tool {
+			if env.SessionMessenger == nil {
+				return nil
+			}
+			return &SessionMessageTool{messenger: env.SessionMessenger, turnID: env.TurnID}
 		}},
 	}
 }

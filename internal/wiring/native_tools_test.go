@@ -18,16 +18,31 @@ import (
 // write is set.
 func catalogNames(write bool) []string {
 	var names []string
+	// The env session_message needs: without a messenger the catalog leaves the
+	// tool out (tools.session_message.enabled off).
+	env := native.Env{SessionMessenger: stubSessionMessenger{}}
 	for _, spec := range native.Catalog() {
 		if spec.Name == "web_search" { // needs serpapi_key, unset here
 			continue
 		}
-		if tool := spec.New(native.Env{}); !write && !tools.MetaOf(tool).ReadOnly {
+		if tool := spec.New(env); !write && !tools.MetaOf(tool).ReadOnly {
 			continue
 		}
 		names = append(names, spec.Name)
 	}
 	return names
+}
+
+// stubSessionMessenger is a native.SessionMessenger that lists and sends nothing:
+// the catalog only needs one to build session_message.
+type stubSessionMessenger struct{}
+
+func (stubSessionMessenger) Peers(context.Context) ([]native.SessionPeer, error) {
+	return nil, nil
+}
+
+func (stubSessionMessenger) Send(context.Context, string, string, string) (native.SessionSendResult, error) {
+	return native.SessionSendResult{}, nil
 }
 
 // TestRegisteredToolsFollowTheCatalog pins the run/chat/ACP tool sets to the
