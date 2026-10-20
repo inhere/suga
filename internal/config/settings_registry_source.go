@@ -20,6 +20,13 @@ func configValueSource(key string) (ConfigSource, string) {
 	if raw, ok := lookupInheritedProviderConfig(key); ok {
 		return sourceForRawValue(raw)
 	}
+	// store.body_inline_bytes is the current name of store.tool_body_inline_bytes
+	// (v0.36): a value set under the old name still comes from the config file.
+	if key == "store.body_inline_bytes" {
+		if raw, ok := lookupRawConfig("store.tool_body_inline_bytes"); ok {
+			return sourceForRawValue(raw)
+		}
+	}
 	if strings.HasPrefix(key, "providers.") {
 		parts, _, field, nested, ok := parseProviderKey(key)
 		if ok && !nested && field == "api_key" {
