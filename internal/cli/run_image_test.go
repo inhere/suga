@@ -3,15 +3,21 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
+	gkconfig "github.com/gookit/config/v2"
 	"github.com/gookit/goutil/x/assert"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
@@ -220,4 +226,144 @@ func TestRunImageWithoutFlagKeepsStreamJSON(t *testing.T) {
 	_, has := session["images"]
 	assert.Eq(t, false, has)
 	assert.Eq(t, false, strings.Contains(lines[0], "images"))
+}
+
+// imageCLIHome isolates SUGA_HOME for a test that drives the whole CLI: the
+// config is set through gkconfig, the session store and the image files go into
+// the temp home, never into ~/.suga.
+func imageCLIHome(t *testing.T) {
+	t.Helper()
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SUGA_HOME", "") // fall back to HOME/.suga despite the TestMain default
+	t.Setenv("SUGA_MODEL", "")
+}
+
+// requestedImages returns the data: URLs of the image parts of the request's
+// user message, in message order (the openai mapping of one message).
+func requestedImages(t *testing.T, body map[string]any) []string {
+	t.Helper()
+	messages, _ := body["messages"].([]any)
+	var urls []string
+	for _, raw := range messages {
+		message, _ := raw.(map[string]any)
+		if message["role"] != "user" {
+			continue
+		}
+		parts, ok := message["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, rawPart := range parts {
+			part, _ := rawPart.(map[string]any)
+			if part["type"] != "image_url" {
+				continue
+			}
+			image, _ := part["image_url"].(map[string]any)
+			url, _ := image["url"].(string)
+			urls = append(urls, url)
+		}
+	}
+	return urls
+}
+
+// TestRunImageThroughCLI drives the flag itself: --image values (relative paths
+// against the run's working directory) are prepared in order and reach the
+// provider request as the image parts of this turn's user message.
+func TestRunImageThroughCLI(t *testing.T) {
+	imageCLIHome(t)
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	_ = gkconfig.Set("workspace", workspace)
+	_ = gkconfig.Set("model", "openai/gpt-4o")
+
+	var mu sync.Mutex
+	var bodies []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode provider request: %v", err)
+		}
+		mu.Lock()
+		bodies = append(bodies, body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"seen"},"finish_reason":"stop"}]}`)
+	}))
+	t.Cleanup(server.Close)
+	setTestProvider(t, server.URL)
+
+	// Both files live in the run's working directory and are named relatively.
+	first := writeRunPNG(t, workspace, "first.png", 10)
+	second := writeRunPNG(t, workspace, "second.png", 200)
+	read := pipelineImageReader(workspace)
+	wantParts := make([]string, 0, 2)
+	for _, name := range []string{"first.png", "second.png"} {
+		part, _, err := read(name)
+		assert.Require(t, assert.NoErr(t, err))
+		wantParts = append(wantParts, "data:"+part.MediaType+";base64,"+base64.StdEncoding.EncodeToString(part.Data))
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := RunPersonalCLI(context.Background(), "run", []string{
+		"--prompt", "describe", "--session-id", "img-cli", "--output-format", "stream-json",
+		"--image", "first.png", "--image", "second.png",
+	}, strings.NewReader(""), &stdout, &stderr)
+	assert.NoErr(t, err)
+
+	// stream-json: the session line counts both pictures.
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	var session map[string]any
+	assert.Require(t, assert.NoErr(t, json.Unmarshal([]byte(lines[0]), &session)))
+	assert.Eq(t, float64(2), session["images"])
+
+	// The provider got both pictures in the declared order.
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Require(t, assert.Eq(t, 1, len(bodies)))
+	assert.Eq(t, wantParts, requestedImages(t, bodies[0]))
+	// Both files were stored below the session's images directory.
+	home, err := os.UserHomeDir()
+	assert.Require(t, assert.NoErr(t, err))
+	stored, err := os.ReadDir(store.SessionImagesDir(filepath.Join(home, ".suga", "sessions"), "img-cli"))
+	assert.NoErr(t, err)
+	assert.Eq(t, 2, len(stored))
+	assert.Eq(t, true, first != second)
+}
+
+// TestRunImageWithoutVisionFailsTheCLI pins item 1's exit: a model that cannot
+// see makes the run fail before any model request, with the --model / vision
+// hint.
+func TestRunImageWithoutVisionFailsTheCLI(t *testing.T) {
+	imageCLIHome(t)
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	_ = gkconfig.Set("workspace", workspace)
+	// qwen is inferred text-only.
+	_ = gkconfig.Set("model", "openai/qwen3")
+
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"seen"},"finish_reason":"stop"}]}`)
+	}))
+	t.Cleanup(server.Close)
+	setTestProvider(t, server.URL)
+	writeRunPNG(t, workspace, "shot.png", 10)
+
+	var stdout, stderr bytes.Buffer
+	err := RunPersonalCLI(context.Background(), "run", []string{
+		"--prompt", "describe", "--session-id", "img-blind", "--image", "shot.png",
+	}, strings.NewReader(""), &stdout, &stderr)
+	assert.Require(t, assert.NotNil(t, err))
+	assert.StrContains(t, err.Error(), "不支持看图")
+	assert.StrContains(t, err.Error(), "--model")
+	assert.StrContains(t, err.Error(), "vision")
+	assert.Eq(t, 1, ExitCode(err))
+	// No request was sent and no turn was created.
+	assert.Eq(t, 0, requests)
 }
