@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	gcolor "github.com/gookit/color"
 	"strings"
 	"testing"
 
@@ -11,6 +12,10 @@ import (
 // renderMDWithCode renders text with the code options set; color switches the
 // terminal styling on (chat colors a terminal only).
 func renderMDWithCode(text string, color, highlight bool, maxLines int) (string, *MDTerm) {
+	// The SGR output goes through gookit/color, which turns colors off when it
+	// detects no color terminal (CI has no TERM): force it, as mdterm_test does,
+	// so the result does not depend on the environment or on test order.
+	gcolor.ForceColor()
 	var out bytes.Buffer
 	term := NewMDTerm(&out, color)
 	term.SetCode(highlight, maxLines)
