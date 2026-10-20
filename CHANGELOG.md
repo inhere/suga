@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.39.0] - 2026-10-20
+
+会话与集成：`suga sessions` 与 ACP `session/list` 默认只列当前目录的会话；ACP 补齐 list/resume/close、load 回放历史与 set_config_option（切换模型与模式）；子进程与 hook 环境导出 `SUGA_SESSION_ID`/`SUGA_SESSION_NAME`/`SUGA_TURN_ID`；`suga run --image`；日志轮转与 `log.*` 配置。不兼容：移除 v0.36 前的旧顶层命令写法（`suga trace` 等，报错时提示新写法）；一次性迁移命令与旧配置键标记弃用，v0.41.0 移除。
+
 ### 不兼容
 
 - 移除 v0.36 起保留两个版本期的旧顶层命令写法（设计中的 v0.38 到期）：`suga trace|stats|export|manifest …`、`suga backup|restore …`、`suga gc [--shrink-fts|--vacuum|--compress-spill] …` 不再被改写成 `inspect`/`data` 分组命令，执行报“未知命令”，报错里给出新写法提示（静态映射表，只用于提示）。顶层不写 `chat` 的 chat 选项（如 `suga --resume <id>`）是 v0.36 的正式功能，保持不变。
@@ -930,7 +934,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.38.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/inhere/suga/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/inhere/suga/compare/v0.37.1...v0.38.0
 [0.37.1]: https://github.com/inhere/suga/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/inhere/suga/compare/v0.36.0...v0.37.0
