@@ -30,7 +30,7 @@ func TestStartWaitImagesDeliversImagesAndDecLaresTheFeature(t *testing.T) {
 	root := shortProcessRoot(t)
 	delivered := make(chan []ImageRef, 1)
 	server, err := StartWaitImages(root, "session-img", "img", t.TempDir(), []string{FeatureImages},
-		func(mode, text, from string, images []ImageRef) (Delivery, <-chan error, error) {
+		func(mode, text, from, fromName string, hops int, images []ImageRef) (Delivery, <-chan error, error) {
 			delivered <- images
 			return Delivery{Queued: true, Warning: "模型不支持看图"}, nil, nil
 		})
