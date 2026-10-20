@@ -71,6 +71,13 @@ func TestMemorySummariesPreviewAndApply(t *testing.T) {
 		assert.NoErr(t, runMemorySummaries(context.Background(), &out, store, []memory.Scope{sc}, opts))
 		assert.StrContains(t, out.String(), "no entry is missing a summary")
 	})
+
+	t.Run("listing all entries shows the stored summary", func(t *testing.T) {
+		var out bytes.Buffer
+		assert.NoErr(t, runMemorySummaries(context.Background(), &out, store, []memory.Scope{sc}, summariesOptions{}))
+		assert.StrContains(t, out.String(), "- release-day (project): Release day")
+		assert.StrContains(t, out.String(), "summary: Fridays only.")
+	})
 }
 
 func TestMemorySummariesScopeFilter(t *testing.T) {

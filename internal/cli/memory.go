@@ -32,12 +32,13 @@ type summariesOptions struct {
 	scope   string // "", "user" or "project"
 }
 
-// newMemorySummariesCommand builds `suga memory summaries`: it lists entries
-// whose index line has no summary and, with --fill, previews the first sentence
-// of their body as the missing summary. Nothing is written without --apply.
+// newMemorySummariesCommand builds `suga memory summaries`: it lists the index
+// summary of every entry (--missing: only the ones without one) and, with
+// --fill, previews the first sentence of their body as the missing summary.
+// Nothing is written without --apply.
 func newMemorySummariesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	opts := summariesOptions{missing: true}
-	cmd := capp.NewCmd("summaries", "List entries whose index line has no summary; --fill derives one from the body", func(c *capp.Cmd) error {
+	opts := summariesOptions{}
+	cmd := capp.NewCmd("summaries", "List the index summary of each entry; --missing only those without one; --fill derives them from the body", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
 			return fmt.Errorf("usage: suga memory summaries [--missing] [--fill] [--apply] [--scope user|project]")
 		}
@@ -47,7 +48,7 @@ func newMemorySummariesCommand(ctx context.Context, stdout, stderr io.Writer) *c
 		return runMemorySummariesCommand(ctx, stdout, opts)
 	})
 	cmd.SetOutput(stderr)
-	cmd.BoolVar(&opts.missing, "missing", true, "only entries whose index line has no summary")
+	cmd.BoolVar(&opts.missing, "missing", false, "only entries whose index line has no summary")
 	cmd.BoolVar(&opts.fill, "fill", false, "derive the missing summary from the first sentence of the body")
 	cmd.BoolVar(&opts.apply, "apply", false, "write the derived summaries (default is a preview)")
 	cmd.StringVar(&opts.scope, "scope", "", "user or project (default: both)")
@@ -83,7 +84,7 @@ func runMemorySummariesCommand(ctx context.Context, out io.Writer, opts summarie
 // It is the whole behaviour of `suga memory summaries` and takes the store as a
 // parameter so tests can drive it over a real files layout.
 func runMemorySummaries(ctx context.Context, out io.Writer, store memory.Store, scopes []memory.Scope, opts summariesOptions) error {
-	var total, written int
+	var total, missing, written int
 	var unsupported []string
 	for _, sc := range scopes {
 		ix, err := store.Index(ctx, sc)
@@ -105,7 +106,12 @@ func runMemorySummaries(ctx context.Context, out io.Writer, store memory.Store, 
 		fmt.Fprintf(out, "%s memory (%s): %d entr%s\n", sc.String(), summarizeState(opts.missing), len(lines), plural(len(lines)))
 		for _, l := range lines {
 			fmt.Fprintf(out, "- %s (%s): %s\n", l.ID, l.Kind, l.Title)
-			if l.Summary != "" || !opts.fill {
+			if l.Summary != "" {
+				fmt.Fprintf(out, "  summary: %s\n", l.Summary)
+				continue
+			}
+			missing++
+			if !opts.fill {
 				continue
 			}
 			e, gerr := store.Get(ctx, sc, l.ID)
@@ -132,7 +138,7 @@ func runMemorySummaries(ctx context.Context, out io.Writer, store memory.Store, 
 		}
 		total += len(lines)
 	}
-	printSummariesFooter(out, opts, total, written, unsupported)
+	printSummariesFooter(out, opts, total, missing, written, unsupported)
 	return nil
 }
 
@@ -167,10 +173,14 @@ func summarizerFor(store memory.Store, sc memory.Scope) (memory.Summarizer, bool
 }
 
 // printSummariesFooter explains what happened and what the next step is.
-func printSummariesFooter(out io.Writer, opts summariesOptions, total, written int, unsupported []string) {
+func printSummariesFooter(out io.Writer, opts summariesOptions, total, missing, written int, unsupported []string) {
 	switch {
-	case total == 0:
+	case total == 0 && opts.missing:
 		fmt.Fprintln(out, "no entry is missing a summary")
+	case total == 0:
+		fmt.Fprintln(out, "no entry in this scope")
+	case missing == 0:
+		fmt.Fprintln(out, "every listed entry has a summary")
 	case !opts.fill:
 		fmt.Fprintln(out, "rerun with --fill to preview a summary from the first sentence of each body")
 	case !opts.apply:
