@@ -47,6 +47,24 @@ func TestLoadRulesDetailed(t *testing.T) {
 		assert.Eq(t, len("USER RULES\n")+len("PROJECT RULES\n"), stats.OriginalBytes)
 	})
 
+	t.Run("include is a separate entry", func(t *testing.T) {
+		root := t.TempDir()
+		assert.NoErr(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+		assert.NoErr(t, os.WriteFile(filepath.Join(root, "extra.md"), []byte("INCLUDED\n"), 0o644))
+		writeRuleFile(t, root, "@extra.md\nPARENT\n")
+
+		rules, _, stats, err := LoadRulesDetailed(root, "", false, "")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, rules, "INCLUDED")
+		assert.Require(t, assert.Len(t, stats.Files, 2))
+		assert.Eq(t, len("PARENT\n"), stats.Files[0].Kept)
+		assert.False(t, stats.Files[0].Included)
+		assert.True(t, stats.Files[1].Included)
+		assert.Eq(t, len("INCLUDED\n"), stats.Files[1].Kept)
+		// Per-file bytes never double count the included content.
+		assert.Eq(t, stats.KeptBytes, stats.Files[0].Kept+stats.Files[1].Kept)
+	})
+
 	t.Run("single file over 64KB", func(t *testing.T) {
 		root := t.TempDir()
 		assert.NoErr(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))

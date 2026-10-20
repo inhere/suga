@@ -212,8 +212,19 @@ func expandRuleFile(path string, remaining *int, seenPaths map[string]struct{}, 
 	statIndex := len(stats.Files) - 1
 	keptStart := stats.KeptBytes
 	defer func() {
-		stats.Files[statIndex].Kept = stats.KeptBytes - keptStart
-		stats.Files[statIndex].Text = string(content)
+		// The parent's Kept excludes what its @include files contributed: those
+		// have their own entry, so per-file bytes never double count.
+		kept := stats.KeptBytes - keptStart
+		for _, f := range stats.Files[statIndex+1:] {
+			if f.Included {
+				kept -= f.Kept
+			}
+		}
+		if kept < 0 {
+			kept = 0
+		}
+		stats.Files[statIndex].Kept = kept
+		stats.Files[statIndex].Text = content
 		if stats.Files[statIndex].Truncated {
 			stats.Truncated = true
 		}
