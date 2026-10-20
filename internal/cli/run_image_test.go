@@ -93,6 +93,14 @@ func TestLoadRunImages(t *testing.T) {
 		assert.Eq(t, true, len(parts[1].Data) > 0)
 		assert.Eq(t, false, bytes.Equal(parts[0].Data, parts[1].Data))
 	})
+	t.Run("a relative path resolves against the run workspace", func(t *testing.T) {
+		// run hands the reader the session workspace (the run's working
+		// directory), so "--image shots/a.png" means <run cwd>/shots/a.png.
+		parts, err := loadRunImages(reader, fakeGate{visible: true}, []string{"first.png"}, "prov/m1")
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, len(parts))
+		assert.Eq(t, "image/png", parts[0].MediaType)
+	})
 	t.Run("a blind model fails the load", func(t *testing.T) {
 		_, err := loadRunImages(reader, fakeGate{visible: false}, []string{first}, "prov/qwen")
 		assert.Require(t, err != nil)
