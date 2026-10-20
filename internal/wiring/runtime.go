@@ -151,7 +151,11 @@ type Runtime struct {
 	// local is the runner of chat's local commands ("!cmd"/"!!cmd"): the shell,
 	// workspace and output limits are the ones the shell tools use, so a command
 	// a person types there behaves like one the model runs.
-	local        *native.LocalCommand
+	local *native.LocalCommand
+	// sessionEnv holds the variables suga exports to subprocesses of a session
+	// (SUGA_SESSION_ID/NAME/TURN_ID): the shell tools and chat's local commands
+	// read it at every run, and chat hands it to the hook client.
+	sessionEnv   *sessionEnvProvider
 	modelOptions []ModelOption
 	modelSpecs   map[string]appconfig.ModelSpec
 	fallbacks    []appconfig.ModelSpec
@@ -478,6 +482,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		return nil, err
 	}
 	snapshotter := configuredSnapshotter()
+	// The variables every subprocess of the session gets (its session, short name
+	// and turn): filled at build time, bound to the runner below.
+	sessionEnv := newSessionEnvProvider()
 	var capabilities defaultCapabilities
 	if opts.CLIMode {
 		capabilities, err = buildPersonalCLICapabilitiesWithSnapshot(ctx, workspace, dirs, allowWrite, servers, snapshotter)
@@ -492,6 +499,14 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	if t, err := capabilities.Registry.Get("view_image"); err == nil {
 		if img, ok := t.(*native.ViewImageTool); ok {
 			img.SetVision(visionGate)
+		}
+	}
+	// Every command the session runs sees its session and turn in the environment
+	// (read at each call, so a sub-agent's session and an ACP session switch are
+	// followed).
+	if t, err := capabilities.Registry.Get("shell_exec"); err == nil {
+		if shell, ok := t.(*native.ShellExecTool); ok {
+			shell.SetExtraEnv(sessionEnv.Pairs)
 		}
 	}
 	preferredTools, err := ResolvePreferredTools(capabilities.Registry, servers)
@@ -726,6 +741,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	memSetup.Bind(repo)
 	memHost.bind(runner, repo)
+	sessionEnv.Bind(runner)
 	rt := &Runtime{Runner: runner, Registry: capabilities.Registry, PreferredTools: preferredTools,
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string) {
 			policyAction, hit := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
@@ -737,7 +753,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		},
 		repo: repo, capabilities: capabilities, ContextWindow: contextWindow, Budget: budget,
 		Thinking: settings.Main.ThinkingLevel(), tools: toolRegistry, approval: approval,
-		vision:  visionGate,
+		vision: visionGate, sessionEnv: sessionEnv,
 		AddDirs: dirs, modelOptions: modelOptions, modelSpecs: modelSpecs,
 		fallbacks:        append([]appconfig.ModelSpec(nil), settings.Fallbacks...),
 		thinkingOverride: opts.Thinking, maxOutputOverride: opts.MaxOutputTokens}
@@ -748,6 +764,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	rt.local = native.NewLocalCommand(native.LocalCommandOptions{
 		Workspace: workspace, Shell: env.Shell, Timeout: env.ShellTimeoutMax,
 		RawBytes: env.RawBytes, InlineBytes: env.InlineBytes, Minimize: minimizeOutput(workspace),
+		ExtraEnv: sessionEnv.Pairs,
 	})
 	// The added directories of the session being served (--add-dir): the front
 	// end fills the set once the session is open (ApplyAddDirs) through this

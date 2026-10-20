@@ -159,6 +159,7 @@ suga ps | suga inspect manifest                                # running chats /
 - `run --output-format stream-json` emits cumulative `usage` after each model call, `retry` on retries, and `wrap_up` on the `result` of a turn ended by a limit.
 - `trace --web` opens the session store read-only (a missing or uninitialized store is an error; nothing is created or migrated); its auto refresh switch is off by default, and once on pulls only new steps: every 5s while a turn runs, every 15s when idle (to notice the next turn).
 - Diagnostic logs go to `$SUGA_HOME/logs/suga-<YYYYMMDD>.log` (one file per day and machine, rotated by size); `log.level`, `log.file`, `log.stderr`, `log.max_size`, `log.keep`, `log.compress` configure them, and `SUGA_DEBUG=1` forces debug and also writes them to stderr. Records of a turn carry `session_id` and `turn_id`.
+- Subprocesses of a session (`shell_exec`, including its background and watch tasks, chat's `!cmd`/`!!cmd` and the hook command) get `SUGA_SESSION_ID`, `SUGA_SESSION_NAME` (only when the session has a short name) and `SUGA_TURN_ID` (only inside a turn) in their environment, so a nested agent or gofer can tell which conversation it runs for; `GOFER_SESSION_ID` is never set or changed. See [the config reference](skills/suga-guide/references/config.md#suga-导出给子进程的变量).
 
 ## Development
 

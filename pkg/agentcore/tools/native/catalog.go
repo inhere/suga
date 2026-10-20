@@ -1,6 +1,7 @@
 package native
 
 import (
+	"context"
 	"time"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
@@ -69,6 +70,10 @@ type Env struct {
 	// ImageMaxSide is the long side view_image scales a picture to when the call
 	// names none (images.max_side); 0 = DefaultImageMaxSide.
 	ImageMaxSide int
+	// ExtraEnv adds the variables suga exports to a subprocess (the session, its
+	// short name and the turn); the tools and chat's local commands call it at
+	// every run, so it may still be nil or return nothing when they are built.
+	ExtraEnv func(context.Context) []string
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -142,6 +147,7 @@ func Catalog() []Spec {
 				t.maxTimeout = env.ShellTimeoutMax
 				t.timeout = min(t.timeout, t.maxTimeout)
 			}
+			t.extraEnv = env.ExtraEnv
 			return t
 		}},
 		{Name: "web_search", New: func(env Env) api.Tool {

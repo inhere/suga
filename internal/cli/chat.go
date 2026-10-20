@@ -16,7 +16,9 @@ import (
 // The runtime's asker (chat approver questions) is bound by chat when stdin is a terminal.
 func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions, stdin io.Reader, stdout, stderr io.Writer,
 	taskManager *tasks.Manager, taskWake <-chan struct{}) error {
-	hooks, err := sugahooks.New()
+	// The hook command runs with the session's variables too (SUGA_SESSION_ID,
+	// SUGA_SESSION_NAME and, inside a turn, SUGA_TURN_ID).
+	hooks, err := sugahooks.New(sugahooks.WithExtraEnv(runtime.SessionEnv))
 	if err != nil {
 		return err
 	}

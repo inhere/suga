@@ -309,6 +309,20 @@ suga models --json
 
 密钥不要写进命令行参数（会被进程列表、job 请求记录持久化）；放进 `.env` 或进程环境。
 
+### suga 导出给子进程的变量
+
+会话跑的子进程（`shell_exec` 及其后台/ watch 任务、chat 的 `!cmd`/`!!cmd` 本地命令，以及 chat hooks 的 `hooks.command`）环境里带上当前会话信息；每次执行时取值，所以 `:model` 切换、子 agent 的会话、ACP 同进程多会话都拿当前那一个。
+
+| 变量 | 含义 |
+|---|---|
+| `SUGA_SESSION_ID` | 当前会话 id（与 `suga sessions`、`suga inspect trace` 用的相同；子 agent 内部是子 agent 自己的会话 id） |
+| `SUGA_SESSION_NAME` | 会话短名称（`$SUGA_HOME/run/` 里登记的名字，如 `suga-k7`）；会话没有短名称时不设置（run/ACP 的会话通常没有） |
+| `SUGA_TURN_ID` | 当前回合 id（工具调用所在回合）；回合外（如 `SessionStart` hook、chat 本地命令）不设置 |
+
+- 父进程里已有的同名变量会被覆盖；父进程里没有的（例如会话无短名称）不会被继承，避免嵌套 suga 时读到外层会话的值。
+- `GOFER_SESSION_ID` 不由 suga 设置或修改：它属于 gofer，原样透传。
+- chat hooks 另外在 stdin 的 JSON 里带 `session_id`（格式不变）。
+
 ## 目录布局（`$SUGA_HOME` 下）
 
 | 路径 | 内容 |

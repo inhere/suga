@@ -220,7 +220,7 @@ func (w *watcher) once(ctx context.Context, out io.Writer, n int, trigger string
 	defer cancel()
 	argv := w.tool.shell.argv(w.command)
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
-	cmd.Dir, cmd.Env = w.tool.workspace, shellEnv()
+	cmd.Dir, cmd.Env = w.tool.workspace, shellEnv(ctx, w.tool.extraEnv)
 	var buf bytes.Buffer
 	both := io.MultiWriter(out, &capWriter{buf: &buf, max: maxWatchCompareBytes})
 	cmd.Stdout, cmd.Stderr = both, both // one value: exec uses a single pipe
