@@ -96,6 +96,19 @@ type commandClient struct {
 	// stopTimeout bounds the local wait for a Stop call.
 	stopTimeout time.Duration
 	postTool    PostToolFilter
+	// extraEnv adds the variables suga exports to the hook command (the session
+	// and turn of the call); nil leaves the inherited environment alone.
+	extraEnv func(context.Context) []string
+}
+
+// Option configures the client New returns.
+type Option func(*commandClient)
+
+// WithExtraEnv adds the variables suga exports to the hook command (the
+// session, its short name and the turn, see wiring's sessionEnvProvider). They
+// are read at every call, so a session switch is followed.
+func WithExtraEnv(fn func(context.Context) []string) Option {
+	return func(c *commandClient) { c.extraEnv = fn }
 }
 
 // PostToolFilter selects the tools that send PostToolUse and the name they are sent as.
@@ -130,7 +143,10 @@ func (f PostToolFilter) Match(tool string) (string, bool) {
 //     (with stop_background: no limit of its own, tasks.max_duration applies)
 //   - hooks.stop_background: run Stop as a background task (see StopBackground)
 //   - hooks.post_tool_use.tools / .name: PostToolUse tool globs and the name sent
-func New() (Client, error) {
+//
+// opts add what the caller knows (WithExtraEnv: the session variables of the
+// command's environment).
+func New(opts ...Option) (Client, error) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("SUGA_HOOKS")), "off") {
 		return nil, nil
 	}
@@ -174,10 +190,14 @@ func New() (Client, error) {
 		// manager's tasks.max_duration instead.
 		stopTimeout = backgroundStopTimeout
 	}
-	return &commandClient{
+	client := &commandClient{
 		argv: argv, stopArgs: stopArgs, timeout: timeout, stopTimeout: stopTimeout,
 		postTool: PostToolFilter{Tools: tools, Name: strings.TrimSpace(gkconfig.String("hooks.post_tool_use.name"))},
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(client)
+	}
+	return client, nil
 }
 
 // stringList reads an optional list of strings from the config.
@@ -251,6 +271,7 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 	}
 	input = append(input, '\n')
 	cmd := exec.CommandContext(ctx, h.argv[0], args...)
+	cmd.Env = hookEnv(ctx, event.SessionID, h.extraEnv)
 	cmd.Stdin = bytes.NewReader(input)
 	var stderr limitedBuffer
 	cmd.Stderr = &stderr
@@ -297,6 +318,76 @@ func (w *stopWait) Interrupt(parent context.Context) string {
 		return result.Response.Reason
 	}
 	return ""
+}
+
+// hookEnv is the environment of the hook command: the inherited one with the
+// session variables of the call on top (sessionID fills in SUGA_SESSION_ID when
+// the ctx carries no session, e.g. chat's own SessionStart). The inherited entry
+// of a name being set is dropped, not shadowed: Unix getenv returns the first
+// match, so the parent's value would otherwise win.
+func hookEnv(ctx context.Context, sessionID string, extra func(context.Context) []string) []string {
+	var pairs []string
+	if extra != nil {
+		pairs = extra(ctx)
+	}
+	if sessionID != "" && !envHas(pairs, envSessionID) {
+		pairs = append(pairs, envSessionID+"="+sessionID)
+	}
+	if len(pairs) == 0 {
+		return dropEnv(os.Environ(), exportedEnv)
+	}
+	env := dropEnv(os.Environ(), exportedEnv)
+	out := make([]string, 0, len(env)+len(pairs))
+next:
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		for _, add := range pairs {
+			if addName, _, ok := strings.Cut(add, "="); ok && strings.EqualFold(name, addName) {
+				continue next
+			}
+		}
+		out = append(out, kv)
+	}
+	return append(out, pairs...)
+}
+
+// The session variables hookEnv adds; SUGA_SESSION_ID is also what the event's
+// session_id says. GOFER_SESSION_ID is not touched: it is gofer's own name.
+const (
+	envSessionID   = "SUGA_SESSION_ID"
+	envSessionName = "SUGA_SESSION_NAME"
+	envTurnID      = "SUGA_TURN_ID"
+)
+
+// exportedEnv are the names hookEnv sets: an inherited value is dropped before
+// them, so a session without a short name (or outside a turn) has no value, not
+// the one of a parent process.
+var exportedEnv = []string{envSessionID, envSessionName, envTurnID}
+
+// dropEnv returns env without the entries named in names (without case).
+func dropEnv(env []string, names []string) []string {
+	out := make([]string, 0, len(env))
+next:
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		for _, drop := range names {
+			if strings.EqualFold(name, drop) {
+				continue next
+			}
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// envHas reports whether pairs sets name (without case).
+func envHas(pairs []string, name string) bool {
+	for _, kv := range pairs {
+		if k, _, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // limitedBuffer keeps at most noticeLimit bytes of a hook's stderr.
