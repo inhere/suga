@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.37.1] - 2026-10-20
+
+补丁：Linux/macOS 剪贴板读取上限，恢复 main 的 CI。
+
 ### 修复
 
 - Linux/macOS 的 Alt+V 剪贴板读取也受 40MB 上限约束（之前只有 Windows 生效：Linux 下 `wl-paste`/`xclip` 的输出整段读入内存）；同时修复 CI 在 Linux 上的 staticcheck 告警（U1000）。
@@ -888,7 +892,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.37.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.37.1...HEAD
+[0.37.1]: https://github.com/inhere/suga/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/inhere/suga/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/inhere/suga/compare/v0.35.1...v0.36.0
 [0.35.1]: https://github.com/inhere/suga/compare/v0.35.0...v0.35.1
