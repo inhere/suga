@@ -197,7 +197,9 @@ def scenario(s, home, binary, env, ws, log):
     stored = files[0] if files else ""
     path = os.path.join(home, "sessions", sid, "images", stored) if stored else ""
     digest = hashlib.sha256(open(path, "rb").read()).hexdigest() if stored else ""
-    s.check("the file is named after its content", stored == digest + ".png")
+    # The sender may re-encode while scaling (PNG -> JPEG), so only the name
+    # before the extension is the content's sha256.
+    s.check("the file is named after its content", os.path.splitext(stored)[0] == digest and digest != "")
     return sid
 
 
