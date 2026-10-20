@@ -26,7 +26,10 @@ func echoVarsCommand(t *testing.T, tool *ShellExecTool, names ...string) string 
 	for _, name := range names {
 		quoted = append(quoted, "\"$"+name+"\"")
 	}
-	return "printf '%s|%s|%s|%s\\n' " + strings.Join(quoted, " ")
+	// One %s per name: a one-variable probe must not print empty fields of the
+	// variables it does not ask for.
+	format := strings.TrimSuffix(strings.Repeat("%s|", len(names)), "|")
+	return "printf '" + format + "\\n' " + strings.Join(quoted, " ")
 }
 
 // firstLine is the command output without the exit-code line the tool appends.
