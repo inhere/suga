@@ -42,6 +42,9 @@ type LocalCommand struct {
 	// text goes through: the same output rules a shell_exec result gets. nil
 	// keeps the raw text.
 	minimize func(api.ToolCall, string) (string, bool)
+	// extraEnv adds the variables suga exports to a command (its session and
+	// turn), read at every run like shell_exec's own (native.Env.ExtraEnv).
+	extraEnv func(context.Context) []string
 }
 
 // LocalCommandOptions configures a LocalCommand runner; every zero value falls
@@ -60,6 +63,8 @@ type LocalCommandOptions struct {
 	// Minimize is the tool result tidier (wiring's minimizeOutput); nil keeps
 	// the output as it is.
 	Minimize func(api.ToolCall, string) (string, bool)
+	// ExtraEnv adds the variables suga exports to a command (native.Env.ExtraEnv).
+	ExtraEnv func(context.Context) []string
 }
 
 // NewLocalCommand returns the runner of a front end's local commands.
@@ -75,6 +80,7 @@ func NewLocalCommand(opts LocalCommandOptions) *LocalCommand {
 		rawBytes:    opts.RawBytes,
 		inlineBytes: opts.InlineBytes,
 		minimize:    opts.Minimize,
+		extraEnv:    opts.ExtraEnv,
 	}
 }
 
@@ -115,7 +121,7 @@ func (c *LocalCommand) Run(ctx context.Context, command string, stream io.Writer
 	argv := c.shell.argv(command)
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
 	cmd.Dir = c.workspace
-	cmd.Env = shellEnv()
+	cmd.Env = shellEnv(ctx, c.extraEnv)
 	out := &commandOutput{stream: stream, budget: rawLimit(c.rawBytes)}
 	// One writer for both streams: exec then copies them with a single
 	// goroutine, so a write never lands inside another one.

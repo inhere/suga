@@ -131,10 +131,18 @@ type ShellExecTool struct {
 	interpreters []Interpreter
 	// tasks runs commands with background: true; nil hides the option.
 	tasks *tasks.Manager
+	// extraEnv adds the variables suga exports to a command (its session and
+	// turn). It is read at every run, so a session switch, a sub-agent's own
+	// session and another ACP session of the same process are all seen.
+	extraEnv func(context.Context) []string
 }
 
 // SetTasks enables background: true (the host owns m and its lifetime).
 func (t *ShellExecTool) SetTasks(m *tasks.Manager) { t.tasks = m }
+
+// SetExtraEnv adds the environment entries extra returns for a call
+// (native.Env.ExtraEnv): the session and turn a command runs for.
+func (t *ShellExecTool) SetExtraEnv(extra func(context.Context) []string) { t.extraEnv = extra }
 
 // NewShellExecTool returns a ShellExecTool scoped to workspace using the OS
 // default shell. timeout is the default per call (0 = DefaultShellTimeout).
@@ -263,7 +271,7 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	argv := t.shell.argv(command)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = t.workspace
-	cmd.Env = shellEnv()
+	cmd.Env = shellEnv(ctx, t.extraEnv)
 	output := newHandoffOutput()
 	cmd.Stdout, cmd.Stderr = output.stdout, output.stderr // stdin stays nil: the null device
 	// The tree is created before Start so Unix gets a process group and Windows
@@ -437,17 +445,22 @@ func foregroundOutput(o *handoffOutput, max int) string {
 	return TruncateHeadTail(strings.TrimLeft(sb.String(), "\n"), rawLimit(max))
 }
 
-// shellEnv is the environment of a command: suga's own settings removed,
+// shellEnv is the environment of a command: suga's own settings removed, the
+// variables suga exports to the command on top (extra, read at every call),
 // git and pagers kept from waiting for input.
-func shellEnv() []string {
-	return append(commandEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "PAGER=cat")
+func shellEnv(ctx context.Context, extra func(context.Context) []string) []string {
+	env := dropEnv(commandEnv(os.Environ()), exportedEnv)
+	if extra != nil {
+		env = overrideEnv(env, extra(ctx))
+	}
+	return append(env, "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "PAGER=cat")
 }
 
 // startBackground starts command as a background task of the session.
 func (t *ShellExecTool) startBackground(ctx context.Context, call api.ToolCall, command string) (*api.ToolResult, error) {
 	argv := t.shell.argv(command)
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir, cmd.Env = t.workspace, shellEnv()
+	cmd.Dir, cmd.Env = t.workspace, shellEnv(ctx, t.extraEnv)
 	info, err := t.tasks.Start(ctx, tasks.Spec{Kind: "shell", Summary: taskSummary(command), Cmd: cmd, Clean: cleanTaskLine})
 	if err != nil {
 		return nil, fmt.Errorf("shell_exec: background: %w", err)
@@ -511,6 +524,50 @@ func numberArg(v any) (float64, bool) {
 // not inherit them: a project's code or tests that read SUGA_HOME (suga's
 // own tests, for one) would otherwise act on the agent's configuration.
 var privateEnv = []string{"SUGA_HOME", "SUGA_CONFIG", "SUGA_MODEL"}
+
+// exportedEnv are the session variables suga sets per command. An inherited
+// value (from a nested suga, or from the shell suga was started in) is dropped
+// before the session's own entries go in: a session without a short name, or a
+// command outside a turn, then has no value rather than a foreign one.
+var exportedEnv = []string{"SUGA_SESSION_ID", "SUGA_SESSION_NAME", "SUGA_TURN_ID"}
+
+// dropEnv returns env without the entries named in names (without case).
+func dropEnv(env []string, names []string) []string {
+	out := make([]string, 0, len(env))
+next:
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		for _, drop := range names {
+			if strings.EqualFold(name, drop) {
+				continue next
+			}
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// overrideEnv returns env with every name extra sets replaced by extra's value
+// (names compared without case). The inherited entry is dropped rather than
+// shadowed: Unix getenv returns the first match, so a parent's SUGA_SESSION_ID
+// would otherwise win over the session's own one.
+func overrideEnv(env, extra []string) []string {
+	if len(extra) == 0 {
+		return env
+	}
+	out := make([]string, 0, len(env)+len(extra))
+next:
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		for _, add := range extra {
+			if addName, _, ok := strings.Cut(add, "="); ok && strings.EqualFold(name, addName) {
+				continue next
+			}
+		}
+		out = append(out, kv)
+	}
+	return append(out, extra...)
+}
 
 // commandEnv returns env without privateEnv (names compared without case:
 // Windows environment names are case-insensitive).
