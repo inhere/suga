@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+### 新增
+
+- ACP 图片输入第二期：配置里有任一支持看图的模型时，`initialize` 声明 `promptCapabilities.image`；`session/prompt` 的 image 内容块（base64 或本地文件 URI）走与 view_image 相同的校验与缩放，按顺序附到用户消息（文本里留“[图片 N]”占位，坏图写明原因，仅无文本且无可用图片时才拒绝整条 prompt）。
+- 看图名单：用户 2026-10-20 确认 `deepseek-v4.1-flash` 与 `glm-5.3-flash` 支持看图，两个网关（command-code、opencode-go）下的该模型推断为 vision，deepseek/glm 家族其余模型仍为文本模型；`suga models` 显示新结论。acpprobe 的 `--prompt-with-image` 可对真实模型发图片块，开始时打印 initialize 声明。
+
 ### 修复
 
 - 测试：大库索引迁移的耗时检查在 `-race` 下放宽到 20 秒（CI 带覆盖率与 race 时跑出 6.2 秒误报失败）。

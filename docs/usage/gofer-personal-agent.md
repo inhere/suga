@@ -317,6 +317,15 @@ gofer job resume <job-id> --prompt "从上次会话继续"
 
 2026-10-07 的 Gofer 实际作业已验证 CLI/ACP 续聊、ACP `job say/end/resume`、只读无写入及审批允许/拒绝；0.118.0 另以当前 `suga` agent 验证了 CLI 续接的环境继承与输出投影。模型响应由本机回环模拟服务提供；最终配置不含测试模型地址或测试 HOME，真实模型凭据路径须在运行环境中单独准备和验证。
 
+### ACP 图片输入
+
+Suga 的 ACP 服务端支持图片内容块（第二期）：
+
+- `initialize`：配置里有任一支持看图的模型（`suga models` 显示 vision 的模型，含主模型、compact、fallback 与网关下其它模型）时声明 `promptCapabilities.image = true`；没有则不声明，客户端（gofer）继续走“附图路径 + 让模型 `view_image`”的方案。
+- `session/prompt`：image 内容块（`data` 为 base64，或 `uri` 指向 `data:` URI 或本地文件路径）按顺序与文本块一起处理：图片走与 `view_image` 相同的校验与缩放（PNG/JPEG/GIF/WebP、20MB/40MP 上限、长边 1568），落盘到 `sessions/<id>/images/`，消息文本里留 “[图片 N]” 占位；远程 `http(s)://` URI 拒绝，坏 base64、不支持的格式、超限的图片写原因进文本（“[图片 N 不可用：<原因>]”），不让整轮失败——只有没有任何文本块且没有可用图片时才拒绝这条 prompt（invalid params）。
+- 当前模型不支持看图时：图片仍照常落盘，请求里换成文字说明，并在回复前以一次 agent 思考通知告知客户端（“附带的 N 张图片已转为文字说明”）。会话中途 `:model` 类切换由下一次 prompt 重新判断。
+- acpprobe（`scripts/acpprobe/acp_probe.py`）可用 `--prompt-with-image "<文本>|<PNG 路径>"` 发一个带图片块的 prompt，开始时打印 initialize 的实际声明。
+
 ### ACP 用量上报
 
 每次模型调用结束后以及每轮结束（含被取消的回合）都发送 `usage_update`：`_meta` 顶层的扁平键 `input_tokens`/`output_tokens`/`cache_read_tokens`/`cache_write_tokens`/`total_tokens`/`cost_usd`/`tool_calls` 为**本次 run 的累计值**（run 口径，Gofer 只读这些扁平键，所以预算按 run 计）；另附嵌套对象 `_meta.run`（同一 run 值）和 `_meta.session`（会话累计，含本次 run；无 `tool_calls`）；顶层 `cost.amount` 仍为**会话累计值**；顶层 `used` 是最近一次模型请求的上下文 token 数，`size` 是模型上下文窗口。窗口取 `providers.<id>.models.<model>.context_window`（可选配置），否则按实际生效的模型（`--model`/`SUGA_MODEL` 覆盖后的值）名取保守默认（claude 200k、gpt-4.1 1M、gpt-5 400k、gpt-4o/deepseek 128k），未知模型为 128k。会话累计（`_meta.session`）保存在会话 metadata（`sessions.metadata_json`），`session/load` 或重启后从已保存值继续累计。`input_tokens` 不含缓存，缓存另报 `cache_read_tokens`/`cache_write_tokens`，`total_tokens` = input + output + cache_read + cache_write（与 Gofer 口径一致）。

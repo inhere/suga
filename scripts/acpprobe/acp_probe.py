@@ -19,6 +19,7 @@ Prints a line per prompt (stop reason, answer text, tool calls) and exits 0
 when every prompt ended with end_turn.
 """
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -137,6 +138,8 @@ def main():
     p.add_argument("--home", default="tmp/acp/home", help="isolated SUGA_HOME (reset at start)")
     p.add_argument("--config-from", required=True, help="dir with the real config.yaml and .env")
     p.add_argument("--prompt", action="append", default=[], help="a prompt (repeatable, sent in order)")
+    p.add_argument("--prompt-with-image", action="append", default=[], metavar="TEXT|FILE",
+                   help="a prompt carrying one image block: TEXT|(FILE) — a text part and a base64 image part")
     p.add_argument("--permission", choices=("allow_once", "allow_always", "reject", "reject_always"),
                    default="allow_once", help="permission option to select for each request")
     p.add_argument("--wait", action="append", type=float, default=[],
@@ -161,7 +164,9 @@ def main():
     client = Client(proc, args.permission)
     ok = True
     try:
-        client.call("initialize", {"protocolVersion": 1, "clientCapabilities": {}}, timeout=60)
+        resp = client.call("initialize", {"protocolVersion": 1, "clientCapabilities": {}}, timeout=60)
+        caps = (resp.get("agentCapabilities") or {}).get("promptCapabilities") or {}
+        print(f"initialize promptCapabilities: {caps}", flush=True)
         sid = client.call("session/new", {"cwd": cwd, "mcpServers": []}, timeout=60)["sessionId"]
         print(f"session {sid}", flush=True)
         for i, text in enumerate(args.prompt):
@@ -174,6 +179,19 @@ def main():
                   f"permission_requests={client.permission_requests}\n  answer: {answer[:600]}", flush=True)
             if i < len(args.wait) and args.wait[i] > 0:
                 time.sleep(args.wait[i])
+        for i, spec in enumerate(args.prompt_with_image):
+            text, _, file = spec.partition("|")
+            with open(file, "rb") as f:
+                data = base64.b64encode(f.read()).decode("ascii")
+            blocks = [{"type": "text", "text": text},
+                      {"type": "image", "data": data, "mimeType": "image/png"}]
+            start, mark = time.time(), len(client.updates)
+            res = client.call("session/prompt", {"sessionId": sid, "prompt": blocks}, timeout=900)
+            answer, tools = summarize(client.updates[mark:])
+            stop = res.get("stopReason")
+            ok = ok and stop == "end_turn"
+            print(f"image prompt {i + 1} ({time.time() - start:.1f}s) stop={stop} tools={tools} "
+                  f"permission_requests={client.permission_requests}\n  answer: {answer[:900]}", flush=True)
     finally:
         proc.stdin.close()  # the connection closes: running tasks are killed
         try:
