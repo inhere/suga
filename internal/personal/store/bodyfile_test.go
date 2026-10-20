@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -123,6 +124,21 @@ func TestBodyFilesCoexist(t *testing.T) {
 	assert.Eq(t, int64(2), report.Checked)
 	assert.Eq(t, int64(0), report.Missing)
 	assert.Eq(t, int64(0), report.OrphanRecords, "a record of either file counts as used: %v", report.Problems)
+
+	t.Run("a different record at the same offset is an orphan", func(t *testing.T) {
+		// Same span, other bytes: the digest decides, so the stale copy no longer
+		// covers the stub and the reader keeps using the file that matches.
+		patched := bytes.Replace(data, []byte("新文件"), []byte("新文档"), 1)
+		assert.True(t, len(patched) == len(data), "the patch keeps every offset")
+		assert.Require(t, assert.NoErr(t, os.WriteFile(current, patched, 0o600)))
+		report, err := s.ToolBodyCheck(ctx)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int64(0), report.Missing)
+		assert.Eq(t, int64(1), report.OrphanRecords, "the patched copy holds no referenced record")
+		entries, err := s.ListEntries(ctx, "s1", EntryFilter{})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, string(first), string(entries[0].JSON), "the digest sends the read to the matching file")
+	})
 }
 
 // TestRenameBodyFilesResumesAfterInterruption: a cancelled run renames nothing it
