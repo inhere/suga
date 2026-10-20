@@ -4,6 +4,18 @@
 
 ## [未发布]
 
+### 新增
+
+- `suga inspect manifest` 新增“常驻上下文”一节（`--json` 为 `context`）：逐个报告系统提示词、环境段、项目规则（含每个来源文件）、记忆索引、skills 列表、附加提示与延迟工具列表的字节数与估算 token，并给出合计；超过软阈值（规则 32KB、记忆索引 8KB、skills 列表 8KB、合计 64KB）的部分标 `OVER` 并给出处理建议（如精简规则、`suga memory summaries`）。
+- 规则被 64KB/128KB 上限截断时，manifest 写明“已截断（原 X 字节，保留 Y）”；chat 开会话时在 stderr 提示一次，`run` 与 ACP 只写日志，不改 stdout 与 ACP 输出。
+- manifest 列出被跳过的 `SKILL.md`（解析或字段错误及原因）和被同名遮蔽的 skill（哪个来源覆盖了哪个，`skills.skipped` / `skills.shadowed`）；chat 开会话时有跳过或遮蔽则提示一次条数并指向 manifest。
+- `suga memory summaries` 的处理建议与“常驻规则只写普遍适用短条目、有触发场景的写成 skill”的指南写入 README 的“Resident context”一节。
+
+### 变更
+
+- 规则加载新增诊断信息（每个来源文件的原始/保留字节与截断标记），但注入给模型的规则文本与哈希不变（段上下文渲染逐字节相同，前缀缓存不受影响）。
+- skills 注册表记录加载诊断（跳过与遮蔽），加载失败仍只写日志、不阻断会话启动。
+
 ## [0.40.0] - 2026-10-20
 
 chat 渲染、记忆与投递：代码块轻量高亮（自写 16 色，不引入 chroma）、GFM 表格按显示宽度对齐、长代码块折叠与 `:code`；记忆索引每行带一句话摘要与 `suga memory summaries`；`suga send --image` 向运行中的会话投递图片（进程记录声明能力，旧版本会话报错而不丢图）；`:image`/`run --image`/`send --image` 的路径不再限制在工作区内；新会话与回合 ID 改为 `s_`/`t_` + 12 位随机（旧 ID 继续有效）。
