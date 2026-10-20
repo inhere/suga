@@ -36,6 +36,8 @@ github.com/gookit/rotatefile v0.3.1 h1:gW9WkDT0+T8sZS8fenlwJhAVteGRyusMDBN1BoBgK
 github.com/gookit/rotatefile v0.3.1/go.mod h1:oeq7Jqyd4FIh4DYs5QRq2TVB0M6QzXYli5lZSglzC08=
 github.com/gookit/rotatefile v0.3.2 h1:krQnza4edwvqPTl6tk4lJIyqtYOThu52QK6eM8TKL9I=
 github.com/gookit/rotatefile v0.3.2/go.mod h1:oeq7Jqyd4FIh4DYs5QRq2TVB0M6QzXYli5lZSglzC08=
+github.com/gookit/rotatefile v0.3.3 h1:abxfyi6b4qXvZRzmjytWAc+EGZslJX/I6uJOsNghHzI=
+github.com/gookit/rotatefile v0.3.3/go.mod h1:oeq7Jqyd4FIh4DYs5QRq2TVB0M6QzXYli5lZSglzC08=
 github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
 github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
