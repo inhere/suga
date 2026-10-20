@@ -256,6 +256,57 @@ func TestMemoryToolFilesRoundTrip(t *testing.T) {
 	assert.True(t, strings.HasSuffix(res.Content, "Fridays only"))
 }
 
+func TestMemoryToolSummary(t *testing.T) {
+	t.Run("schema declares summary", func(t *testing.T) {
+		tool := NewMemoryTool(&fakeMemoryStore{}, MemoryToolOptions{ProjectKey: "p"})
+		props := tool.Schema().InputSchema["properties"].(map[string]any)
+		assert.Eq(t, "string", props["summary"].(map[string]any)["type"])
+		assert.StrContains(t, tool.Description(), "It is required for add")
+	})
+	t.Run("add keeps the given summary", func(t *testing.T) {
+		store := &fakeMemoryStore{}
+		tool := NewMemoryTool(store, MemoryToolOptions{Writable: true, ProjectKey: "p"})
+		res, err := runMemory(t, tool, map[string]any{"action": "add", "kind": "feedback", "title": "Use tabs",
+			"body": "Always tabs.", "summary": "项目缩进约定"})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "项目缩进约定", store.writes[0].Summary)
+		assert.False(t, strings.Contains(res.Content, "正文首句"))
+	})
+	t.Run("add without a summary derives it from the body and says so", func(t *testing.T) {
+		store := &fakeMemoryStore{}
+		tool := NewMemoryTool(store, MemoryToolOptions{Writable: true, ProjectKey: "p"})
+		res, err := runMemory(t, tool, map[string]any{"action": "add", "kind": "project", "title": "Release day",
+			"body": "Fridays only. No exceptions."})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "Fridays only.", store.writes[0].Summary)
+		assert.StrContains(t, res.Content, "已用正文首句作摘要：Fridays only.")
+		change, ok := ParseMemoryResult(res.Content)
+		assert.True(t, ok)
+		assert.Eq(t, "Release day", change.Title)
+	})
+	t.Run("files backend stores and replays the summary", func(t *testing.T) {
+		scope := memory.ProjectScope("p")
+		backend, err := files.New(map[memory.Scope]files.Layout{scope: files.DirLayout{Dir: t.TempDir()}})
+		assert.Require(t, assert.NoErr(t, err))
+		tool := NewMemoryTool(memory.NewGoverned(backend, memory.Policy{}), MemoryToolOptions{Writable: true, ProjectKey: "p"})
+		res, err := runMemory(t, tool, map[string]any{"action": "add", "kind": "project", "title": "Release day",
+			"body": "Fridays only", "summary": "发布窗口是周五"})
+		assert.Require(t, assert.NoErr(t, err))
+		change, _ := ParseMemoryResult(res.Content)
+		ix, err := backend.Index(context.Background(), scope)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.Len(t, ix.Lines, 1))
+		assert.Eq(t, "发布窗口是周五", ix.Lines[0].Summary)
+		// replace without a summary keeps the stored one.
+		_, err = runMemory(t, tool, map[string]any{"action": "replace", "id": change.ID, "title": "Release day", "body": "Thursdays now."})
+		assert.Require(t, assert.NoErr(t, err))
+		e, err := backend.Get(context.Background(), scope, change.ID)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "发布窗口是周五", e.Summary)
+		assert.Eq(t, "Thursdays now.", e.Body)
+	})
+}
+
 func TestMemoryToolAppliesWhen(t *testing.T) {
 	t.Run("schema and get rendering", func(t *testing.T) {
 		store := &fakeMemoryStore{entry: memory.Entry{Title: "T", Body: "body", Kind: memory.KindProject,
