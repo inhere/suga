@@ -35,6 +35,7 @@
 | `chat_images.py` | 附图：假剪贴板（`SUGA_FAKE_CLIPBOARD_IMAGE`）测 Alt+V 与 `:image`；不支持看图的模型拒绝且不落盘；支持看图时两张图都写进 `sessions/<sid>/images/`。反向验证：去掉 Alt+V 解析 7 项失败，去掉图片落盘 1 项失败 |
 | `chat_sanitize.py` | 终端输出清洗：假模型回答与工具结果带 OSC 52、CSI 2J 等序列，检查 PTY 原始字节没有危险序列且正常文本仍显示；反向验证见脚本 docstring
 | `chat_empty_final.py` | 工具成功后模型连续空回复：检查 chat 正常结束且不打印空的 `▣` 前缀，`suga inspect trace --json` 的回合/模型事件带 `empty_final`；反向验证见脚本 docstring
+| `chat_render.py` | 渲染增强：回答带中文表格与 47 行 go 代码块，检查高亮 ANSI 序列、表格按显示宽度对齐、折叠提示与 `:code`/`:code N`；反向验证：去掉表格缓存对齐用例失败，去掉折叠则折叠用例失败 |
 | `chat_refs.py` | 引用检索 `file_refs`（suga-gxkw 批）：假模型（`refs` 模式）一轮里先按名字查一个 Go 文件、再查整个工作区；检查终端上的两次调用与参数、各自结果的首行，`suga inspect trace --json` 两条 `file_refs` 工具事件（target 与参数摘要），以及 `suga inspect export` 里存下的调用参数与结果正文：Go 结果带 `def/call/sel/ref` 四类与 `call(pkg:db)` 包限定符与固定“不做类型解析”提示，工作区结果带 TS 文件与 `approx` 标记，两个夹具文件里的注释与字符串（`SMOKE_*_CANARY`）都不在结果里；反向验证见脚本 docstring |
 | `preferred_tools.py` | 配置优先 command/MCP，检查 manifest 的 found/missing/configured reason、chat 环境过滤、`tools.deferred: always` 下 preferred MCP 直显且仍需审批，以及 trace 只记录名字；反向验证见脚本 docstring |
 
