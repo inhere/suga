@@ -306,7 +306,13 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	var encoder *json.Encoder
 	if opts.OutputFormat == "stream-json" {
 		encoder = json.NewEncoder(stdout)
-		if err := encoder.Encode(output.WithModel(output.SessionLine(sessionID), runModelRef(runner))); err != nil {
+		// The first line records how many pictures this prompt carries; a run
+		// without --image keeps the line byte-for-byte as it was.
+		session := output.SessionLine(sessionID)
+		if len(opts.Images) > 0 {
+			session["images"] = len(opts.Images)
+		}
+		if err := encoder.Encode(output.WithModel(session, runModelRef(runner))); err != nil {
 			return err
 		}
 	} else {
