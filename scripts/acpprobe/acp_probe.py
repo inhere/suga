@@ -131,6 +131,109 @@ def summarize(updates):
     return "".join(text).strip(), tools
 
 
+def update_kinds(updates):
+    """The kinds (and tool titles) of a run's session/update notifications."""
+    kinds = []
+    for p in updates:
+        u = p.get("update", {})
+        kind = u.get("sessionUpdate")
+        if kind == "tool_call":
+            kinds.append("tool_call:" + str(u.get("title") or u.get("toolCallId", ""))[:60])
+        elif kind:
+            kinds.append(kind)
+    return kinds
+
+
+def current_model_of(options):
+    """The currentValue of the model select in a configOptions list ("" absent)."""
+    for o in options or []:
+        if o.get("id") == "model":
+            # The select variant serializes flat (currentValue at top level),
+            # older shapes nest it under 'select' — accept both.
+            return o.get("currentValue", "") or (o.get("select") or {}).get("currentValue", "")
+    return ""
+
+
+def lifecycle(client, binary, cwd, env, args):
+    """Prove list/load/resume/close/set_config_option against a real model."""
+    ok = True
+    mark = len(client.updates)
+    created = client.call("session/new", {"cwd": cwd, "mcpServers": []}, timeout=60)
+    sid = created["sessionId"]
+    opts = created.get("configOptions") or []
+    print(f"session {sid} configOptions: {[o.get('id') for o in opts]} "
+          f"model={current_model_of(opts)}", flush=True)
+    ok = ok and "model" in [o.get("id") for o in opts] and "mode" in [o.get("id") for o in opts]
+    ok = ok and current_model_of(opts)
+
+    start, mark = time.time(), len(client.updates)
+    res = client.call("session/prompt", {"sessionId": sid, "prompt": [
+        {"type": "text", "text": "请用 shell_exec 工具运行 echo hello-lifecycle，然后简短回答。"}]}, timeout=300)
+    answer, tools = summarize(client.updates[mark:])
+    stop = res.get("stopReason")
+    ok = ok and stop == "end_turn" and bool(tools)
+    print(f"prompt 1 ({time.time() - start:.1f}s) stop={stop} tools={tools} kinds={update_kinds(client.updates[mark:])}", flush=True)
+
+    close_mark = len(client.updates)
+    client.call("session/close", {"sessionId": sid}, timeout=60)
+    print("session/close ok", flush=True)
+    refused = False
+    try:
+        client.call("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": "还在吗？"}]}, timeout=60)
+    except RuntimeError as exc:
+        refused = "-32602" in str(exc)
+    ok = ok and refused
+    print(f"prompt after close refused: {refused}", flush=True)
+
+    listed = client.call("session/list", {"cwd": cwd}, timeout=60)
+    ids = [s.get("sessionId") for s in listed.get("sessions", [])]
+    meta = {str(k): v for k, v in (listed.get("_meta") or {}).items() if str(k).startswith("suga/")}
+    print(f"session/list cwd={cwd}: {[(s.get('sessionId'), s.get('title')) for s in listed.get('sessions', [])]} "
+          f"meta={meta}", flush=True)
+    ok = ok and sid in ids
+
+    resume_mark = len(client.updates)
+    resumed = client.call("session/resume", {"sessionId": sid, "cwd": cwd, "mcpServers": []}, timeout=60)
+    replayed_between = update_kinds(client.updates[resume_mark:])
+    ok = ok and replayed_between == [] and bool(resumed.get("modes"))
+    print(f"session/resume modes={bool(resumed.get('modes'))} configOptions={[o.get('id') for o in resumed.get('configOptions') or []]} "
+          f"replayed={replayed_between}", flush=True)
+
+    load_mark = len(client.updates)
+    client.call("session/load", {"sessionId": sid, "cwd": cwd, "mcpServers": []}, timeout=60)
+    replay = update_kinds(client.updates[load_mark:])
+    print(f"session/load replay ({len(replay)} notifications):", flush=True)
+    for k in replay[:12]:
+        print(f"  {k}", flush=True)
+    ok = ok and replay and "user_message_chunk" in replay and "agent_message_chunk" in replay
+    ok = ok and any(k.startswith("tool_call:") for k in replay)
+
+    target = args.switch_to
+    switched = client.call("session/set_config_option", {"sessionId": sid, "configId": "model", "value": target}, timeout=60)
+    now_model = current_model_of(switched.get("configOptions") or [])
+    ok = ok and now_model == target
+    print(f"set_config_option model -> {target}: currentValue={now_model}", flush=True)
+
+    start, mark = time.time(), len(client.updates)
+    res = client.call("session/prompt", {"sessionId": sid, "prompt": [
+        {"type": "text", "text": "用一句话回答：1+1 等于几？"}]}, timeout=300)
+    answer, _ = summarize(client.updates[mark:])
+    ok = ok and res.get("stopReason") == "end_turn"
+    print(f"prompt 2 on {target} ({time.time() - start:.1f}s) stop={res.get('stopReason')} answer: {answer[:300]}", flush=True)
+
+    trace = subprocess.run([binary, "trace", sid, "--json"], capture_output=True, text=True, env=env, timeout=60)
+    for line in trace.stdout.splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("kind") == "session" and e.get("name") == "model_switch":
+            a = e.get("attrs") or {}
+            print(f"trace model_switch {a.get('from')} -> {a.get('to')}", flush=True)
+            ok = ok and a.get("to") == target
+    return ok
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", required=True, help="suga binary")
@@ -140,8 +243,13 @@ def main():
     p.add_argument("--prompt", action="append", default=[], help="a prompt (repeatable, sent in order)")
     p.add_argument("--prompt-with-image", action="append", default=[], metavar="TEXT|FILE",
                    help="a prompt carrying one image block: TEXT|(FILE) — a text part and a base64 image part")
+    p.add_argument("--model", help="the main model of the session (SUGA_MODEL=<provider>/<model>; default keeps the config)")
     p.add_argument("--permission", choices=("allow_once", "allow_always", "reject", "reject_always"),
                    default="allow_once", help="permission option to select for each request")
+    p.add_argument("--scenario", choices=("prompts", "lifecycle"), default="prompts",
+                   help="lifecycle: new -> chat with a tool call -> close -> list -> resume -> load (replay) -> "
+                        "set_config_option model switch -> one more prompt (design 2026-10-20, ACP coverage)")
+    p.add_argument("--switch-to", help="lifecycle: the provider/model ref set_config_option switches to")
     p.add_argument("--wait", action="append", type=float, default=[],
                    help="seconds to sleep after the prompt of the same position (repeatable)")
     args = p.parse_args()
@@ -156,6 +264,8 @@ def main():
     env = dict(os.environ)
     for key in ("SUGA_MODEL", "SUGA_CONFIG", "SUGA_HOME"):
         env.pop(key, None)
+    if args.model:
+        env["SUGA_MODEL"] = args.model
     env.update(read_dotenv(os.path.join(src, ".env")))
     env.update(SUGA_HOME=home, SUGA_CONFIG=os.path.join(src, "config.yaml"), SUGA_HOOKS="off")
 
@@ -166,7 +276,11 @@ def main():
     try:
         resp = client.call("initialize", {"protocolVersion": 1, "clientCapabilities": {}}, timeout=60)
         caps = (resp.get("agentCapabilities") or {}).get("promptCapabilities") or {}
-        print(f"initialize promptCapabilities: {caps}", flush=True)
+        sess_caps = resp.get("agentCapabilities", {}).get("sessionCapabilities") or {}
+        print(f"initialize promptCapabilities: {caps} sessionCapabilities: {sorted(sess_caps)}", flush=True)
+        if args.scenario == "lifecycle":
+            ok = lifecycle(client, binary, cwd, env, args)
+            sys.exit(0 if ok else 1)
         sid = client.call("session/new", {"cwd": cwd, "mcpServers": []}, timeout=60)["sessionId"]
         print(f"session {sid}", flush=True)
         for i, text in enumerate(args.prompt):

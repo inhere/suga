@@ -317,6 +317,17 @@ gofer job resume <job-id> --prompt "从上次会话继续"
 
 2026-10-07 的 Gofer 实际作业已验证 CLI/ACP 续聊、ACP `job say/end/resume`、只读无写入及审批允许/拒绝；0.118.0 另以当前 `suga` agent 验证了 CLI 续接的环境继承与输出投影。模型响应由本机回环模拟服务提供；最终配置不含测试模型地址或测试 HOME，真实模型凭据路径须在运行环境中单独准备和验证。
 
+### ACP 会话覆盖（list / resume / close / set_config_option / load 回放）
+
+`initialize` 声明 `sessionCapabilities.list/resume/close`（`load_session` 仍由顶层 loadSession 能力声明）：
+
+- `session/list`：按 `updated_at` 倒序，每页 50 条，`nextCursor` 为上一页最后一条的 `(updated_at, id)` 编码；只列普通会话，排除 archived 与子 agent。目录规则与 CLI `suga sessions` 一致（设计 2026-10-20「会话列表默认当前目录」）：请求带 `cwd` 按它过滤（同目录，Windows 不区分大小写），不带时用 suga 进程的工作目录；没有记录目录的旧会话只在 `_meta` 带 `suga/all: true` 的请求里出现。响应 `_meta` 始终带 `suga/otherDirs`（其它目录的会话数）；默认视图结果为空且 N>0 时另带 `suga/hint`，文本与 CLI 的 stderr 提示相同（“当前目录 <dir> 没有会话…或用 suga sessions --all 列出全部”）。列表只含标题与目录，不含会话内容。
+- `session/load`：按协议把当前分段以 `session/update` 通知回放给客户端——压缩摘要一条 agent 思考（“之前的对话已压缩：…”）、用户消息 `user_message_chunk`、助手正文 `agent_message_chunk`、工具调用与结果 `tool_call`/`tool_call_update`（completed/failed，结果只带前 2KB 文本）；回放总量上限 2MB，超过时只回放最近部分并在开头一条思考说明。回放的边界与采用规则复用上下文组装的 `loadHistory`（`personal.SegmentHistory`），客户端看到的内容与下一回合模型的一致。
+- `session/resume`：与 load 相同的检查（目录一致、没有进行中的回合），不回放任何通知；响应带 `modes` 与 `configOptions`。`chat --resume` 的目录询问与 chdir 逻辑不受影响（v0.25.0）。
+- `session/close`：有进行中的回合先取消并等待结束（同 `session/cancel`），之后释放该会话的进程内状态（always 规则不持久化）；关闭后的 prompt 返回 invalid params。会话本身不删除（数据治理走 `suga data gc`）。
+- `session/set_config_option`：new/load/resume 的响应都带两个 select——`model`（category model，选项为配置里全部模型，当前值为会话模型）与 `mode`（category mode，default/read_only，与 `session/set_mode` 同源）。设置 model 走与 chat `:model` 相同的 `SwitchModel`（下一回合生效；回合进行中返回 invalid params），设置 mode 即 `session/set_mode` 语义；两种都返回最新的全部选项。
+- acpprobe 覆盖：`--scenario lifecycle --model <provider/model> --switch-to <provider/model>`（真实模型验证 new → 带工具调用的对话 → close → close 后拒绝 → list → resume → load 回放 → 切换模型 → 再对话，并从 trace 核对 `model_switch`）。
+
 ### ACP 图片输入
 
 Suga 的 ACP 服务端支持图片内容块（第二期）：
