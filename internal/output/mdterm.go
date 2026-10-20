@@ -52,9 +52,8 @@ type MDTerm struct {
 	pending string // text after the last newline, not rendered yet
 	block   bool   // inside a fenced code block; spans the lines of one message
 	// Code highlighting of a fenced block (chat.code_highlight): the language
-	// of its fence picks the lexer and the theme its style (mdcode.go).
+	// of its fence picks the rules that color it (mdcode.go).
 	highlight bool
-	theme     string
 	// maxCode folds a code block after this many lines (chat.code_max_lines, 0:
 	// no fold); the hidden lines are only counted and reported when it ends.
 	maxCode    int
@@ -83,18 +82,14 @@ type MDTerm struct {
 
 // NewMDTerm returns an MDTerm writing rendered lines to w; color styles them.
 func NewMDTerm(w io.Writer, color bool) *MDTerm {
-	return &MDTerm{w: w, color: color, theme: MDDefaultCodeTheme}
+	return &MDTerm{w: w, color: color}
 }
 
 // SetCode configures fenced code blocks: highlight colors them by their
-// language (chat.code_highlight; it needs color), theme names the chroma style
-// (chat.code_theme) and maxLines folds a block after that many lines
-// (chat.code_max_lines, 0: no fold).
-func (t *MDTerm) SetCode(highlight bool, theme string, maxLines int) {
+// language (chat.code_highlight; it needs color) and maxLines folds a block
+// after that many lines (chat.code_max_lines, 0: no fold).
+func (t *MDTerm) SetCode(highlight bool, maxLines int) {
 	t.highlight, t.maxCode = highlight, maxLines
-	if theme != "" {
-		t.theme = theme
-	}
 }
 
 // SetWidth sets the terminal width used to leave a too wide table as it came
@@ -260,7 +255,7 @@ func (t *MDTerm) startCode(info string) {
 	t.codeText, t.codeLines, t.codeFolded = nil, 0, 0
 	t.code = nil
 	if t.highlight && t.color {
-		t.code = newMDCode(info, t.theme)
+		t.code = newMDCode(info)
 	}
 }
 
@@ -275,9 +270,7 @@ func (t *MDTerm) codeLine(s string) (string, bool) {
 		return "", false
 	}
 	if t.code != nil {
-		if colored, ok := t.code.line(s); ok {
-			return colored, true
-		}
+		return t.code.line(s), true
 	}
 	return t.paint(mdDimStyle, s), true // code keeps its exact text and is dimmed
 }

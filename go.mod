@@ -3,7 +3,6 @@ module github.com/inhere/suga
 go 1.26.0
 
 require (
-	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/goccy/go-yaml v1.19.2
@@ -27,7 +26,6 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
-	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

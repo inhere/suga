@@ -74,10 +74,9 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		// comes from the runner's tool_call events, which wiring turns on for chat.
 		Diff:      appconfig.ChatDiffEnabled(),
 		DiffLines: diffLines,
-		// Code blocks (:code, chat.code_*): highlighting by the fence's language,
-		// its theme and the fold limit that names the :code command.
+		// Code blocks (:code, chat.code_*): highlighting by the fence's language
+		// and the fold limit that names the :code command.
 		CodeHighlight: appconfig.ChatCodeHighlightEnabled(),
-		CodeTheme:     appconfig.ChatCodeTheme(),
 		CodeMaxLines:  codeMaxLines,
 		IdleAfter:     idle.After, IdleMinRatio: idle.MinRatio,
 		Tasks: taskManager, TaskWake: taskWake, StopBackground: sugahooks.StopBackground(), Notify: notify, NotifyAfter: notifyAfter,

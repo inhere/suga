@@ -136,7 +136,6 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "chat.diff", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.diff_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_highlight", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
-	{Pattern: "chat.code_theme", Type: ConfigTypeString, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_max_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.ask_outside_dirs", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.undo_confirm", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
@@ -619,7 +618,6 @@ type ChatSettings struct {
 	AgentProgress                              string
 	HistorySize, DiffLines                     int
 	CodeHighlight                              bool
-	CodeTheme                                  string
 	CodeMaxLines                               int
 	Notify                                     string
 	NotifyAfter                                time.Duration
@@ -657,7 +655,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		AskOutsideDirs: ChatAskOutsideDirs(), UndoConfirm: ChatUndoConfirmEnabled(),
 		AgentProgress: agentProgress,
 		HistorySize:   historySize, DiffLines: diffLines, Notify: notify, NotifyAfter: notifyAfter,
-		CodeHighlight: ChatCodeHighlightEnabled(), CodeTheme: ChatCodeTheme(), CodeMaxLines: codeMaxLines,
+		CodeHighlight: ChatCodeHighlightEnabled(), CodeMaxLines: codeMaxLines,
 	}, nil
 }
 
@@ -800,7 +798,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.Every, true, nil
 		}
 		return settings.Keep, true, nil
-	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_theme", "chat.code_max_lines":
+	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -975,8 +973,6 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.DiffLines
 	case "chat.code_highlight":
 		return settings.CodeHighlight
-	case "chat.code_theme":
-		return settings.CodeTheme
 	case "chat.code_max_lines":
 		return settings.CodeMaxLines
 	case "chat.notify":
