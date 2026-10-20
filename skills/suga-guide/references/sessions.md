@@ -73,9 +73,10 @@
 - **用户记忆**：在 `$SUGA_HOME/memory/user`（files）。
 - **项目记忆后端选择顺序**：`memory.project.backend` 的配置；仓库根有 `MEMORY.md`（files，仓库模式）；仓库根有 `.gofer/tracker`（gofer）；否则用 `$SUGA_HOME/projects/<key>/memory` 下的 files，`<key>` 为仓库目录名加完整路径的短哈希（如 `suga-5cb0fa32`，也显示为作用域 `project:<key>`）。
 - **仓库模式**：索引就是 `MEMORY.md`，每条记忆放在 `.suga/memory/<id>.md`，可随项目提交；根目录的 `MEMORY.md` 不会由 suga 创建。
-- **索引行带摘要**：索引行为 `- [标题](路径) — 类型：一句话摘要`；摘要是可空的元数据，为空时与旧格式逐字节相同，旧格式行照常解析。摘要折成一行，超过 120 字截断加 `…`。`memory` 工具 add/replace 的 `summary` 参数写它（add 必填，未给时用正文首句并提示，replace 留空则保留原摘要）；exec 后端用协议里的 `summary` 字段（旧脚本不返回时为空）；gofer 后端只有一个摘要槽（`--summary`，已用于标题），没有独立字段，索引行不带摘要。
+- **索引行带摘要**：索引行为 `- [标题](路径) — 类型：一句话摘要`；摘要是可空的元数据，为空时与旧格式逐字节相同，旧格式行照常解析。摘要折成一行，超过 120 字截断加 `…`。`memory` 工具 add/replace 的 `summary` 参数写它（add 必填，未给时用正文首句并提示，replace 留空则保留原摘要）；exec 后端用协议里的 `summary` 字段（旧脚本不返回时为空）；gofer 后端（≥ gofer v0.179.0）把摘要存到 `--summary`、标题存到 `--title`，索引行带摘要，旧版 gofer 退回旧行为（标题存 `--summary`、无摘要）并提示一次。旧条目的迁移见下一条。
 - **补摘要**：`suga memory summaries --missing` 列出缺摘要的条目，`--fill` 用正文首句预览，`--fill --apply` 才写入；只改 `MEMORY.md` 的索引行，不动条目正文与标题（`--scope user|project` 限定范围）。
-- **gofer 后端**：每条项目记忆是带 `suga` 标签的 gofer memory，只管理这些条目。
+- **gofer 旧条目迁移**：早期版本把标题存在 `--summary` 里；`suga memory gofer-titles`（默认预览，`--apply` 才写）把旧条目的摘要槽搬到 `--title`，并把 `--summary` 换成正文首句（无首句则用 `-` 清空）；只处理 gofer 项目后端、带 `suga` 标签且没有 `--title` 的条目。
+- **gofer 后端**：每条项目记忆是带 `suga` 标签的 gofer memory，只管理这些条目；需要有 `.gofer/tracker`（或 `memory.project.backend: gofer`），`memory` 的标题/摘要映射见上。
 - **exec 后端**：各范围也可用 `exec`（外部命令），键见 `references/config.md` 的 `memory.*`。
 - `suga inspect manifest` 会显示选了哪个后端及原因。
 - **冻结的索引**：记忆索引（id、类型、标题与一句话摘要）放在段上下文消息里，本段内不变；本会话写入的内容下一段才可见，开启新段时刷新。正文用 `memory get` 读取。

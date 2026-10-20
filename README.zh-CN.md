@@ -109,6 +109,7 @@ suga chat                                         # 在当前目录开启交互�
 
 - 模型通过 `memory` 工具写入跨会话记忆：`user`、`feedback`、`project`、`reference` 四类。
 - 用户记忆在 `$SUGA_HOME/memory/user`；项目记忆自动选后端（仓库根 `MEMORY.md`、`.gofer/tracker` 或 `$SUGA_HOME/projects/<key>/memory`）。
+- gofer 项目后端把标题存 `--title`、一句话摘要存 `--summary`（需 gofer ≥ v0.179.0，旧版退回旧行为并提示一次）；`suga memory gofer-titles` 把旧条目的摘要槽迁移成标题，默认预览、`--apply` 才写。
 - 记忆索引在每段开头冻结，本会话写入的内容下一段才可见。
 - files 后端的 `memory search` 用可从 Markdown 重建的 FTS5 索引按相关度排序，条目可带可选的 `applies_when` 适用条件。
 - 读过外部内容的会话写记忆需要确认（`memory.write_tainted`）。

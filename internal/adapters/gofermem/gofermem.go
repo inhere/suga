@@ -5,7 +5,9 @@
 // Mapping (design "数据", D11, Q2, Q3):
 //
 //   - entry id   ↔ gofer key "suga-<kind>-<id>"
-//   - title      → --summary (gofer limits it to 80 characters)
+//   - title      → --title (gofer display name, <= 80 characters, one line)
+//   - summary    → --summary (gofer's one-sentence index summary, since
+//     gofer v0.179.0; entries written before it keep their title there)
 //   - body       → the content argument
 //   - kind       → --kind note always; the suga kind goes into --tag suga,<kind>
 //   - provenance → --source suga:<session> ("suga" without a session)
@@ -28,12 +30,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -49,7 +53,7 @@ const (
 	Tag = "suga"
 	// KeyPrefix starts every gofer key written by suga.
 	KeyPrefix = "suga-"
-	// MaxTitleRunes is gofer's summary limit; longer titles are rejected
+	// MaxTitleRunes is gofer's --title limit; longer titles are rejected
 	// instead of truncated so the title round-trips unchanged.
 	MaxTitleRunes = 80
 
@@ -75,6 +79,10 @@ type Config struct {
 	// gofer's own settings such as GOFER_CONFIG_DIR are not credentials and
 	// are inherited anyway.
 	Env []string
+	// Warn reports the one-time notice that gofer predates `memory set --title`
+	// (before v0.179.0) and the old title-in-summary behaviour is kept. When
+	// nil the notice goes through slog.
+	Warn func(msg string)
 }
 
 // Store implements memory.Store over the gofer CLI.
@@ -82,11 +90,17 @@ type Store struct {
 	cfg Config
 	mu  sync.Mutex // serializes read-modify-write sequences of this process
 	now func() time.Time
+
+	// legacy marks a gofer without `memory set --title` (before v0.179.0):
+	// writes fall back to storing the title in --summary. Detected from the
+	// first refused --title flag; set only through markLegacy.
+	legacy atomic.Bool
 }
 
 var (
-	_ memory.Store = (*Store)(nil)
-	_ memory.Named = (*Store)(nil)
+	_ memory.Store      = (*Store)(nil)
+	_ memory.Summarizer = (*Store)(nil)
+	_ memory.Named      = (*Store)(nil)
 )
 
 // New validates cfg and returns a Store. No gofer process is started here.
@@ -110,6 +124,7 @@ func (s *Store) BackendName() string { return Name }
 // (tracker.Memory; only the fields used here).
 type record struct {
 	Key       string   `json:"key"`
+	Title     string   `json:"title,omitempty"`
 	Content   string   `json:"content"`
 	Tags      []string `json:"tags,omitempty"`
 	UpdatedAt string   `json:"updated_at"`
@@ -158,19 +173,29 @@ func hasTag(tags []string, want string) bool {
 	return false
 }
 
-// title is the stored summary, or the first content line when a tagged entry
-// was edited by hand without one.
-//
-// gofer memories carry a single summary slot, which this backend already uses
-// for the title; there is no second field for the suga one-sentence index
-// summary, so index lines of this backend carry none (the title itself is the
-// one-line description shown in gofer's own index).
+// title is the stored --title, the legacy summary of entries written before
+// gofer had --title (v0.179.0), or the first content line when a tagged entry
+// was edited by hand without either.
 func (r record) title() string {
+	if t := strings.TrimSpace(r.Title); t != "" {
+		return t
+	}
 	if t := strings.TrimSpace(r.Summary); t != "" {
 		return t
 	}
 	line, _, _ := strings.Cut(strings.TrimSpace(r.Content), "\n")
 	return strings.TrimSpace(line)
+}
+
+// indexedSummary is the suga one-sentence index summary. Entries written
+// before gofer had --title keep their title in the summary slot, so only a
+// record that also carries a --title has a real summary there; the legacy
+// slot is not shown twice.
+func (r record) indexedSummary() string {
+	if strings.TrimSpace(r.Title) == "" {
+		return ""
+	}
+	return strings.TrimSpace(r.Summary)
 }
 
 func (r record) updated() time.Time {
@@ -182,7 +207,7 @@ func (r record) updated() time.Time {
 }
 
 func (r record) entry(k memory.Kind, id string) memory.Entry {
-	return memory.Entry{ID: id, Title: r.title(), Body: r.Content, Kind: k, Updated: r.updated()}
+	return memory.Entry{ID: id, Title: r.title(), Summary: r.indexedSummary(), Body: r.Content, Kind: k, Updated: r.updated()}
 }
 
 // ownedEntry pairs an owned record with its parsed kind and id.
@@ -228,7 +253,7 @@ func (s *Store) Index(ctx context.Context, sc memory.Scope) (memory.Index, error
 	}
 	ix := memory.Index{Scope: sc}
 	for _, o := range ownedOnly(recs) {
-		ix.Lines = append(ix.Lines, memory.IndexLine{ID: o.id, Title: o.rec.title(), Kind: o.kind})
+		ix.Lines = append(ix.Lines, memory.IndexLine{ID: o.id, Title: o.rec.title(), Summary: o.rec.indexedSummary(), Kind: o.kind})
 	}
 	sort.Slice(ix.Lines, func(i, j int) bool { return ix.Lines[i].ID < ix.Lines[j].ID })
 	return ix, nil
@@ -295,7 +320,7 @@ func (s *Store) Write(ctx context.Context, sc memory.Scope, op memory.Op) (memor
 		return memory.Entry{}, err
 	}
 	if op.Action != memory.ActionRemove && utf8.RuneCountInString(op.Title) > MaxTitleRunes {
-		return memory.Entry{}, fmt.Errorf("%w: title is %d characters; gofer memory summaries allow at most %d",
+		return memory.Entry{}, fmt.Errorf("%w: title is %d characters; gofer memory --title allows at most %d",
 			memory.ErrInvalid, utf8.RuneCountInString(op.Title), MaxTitleRunes)
 	}
 	s.mu.Lock()
@@ -366,18 +391,45 @@ func (s *Store) Write(ctx context.Context, sc memory.Scope, op memory.Op) (memor
 }
 
 // set writes one suga entry with `gofer memory set` (create or overwrite).
+//
+// The summary is always passed explicitly: suga's replace rewrites the entry
+// as a whole, so keeping gofer's stale value on replace would be wrong; when
+// op.Summary is empty it falls back to the first sentence of the body, which
+// also satisfies gofer's summary requirement for note content over 200
+// characters. On a gofer without --title (before v0.179.0) `set` is retried
+// with the old title-in-summary mapping and a warning is reported once.
 func (s *Store) set(ctx context.Context, k memory.Kind, id string, op memory.Op) (memory.Entry, error) {
 	source := "suga"
 	if sid := strings.TrimSpace(op.Prov.SessionID); sid != "" {
 		source = "suga:" + sid
 	}
 	key := Key(k, id)
-	flags := []string{"--kind", "note", "--tag", Tag + "," + string(k), "--summary", op.Title, "--source", source}
+	// --title must be a single line: fold the fields of the title together.
+	title := strings.Join(strings.Fields(op.Title), " ")
+	summary := memory.CleanSummary(op.Summary)
+	if summary == "" {
+		summary = memory.CleanSummary(memory.FirstSentence(op.Body))
+	}
+	flags := []string{"--kind", "note", "--tag", Tag + "," + string(k), "--source", source}
+	if s.legacy.Load() {
+		// Old gofer: the --summary slot is the only place for the title.
+		flags = append(flags, "--summary", title)
+	} else {
+		flags = []string{"--title", title, "--kind", "note", "--tag", Tag + "," + string(k),
+			"--summary", summary, "--source", source}
+	}
 	out, err := s.run(ctx, "set", flags, key, op.Body)
 	if err != nil {
+		if !s.legacy.Load() && isLegacyNoTitle(err) {
+			s.markLegacy()
+			return s.set(ctx, k, id, op) // retry with the legacy mapping
+		}
 		return memory.Entry{}, err
 	}
-	e := memory.Entry{ID: id, Title: op.Title, Body: op.Body, Kind: k, Updated: s.now().UTC(), Prov: op.Prov}
+	e := memory.Entry{ID: id, Title: op.Title, Summary: summary, Body: op.Body, Kind: k, Updated: s.now().UTC(), Prov: op.Prov}
+	if s.legacy.Load() {
+		e.Summary = "" // legacy gofers keep the title in the summary slot
+	}
 	var r record
 	if json.Unmarshal(out, &r) == nil && r.Key == key {
 		if t := r.updated(); !t.IsZero() {
@@ -385,6 +437,118 @@ func (s *Store) set(ctx context.Context, k memory.Kind, id string, op memory.Op)
 		}
 	}
 	return e, nil
+}
+
+// isLegacyNoTitle recognizes a gofer without `memory set --title` (before
+// v0.179.0): the flag parser prints the unknown-flag error on stderr.
+func isLegacyNoTitle(err error) bool {
+	var ce *cmdError
+	return errors.As(err, &ce) && strings.Contains(ce.stderr, "not defined") && strings.Contains(ce.stderr, "title")
+}
+
+// markLegacy switches to the title-in-summary behaviour of old gofers once
+// and reports the one-time notice.
+func (s *Store) markLegacy() {
+	if !s.legacy.CompareAndSwap(false, true) {
+		return
+	}
+	msg := "gofer has no `memory set --title` (update to gofer >= v0.179.0); " +
+		"memory titles keep the old behaviour: stored as the summary slot"
+	if s.cfg.Warn != nil {
+		s.cfg.Warn(msg)
+		return
+	}
+	slog.Warn(msg)
+}
+
+// SetSummary implements memory.Summarizer: since gofer v0.179.0 the summary
+// has its own --summary slot, so it can be replaced without touching the
+// body, title, kind, tags or source (set keeps every field that is not
+// passed). On legacy gofers there is no separate slot; the call fails and the
+// maintenance command reports it.
+func (s *Store) SetSummary(ctx context.Context, sc memory.Scope, id, summary string) error {
+	if err := checkScope(sc); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.setSummary(ctx, id, summary)
+}
+
+// setSummary is SetSummary with the store lock already held.
+func (s *Store) setSummary(ctx context.Context, id, summary string) error {
+	o, err := s.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if s.legacy.Load() {
+		return fmt.Errorf("gofermem: gofer has no separate summary slot without `memory set --title` (gofer < v0.179.0); update gofer")
+	}
+	summary = memory.CleanSummary(summary)
+	flags := []string{"--summary", summary}
+	if strings.TrimSpace(o.rec.Title) == "" {
+		// Legacy entry: the summary slot still holds its title, so writing a
+		// summary alone would erase it. Promote the title in the same write.
+		flags = []string{"--title", o.rec.title(), "--summary", summary}
+	}
+	_, err = s.run(ctx, "set", flags, o.rec.Key, o.rec.Content)
+	return err
+}
+
+// TitleMove is one legacy entry whose summary slot holds the title.
+type TitleMove struct {
+	// ID and Kind identify the suga entry.
+	ID   string
+	Kind memory.Kind
+	// Title is the promoted title (the old summary slot). NewSummary is the
+	// summary that replaces it: empty when the body has no first sentence
+	// and the slot is cleared instead.
+	Title, NewSummary string
+}
+
+// MigrateLegacyTitles reports the owned entries written before gofer had
+// --title, whose summary slot therefore holds the title. With apply they are
+// rewritten: the old summary becomes the stored title and the summary slot
+// gets the first sentence of the body (or --summary - when it has none).
+// Entries that already carry a title are left alone.
+func (s *Store) MigrateLegacyTitles(ctx context.Context, sc memory.Scope, apply bool) ([]TitleMove, error) {
+	if err := checkScope(sc); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.legacy.Load() {
+		return nil, fmt.Errorf("gofermem: gofer has no `memory set --title` (gofer < v0.179.0); update gofer first")
+	}
+	recs, err := s.list(ctx, "", true)
+	if err != nil {
+		return nil, err
+	}
+	var moves []TitleMove
+	for _, o := range ownedOnly(recs) {
+		// Nothing to move: either the entry already has a title, or it was
+		// never written with the legacy title-in-summary mapping.
+		if strings.TrimSpace(o.rec.Title) != "" || strings.TrimSpace(o.rec.Summary) == "" {
+			continue
+		}
+		summary := memory.CleanSummary(memory.FirstSentence(o.rec.Content))
+		if apply {
+			flags := []string{"--title", o.rec.title(), "--summary", "-"}
+			if summary != "" {
+				flags[len(flags)-1] = summary
+			}
+			if _, err := s.run(ctx, "set", flags, o.rec.Key, o.rec.Content); err != nil {
+				if isLegacyNoTitle(err) {
+					s.markLegacy()
+					return moves, fmt.Errorf("gofermem: gofer has no `memory set --title` (gofer < v0.179.0); update gofer first")
+				}
+				return moves, err
+			}
+		}
+		moves = append(moves, TitleMove{ID: o.id, Kind: o.kind, Title: o.rec.title(), NewSummary: summary})
+	}
+	sort.Slice(moves, func(i, j int) bool { return moves[i].ID < moves[j].ID })
+	return moves, nil
 }
 
 // Search implements memory.Store: gofer narrows by the first term, then all
