@@ -2,7 +2,6 @@ package personal
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/inhere/suga/internal/personal/store"
 )
@@ -36,8 +35,8 @@ func (r *Runner) createTurn(ctx context.Context, sessionID, candidate string) (s
 			return id, nil
 		}
 		if !store.IsDuplicateKey(err) {
-			return "", fmt.Errorf("create turn: %w", err)
+			return "", err
 		}
 	}
-	return "", fmt.Errorf("create turn: %w", err)
+	return "", err
 }

@@ -498,7 +498,7 @@ func (r *Runner) NewSessionWithMeta(ctx context.Context, id, title string, extra
 		lastErr = err
 		id = ""
 	}
-	return Session{}, fmt.Errorf("create personal session: %w", lastErr)
+	return Session{}, lastErr
 }
 
 // insertSession is one attempt of NewSessionWithMeta: it builds the session
