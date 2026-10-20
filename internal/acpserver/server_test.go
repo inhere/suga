@@ -60,7 +60,7 @@ func connectPersonalACP(t *testing.T, open OpenRuntime, client *testACPClient) *
 	t.Helper()
 	clientToAgentR, clientToAgentW := io.Pipe()
 	agentToClientR, agentToClientW := io.Pipe()
-	agent := New(open)
+	agent := New(open, false)
 	agent.SetConnection(acp.NewAgentSideConnection(agent, agentToClientW, clientToAgentR))
 	conn := acp.NewClientSideConnection(client, clientToAgentW, agentToClientR)
 	t.Cleanup(func() {
@@ -88,6 +88,9 @@ type acpTestOptions struct {
 	budget    personal.BudgetSettings
 	// policy exercises the same runtime-to-ACP policy handoff as the CLI.
 	policy PolicyDecision
+	// noVision builds the runtime with a closed vision gate: a prompt that
+	// brought image blocks must tell the client once (thought note).
+	noVision bool
 }
 
 func testACPRuntimeWith(t *testing.T, provider agentcore.Provider, tool *countingTool, opts acpTestOptions) OpenRuntime {
@@ -113,7 +116,8 @@ func testACPRuntimeWith(t *testing.T, provider agentcore.Provider, tool *countin
 		}
 		plans := personal.NewPlanRecorder()
 		registry.Register(native.NewUpdatePlanTool(plans))
-		cfg := personal.Config{Repository: repo, Provider: provider, Tools: tools.NewApproval(registry, approver), Hooks: hooks, Plans: plans, Budget: opts.budget}
+		cfg := personal.Config{Repository: repo, Provider: provider, Tools: tools.NewApproval(registry, approver), Hooks: hooks, Plans: plans, Budget: opts.budget,
+			SessionsDir: filepath.Join(filepath.Dir(filepath.Dir(dbPath)), "sessions")}
 		if opts.failRules != nil {
 			cfg.RuleSource = func() (string, string, error) {
 				if opts.failRules.Load() {
@@ -140,8 +144,18 @@ func testACPRuntimeWith(t *testing.T, provider agentcore.Provider, tool *countin
 			}
 			return found
 		}
-		return Runtime{Runner: runner, Close: repo.Close, LookupTool: lookup, Policy: opts.policy}, nil
+		return Runtime{Runner: runner, Close: repo.Close, LookupTool: lookup, Policy: opts.policy,
+			Vision: nilOrClosedVision(opts.noVision)}, nil
 	}
+}
+
+// nilOrClosedVision mirrors the app wiring: nil means the current model can
+// see images, a closed gate means it cannot.
+func nilOrClosedVision(noVision bool) *tools.VisionGate {
+	if noVision {
+		return tools.NewVisionGate(false)
+	}
+	return nil
 }
 
 type countingTool struct {

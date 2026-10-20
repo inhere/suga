@@ -25,14 +25,22 @@ func TestInferVision(t *testing.T) {
 		{"gpt-5-codex", true},
 		{"gpt-6-sol", true},
 		{"gemini-2.5-pro", true},
-		{"deepseek-v4.1-flash", false},
-		{"glm-5.3-flash", false},
+		// The user confirmed 2026-10-20 that these two flash models see images.
+		{"deepseek-v4.1-flash", true},
+		{"glm-5.3-flash", true},
+		// The rest of those families stays text-only.
+		{"deepseek-chat", false},
+		{"glm-4", false},
+		{"deepseek-v4.1-flash-plus", false},
 		{"qwen3-coder-plus", false},
 		{"some-unknown-model", false},
 		{"", false},
 		// A gateway prefixes the family with its vendor: the family still wins.
 		{"openai/gpt-4o", true},
 		{"anthropic/claude-3-7-sonnet", true},
+		// The allowed flash ids keep their enablement through a gateway prefix.
+		{"command-code/deepseek-v4.1-flash", true},
+		{"opencode-go/glm-5.3-flash", true},
 		// A text-only family stays text-only even with a vision name in it.
 		{"deepseek-gpt-4o-lookalike", false},
 	}
@@ -55,7 +63,7 @@ func TestVisionFor(t *testing.T) {
 
 	t.Run("inferred from the model id", func(t *testing.T) {
 		assert.Eq(t, true, VisionFor(ModelSpec{Provider: ProviderConfig{ID: "gw"}, Model: "gpt-4o"}))
-		assert.Eq(t, false, VisionFor(ModelSpec{Provider: ProviderConfig{ID: "gw"}, Model: "glm-5.3-flash"}))
+		assert.Eq(t, true, VisionFor(ModelSpec{Provider: ProviderConfig{ID: "gw"}, Model: "glm-5.3-flash"}))
 	})
 	t.Run("the model key overrides the inference", func(t *testing.T) {
 		assert.Eq(t, true, VisionFor(spec("declared-on")))
@@ -80,7 +88,7 @@ func TestVisionFor(t *testing.T) {
 			"sol": {ModelID: "gpt-6-sol"}, "flash": {ModelID: "deepseek-v4.1-flash"},
 		}}
 		assert.Eq(t, true, VisionFor(ModelSpec{Provider: gw, Model: "sol"}))
-		assert.Eq(t, false, VisionFor(ModelSpec{Provider: gw, Model: "flash"}))
+		assert.Eq(t, true, VisionFor(ModelSpec{Provider: gw, Model: "flash"}))
 	})
 }
 
@@ -152,6 +160,6 @@ providers:
 		vision[model.Ref] = model.Vision
 	}
 	assert.Eq(t, true, vision["gw/gpt-4o"])
-	assert.Eq(t, false, vision["gw/deepseek-v4.1-flash"])
+	assert.Eq(t, true, vision["gw/deepseek-v4.1-flash"])
 	assert.Eq(t, true, vision["gw/pinned"])
 }

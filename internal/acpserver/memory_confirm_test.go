@@ -20,7 +20,7 @@ func memoryGate(t *testing.T, client *testACPClient) *permissionHook {
 	t.Helper()
 	clientToAgentR, clientToAgentW := io.Pipe()
 	agentToClientR, agentToClientW := io.Pipe()
-	agentConn := acp.NewAgentSideConnection(New(nil), agentToClientW, clientToAgentR)
+	agentConn := acp.NewAgentSideConnection(New(nil, false), agentToClientW, clientToAgentR)
 	acp.NewClientSideConnection(client, clientToAgentW, agentToClientR)
 	t.Cleanup(func() {
 		_ = clientToAgentW.Close()
