@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 会话之间互发消息设计（不依赖 gofer 的 session_message 工具）
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.1 / 已批准（用户 2026-10-21：按推荐），可实施
 > 日期：2026-10-21
 > 关联：issue `suga-hko7`；`suga-wy40`（短名称与 `suga send`）；`docs/design/2026-10-20-send-image-design.md`；`internal/personal/process/process.go`
 
@@ -97,11 +97,11 @@
 
 | # | 问题 | 当前倾向 |
 |---|---|---|
-| Q1 | 一个工具 `session_message`（list/send 两个动作）？ | 是 |
-| Q2 | 默认开启，配置 `tools.session_message.enabled` 与 `SUGA_SESSION_MESSAGE=off` 可关闭？ | 是 |
-| Q3 | 连续自动回合跳数上限 3、单回合发送上限 5？ | 是 |
-| Q4 | 只覆盖 chat 会话（run/ACP 不登记进程，本期不改）？ | 是 |
+| Q1 | 一个工具 `session_message`（list/send 两个动作）？ | 已定：是 |
+| Q2 | 默认开启，配置 `tools.session_message.enabled` 与 `SUGA_SESSION_MESSAGE=off` 可关闭？ | 已定：是 |
+| Q3 | 连续自动回合跳数上限 3、单回合发送上限 5？ | 已定：是 |
+| Q4 | 只覆盖 chat 会话（run/ACP 不登记进程，本期不改）？ | 已定：是 |
 
 ## 结论与人工计划 Gate
 
-用 `session_message` 工具复用 send 的投递通道，加来源标记与跳数上限防止循环，可在配置关闭；用户批准 Q1–Q4 后派出实施，批准前不改代码。
+用 `session_message` 工具复用 send 的投递通道，加来源标记与跳数上限防止循环，可在配置关闭；用户已于 2026-10-21 按推荐批准 Q1–Q4，派出实施。
