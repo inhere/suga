@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gookit/goutil/cflag/capp"
+	"github.com/inhere/suga/internal/adapters/gofermem"
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore/memory"
 )
@@ -21,7 +22,87 @@ func newMemoryCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	group := capp.NewCmd("memory", "Maintain long-term memory: summaries (the index description of each entry)")
 	group.SetOutput(stderr)
 	group.Add(newMemorySummariesCommand(ctx, stdout, stderr))
+	group.Add(newMemoryGoferTitlesCommand(ctx, stdout, stderr))
 	return group
+}
+
+// titleMigrator is the backend capability behind `suga memory gofer-titles`:
+// gofer entries written before gofer v0.179.0 kept the title in the summary
+// slot (--summary), and the migration moves it to the title slot (--title).
+type titleMigrator interface {
+	MigrateLegacyTitles(ctx context.Context, sc memory.Scope, apply bool) ([]gofermem.TitleMove, error)
+}
+
+// newMemoryGoferTitlesCommand builds `suga memory gofer-titles`: it lists the
+// gofer entries whose summary slot still holds their title and, with --apply,
+// moves it and fills the summary from the body's first sentence.
+// Nothing is written without --apply.
+func newMemoryGoferTitlesCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+	var apply bool
+	cmd := capp.NewCmd("gofer-titles", "Move the legacy title of gofer memory entries from --summary to --title (default: preview)", func(c *capp.Cmd) error {
+		if len(c.RemainArgs()) > 0 {
+			return fmt.Errorf("usage: suga memory gofer-titles [--apply]")
+		}
+		return runMemoryGoferTitlesCommand(ctx, stdout, apply)
+	})
+	cmd.SetOutput(stderr)
+	cmd.BoolVar(&apply, "apply", false, "write the moved titles (default is a preview)")
+	return cmd
+}
+
+// runMemoryGoferTitlesCommand resolves the project memory backend of the
+// working directory and runs the migration. Only the gofer backend keeps
+// legacy title-in-summary entries; every other backend reports that upfront.
+func runMemoryGoferTitlesCommand(ctx context.Context, out io.Writer, apply bool) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	setup, err := wiring.OpenMemoryStore(cwd)
+	if err != nil {
+		return err
+	}
+	backend, err := setup.Router.Route(setup.Project.Scope)
+	if err != nil {
+		if errors.Is(err, memory.ErrNoBackend) {
+			return errors.New("no project memory backend is configured; nothing to migrate")
+		}
+		return err
+	}
+	mig, ok := backend.(titleMigrator)
+	if !ok {
+		return fmt.Errorf("only the gofer memory backend keeps legacy titles in the summary slot (project backend: %s)", memory.BackendName(backend))
+	}
+	return runMemoryGoferTitles(ctx, out, mig, setup.Project.Scope, apply)
+}
+
+// runMemoryGoferTitles reports the entries the migration would rewrite and,
+// with apply, rewrites them. It takes the backend as a parameter so tests can
+// drive it without a gofer tracker.
+func runMemoryGoferTitles(ctx context.Context, out io.Writer, mig titleMigrator, sc memory.Scope, apply bool) error {
+	moves, err := mig.MigrateLegacyTitles(ctx, sc, apply)
+	if err != nil {
+		return err
+	}
+	if len(moves) == 0 {
+		fmt.Fprintln(out, "no gofer entry keeps its title in the summary slot")
+		return nil
+	}
+	fmt.Fprintf(out, "gofer memory: %d entr%s with the title in the summary slot\n", len(moves), plural(len(moves)))
+	for _, m := range moves {
+		fmt.Fprintf(out, "- %s (%s): title %s\n", m.ID, m.Kind, m.Title)
+		if m.NewSummary == "" {
+			fmt.Fprintln(out, "  summary: cleared (the body has no first sentence)")
+			continue
+		}
+		fmt.Fprintf(out, "  summary: %s\n", m.NewSummary)
+	}
+	if !apply {
+		fmt.Fprintln(out, "dry run: nothing was written; rerun with --apply to move the titles")
+	} else {
+		fmt.Fprintf(out, "migrated %d entr%s\n", len(moves), plural(len(moves)))
+	}
+	return nil
 }
 
 // summariesOptions is the parsed input of `suga memory summaries`.
