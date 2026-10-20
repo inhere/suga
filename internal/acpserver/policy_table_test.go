@@ -120,7 +120,7 @@ func newTableHook(t *testing.T, cwd string, readOnly bool, client *testACPClient
 	t.Helper()
 	clientToAgentR, clientToAgentW := io.Pipe()
 	agentToClientR, agentToClientW := io.Pipe()
-	conn := acp.NewAgentSideConnection(New(nil), agentToClientW, clientToAgentR)
+	conn := acp.NewAgentSideConnection(New(nil, false), agentToClientW, clientToAgentR)
 	_ = acp.NewClientSideConnection(client, clientToAgentW, agentToClientR)
 	t.Cleanup(func() {
 		_ = clientToAgentW.Close()

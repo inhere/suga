@@ -8,6 +8,7 @@ import (
 
 	"github.com/gookit/goutil/cflag/capp"
 	"github.com/inhere/suga/internal/acpserver"
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -39,6 +40,13 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 		return err
 	}
 	defer taskManager.Close()
+	// ContentBlock::Image is declared (design 0.3, ACP second phase) when any
+	// model of this configuration can see pictures; initialize happens before
+	// any session exists, so the offline catalog decides.
+	promptImage, err := promptImageCapability()
+	if err != nil {
+		return err
+	}
 	return acpserver.Serve(ctx, input, output, func(ctx context.Context, cwd string, readOnly bool, servers []mcp.ServerSettings, gate acpserver.TurnGate) (acpserver.Runtime, error) {
 		workspace, err := filepath.Abs(cwd)
 		if err != nil {
@@ -71,5 +79,19 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 		}
 		return acpserver.Runtime{Runner: runtime.Runner, Close: runtime.Close, LookupTool: lookup,
 			Policy: runtime.ACPPolicy, ContextWindow: runtime.ContextWindow}, nil
-	})
+	}, promptImage)
+}
+
+// promptImageCapability reads the configured providers and model roles and
+// reports whether one of the model catalog's entries can see pictures.
+func promptImageCapability() (bool, error) {
+	providers, err := appconfig.ReadProviders()
+	if err != nil {
+		return false, err
+	}
+	settings, err := appconfig.ReadModelSettings("")
+	if err != nil {
+		return false, err
+	}
+	return appconfig.AnyVisionModel(providers, settings), nil
 }

@@ -111,8 +111,29 @@ func TestSessionInputsAcceptsHTTPMCPServer(t *testing.T) {
 // TestInitializeAdvertisesHTTPMCP checks the capability clients negotiate
 // against: session setup may send HTTP MCP servers.
 func TestInitializeAdvertisesHTTPMCP(t *testing.T) {
-	agent := New(nil)
+	agent := New(nil, false)
 	resp, err := agent.Initialize(context.Background(), acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber})
 	assert.NoErr(t, err)
 	assert.True(t, resp.AgentCapabilities.McpCapabilities.Http)
+}
+
+// TestInitializeAdvertisesImage pins the image capability of session/prompt
+// (design 0.3, ACP second phase): the configuration's callers decide from
+// configuration, the declaration itself just carries the flag.
+func TestInitializeAdvertisesImage(t *testing.T) {
+	init := func(promptImage bool) (bool, bool) {
+		agent := New(nil, promptImage)
+		resp, err := agent.Initialize(context.Background(), acp.InitializeRequest{ProtocolVersion: acp.ProtocolVersionNumber})
+		assert.Require(t, assert.NoErr(t, err))
+		return resp.AgentCapabilities.PromptCapabilities.Image, resp.AgentCapabilities.McpCapabilities.Http
+	}
+	t.Run("declares the image block when a model can see", func(t *testing.T) {
+		image, http := init(true)
+		assert.True(t, image)
+		assert.True(t, http, "the other capabilities stay")
+	})
+	t.Run("a text-only configuration does not declare it", func(t *testing.T) {
+		image, _ := init(false)
+		assert.False(t, image)
+	})
 }

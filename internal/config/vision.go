@@ -25,6 +25,22 @@ func VisionFor(spec ModelSpec) bool {
 	return InferVision(spec.APIModel())
 }
 
+// AnyVisionModel reports whether the configuration contains at least one model
+// that accepts images (design 0.3, "ACP（第二期）修正"): the ACP initialize
+// answer is sent before any session or runtime exists, so the declaration can
+// only look at configuration, never at the model of a later turn; a prompt
+// that turns out to run a text-only model degrades to a text note instead.
+// The whole offline catalog is consulted, so a switchable or fallback model
+// counts even when the main one cannot see.
+func AnyVisionModel(providers map[string]ProviderConfig, settings ModelSettings) bool {
+	for _, model := range BuildModelCatalog(providers, settings).Models {
+		if model.Vision {
+			return true
+		}
+	}
+	return false
+}
+
 // visionExcluded lists the model families known not to accept images, checked
 // after the exact enabling list so an id such as "deepseek-gpt-4o-lookalike" stays
 // text-only.

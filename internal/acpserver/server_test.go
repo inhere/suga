@@ -60,7 +60,7 @@ func connectPersonalACP(t *testing.T, open OpenRuntime, client *testACPClient) *
 	t.Helper()
 	clientToAgentR, clientToAgentW := io.Pipe()
 	agentToClientR, agentToClientW := io.Pipe()
-	agent := New(open)
+	agent := New(open, false)
 	agent.SetConnection(acp.NewAgentSideConnection(agent, agentToClientW, clientToAgentR))
 	conn := acp.NewClientSideConnection(client, clientToAgentW, agentToClientR)
 	t.Cleanup(func() {

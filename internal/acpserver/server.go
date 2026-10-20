@@ -82,13 +82,18 @@ type Agent struct {
 	conn     *acp.AgentSideConnection
 	sessions map[acp.SessionId]*sessionState
 	open     OpenRuntime
+	// promptImage declares ContentBlock::Image in initialize (design 0.3, ACP
+	// second phase): true when the configuration holds any vision-capable
+	// model, decided before the first session exists. A prompt that ends up on a
+	// text-only model degrades the pictures to text notes instead.
+	promptImage bool
 }
 
 var _ acp.Agent = (*Agent)(nil)
 var _ acp.AgentLoader = (*Agent)(nil)
 
-func New(open OpenRuntime) *Agent {
-	return &Agent{open: open, sessions: make(map[acp.SessionId]*sessionState)}
+func New(open OpenRuntime, promptImage bool) *Agent {
+	return &Agent{open: open, sessions: make(map[acp.SessionId]*sessionState), promptImage: promptImage}
 }
 
 // SetConnection runs after the connection has started serving requests, so conn
@@ -105,12 +110,14 @@ func (a *Agent) connection() *acp.AgentSideConnection {
 	return a.conn
 }
 
-// Serve uses stdout exclusively for ACP JSON-RPC frames.
-func Serve(ctx context.Context, input io.Reader, output io.Writer, open OpenRuntime) error {
+// Serve uses stdout exclusively for ACP JSON-RPC frames. promptImage declares
+// the image content block capability of session/prompt (this configuration's
+// initialization has no session yet, so the caller decides from configuration).
+func Serve(ctx context.Context, input io.Reader, output io.Writer, open OpenRuntime, promptImage bool) error {
 	if open == nil {
 		return fmt.Errorf("ACP runtime factory is required")
 	}
-	agent := New(open)
+	agent := New(open, promptImage)
 	conn := acp.NewAgentSideConnection(agent, output, input)
 	agent.SetConnection(conn)
 	select {
@@ -121,7 +128,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, open OpenRunt
 	}
 }
 
-func (*Agent) Initialize(_ context.Context, req acp.InitializeRequest) (acp.InitializeResponse, error) {
+func (a *Agent) Initialize(_ context.Context, req acp.InitializeRequest) (acp.InitializeResponse, error) {
 	if req.ProtocolVersion != acp.ProtocolVersionNumber {
 		return acp.InitializeResponse{}, acp.NewInvalidParams(map[string]any{"protocolVersion": req.ProtocolVersion})
 	}
@@ -132,6 +139,10 @@ func (*Agent) Initialize(_ context.Context, req acp.InitializeRequest) (acp.Init
 			// Streamable HTTP MCP servers are accepted in session setup; stdio
 			// stays the transport every client can use.
 			McpCapabilities: acp.McpCapabilities{Http: true},
+			// ContentBlock::Image is accepted in session/prompt when any model of
+			// this configuration can see pictures; without one the client keeps
+			// the attach-as-path fallback.
+			PromptCapabilities: acp.PromptCapabilities{Image: a.promptImage},
 		},
 		AuthMethods: []acp.AuthMethod{},
 	}, nil
