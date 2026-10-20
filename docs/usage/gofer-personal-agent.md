@@ -181,7 +181,7 @@ gofer job resume <job-id> --prompt "继续上个问题"
 
 ### 会话交接、观测与 deferred 工具
 
-- Suga 的进程日志写在 worker 的 `$SUGA_HOME/logs/suga.log`，默认不写 stderr（job 的 `stderr` 里只有面向人的提示与 Gofer 自己的事件行）；要在 job 日志里同时看到 suga 的详细日志，给该 agent 加 `env: {SUGA_DEBUG: "1"}`。
+- Suga 的进程日志写在 worker 的 `$SUGA_HOME/logs/suga-<YYYYMMDD>.log`（文件名带日期，按大小切分，`log.keep` 份保留），默认不写 stderr（job 的 `stderr` 里只有面向人的提示与 Gofer 自己的事件行）；要在 job 日志里同时看到 suga 的详细日志，给该 agent 加 `env: {SUGA_DEBUG: "1"}`（或配 `log.level: debug` + `log.stderr: always`）。
 - `--from <session>`：`suga run --from <旧会话> --prompt ...` 新建会话并继承来源的摘要、计划与已加载工具（来源只读，不能与 `--resume` 同用）。可同时传 `--session-id` 指定新会话 ID；交接失败（如生成摘要失败）时不会创建会话，同一 ID 可直接重试。Gofer 目前没有对应的模板变量（Gofer 侧计划以 `--from-session` 参数支持），在此之前需要在 job 的 agent args 中手工写入 `--from <session-id>`。
 - 会话不存在：`run`/`chat` 的 `--resume` 目标或 `--from` 来源不存在时，退出码为 4，stderr 输出 `session not found: <id>`；被 Ctrl-C / SIGTERM 中断时退出码为 130，stderr 输出 `已中断`；其他失败为 1。旧版本的会话 ID 在新库中都属于这种情况，可据此改用 `--from` 或新建会话。
 - `suga sessions [关键词] [-n 10] [--since 7d|日期] [--until …] [--cwd 路径|.] [--json]`：列出会话，按最近活动排序，默认 10 条（`-n 0` 全部）；关键词全部命中才列出，匹配标题、id、目录、模型，或对话内容（全文索引，显示命中片段）；`--cwd` 按目录前缀过滤（不区分大小写，`.` 为当前目录）。表格含更新时间、id、模型、suga 版本、标题、目录。

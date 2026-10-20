@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+### 新增
+
+- 进程日志轮转与配置项：日志写到 `$SUGA_HOME/logs/suga-<YYYYMMDD>.log`（文件名带日期，多进程同一天自然追加同一文件；按大小切分，保留份数与压缩由 `github.com/gookit/rotatefile` 负责）。新增 `log.level`（`debug`|`info`|`warn`|`error`，默认 `info`）、`log.file`（路径或 `off`，默认 `$SUGA_HOME/logs/suga.log`）、`log.stderr`（`auto` 仅 debug 时写 / `always` / `never`）、`log.max_size`（默认 10MB）、`log.keep`（保留份数，默认 5）、`log.compress`（默认 false）；坏值启动报错并指出键名，`SUGA_DEBUG` 非空仍强制 debug 并写 stderr。
+- 回合内的日志行带 `session_id`、`turn_id` 属性（工具事件与预算提示），便于与 `suga trace` 对齐。
+
 ### 修复
 
 - `suga config set` 写回 CRLF 换行的配置文件（Windows 常见）时，每个注释行后多出一个空行：解析前先统一为 LF，写回时再按原文件恢复 CRLF。
