@@ -297,13 +297,16 @@ func TestMemoryRuntimeGovernance(t *testing.T) {
 		// Straight to the router: outside a turn governed writes fail closed.
 		_, err := env.mem.setup.Router.Write(ctx, memory.UserScope(), memory.Op{Action: memory.ActionAdd, Kind: memory.KindUser, Title: "Likes Go", Body: "b"})
 		assert.NoErr(t, err)
-		_, err = env.mem.setup.Router.Write(ctx, env.mem.setup.Project.Scope, memory.Op{Action: memory.ActionAdd, Kind: memory.KindProject, Title: "Ship Friday", Body: "b"})
+		_, err = env.mem.setup.Router.Write(ctx, env.mem.setup.Project.Scope, memory.Op{Action: memory.ActionAdd, Kind: memory.KindProject, Title: "Ship Friday", Body: "b",
+			Summary: "发布窗口是周五"})
 		assert.NoErr(t, err)
 		text, err := env.mem.index(ctx)
 		assert.NoErr(t, err)
 		assert.StrContains(t, text, "### Memory: user\n- likes-go (user): Likes Go")
 		assert.StrContains(t, text, "### Memory: project:")
 		assert.StrContains(t, text, "- ship-friday (project): Ship Friday")
+		// The resident index carries the summary of each entry.
+		assert.StrContains(t, text, "- ship-friday (project): Ship Friday — 发布窗口是周五")
 	})
 }
 

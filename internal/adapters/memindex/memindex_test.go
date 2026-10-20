@@ -118,3 +118,30 @@ func hitIDs(hits []memory.Hit) []string {
 	}
 	return ids
 }
+
+// plainStore hides the optional memory.Summarizer capability of its base.
+type plainStore struct{ memory.Store }
+
+func TestSetSummaryForwardsToFiles(t *testing.T) {
+	ctx := context.Background()
+	scope := memory.UserScope()
+	base, err := files.New(map[memory.Scope]files.Layout{scope: files.DirLayout{Dir: t.TempDir()}})
+	assert.Require(t, assert.NoErr(t, err))
+	indexed := New(base)
+	e, err := indexed.Write(ctx, scope, memory.Op{Action: memory.ActionAdd, Kind: memory.KindFeedback,
+		Title: "Use tabs", Body: "Tabs."})
+	assert.Require(t, assert.NoErr(t, err))
+
+	assert.NoErr(t, indexed.SetSummary(ctx, scope, e.ID, "项目缩进约定"))
+	ix, err := base.Index(ctx, scope)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Require(t, assert.Len(t, ix.Lines, 1))
+	assert.Eq(t, "项目缩进约定", ix.Lines[0].Summary)
+
+	t.Run("backend without a summary slot is reported", func(t *testing.T) {
+		wrapped := New(plainStore{Store: base})
+		err := wrapped.SetSummary(ctx, scope, e.ID, "x")
+		assert.Err(t, err)
+		assert.StrContains(t, err.Error(), "cannot store a summary separately")
+	})
+}
