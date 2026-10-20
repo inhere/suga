@@ -309,7 +309,7 @@ func TestConcurrentWritersKeepEveryLine(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("SUGA_HOME", home)
 	settings := defaultLogTestSettings()
-	settings.MaxSize = 8192
+	settings.MaxSize = 2048
 
 	const writers, records = 4, 60
 	lineFormat := regexp.MustCompile(`^writer=(\d+) record=(\d+) pad=[a-z]+$`)

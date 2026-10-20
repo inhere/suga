@@ -154,9 +154,14 @@ func openLogFile(settings appconfig.LogSettings, now time.Time) (*logFile, error
 //     which under concurrent writers makes two processes rename each other's
 //     fresh file; ModeCreate at least names the rotated file after the path the
 //     rotating process actually holds, and the day in the name keeps a day's
-//     rotation lane to itself. A rename by one process still moves the file the
-//     others have open (their lines keep landing in the rotated file, which the
-//     retry in Write survives), so ModeCreate is the smaller risk, not a lock.
+//     rotation lane to itself. Neither mode is a lock: a rename by one process
+//     still moves the file the others have open (their lines keep landing in the
+//     rotated file, which the retry in Write survives), and Windows only lets a
+//     file be renamed while every handle on it allows delete, which Go's
+//     os.OpenFile does not: with three live `suga run` processes some rotations
+//     are skipped and the file keeps growing until one succeeds, and every
+//     record still lands. The day in the name is what ends such a file at the
+//     next day's start.
 func rotatefileConfig(path string, settings appconfig.LogSettings) rotatefile.Config {
 	return rotatefile.Config{
 		Filepath:   path,
