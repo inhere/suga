@@ -138,8 +138,16 @@ func TestChatNamesTheSessionAfterItsWorkspace(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	assert.StrContains(t, record.Name, "mywork-")
-	// Stored on the first registration, so a resume keeps the address.
-	saved, err := runner.SessionShortName(context.Background(), record.SessionID)
+	// Stored on the first registration, so a resume keeps the address. The
+	// process record is written before the session meta, so wait for the meta
+	// too instead of reading it the moment the record appears.
+	var saved string
+	for time.Now().Before(deadline) {
+		if saved, err = runner.SessionShortName(context.Background(), record.SessionID); err == nil && saved != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	assert.NoErr(t, err)
 	assert.Eq(t, record.Name, saved)
 
