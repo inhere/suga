@@ -65,6 +65,27 @@ func TestLoadRulesDetailed(t *testing.T) {
 		assert.Eq(t, stats.KeptBytes, stats.Files[0].Kept+stats.Files[1].Kept)
 	})
 
+	t.Run("budget exhausted before a later file", func(t *testing.T) {
+		root := t.TempDir()
+		assert.NoErr(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+		home := filepath.Join(root, "home")
+		// Two files of exactly 64KB use the 128KB budget up; the nested file's
+		// AGENTS.md is therefore never read.
+		full := strings.Repeat("c", maxRuleFileBytes)
+		writeRuleFile(t, home, full)
+		writeRuleFile(t, root, full)
+		writeRuleFile(t, filepath.Join(root, "sub"), "NEVER READ\n")
+
+		_, _, stats, err := LoadRulesDetailed(filepath.Join(root, "sub"), home, false, "")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, stats.Truncated)
+		assert.Len(t, stats.Files, 2)
+		// The unread file is stat'ed into the original size, so the manifest shows
+		// that content was dropped.
+		assert.Eq(t, maxRuleTotalBytes+len("NEVER READ\n"), stats.OriginalBytes)
+		assert.True(t, stats.KeptBytes < stats.OriginalBytes)
+	})
+
 	t.Run("single file over 64KB", func(t *testing.T) {
 		root := t.TempDir()
 		assert.NoErr(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))

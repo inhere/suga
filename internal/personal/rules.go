@@ -63,7 +63,8 @@ func LoadRulesDetailed(cwd, sugaHome string, noProject bool, ruleFile string) (s
 	var sections, hashSections []string
 	remaining := maxRuleTotalBytes
 	seenPaths := make(map[string]struct{})
-	for _, path := range paths {
+	unreadBytes := 0
+	for i, path := range paths {
 		content, err := expandRuleFile(path, &remaining, seenPaths, &stats, false)
 		if err != nil {
 			return "", "", stats, err
@@ -73,14 +74,26 @@ func LoadRulesDetailed(cwd, sugaHome string, noProject bool, ruleFile string) (s
 			hashSections = append(hashSections, fmt.Sprintf("# %s\n%s", ruleHashLabel(path, sugaHome, workspaceRoot), content))
 		}
 		if remaining == 0 {
+			// The budget ran out: a later rule file would never be read, which is
+			// a truncation even when the last line fit exactly. Its size is still
+			// added to the original bytes (only stat'ed, never read).
+			if i < len(paths)-1 {
+				stats.Truncated = true
+				for _, rest := range paths[i+1:] {
+					if info, statErr := os.Stat(rest); statErr == nil && info.Mode().IsRegular() {
+						unreadBytes += int(info.Size())
+					}
+				}
+			}
 			break
 		}
 	}
-	// A file that did not fit in the 128KB total may never have been read, so
-	// the report cannot know its size; OriginalBytes only covers read files.
+	// OriginalBytes is the size on disk of every rule file in scope: the read
+	// ones plus the later files the 128KB budget never opened (stat'ed only).
 	for _, f := range stats.Files {
 		stats.OriginalBytes += f.Original
 	}
+	stats.OriginalBytes += unreadBytes
 	rules := strings.Join(sections, "\n\n")
 	// The hash must not depend on where the checkout lives (another directory,
 	// container or Windows path), so it covers path-neutral labels plus content.
