@@ -164,7 +164,7 @@ func TestDeliverMessageKeepsTheFollowUpDefault(t *testing.T) {
 	for _, mode := range []string{"", personalprocess.ModeFollowUp, "something_else"} {
 		t.Run("mode "+strconv.Quote(mode), func(t *testing.T) {
 			h := newSendSteerHarness(t, newToolGateProv())
-			delivery, _, err := h.state.deliverMessage(mode, "你好", "cli")
+			delivery, _, err := h.state.deliverMessage(mode, "你好", "cli", nil)
 			assert.NoErr(t, err)
 			assert.False(t, delivery.Steered)
 			assert.False(t, delivery.Queued)
@@ -183,7 +183,7 @@ func TestSendSteerReachesTheRunningTurn(t *testing.T) {
 	done := h.startTurn()
 	<-prov.started() // the turn's first request is in flight
 
-	delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "只改 README", "gofer")
+	delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "只改 README", "gofer", nil)
 	assert.NoErr(t, err)
 	assert.True(t, delivery.Steered)
 	assert.False(t, delivery.Queued)
@@ -215,7 +215,7 @@ func TestSendSteerReachesTheRunningTurn(t *testing.T) {
 func TestSendSteerWithoutATurnIsQueued(t *testing.T) {
 	t.Run("idle chat", func(t *testing.T) {
 		h := newSendSteerHarness(t, newToolGateProv())
-		delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "你好", "gofer")
+		delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "你好", "gofer", nil)
 		assert.NoErr(t, err)
 		assert.True(t, delivery.Queued)
 		assert.False(t, delivery.Steered)
@@ -236,7 +236,7 @@ func TestSendSteerWithoutATurnIsQueued(t *testing.T) {
 		done := h.startTurn()
 		<-prov.started()
 
-		delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, "你好", "gofer")
+		delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, "你好", "gofer", nil)
 		assert.NoErr(t, err)
 		assert.True(t, delivery.Queued)
 		assert.Eq(t, 1, len(h.source.deliveries))
@@ -250,7 +250,7 @@ func TestSendSteerWithoutATurnIsQueued(t *testing.T) {
 		// message arriving in that window is not inserted (Runner.Steer refuses it)
 		// and waits for the next turn instead (design m8).
 		h.state.setCurrentTurn(&turnInput{state: h.state})
-		delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, "你好", "gofer")
+		delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, "你好", "gofer", nil)
 		assert.NoErr(t, err)
 		assert.True(t, delivery.Queued)
 		assert.Eq(t, 0, len(h.state.sendSettled))
@@ -266,11 +266,11 @@ func TestSendSteerFullInboxIsRefused(t *testing.T) {
 	<-prov.started()
 
 	for i := 0; i < sendSteerCapacity; i++ {
-		delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, fmt.Sprintf("插话 %d", i), "gofer")
+		delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, fmt.Sprintf("插话 %d", i), "gofer", nil)
 		assert.NoErr(t, err)
 		assert.True(t, delivery.Steered)
 	}
-	_, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "太多了", "gofer")
+	_, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "太多了", "gofer", nil)
 	assert.True(t, err != nil && settled == nil)
 	assert.ErrIs(t, err, personal.ErrSteerQueueFull)
 	// The session socket maps only its own ErrQueueFull to the queue_full answer.
@@ -294,7 +294,7 @@ func TestSendSteerReturnedByCancelledTurnIsDiscarded(t *testing.T) {
 	done := h.startTurn()
 	<-prov.started()
 
-	delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "别改了", "gofer")
+	delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "别改了", "gofer", nil)
 	assert.NoErr(t, err)
 	assert.True(t, delivery.Steered)
 
@@ -318,7 +318,7 @@ func TestSendSteerBecomesTheNextTurn(t *testing.T) {
 	done := h.startTurn()
 	<-prov.started()
 
-	delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "改成 README", "gofer")
+	delivery, settled, err := h.state.deliverMessage(personalprocess.ModeSteer, "改成 README", "gofer", nil)
 	assert.NoErr(t, err)
 	assert.True(t, delivery.Steered)
 	prov.letGo()

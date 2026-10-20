@@ -122,9 +122,9 @@ func localSystemContext(local, hook string) string {
 // into it leave behind (design D3): a completed turn hands the messages it never
 // delivered back, and they run at once as a turn of their own, so the answer the
 // person already saw stays the result of the turn that produced it.
-func (s *chatState) runTurn(line string, injected bool) error {
+func (s *chatState) runTurn(line string, injected bool, images []agentcore.ImagePart) error {
 	for {
-		next, err := s.runOneTurn(line, injected)
+		next, err := s.runOneTurn(line, injected, images)
 		if err != nil || next == nil {
 			return err
 		}
@@ -133,6 +133,9 @@ func (s *chatState) runTurn(line string, injected bool) error {
 		// (design "--wait" 完成点 "作为下一回合运行").
 		s.settleSendSteers(next.ids, nil)
 		line, injected = next.line, next.injected
+		// The pictures of the delivery reached the first turn; a turn made of
+		// inserted messages carries only their own (a steer keeps its images).
+		images = nil
 	}
 }
 
@@ -154,7 +157,7 @@ type steerTurn struct {
 // ends the chat plus the input of the turn the messages inserted into this one
 // left behind (nil: none). A turn that merely failed, yielded or answered
 // reports itself through the renderer and the stats.
-func (s *chatState) runOneTurn(line string, injected bool) (*steerTurn, error) {
+func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.ImagePart) (*steerTurn, error) {
 	// A turn starts: no idle consolidation until it has ended (EndTurn).
 	s.idle.Pause()
 	if s.createdAtStartup {
@@ -201,7 +204,8 @@ func (s *chatState) runOneTurn(line string, injected bool) (*steerTurn, error) {
 		Prompt:    line,
 		// The pictures queued at the prompt (:image, Alt+V) ride with this
 		// message; the store writes their files and keeps the message text clean.
-		Images: s.takePendingImages(),
+		// The pictures of a `suga send --image` delivery follow them.
+		Images: append(s.takePendingImages(), images...),
 		// What the person's own local commands ("!!") produced comes first, so the
 		// model reads it as context of this message; the hook context follows.
 		SystemContext: localSystemContext(s.localContext, s.pendingContext),
