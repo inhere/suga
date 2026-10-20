@@ -8,8 +8,8 @@ import "context"
 // session message with hops h started has h, and every message its tools send
 // carries h+1, so two sessions cannot answer each other without end.
 
-// withTurnHops records the depth of the turn ctx belongs to.
-func withTurnHops(ctx context.Context, hops int) context.Context {
+// WithTurnHops records the depth of the turn ctx belongs to.
+func WithTurnHops(ctx context.Context, hops int) context.Context {
 	return context.WithValue(ctx, turnHopsKey{}, hops)
 }
 

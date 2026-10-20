@@ -673,7 +673,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	ctx = context.WithValue(ctx, turnInputKey{}, turnInput{chars: len(req.Prompt), injected: req.Injected})
 	// The automatic-reply depth of this turn (design session_message D3): the
 	// session_message tool reads it and sends h+1.
-	ctx = withTurnHops(ctx, req.Hops)
+	ctx = WithTurnHops(ctx, req.Hops)
 	// Refused tool calls are counted per turn in ctx (see denial.go).
 	ctx, denials := withTurnDenials(ctx)
 	// The run-scoped usage is counted at the observe layer and published after
