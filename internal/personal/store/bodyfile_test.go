@@ -141,6 +141,32 @@ func TestBodyFilesCoexist(t *testing.T) {
 	})
 }
 
+// TestRemoveToolBodyFilesDropsBothNames: after --undo the session files are no
+// longer needed, so --remove-files deletes them under both names, not only under
+// the one writes use now.
+func TestRemoveToolBodyFilesDropsBothNames(t *testing.T) {
+	ctx := context.Background()
+	s := openTemp(t)
+	createSession(t, s, "s1", "/w")
+	appendAll(t, s, "s1", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c1"))})
+	assert.Require(t, assert.NoErr(t, s.SetBodyFileNameSwitch(ctx, true)))
+	createSession(t, s, "s2", "/w")
+	appendAll(t, s, "s2", NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c2"))})
+	assert.True(t, bodyFileExists(t, s, "s1", LegacyBodyFileName))
+	assert.True(t, bodyFileExists(t, s, "s2", BodyFileName))
+
+	_, err := s.UndoToolBodies(ctx, ToolBodyMaintOptions{})
+	assert.Require(t, assert.NoErr(t, err))
+	removed, err := s.RemoveToolBodyFiles(ctx)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, 2, removed)
+	for _, id := range []string{"s1", "s2"} {
+		for _, name := range []string{BodyFileName, LegacyBodyFileName} {
+			assert.False(t, bodyFileExists(t, s, id, name), "%s/%s must be gone", id, name)
+		}
+	}
+}
+
 // TestRenameBodyFilesResumesAfterInterruption: a cancelled run renames nothing it
 // had not finished, leaves the switch off, and the next run completes the pass.
 func TestRenameBodyFilesResumesAfterInterruption(t *testing.T) {

@@ -35,7 +35,7 @@ func newLegacyToolBodiesCommand(ctx context.Context, stdout, stderr io.Writer) *
 func newBodiesCommand(ctx context.Context, stdout, stderr io.Writer, name string) *capp.Cmd {
 	var status, move, undo, check, removeFiles, abort, slim, renameFiles bool
 	var batch int
-	cmd := capp.NewCmd(name, "Move tool results and assistant replies out of the ledger into sessions/<id>/bodies.jsonl (--move), rename old tools.jsonl files (--rename-files), narrow old stubs (--slim), restore them (--undo), verify (--check)", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd(name, "Move tool results and assistant replies out of the ledger into sessions/<id>/bodies.jsonl (--move), rename old tools.jsonl files (--rename-files), narrow old stubs (--slim), restore them (--undo), verify (--check); tool-bodies is the old name of this command", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) > 0 {
 			return fmt.Errorf("usage: suga data bodies [--status|--move|--slim|--undo|--check|--rename-files|--abort] [--remove-files] [--batch N]")
 		}
