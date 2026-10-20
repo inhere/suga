@@ -26,7 +26,7 @@ func VisionFor(spec ModelSpec) bool {
 }
 
 // visionExcluded lists the model families known not to accept images, checked
-// before the enabling list so an id such as "deepseek-gpt-4o-lookalike" stays
+// after the exact enabling list so an id such as "deepseek-gpt-4o-lookalike" stays
 // text-only.
 var visionExcluded = []string{"deepseek", "glm", "qwen", "ernie", "hunyuan", "yi-", "kimi", "moonshot"}
 
@@ -37,6 +37,14 @@ var visionEnabled = []string{
 	"gpt-4o", "gpt-4.1", "gpt-4-turbo", "gpt-5", "gpt-6", "chatgpt-4o",
 	"gemini",
 }
+
+// visionAllowed lists text-only-family model ids that do accept images. The
+// user confirmed on 2026-10-20 (image design, second phase) that
+// deepseek-v4.1-flash and glm-5.3-flash take image parts; only these exact ids
+// are enabled, so the rest of each family (deepseek-chat, glm-4 and the like)
+// stays text-only. Checked before visionExcluded, and matched exactly: a family
+// name borrowed inside another id must not turn it into a vision model.
+var visionAllowed = []string{"deepseek-v4.1-flash", "glm-5.3-flash"}
 
 // InferVision guesses whether a model id sent to the provider accepts images.
 // The vendor prefix of a gateway id ("openai/gpt-4o") is dropped first, so the
@@ -50,6 +58,13 @@ func InferVision(apiModel string) bool {
 	}
 	if name == "" {
 		return false
+	}
+	// The gateway prefix of an id ("openai/gpt-4o") is dropped before matching,
+	// so the same id is enabled through every gateway...
+	for _, allowed := range visionAllowed {
+		if name == allowed {
+			return true
+		}
 	}
 	for _, excluded := range visionExcluded {
 		if strings.Contains(name, excluded) {
