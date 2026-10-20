@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- `suga run --image <路径>`（可重复，顺序保留）把图片直接附到本条用户消息：与 chat `:image` 同一套校验、缩放与落盘（`sessions/<id>/images/`），相对路径按 run 的工作目录解析；当前模型不支持看图、或任何一张图读取失败时在回合开始前报错退出（exit 1，写明第几张与原因，并提示用 `--model` 或配置 `vision`），不静默丢图。`--output stream-json` 的首行 session 事件在有图时带 `images` 张数（无 `--image` 时该行逐字节不变）。
+
 ### 修复
 
 - `suga config set` 写回 CRLF 换行的配置文件（Windows 常见）时，每个注释行后多出一个空行：解析前先统一为 LF，写回时再按原文件恢复 CRLF。
