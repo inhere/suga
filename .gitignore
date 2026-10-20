@@ -1,12 +1,10 @@
 .worktrees/
-.superpowers/
+.suga/
 tmp/
 local/
 .env
 *.exe
 .xenv.*
-.agentcore/
 tmp/
 dist/
-local/
 __pycache__/
