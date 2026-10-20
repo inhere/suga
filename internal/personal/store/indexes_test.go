@@ -104,7 +104,14 @@ func TestQueryIndexMigrationStaysFastOnALargeLedger(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, s.migrate(ctx)))
 	elapsed := time.Since(start)
 	t.Logf("index migration over 60k entries / 200k events: %v", elapsed)
-	assert.True(t, elapsed < 5*time.Second, "index migration took "+elapsed.String())
+	// The race detector slows SQLite several times over (CI ran 6.2s with -race,
+	// coverage and a loaded runner). The budget there stays well under what the
+	// v0.31.0 migration needed, which never finished on a large ledger.
+	budget := 5 * time.Second
+	if raceEnabled {
+		budget = 20 * time.Second
+	}
+	assert.True(t, elapsed < budget, "index migration took "+elapsed.String())
 
 	for _, name := range []string{"idx_entries_type", "idx_events_turn"} {
 		var n int
