@@ -62,6 +62,18 @@ func sameDir(a, b string, fold bool) bool {
 	return x == y
 }
 
+// EmptyScopeHint is the stderr/hint line of an empty default-scoped session
+// list (design 2026-10-20 会话列表默认当前目录; the CLI prints it on stderr and
+// ACP session/list carries it in _meta.suga/hint): the message names the
+// current directory, how many sessions the other directories hold and both
+// ways out. otherDirs == 0 means there is nothing anywhere yet.
+func EmptyScopeHint(dir string, otherDirs int) string {
+	if otherDirs == 0 {
+		return "还没有任何会话"
+	}
+	return fmt.Sprintf("当前目录 %s 没有会话（其它目录共有 %d 个）；目录可能不对，可 cd 到会话所在目录，或用 suga sessions --all 列出全部", dir, otherDirs)
+}
+
 // SessionCwd returns the working directory recorded on a session ("" for a
 // session created before cwd was recorded; the next turn fills it in then).
 func (r *Runner) SessionCwd(ctx context.Context, sessionID string) (string, error) {

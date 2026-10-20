@@ -199,13 +199,10 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 }
 
 // emptyScopeHint is the stderr line of an empty result (design 2026-10-20):
-// the message names the current directory, how many sessions the other
-// directories hold and both ways out. N == 0 means there is nothing anywhere.
+// it is the shared personal.EmptyScopeHint text, so the CLI and the ACP
+// session/list hint agree word for word.
 func emptyScopeHint(dir string, otherDirs int) string {
-	if otherDirs == 0 {
-		return "还没有任何会话"
-	}
-	return fmt.Sprintf("当前目录 %s 没有会话（其它目录共有 %d 个）；目录可能不对，可 cd 到会话所在目录，或用 suga sessions --all 列出全部", dir, otherDirs)
+	return personal.EmptyScopeHint(dir, otherDirs)
 }
 
 // writeEmptyHint prints the empty-scope hint on stderr — also for --json, so
