@@ -61,6 +61,27 @@ func (l *LiveText) SetWholeLines(on bool) {
 	}
 }
 
+// SetCode configures the code blocks of the markdown renderer: highlighting by
+// the fence's language, the theme of that highlighting, the fold limit of a
+// block (chat.code_*) and the terminal width a table is kept within. A LiveText
+// without markdown rendering ignores it.
+func (l *LiveText) SetCode(highlight bool, theme string, maxLines, width int) {
+	if l.md == nil {
+		return
+	}
+	l.md.SetCode(highlight, theme, maxLines)
+	l.md.SetWidth(width)
+}
+
+// CodeBlocks returns the code blocks of the most recent rendered message, for
+// chat's :code command (nil without markdown rendering).
+func (l *LiveText) CodeBlocks() []CodeBlock {
+	if l.md == nil {
+		return nil
+	}
+	return l.md.CodeBlocks()
+}
+
 // wholePrefix is the prefix the markdown renderer prints itself ("" when the
 // text prints it, i.e. when whole lines are off).
 func (l *LiveText) wholePrefix() string {

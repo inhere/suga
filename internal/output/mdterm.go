@@ -32,6 +32,8 @@ var (
 	mdHeadingStyle = color.Style{color.OpBold, color.FgCyan}
 	mdDimStyle     = color.Style{color.FgGray}
 	mdCodeStyle    = color.Style{color.FgLightYellow}
+	// mdHeaderStyle marks the header line of an aligned table (mdtable.go).
+	mdHeaderStyle = color.Style{color.OpBold}
 )
 
 // List items: the indent, the marker and the space behind it are kept, only the
@@ -49,6 +51,28 @@ type MDTerm struct {
 	color   bool
 	pending string // text after the last newline, not rendered yet
 	block   bool   // inside a fenced code block; spans the lines of one message
+	// Code highlighting of a fenced block (chat.code_highlight): the language
+	// of its fence picks the lexer and the theme its style (mdcode.go).
+	highlight bool
+	theme     string
+	// maxCode folds a code block after this many lines (chat.code_max_lines, 0:
+	// no fold); the hidden lines are only counted and reported when it ends.
+	maxCode    int
+	width      int
+	code       *mdCode
+	codeLang   string
+	codeText   []string
+	codeLines  int
+	codeFolded int
+	// blocks are the code blocks of the current message; lastBlocks keeps those
+	// of the most recent message that had one, for chat's :code command.
+	blocks     []CodeBlock
+	lastBlocks []CodeBlock
+	// table buffers the lines of a pending GFM table (mdtable.go) until its end.
+	table []string
+	// extra holds further lines one input line produces (the end of a table, a
+	// fold notice); they are printed right after it.
+	extra []string
 	// prefix, when set, is printed at the start of every message's first line: a
 	// caller that cannot write the prefix itself (it would be a write without a
 	// newline while an input line is on screen, see LiveText.SetWholeLines) has the
@@ -58,7 +82,28 @@ type MDTerm struct {
 }
 
 // NewMDTerm returns an MDTerm writing rendered lines to w; color styles them.
-func NewMDTerm(w io.Writer, color bool) *MDTerm { return &MDTerm{w: w, color: color} }
+func NewMDTerm(w io.Writer, color bool) *MDTerm {
+	return &MDTerm{w: w, color: color, theme: MDDefaultCodeTheme}
+}
+
+// SetCode configures fenced code blocks: highlight colors them by their
+// language (chat.code_highlight; it needs color), theme names the chroma style
+// (chat.code_theme) and maxLines folds a block after that many lines
+// (chat.code_max_lines, 0: no fold).
+func (t *MDTerm) SetCode(highlight bool, theme string, maxLines int) {
+	t.highlight, t.maxCode = highlight, maxLines
+	if theme != "" {
+		t.theme = theme
+	}
+}
+
+// SetWidth sets the terminal width used to leave a too wide table as it came
+// (0: any width is accepted).
+func (t *MDTerm) SetWidth(width int) { t.width = width }
+
+// CodeBlocks returns the code blocks of the most recent message that had one, in
+// the order they appeared (:code).
+func (t *MDTerm) CodeBlocks() []CodeBlock { return t.lastBlocks }
 
 // SetLinePrefix sets the text printed at the start of every message's first line
 // ("" removes it).
@@ -91,9 +136,7 @@ func (t *MDTerm) Print(text string) {
 		return
 	}
 	t.Write(text)
-	if t.pending != "" {
-		t.Flush()
-	}
+	t.Flush()
 }
 
 // Flush renders the buffered, still incomplete line and ends the message: a
@@ -103,21 +146,54 @@ func (t *MDTerm) Flush() {
 		t.pending = ""
 		t.print(line)
 	}
-	t.block = false
+	if t.block {
+		// An unclosed block ends with the message: a folded one still reports the
+		// lines it hid.
+		t.endCode()
+		t.block = false
+	}
+	t.putExtras()
+	for _, line := range t.flushTable() {
+		t.put(line)
+	}
+	if len(t.blocks) > 0 {
+		t.lastBlocks = t.blocks
+	}
+	t.blocks = nil
 	// The next message gets the line prefix again.
 	t.started = false
 }
 
-func (t *MDTerm) print(line string) {
-	rendered := t.renderLine(line)
+// put prints one rendered line, with the message prefix in front of the first
+// line of a message.
+func (t *MDTerm) put(line string) {
 	if t.prefix != "" && !t.started {
-		rendered, t.started = t.prefix+rendered, true
+		line, t.started = t.prefix+line, true
 	}
-	fmt.Fprintln(t.w, rendered)
+	fmt.Fprintln(t.w, line)
 }
 
-// renderLine renders one complete markdown line, without its newline.
-func (t *MDTerm) renderLine(s string) string {
+// putExtras prints the extra lines the last input line produced.
+func (t *MDTerm) putExtras() {
+	for _, line := range t.extra {
+		t.put(line)
+	}
+	t.extra = nil
+}
+
+// print renders one input line; emit is false for a line the renderer hides
+// (a buffered table row, a code line past the fold limit).
+func (t *MDTerm) print(line string) {
+	rendered, emit := t.renderLine(line)
+	if emit {
+		t.put(rendered)
+	}
+	t.putExtras()
+}
+
+// renderLine renders one complete markdown line, without its newline; emit is
+// false for a line that waits in a buffer or is hidden by folding.
+func (t *MDTerm) renderLine(s string) (string, bool) {
 	trimmed := strings.TrimSpace(s)
 	// Fences first: inside a code block nothing else is interpreted.
 	if strings.HasPrefix(trimmed, "```") {
@@ -125,38 +201,98 @@ func (t *MDTerm) renderLine(s string) string {
 		switch {
 		case !t.block:
 			t.block = true
+			t.startCode(info)
 			if info != "" {
-				return t.paint(mdDimStyle, mdFence+" "+info)
+				return t.paint(mdDimStyle, mdFence+" "+info), true
 			}
-			return t.paint(mdDimStyle, mdFence)
+			return t.paint(mdDimStyle, mdFence), true
 		case info == "":
+			t.endCode()
 			t.block = false
-			return t.paint(mdDimStyle, mdFence)
+			return t.paint(mdDimStyle, mdFence), true
 		}
 		// A "```lang" line inside the block is content, not a closing fence.
 	}
 	if t.block {
-		return t.paint(mdDimStyle, s) // code keeps its exact text and is dimmed
+		return t.codeLine(s)
+	}
+	// A buffered table ends at the first line that is not a table row.
+	if t.table != nil {
+		if strings.HasPrefix(trimmed, "|") {
+			t.table = append(t.table, s)
+			return "", false
+		}
+		t.extra = nil
+		// The table's lines go out before this one.
+		for _, line := range t.flushTable() {
+			t.put(line)
+		}
 	}
 	if mdRule(trimmed) {
-		return t.paint(mdDimStyle, strings.Repeat("─", mdRuleWidth))
+		return t.paint(mdDimStyle, strings.Repeat("─", mdRuleWidth)), true
 	}
 	if _, text, ok := mdHeading(trimmed); ok {
-		return t.inline(text, mdHeadingStyle)
+		return t.inline(text, mdHeadingStyle), true
 	}
 	if strings.HasPrefix(trimmed, "|") {
-		return s // a table stays exactly as the model wrote it
+		// The line may open a GFM table: its next line (the delimiter row) decides,
+		// so it waits with the rows that follow it (mdtable.go).
+		t.table = []string{s}
+		return "", false
 	}
 	if text, depth, ok := mdQuote(s); ok {
-		return t.paint(mdDimStyle, strings.Repeat("│ ", depth)) + t.inline(text, mdDimStyle)
+		return t.paint(mdDimStyle, strings.Repeat("│ ", depth)) + t.inline(text, mdDimStyle), true
 	}
 	if m := mdBulletItem.FindStringSubmatch(s); m != nil {
-		return m[1] + "•" + m[3] + t.inline(m[4], nil)
+		return m[1] + "•" + m[3] + t.inline(m[4], nil), true
 	}
 	if m := mdNumberedItem.FindStringSubmatch(s); m != nil {
-		return m[1] + m[2] + m[3] + t.inline(m[4], nil)
+		return m[1] + m[2] + m[3] + t.inline(m[4], nil), true
 	}
-	return t.inline(s, nil)
+	return t.inline(s, nil), true
+}
+
+// startCode prepares the code block opened by a fence with info: its language,
+// a highlighter when highlighting is on (a colored terminal and
+// chat.code_highlight) and its line counters of the fold limit.
+func (t *MDTerm) startCode(info string) {
+	t.codeLang = mdCodeLang(info)
+	t.codeText, t.codeLines, t.codeFolded = nil, 0, 0
+	t.code = nil
+	if t.highlight && t.color {
+		t.code = newMDCode(info, t.theme)
+	}
+}
+
+// codeLine renders one line inside a fenced code block: highlighted for a known
+// language, dim otherwise. Past chat.code_max_lines the line is only counted:
+// the block's end reports how many were hidden.
+func (t *MDTerm) codeLine(s string) (string, bool) {
+	t.codeText = append(t.codeText, s)
+	t.codeLines++
+	if t.maxCode > 0 && t.codeLines > t.maxCode {
+		t.codeFolded++
+		return "", false
+	}
+	if t.code != nil {
+		if colored, ok := t.code.line(s); ok {
+			return colored, true
+		}
+	}
+	return t.paint(mdDimStyle, s), true // code keeps its exact text and is dimmed
+}
+
+// endCode ends the open code block: its lines are kept for :code and a folded
+// block gets the notice line naming that command.
+func (t *MDTerm) endCode() {
+	if len(t.codeText) > 0 || t.codeFolded > 0 {
+		t.blocks = append(t.blocks, CodeBlock{Lang: t.codeLang, Lines: t.codeText, Folded: t.codeFolded})
+	}
+	if t.codeFolded > 0 {
+		t.extra = append(t.extra, t.paint(mdDimStyle,
+			fmt.Sprintf("… 还有 %d 行（:code 查看全部）", t.codeFolded)))
+	}
+	t.code, t.codeLang, t.codeText, t.codeLines, t.codeFolded = nil, "", nil, 0, 0
 }
 
 // inline renders the inline markers of one line: `code`, **bold**, *italic*,
