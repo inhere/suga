@@ -4,6 +4,15 @@
 
 ## [未发布]
 
+### 新增
+
+- gofer 项目后端支持 `gofer memory` 的 `title` 字段（≥ gofer v0.179.0）：标题存 `--title`，一句话摘要存 `--summary`；旧条目仍把摘要槽当标题，`suga memory gofer-titles` 一次性迁移（默认预览，`--apply` 才写）。
+- `suga memory gofer-titles` 子命令列出旧条目并迁移；`suga memory summaries` 对 gofer 后端可以补摘要。
+
+### 变更
+
+- gofer 项目后端写入映射从「标题→`--summary`」改为「标题→`--title`、摘要→`--summary`」；旧版 gofer（无 `--title`）退回旧行为并提示一次，不报错中断。
+
 ## [0.40.0] - 2026-10-20
 
 chat 渲染、记忆与投递：代码块轻量高亮（自写 16 色，不引入 chroma）、GFM 表格按显示宽度对齐、长代码块折叠与 `:code`；记忆索引每行带一句话摘要与 `suga memory summaries`；`suga send --image` 向运行中的会话投递图片（进程记录声明能力，旧版本会话报错而不丢图）；`:image`/`run --image`/`send --image` 的路径不再限制在工作区内；新会话与回合 ID 改为 `s_`/`t_` + 12 位随机（旧 ID 继续有效）。
