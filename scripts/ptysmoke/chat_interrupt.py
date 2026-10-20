@@ -144,7 +144,7 @@ def check_store(s, binary, env, session):
             any(t.get("status") == "failed" for t in turns))
     s.check("trace: the turn after it completed",
             any(t.get("status") == "completed" for t in turns))
-    out = subprocess.run([binary, "export", session], capture_output=True, text=True,
+    out = subprocess.run([binary, "inspect", "export", session], capture_output=True, text=True,
                          env=env, timeout=60)
     s.check("export: the interruption note is stored",
             "suga.turn_interrupted" in out.stdout and NOTE in out.stdout)

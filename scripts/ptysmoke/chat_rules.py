@@ -76,7 +76,7 @@ def exit_chat(s):
 
 def trace_events(binary, env, session, cwd):
     """Read trace JSON without making non-JSON diagnostics fatal to the smoke."""
-    out = subprocess.run([binary, "trace", session, "--json"], capture_output=True,
+    out = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True,
                          text=True, env=env, cwd=cwd, timeout=60)
     events = []
     for line in out.stdout.splitlines():
@@ -88,7 +88,7 @@ def trace_events(binary, env, session, cwd):
 
 
 def manifest(binary, env, cwd):
-    out = subprocess.run([binary, "manifest", "--json"], capture_output=True,
+    out = subprocess.run([binary, "inspect", "manifest", "--json"], capture_output=True,
                          text=True, env=env, cwd=cwd, timeout=60)
     try:
         return out, json.loads(out.stdout)

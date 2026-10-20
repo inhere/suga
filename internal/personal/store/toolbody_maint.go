@@ -120,11 +120,16 @@ type ToolBodyStatus struct {
 	MoveEnabled bool
 	// PendingRows and PendingBytes are the tool rows that would still move;
 	// AssistantPending* the same for assistant entries (the migration of revision
-	// 3, an independent pass).
+	// 3, an independent pass). AssistantSkippedRows (and its bytes) are the SQL
+	// candidates the assistant pass leaves alone because moving them out saves no
+	// more than the threshold: counted apart so --status does not ask for a --move
+	// run that cannot do anything.
 	PendingRows          int64
 	PendingBytes         int64
 	AssistantPendingRows int64
 	AssistantPending     int64
+	AssistantSkippedRows int64
+	AssistantSkipped     int64
 	// MovedRows are the rows whose body lives in a file, FileBytes and Files what
 	// the session files hold (both file names).
 	MovedRows          int64
@@ -483,6 +488,45 @@ func toolBodySlimWindow(ctx context.Context, q querier, cursor cursorState, limi
 	return out, rows.Err()
 }
 
+// countAssistantBodyRows decides in Go which SQL candidates the assistant pass
+// moves (issue suga-t4ou). The window condition (json minus Content above the
+// threshold) only estimates the saving: the stub keeps the whole Content plus the
+// call id/name, so a row whose real saving is at most the threshold is never
+// moved. Those are counted apart instead of in the pending figure, and an
+// undecodable row counts apart too (the pass skips it). It only reads, paging
+// like the pass, so --status works next to a running chat.
+func (s *Store) countAssistantBodyRows(ctx context.Context) (moveRows, moveBytes, skipRows, skipBytes int64, err error) {
+	var cursor cursorState
+	for {
+		if err := ctx.Err(); err != nil {
+			return moveRows, moveBytes, skipRows, skipBytes, err
+		}
+		window, err := toolBodyWindowTx(ctx, s.db, cursor, s.toolBodyInlineBytes, toolBodyCheckBatch, true)
+		if err != nil {
+			return moveRows, moveBytes, skipRows, skipBytes, err
+		}
+		for i := range window {
+			raw := window[i].JSON
+			stub, ok, buildErr := buildToolBodyStub(EntryAssistant, raw)
+			if buildErr != nil {
+				return moveRows, moveBytes, skipRows, skipBytes,
+					fmt.Errorf("build stub of %s/%d: %w", window[i].SessionID, window[i].Seq, buildErr)
+			}
+			if ok && int64(len(raw)-len(stub)) > s.toolBodyInlineBytes {
+				moveRows++
+				moveBytes += int64(len(raw))
+				continue
+			}
+			skipRows++
+			skipBytes += int64(len(raw))
+		}
+		if len(window) < toolBodyCheckBatch {
+			return moveRows, moveBytes, skipRows, skipBytes, nil
+		}
+		cursor.SessionID, cursor.Seq = window[len(window)-1].SessionID, window[len(window)-1].Seq
+	}
+}
+
 // countSlimToolBodyRows counts the stubs still in the old shape and what --slim
 // would give back. It only reads (no write lock) and pages like the pass itself,
 // so --status stays usable next to a running chat.
@@ -513,13 +557,13 @@ func (s *Store) countSlimToolBodyRows(ctx context.Context) (int64, int64, error)
 }
 
 // toolBodyWindowTx reads up to limit tool rows that still hold their body, after
-// the cursor, inside tx.
-func toolBodyWindowTx(ctx context.Context, tx *sql.Tx, cursor cursorState, threshold int64, limit int, assistant bool) ([]toolBodyRow, error) {
+// the cursor. A read-only caller pages with s.db, the passes with their tx.
+func toolBodyWindowTx(ctx context.Context, q querier, cursor cursorState, threshold int64, limit int, assistant bool) ([]toolBodyRow, error) {
 	query := toolBodyMoveWindowSQL
 	if assistant {
 		query = assistantBodyMoveWindowSQL
 	}
-	rows, err := tx.QueryContext(ctx, query, threshold, cursor.SessionID, cursor.SessionID, cursor.Seq, limit)
+	rows, err := q.QueryContext(ctx, query, threshold, cursor.SessionID, cursor.SessionID, cursor.Seq, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read tool rows after %s/%d: %w", cursor.SessionID, cursor.Seq, err)
 	}
@@ -626,13 +670,12 @@ func (s *Store) ToolBodyStatus(ctx context.Context) (ToolBodyStatus, error) {
 		return status, fmt.Errorf("count pending tool bodies: %w", err)
 	}
 	// Assistant rows move when the stub saves more than the threshold; the SQL
-	// length of Content is an estimate of the stub, the pass decides exactly.
-	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(length(CAST(json AS BLOB))), 0) FROM entries
-        WHERE type = 'assistant' AND COALESCE(body_ref, '') = ''
-          AND length(CAST(json AS BLOB)) - length(CAST(COALESCE(json_extract(json, '$.Content'), '') AS BLOB)) > ?`,
-		s.toolBodyInlineBytes).Scan(&status.AssistantPendingRows, &status.AssistantPending)
+	// length of Content only estimates the stub, so the candidates are decided in
+	// Go (issue suga-t4ou): what the pass will move, and what it leaves alone.
+	status.AssistantPendingRows, status.AssistantPending, status.AssistantSkippedRows, status.AssistantSkipped, err =
+		s.countAssistantBodyRows(ctx)
 	if err != nil {
-		return status, fmt.Errorf("count pending assistant bodies: %w", err)
+		return status, err
 	}
 	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN type = 'tool' THEN 1 ELSE 0 END), 0),
         COALESCE(SUM(CASE WHEN type = 'assistant' THEN 1 ELSE 0 END), 0) FROM entries WHERE COALESCE(body_ref, '') <> ''`).

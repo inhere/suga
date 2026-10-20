@@ -61,7 +61,7 @@ func TestAssistantBodyMovesOutAndReadsBack(t *testing.T) {
 	row, ref := storedRow(t, s, "s1", appended[0].Seq)
 	assert.True(t, ref != "", "body_ref must be set")
 	assert.True(t, len(row) < len(big)/2, "the stub must be much smaller than the body: %d vs %d", len(row), len(big))
-	path := filepath.Join(s.sessionsDir, "s1", ToolBodyFileName)
+	path := filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName)
 	data, err := os.ReadFile(path)
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, string(data), `"seq":1,`)
@@ -174,7 +174,7 @@ func TestListEntriesNoHydrateLeavesTheStubs(t *testing.T) {
 		NewEntry{Type: EntryAssistant, JSON: big},
 		NewEntry{Type: EntryTool, JSON: msgJSON(t, bigToolMessage("c1"))})
 	assert.Eq(t, 3, len(appended))
-	path := filepath.Join(s.sessionsDir, "s1", ToolBodyFileName)
+	path := filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName)
 	// Removing the file proves which reads open it: NoHydrate must not.
 	assert.Require(t, assert.NoErr(t, os.Remove(path)))
 

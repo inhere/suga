@@ -252,7 +252,7 @@ func runTask(o *options, bin, runID string, t *Task, round int) (Result, error) 
 	t.finish(ws, r.Answer, &r)
 	r.Passed = runErr == nil && allPassed(r.Checks)
 
-	sout, err := runCmd(context.Background(), bin, []string{"stats", "--session", sid, "--json"}, ws, env)
+	sout, err := runCmd(context.Background(), bin, []string{"inspect", "stats", "--session", sid, "--json"}, ws, env)
 	if err != nil {
 		if r.Error == "" {
 			r.Error = "stats: " + err.Error()
@@ -260,7 +260,7 @@ func runTask(o *options, bin, runID string, t *Task, round int) (Result, error) 
 	} else {
 		parseStats(sout, &r)
 	}
-	if tout, err := runCmd(context.Background(), bin, []string{"trace", sid, "--json"}, ws, env); err == nil {
+	if tout, err := runCmd(context.Background(), bin, []string{"inspect", "trace", sid, "--json"}, ws, env); err == nil {
 		if c, ok := firstMainCall(tout); ok {
 			v := c.uncached()
 			r.FirstUncached = &v

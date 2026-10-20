@@ -54,10 +54,8 @@ const (
 	// LegacyBodyFileName is the v0.36 file name. Until `data bodies
 	// --rename-files` sets the switch every write still uses it, so a suga of the
 	// previous version running next to this one keeps reading its own files; the
-	// reader tries both names.
+	// reader tries both names. (v0.38 dropped the ToolBodyFileName alias of it.)
 	LegacyBodyFileName = "tools.jsonl"
-	// ToolBodyFileName is kept as a source-compatible alias for old callers.
-	ToolBodyFileName = LegacyBodyFileName
 	// toolBodyPreviewRunes bounds the preview a stub keeps of a tool result, so a
 	// lost file still shows what the call was and how its output began. It is the
 	// only copy of the output the stub holds (the result itself is not repeated),

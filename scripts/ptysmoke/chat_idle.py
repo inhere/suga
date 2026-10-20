@@ -94,7 +94,7 @@ def main():
         s.close()
         trace = ""
         if sid:
-            trace = subprocess.run([binary, "trace", sid.group(1)], env=env, cwd=ws, capture_output=True,
+            trace = subprocess.run([binary, "inspect", "trace", sid.group(1)], env=env, cwd=ws, capture_output=True,
                                    text=True, timeout=30).stdout
         s.check("trace: schedule fired", re.search(r"schedule idle-consolidate fired", trace) is not None)
         s.check("trace: preempted run cancelled", re.search(r"schedule idle-consolidate cancelled", trace) is not None)

@@ -175,7 +175,7 @@ func TestListEntryRefsOnSlimStubs(t *testing.T) {
 func TestSlimToolBodiesRewritesOldStubs(t *testing.T) {
 	ctx := context.Background()
 	s, before := slimFixture(t)
-	file := filepath.Join(s.sessionsDir, "s1", ToolBodyFileName)
+	file := filepath.Join(s.sessionsDir, "s1", LegacyBodyFileName)
 	fileBefore, err := os.ReadFile(file)
 	assert.Require(t, assert.NoErr(t, err))
 

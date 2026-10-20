@@ -81,7 +81,7 @@ def main():
         s.close()
         s.check("session id", bool(session))
         if session:
-            trace = subprocess.run([binary, "trace", session, "--json"], capture_output=True,
+            trace = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True,
                                    text=True, env=env, cwd=ws, timeout=60)
             events = []
             for line in trace.stdout.splitlines():

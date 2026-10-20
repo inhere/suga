@@ -75,3 +75,31 @@ store:
 		assert.ErrMsgContains(t, err, "store.tool_body_inline_bytes must be 0 or more, got -1")
 	})
 }
+
+// TestDeprecatedToolBodyKey: the old key still works but is deprecated; the
+// report at load time and the source `suga config` shows both name it.
+func TestDeprecatedToolBodyKey(t *testing.T) {
+	t.Run("the old name is reported", func(t *testing.T) {
+		loadYAML(t, `
+store:
+  tool_body_inline_bytes: 3072
+`)
+		notices := DeprecatedKeyNotices()
+		assert.Eq(t, 1, len(notices))
+		assert.StrContains(t, notices[0], "store.tool_body_inline_bytes 已弃用，将在 "+DeprecatedConfigRemoval+" 移除，改用 store.body_inline_bytes")
+		resolved, err := ReadConfigValue("store.body_inline_bytes")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "store.tool_body_inline_bytes", resolved.DeprecatedKey)
+	})
+
+	t.Run("the current name is not deprecated", func(t *testing.T) {
+		loadYAML(t, `
+store:
+  body_inline_bytes: 4096
+`)
+		assert.Eq(t, 0, len(DeprecatedKeyNotices()))
+		resolved, err := ReadConfigValue("store.body_inline_bytes")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "", resolved.DeprecatedKey)
+	})
+}

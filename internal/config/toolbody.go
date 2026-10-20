@@ -2,6 +2,7 @@ package axconfig
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,45 @@ type ToolBodySettings struct {
 // DefaultToolBodySettings returns the shipped policy.
 func DefaultToolBodySettings() ToolBodySettings {
 	return ToolBodySettings{InlineBytes: 1024}
+}
+
+// DeprecatedConfigRemoval is the release the deprecated configuration key alias
+// (store.tool_body_inline_bytes) is dropped in. The command line notices quote
+// the same version, so keep both in sync.
+const DeprecatedConfigRemoval = "v0.41.0"
+
+// deprecatedConfigKeys maps a key that is still read under an old name to the
+// name that replaces it.
+var deprecatedConfigKeys = map[string]string{
+	"store.tool_body_inline_bytes": "store.body_inline_bytes",
+}
+
+// DeprecatedKeyNotices returns one notice per deprecated key the loaded
+// configuration still sets. Callers print them to stderr once after Load, so
+// stdout (and the stream-json contract) stays clean.
+func DeprecatedKeyNotices() []string {
+	notices := make([]string, 0, len(deprecatedConfigKeys))
+	for old, current := range deprecatedConfigKeys {
+		if gkconfig.Get(old) == nil {
+			continue
+		}
+		notices = append(notices, fmt.Sprintf("提示：配置键 %s 已弃用，将在 %s 移除，改用 %s",
+			old, DeprecatedConfigRemoval, current))
+	}
+	sort.Strings(notices) // map order is random; the notice list stays stable
+	return notices
+}
+
+// deprecatedConfigKeyUsed returns the old name the value of key comes from, so
+// the command that shows a value can say so next to its source ("" when the
+// value does not come from a deprecated key).
+func deprecatedConfigKeyUsed(key string) string {
+	for old, current := range deprecatedConfigKeys {
+		if current == key && gkconfig.Get(old) != nil {
+			return old
+		}
+	}
+	return ""
 }
 
 // ReadToolBodySettings reads the new key first; the old key remains a compatible alias.

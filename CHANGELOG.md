@@ -4,8 +4,21 @@
 
 ## [未发布]
 
+### 不兼容
+
+- 移除 v0.36 起保留两个版本期的旧顶层命令写法（设计中的 v0.38 到期）：`suga trace|stats|export|manifest …`、`suga backup|restore …`、`suga gc [--shrink-fts|--vacuum|--compress-spill] …` 不再被改写成 `inspect`/`data` 分组命令，执行报“未知命令”，报错里给出新写法提示（静态映射表，只用于提示）。顶层不写 `chat` 的 chat 选项（如 `suga --resume <id>`）是 v0.36 的正式功能，保持不变。
+
+### 弃用
+
+以下写法仍可用，但只保留到 v0.41.0：使用时在 stderr 提示一次（stdout 的报告与 stream-json 契约不受影响）。
+
+- `suga data tool-bodies`：改用 `suga data bodies`；`--move`、`--undo`、`--check`、`--status` 不弃用（`--move` 仍用于阈值调小后把正文移出，`--undo` 是回滚手段）。
+- 一次性迁移命令 `suga data dedupe-tool-results`（含 `--undo`）、`suga data shrink-fts`、`suga data bodies --slim`、`suga data bodies --rename-files`：用于把 v0.35 及更早的库迁移到当前格式，已迁移的库不需要。
+- 配置键 `store.tool_body_inline_bytes`：改用 `store.body_inline_bytes`；配置里仍用旧键时，加载后在 stderr 提示一次，`suga config` 在来源处标注“已弃用键”。
+
 ### 修复
 
+- `suga data bodies --status` 的 assistant“待移出”按 SQL 近似计数（`length(json) - length(Content)`），把移出后不省字节、`--move` 永远不会移的条目也算在内（issue suga-t4ou，真实库上虚报 672 条）：改为对近似候选做一次 Go 侧精确判断（只读，用真实桩长度判定），分开展示“可移出 N 条”与“移出不省空间 M 条（不处理）”。
 - `suga config set` 写回 CRLF 换行的配置文件（Windows 常见）时，每个注释行后多出一个空行：解析前先统一为 LF，写回时再按原文件恢复 CRLF。
 
 ## [0.38.0] - 2026-10-20

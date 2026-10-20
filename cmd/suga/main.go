@@ -25,12 +25,10 @@ func main() {
 	if len(args) == 0 {
 		args = []string{"chat"}
 	}
-	// Accept the pre-v0.36 top-level command names and chat options without
-	// "chat" before anything reads the first argument (bootstrapExempt does).
-	args, notice := cli.RewriteLegacyArgs(args)
-	if notice != "" {
-		fmt.Fprintln(os.Stderr, notice)
-	}
+	// Accept chat options without "chat" before anything reads the first
+	// argument (bootstrapExempt does). An old top-level command name is no
+	// longer rewritten: it fails as unknown and the error names the new form.
+	args = cli.NormalizeArgs(args)
 	// Version and help are pure queries: neither may create the user's home.
 	if !bootstrapExempt(args) && !isInitCommand(args) {
 		result, err := appconfig.EnsureHome(appconfig.BootstrapOptions{})
@@ -46,13 +44,18 @@ func main() {
 			fmt.Fprintln(os.Stderr, "load config:", err)
 			os.Exit(1)
 		}
+		// A deprecated key the config file still sets is reported once, on stderr.
+		for _, notice := range appconfig.DeprecatedKeyNotices() {
+			fmt.Fprintln(os.Stderr, notice)
+		}
 	}
 	if !bootstrapExempt(args) && !isInitCommand(args) {
 		wiring.SetupLogging()
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	if err := cli.New(ctx, os.Stdin, os.Stdout, os.Stderr, cli.Build{Version: Version, VersionLine: formatVersion(Version, GitCommit)}).RunWithArgs(args); err != nil {
+	app := cli.New(ctx, os.Stdin, os.Stdout, os.Stderr, cli.Build{Version: Version, VersionLine: formatVersion(Version, GitCommit)})
+	if err := cli.RunArgs(app, args); err != nil {
 		msg, code := exitReport(ctx, err)
 		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(code)

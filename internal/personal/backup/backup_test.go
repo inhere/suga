@@ -162,7 +162,7 @@ func TestCreateAlwaysIncludesToolBodyFiles(t *testing.T) {
 	assert.NoErr(t, os.MkdirAll(filepath.Join(home, "db"), 0o700))
 	assert.NoErr(t, os.MkdirAll(filepath.Join(home, "sessions", "s1", "outputs"), 0o700))
 	assert.NoErr(t, os.WriteFile(filepath.Join(home, "sessions", "s1", "outputs", "x.txt"), []byte("spill"), 0o600))
-	bodyPath := filepath.Join(home, "sessions", "s1", store.ToolBodyFileName)
+	bodyPath := filepath.Join(home, "sessions", "s1", store.LegacyBodyFileName)
 	assert.NoErr(t, os.WriteFile(bodyPath, []byte("tool body record\n"), 0o600))
 	// A session renamed by `data bodies --rename-files` keeps its own name in the
 	// archive, and a second session with the old name is collected too.
@@ -191,7 +191,7 @@ func TestCreateAlwaysIncludesToolBodyFiles(t *testing.T) {
 		if f.Name == "sessions/s2/"+store.BodyFileName {
 			foundRenamed = true
 		}
-		if f.Name != "sessions/s1/"+store.ToolBodyFileName {
+		if f.Name != "sessions/s1/"+store.LegacyBodyFileName {
 			continue
 		}
 		found = true
@@ -217,12 +217,12 @@ func TestCreateAlwaysIncludesToolBodyFiles(t *testing.T) {
 // matches the stored bytes (a live session file being appended to during backup).
 func TestWriteArchiveCopiesRecordedBytes(t *testing.T) {
 	home := t.TempDir()
-	source := filepath.Join(home, "sessions", "s1", store.ToolBodyFileName)
+	source := filepath.Join(home, "sessions", "s1", store.LegacyBodyFileName)
 	assert.NoErr(t, os.MkdirAll(filepath.Dir(source), 0o700))
 	first := []byte("{\"seq\":1}\n")
 	assert.NoErr(t, os.WriteFile(source, first, 0o600))
 	manifest := Manifest{FormatVersion: FormatVersion, CreatedAt: time.Now(), Files: []File{{
-		Path: "sessions/s1/" + store.ToolBodyFileName, Category: categoryToolBodies, Size: int64(len(first)), Source: source,
+		Path: "sessions/s1/" + store.LegacyBodyFileName, Category: categoryToolBodies, Size: int64(len(first)), Source: source,
 	}}}
 	// A writer appends after the scan, before the copy.
 	file, err := os.OpenFile(source, os.O_APPEND|os.O_WRONLY, 0o600)
@@ -269,7 +269,7 @@ func TestRestoreInstallsToolBodyFiles(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	_, err = repo.AppendEntries(ctx, "s1", store.NewEntry{Type: store.EntryTool, JSON: raw})
 	assert.Require(t, assert.NoErr(t, err))
-	path := filepath.Join(home, "sessions", "s1", store.ToolBodyFileName)
+	path := filepath.Join(home, "sessions", "s1", store.LegacyBodyFileName)
 	_, err = os.Stat(path)
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.Close())

@@ -200,7 +200,7 @@ def main():
             proc.kill()
             ok = False
             print("suga acp did not exit after the connection closed")
-    trace = subprocess.run([binary, "trace", sid, "--json"], capture_output=True, text=True, env=env, timeout=60)
+    trace = subprocess.run([binary, "inspect", "trace", sid, "--json"], capture_output=True, text=True, env=env, timeout=60)
     for line in trace.stdout.splitlines():
         try:
             e = json.loads(line)

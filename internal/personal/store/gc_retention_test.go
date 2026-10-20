@@ -123,7 +123,7 @@ func TestRetentionBytesIncludeToolBodyFiles(t *testing.T) {
 	assert.True(t, appended[0].JSON != nil)
 	_, err := s.DB().ExecContext(ctx, `UPDATE sessions SET updated_at = ? WHERE id = ?`, formatTime(at), "run-tool")
 	assert.Require(t, assert.NoErr(t, err))
-	info, err := os.Stat(filepath.Join(s.sessionsDir, "run-tool", ToolBodyFileName))
+	info, err := os.Stat(filepath.Join(s.sessionsDir, "run-tool", LegacyBodyFileName))
 	assert.Require(t, assert.NoErr(t, err))
 
 	var entries, entryBytes, metaBytes int64

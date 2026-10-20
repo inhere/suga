@@ -13,8 +13,9 @@ import (
 // mutually exclusive flags. The work itself stays in runShrinkFTS (gc_maintenance.go)
 // and runGCCompressSpill (gc_spill.go).
 
-// newShrinkFTSCommand builds `suga data shrink-fts`: delete the historical tool
-// rows of entries_fts (tool results are no longer indexed).
+// newShrinkFTSCommand builds the deprecated `suga data shrink-fts`: delete the
+// historical tool rows of entries_fts (tool results are no longer indexed).
+// Removed in v0.41.0: it only migrates a v0.35 or older ledger.
 func newShrinkFTSCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	var status, abort bool
 	var batch int
@@ -22,6 +23,7 @@ func newShrinkFTSCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cm
 		if len(c.RemainArgs()) > 0 {
 			return fmt.Errorf("usage: suga data shrink-fts [--status|--abort] [--batch N]")
 		}
+		deprecatedShrinkFTSJob.tell(stderr)
 		return runShrinkFTS(ctx, stdout, status, abort, batch)
 	})
 	cmd.SetOutput(stderr)

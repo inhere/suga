@@ -145,9 +145,9 @@ suga sessions [keywords] [--since 7d] [--agents]               # session list
 suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
 suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP
-suga data shrink-fts [--status|--abort]                        # delete the historical tool-output FTS rows
-suga data dedupe-tool-results [--status|--undo]                 # store old tool results once (--undo restores them)
-suga data bodies [--status|--move|--slim|--undo|--check|--rename-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (alias: tool-bodies); --rename-files renames old tools.jsonl files, --slim narrows old stubs
+suga data shrink-fts [--status|--abort]                        #（已弃用，v0.41.0 移除）只用于把 v0.35 及更早的库迁移到当前格式
+suga data dedupe-tool-results [--status|--undo]                 #（已弃用，v0.41.0 移除）旧库的 tool 结果改为单份存储（--undo 还原）
+suga data bodies [--status|--move|--slim|--undo|--check|--rename-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (alias: tool-bodies, 已弃用，v0.41.0 移除); --rename-files 与 --slim 也已弃用（v0.41.0 移除，一次性迁移）
 suga data vacuum                                               # rewrite the db file, truncate the WAL
 suga data usage [--json] [--top N]                             # read-only: where the db file, entries, events, FTS and session dirs hold their bytes
 suga data backup --output <file>.suga-backup.zip               # verified online backup; spill excluded by default
