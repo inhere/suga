@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -46,8 +47,15 @@ const (
 	// DefaultToolBodyInlineBytes is store.tool_body_inline_bytes: entry JSON
 	// above this many bytes moves to the session file. 0 keeps everything inline.
 	DefaultToolBodyInlineBytes int64 = 1024
-	// ToolBodyFileName is the append-only file of one session's moved bodies.
-	ToolBodyFileName = "tools.jsonl"
+	// BodyFileName is the current append-only file of one session's moved bodies.
+	BodyFileName = "bodies.jsonl"
+	// LegacyBodyFileName is the v0.36 file name. Until `data bodies
+	// --rename-files` sets the switch every write still uses it, so a suga of the
+	// previous version running next to this one keeps reading its own files; the
+	// reader tries both names.
+	LegacyBodyFileName = "tools.jsonl"
+	// ToolBodyFileName is kept as a source-compatible alias for old callers.
+	ToolBodyFileName = LegacyBodyFileName
 	// toolBodyPreviewRunes bounds the preview a stub keeps of a tool result, so a
 	// lost file still shows what the call was and how its output began. It is the
 	// only copy of the output the stub holds (the result itself is not repeated),
@@ -65,8 +73,13 @@ const (
     value TEXT NOT NULL DEFAULT ''
 )`
 	// toolBodyMoveKey is the persistent switch: "0" keeps new tool bodies inline
-	// (set by `data tool-bodies --undo`), any other value moves them out.
+	// (set by `data bodies --undo`), any other value moves them out.
 	toolBodyMoveKey = "tool_body_move"
+	// bodyFileNameKey is the persistent switch of the file name: it is set to
+	// BodyFileName by `--rename-files` once every session was renamed, and read on
+	// every write, so a pair of processes never splits one session's offsets over
+	// two files.
+	bodyFileNameKey = "body_file_name"
 )
 
 // ErrToolBodyMissing is returned when a stub's body cannot be read back: the
@@ -221,14 +234,61 @@ func previewText(s string) string {
 	return string(runes[:toolBodyPreviewRunes]) + "…"
 }
 
-// toolBodyPath is the file of one session. A session id that sessionDir()
-// rejects (separators, "..", absolute) never has a file: such a row stays inline.
+// toolBodyPath is the current write file. Before --rename-files it is always
+// the legacy name so an older running suga remains compatible; afterwards it is
+// always the current name (revision 4: the switch, not the age of a session,
+// decides).
 func (s *Store) toolBodyPath(sessionID string) (string, bool) {
+	name := LegacyBodyFileName
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM store_meta WHERE key = ?`, bodyFileNameKey).Scan(&value)
+	if err == nil && value == BodyFileName {
+		name = BodyFileName
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		// A broken switch row keeps the legacy name: that is what every version
+		// before the rename wrote, so the write stays readable.
+		name = LegacyBodyFileName
+	}
+	return s.toolBodyPathName(sessionID, name)
+}
+
+// bodyFileNameSwitch reports whether writes use BodyFileName (set by
+// `--rename-files` after every session was renamed).
+func (s *Store) bodyFileNameSwitch(ctx context.Context) (bool, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM store_meta WHERE key = ?`, bodyFileNameKey).Scan(&value)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("read body file name switch: %w", err)
+	}
+	return value == BodyFileName, nil
+}
+
+// SetBodyFileNameSwitch records the file name new writes use. It is written once
+// by --rename-files, after the last session was renamed.
+func (s *Store) SetBodyFileNameSwitch(ctx context.Context, useCurrent bool) error {
+	if err := s.ensureStoreMeta(ctx); err != nil {
+		return err
+	}
+	value := LegacyBodyFileName
+	if useCurrent {
+		value = BodyFileName
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO store_meta(key, value) VALUES(?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`, bodyFileNameKey, value); err != nil {
+		return fmt.Errorf("write body file name switch: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) toolBodyPathName(sessionID, name string) (string, bool) {
 	dir, ok := sessionDir(s.sessionsDir, sessionID)
 	if !ok {
 		return "", false
 	}
-	return filepath.Join(dir, ToolBodyFileName), true
+	return filepath.Join(dir, name), true
 }
 
 // sessionDir returns sessions/<id> when id is a plain single path element; an id
@@ -343,31 +403,49 @@ func (w *toolBodyWriter) Close(keep bool) error {
 	return err
 }
 
-// toolBodyReader reads the records of one session. A caller opens it once per
-// session and reads every stub of the batch through it, so a resumed session
-// replays its file almost sequentially.
+// toolBodyReader reads the records of one session. It opens both candidate file
+// names (the current one and the v0.36 one) and verifies each record's sha256, so
+// a restored legacy file and a renamed file can coexist without a read ever
+// landing in the wrong one.
 type toolBodyReader struct {
-	path string
-	file *os.File
+	paths []string
+	files []*os.File
+	// hit is the file the last successful read came from (empty before it).
+	hit string
 }
 
-// openToolBodyReader opens the session file for reading.
+// openToolBodyReader opens every existing candidate file of one session, current
+// name first.
 func (s *Store) openToolBodyReader(sessionID string) (*toolBodyReader, error) {
-	path, ok := s.toolBodyPath(sessionID)
-	if !ok {
-		return nil, fmt.Errorf("%w: session %q cannot own a tool body file", ErrToolBodyMissing, sessionID)
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("%w: session %s has no %s (restore it from a backup, or the ledger and the files are out of sync)", ErrToolBodyMissing, sessionID, ToolBodyFileName)
+	reader := &toolBodyReader{}
+	for _, name := range []string{BodyFileName, LegacyBodyFileName} {
+		path, ok := s.toolBodyPathName(sessionID, name)
+		if !ok {
+			return nil, fmt.Errorf("%w: invalid session %q", ErrToolBodyMissing, sessionID)
 		}
-		return nil, fmt.Errorf("%w: open %s: %v", ErrToolBodyMissing, path, err)
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return nil, fmt.Errorf("%w: stat %s: %v", ErrToolBodyMissing, path, err)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			reader.Close()
+			return nil, fmt.Errorf("%w: open %s: %v", ErrToolBodyMissing, path, err)
+		}
+		reader.paths = append(reader.paths, path)
+		reader.files = append(reader.files, file)
 	}
-	return &toolBodyReader{path: path, file: file}, nil
+	if len(reader.files) == 0 {
+		return nil, fmt.Errorf("%w: session %s has no %s and no %s (restore it from a backup, or the ledger and the files are out of sync)",
+			ErrToolBodyMissing, sessionID, BodyFileName, LegacyBodyFileName)
+	}
+	return reader, nil
 }
 
 // Read returns the raw entry JSON of seq, verifying the record's seq and sha256.
+// The candidate files are tried in order and a record whose digest or seq does
+// not match does not count, so two files of one session cannot shadow each other.
 func (r *toolBodyReader) Read(sessionID string, seq int64, ref BodyRef) ([]byte, error) {
 	missing := func(format string, args ...any) error {
 		return fmt.Errorf("%w: session %s seq %d: %s", ErrToolBodyMissing, sessionID, seq, fmt.Sprintf(format, args...))
@@ -375,39 +453,61 @@ func (r *toolBodyReader) Read(sessionID string, seq int64, ref BodyRef) ([]byte,
 	if ref.Empty() || ref.Off < 0 {
 		return nil, missing("invalid body_ref %q", ref.String())
 	}
+	var firstErr error
+	for i, file := range r.files {
+		body, err := readToolBodyRecord(file, r.paths[i], seq, ref)
+		if err == nil {
+			r.hit = r.paths[i]
+			return body, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return nil, missing("%v", firstErr)
+}
+
+// readToolBodyRecord reads and verifies one record from one file: the record's
+// seq must precede the JSON, the length must fit the file and the digest must
+// match the reference.
+func readToolBodyRecord(file *os.File, path string, seq int64, ref BodyRef) ([]byte, error) {
 	start := ref.Off - toolBodyHeaderWindow
 	if start < 0 {
 		start = 0
 	}
-	window := make([]byte, ref.Off-start+ref.Len+2)
-	if _, err := r.file.ReadAt(window, start); err != nil && len(window) == 0 {
-		return nil, missing("read %s: %v", r.path, err)
-	}
 	headerLen := int(ref.Off - start)
-	if int64(len(window)) < ref.Off-start+ref.Len {
-		return nil, missing("%s ends before the record does", r.path)
+	window := make([]byte, headerLen+int(ref.Len))
+	if _, err := file.ReadAt(window, start); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	body := window[headerLen : headerLen+int(ref.Len)]
+	if len(window) < headerLen+int(ref.Len) {
+		return nil, fmt.Errorf("%s ends before the record does", path)
+	}
+	body := window[headerLen:]
 	sum := sha256.Sum256(body)
 	if !strings.EqualFold(hex.EncodeToString(sum[:]), ref.SHA256) {
-		return nil, missing("sha256 mismatch (the record changed or the stub belongs to another record)")
+		return nil, fmt.Errorf("sha256 mismatch (the record changed or the stub belongs to another record)")
 	}
 	recordSeq, ok := parseToolBodyHeader(window[:headerLen])
 	if !ok {
-		return nil, missing("record header not found in %s", r.path)
+		return nil, fmt.Errorf("record header not found in %s", path)
 	}
 	if recordSeq != seq {
-		return nil, missing("record holds seq %d, the row is seq %d", recordSeq, seq)
+		return nil, fmt.Errorf("record holds seq %d, the row is seq %d", recordSeq, seq)
 	}
 	return body, nil
 }
 
-// Close releases the file.
+// Close releases every candidate file.
 func (r *toolBodyReader) Close() error {
-	if r == nil || r.file == nil {
+	if r == nil {
 		return nil
 	}
-	return r.file.Close()
+	for _, file := range r.files {
+		_ = file.Close()
+	}
+	r.files = nil
+	return nil
 }
 
 // parseToolBodyHeader reads seq from the record header that ends where the raw

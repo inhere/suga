@@ -55,7 +55,9 @@ type UsageFile struct {
 }
 
 // UsageAssistant splits the assistant entries, which carry the bulk of the
-// ledger: their JSON fields, the metadata keys and the tool call arguments.
+// ledger: their JSON fields, the metadata keys and the tool call arguments. The
+// numbers describe what is still inside the ledger; a row whose body moved to a
+// session file only counts the stub (see UsageEntries.MovedAssistant).
 type UsageAssistant struct {
 	Rows         int64       `json:"rows"`
 	Bytes        int64       `json:"bytes"`
@@ -74,12 +76,17 @@ type UsageToolEntries struct {
 
 // UsageEntries is the entries table by type and by large JSON field.
 type UsageEntries struct {
-	Rows       int64            `json:"rows"`
-	Bytes      int64            `json:"bytes"`
-	Types      []NamedStat      `json:"types"`
-	Assistant  UsageAssistant   `json:"assistant"`
-	Tool       UsageToolEntries `json:"tool"`
-	Suggestion string           `json:"suggestion,omitempty"`
+	Rows      int64            `json:"rows"`
+	Bytes     int64            `json:"bytes"`
+	Types     []NamedStat      `json:"types"`
+	Assistant UsageAssistant   `json:"assistant"`
+	Tool      UsageToolEntries `json:"tool"`
+	// MovedAssistant are the assistant rows whose body lives in a session file
+	// (entries.body_ref set, only a stub in the ledger). Their Reasoning,
+	// Metadata and call arguments are in the file, so the Values above no longer
+	// count them.
+	MovedAssistant SizeStat `json:"moved_assistant"`
+	Suggestion     string   `json:"suggestion,omitempty"`
 }
 
 // UsageEvents is the events table by kind. Bytes counts attrs_json and error,
@@ -105,9 +112,12 @@ type UsageFTS struct {
 // UsageSessions is the sessions root outside the database: the per-session
 // files and the sessions that hold the most.
 type UsageSessions struct {
-	InStore    int64          `json:"in_store"`
-	Dirs       int64          `json:"dirs"`
+	InStore int64 `json:"in_store"`
+	Dirs    int64 `json:"dirs"`
+	// Tools is every body file of a session, under both names (Tools carries
+	// tools.jsonl of version 0.36, BodyFiles says how it splits).
 	Tools      SizeStat       `json:"tools"`
+	BodyFiles  []NamedStat    `json:"body_files"`
 	Outputs    SizeStat       `json:"outputs"`
 	OutputsGz  SizeStat       `json:"outputs_gz"`
 	Images     SizeStat       `json:"images"`
@@ -287,6 +297,10 @@ func (s *Store) readUsageEntries(ctx context.Context, top int, e *UsageEntries, 
 				e.Tool.Inline.Rows++
 				e.Tool.Inline.Bytes += bytes
 			}
+		}
+		if typ == EntryAssistant && stub == 1 {
+			e.MovedAssistant.Rows++
+			e.MovedAssistant.Bytes += bytes
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -641,9 +655,19 @@ func (u *UsageSessions) addFile(rel string, size int64) {
 		part = rel[:i]
 	}
 	switch part {
-	case ToolBodyFileName:
+	case BodyFileName, LegacyBodyFileName:
 		u.Tools.Files++
 		u.Tools.Bytes += size
+		// The breakdown keeps the name it found, so the report never labels a
+		// bodies.jsonl file with the old name.
+		for i := range u.BodyFiles {
+			if u.BodyFiles[i].Name == part {
+				u.BodyFiles[i].Rows++
+				u.BodyFiles[i].Bytes += size
+				return
+			}
+		}
+		u.BodyFiles = append(u.BodyFiles, NamedStat{Name: part, Rows: 1, Bytes: size})
 	case "outputs":
 		u.Outputs.Files++
 		u.Outputs.Bytes += size
@@ -675,11 +699,12 @@ func usageSuggestions(rep *UsageReport) {
 	// command moves them) and the assistant bodies (no command trims them).
 	var entryHints []string
 	if rep.Entries.Tool.Inline.Bytes > 0 {
-		entryHints = append(entryHints, fmt.Sprintf("库内 tool 结果 %s，`suga data tool-bodies --move` 可移到会话文件",
+		entryHints = append(entryHints, fmt.Sprintf("库内 tool 结果 %s，`suga data bodies --move` 可移到会话文件",
 			humanUsageBytes(rep.Entries.Tool.Inline.Bytes)))
 	}
-	if rep.Entries.Assistant.Bytes > 0 {
-		entryHints = append(entryHints, "assistant 的 Metadata/Reasoning 是模型返回原文，没有裁剪命令；减小它用 `suga data gc --retention` 删旧会话")
+	if rep.Entries.Assistant.Bytes-rep.Entries.MovedAssistant.Bytes > 0 {
+		entryHints = append(entryHints, fmt.Sprintf("库内 assistant 的推理内容与工具调用参数 %s，`suga data bodies --move` 可移到会话文件",
+			humanUsageBytes(rep.Entries.Assistant.Bytes-rep.Entries.MovedAssistant.Bytes)))
 	}
 	if len(entryHints) > 0 {
 		rep.Entries.Suggestion = strings.Join(entryHints, "；")

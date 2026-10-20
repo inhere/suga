@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -38,9 +39,10 @@ const (
 	toolBodyCheckBatch = 500
 	// toolBodyMoveJob, toolBodyUndoJob and toolBodySlimJob are the checkpoint rows
 	// of the passes.
-	toolBodyMoveJob = "move"
-	toolBodyUndoJob = "undo"
-	toolBodySlimJob = "slim"
+	toolBodyMoveJob      = "move"
+	toolBodyAssistantJob = "move_assistant"
+	toolBodyUndoJob      = "undo"
+	toolBodySlimJob      = "slim"
 )
 
 // toolBodyStateDDL is the checkpoint table of the passes: one row per job.
@@ -62,7 +64,12 @@ const toolBodyMoveWindowSQL = `SELECT session_id, seq, json FROM entries
       AND (session_id > ? OR (session_id = ? AND seq > ?))
     ORDER BY session_id ASC, seq ASC LIMIT ?`
 
-// toolBodyUndoWindowSQL reads one batch of stubs, after the same cursor.
+const assistantBodyMoveWindowSQL = `SELECT session_id, seq, json FROM entries
+    WHERE type = 'assistant' AND COALESCE(body_ref, '') = ''
+      AND length(CAST(json AS BLOB)) - length(CAST(COALESCE(json_extract(json, '$.Content'), '') AS BLOB)) > ?
+      AND (session_id > ? OR (session_id = ? AND seq > ?))
+    ORDER BY session_id ASC, seq ASC LIMIT ?`
+
 const toolBodyUndoWindowSQL = `SELECT session_id, seq, body_ref FROM entries
     WHERE COALESCE(body_ref, '') <> ''
       AND (session_id > ? OR (session_id = ? AND seq > ?))
@@ -113,14 +120,23 @@ type ToolBodyStatus struct {
 	// (false after --undo).
 	InlineBytes int64
 	MoveEnabled bool
-	// PendingRows and PendingBytes are the tool rows that would still move.
-	PendingRows  int64
-	PendingBytes int64
+	// PendingRows and PendingBytes are the tool rows that would still move;
+	// AssistantPending* the same for assistant entries (the migration of revision
+	// 3, an independent pass).
+	PendingRows          int64
+	PendingBytes         int64
+	AssistantPendingRows int64
+	AssistantPending     int64
 	// MovedRows are the rows whose body lives in a file, FileBytes and Files what
-	// the session files hold.
-	MovedRows int64
-	FileBytes int64
-	Files     int
+	// the session files hold (both file names).
+	MovedRows          int64
+	AssistantMovedRows int64
+	FileBytes          int64
+	Files              int
+	// BodyFileNameEnabled is the file name switch; LegacyNameFiles counts the
+	// sessions still holding a v0.36 name file, which --rename-files renames.
+	BodyFileNameEnabled bool
+	LegacyNameFiles     int
 	// SlimRows are stubs still in the shape an older version wrote (arguments,
 	// reasoning and a second preview); SlimReclaimBytes is what --slim would give
 	// back.
@@ -130,6 +146,11 @@ type ToolBodyStatus struct {
 	MoveStarted, MoveComplete bool
 	MoveSession               string
 	MoveSeq, MoveRows         int64
+	AssistantMoveStarted      bool
+	AssistantMoveComplete     bool
+	AssistantMoveSession      string
+	AssistantMoveSeq          int64
+	AssistantMoveRows         int64
 	UndoStarted, UndoComplete bool
 	UndoRows                  int64
 }
@@ -169,10 +190,18 @@ func (s *Store) MoveToolBodies(ctx context.Context, opts ToolBodyMaintOptions) (
 	return s.runToolBodyPass(ctx, toolBodyMoveJob, opts, s.moveToolBodyBatch)
 }
 
-// UndoToolBodies restores every stub (historical and newly written) into the
-// ledger, at most Batch rows per write transaction. It turns the persistent
-// switch off first, so a concurrent writer that starts afterwards keeps its
-// bodies inline instead of fighting the pass.
+// MoveAssistantBodies moves historical assistant bodies with an independent checkpoint.
+func (s *Store) MoveAssistantBodies(ctx context.Context, opts ToolBodyMaintOptions) (ToolBodyMaintReport, error) {
+	if s.toolBodyInlineBytes <= 0 {
+		return ToolBodyMaintReport{}, errors.New("store body threshold is 0")
+	}
+	if err := s.SetToolBodyMove(ctx, true); err != nil {
+		return ToolBodyMaintReport{}, err
+	}
+	return s.runToolBodyPass(ctx, toolBodyAssistantJob, opts, s.moveToolBodyBatch)
+}
+
+// UndoToolBodies restores every moved body into the ledger and disables new moves.
 func (s *Store) UndoToolBodies(ctx context.Context, opts ToolBodyMaintOptions) (ToolBodyMaintReport, error) {
 	if err := s.SetToolBodyMove(ctx, false); err != nil {
 		return ToolBodyMaintReport{}, err
@@ -278,7 +307,7 @@ func (s *Store) moveToolBodyBatch(ctx context.Context, job string, opts ToolBody
 	if err != nil {
 		return 0, 0, nil, false, err
 	}
-	rows, err := toolBodyWindowTx(ctx, tx, cursor, s.toolBodyInlineBytes, batch)
+	rows, err := toolBodyWindowTx(ctx, tx, cursor, s.toolBodyInlineBytes, batch, job == toolBodyAssistantJob)
 	if err != nil {
 		return 0, 0, nil, false, err
 	}
@@ -293,7 +322,11 @@ func (s *Store) moveToolBodyBatch(ctx context.Context, job string, opts ToolBody
 		if movedBytes > 0 && movedBytes+int64(len(row.JSON)) > toolBodyBatchBytes {
 			break // keep the transaction short, the rest is the next batch
 		}
-		stub, ok, err := buildToolBodyStub(EntryTool, row.JSON)
+		entryType := EntryTool
+		if job == toolBodyAssistantJob {
+			entryType = EntryAssistant
+		}
+		stub, ok, err := buildToolBodyStub(entryType, row.JSON)
 		if err != nil {
 			return 0, 0, nil, false, fmt.Errorf("build stub of %s/%d: %w", row.SessionID, row.Seq, err)
 		}
@@ -307,6 +340,9 @@ func (s *Store) moveToolBodyBatch(ctx context.Context, job string, opts ToolBody
 		}
 		if !ok {
 			continue // undecodable row: left inline, counted as scanned
+		}
+		if job == toolBodyAssistantJob && int64(len(row.JSON)-len(stub)) <= s.toolBodyInlineBytes {
+			continue
 		}
 		ref, err := writer.WriteRecord(row.Seq, row.JSON)
 		if err != nil {
@@ -499,8 +535,12 @@ func (s *Store) countSlimToolBodyRows(ctx context.Context) (int64, int64, error)
 
 // toolBodyWindowTx reads up to limit tool rows that still hold their body, after
 // the cursor, inside tx.
-func toolBodyWindowTx(ctx context.Context, tx *sql.Tx, cursor cursorState, threshold int64, limit int) ([]toolBodyRow, error) {
-	rows, err := tx.QueryContext(ctx, toolBodyMoveWindowSQL, threshold, cursor.SessionID, cursor.SessionID, cursor.Seq, limit)
+func toolBodyWindowTx(ctx context.Context, tx *sql.Tx, cursor cursorState, threshold int64, limit int, assistant bool) ([]toolBodyRow, error) {
+	query := toolBodyMoveWindowSQL
+	if assistant {
+		query = assistantBodyMoveWindowSQL
+	}
+	rows, err := tx.QueryContext(ctx, query, threshold, cursor.SessionID, cursor.SessionID, cursor.Seq, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read tool rows after %s/%d: %w", cursor.SessionID, cursor.Seq, err)
 	}
@@ -577,7 +617,6 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 			if used[row.SessionID] == nil {
 				used[row.SessionID] = map[string]bool{}
 			}
-			used[row.SessionID][fmt.Sprintf("%d,%d", ref.Off, ref.Len)] = true
 			reader, ok := readers[row.SessionID]
 			if !ok {
 				reader, err = s.openToolBodyReader(row.SessionID)
@@ -591,7 +630,11 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 			if _, err := reader.Read(row.SessionID, row.Seq, ref); err != nil {
 				report.Missing++
 				report.addProblem(err.Error())
+				continue
 			}
+			// The record is counted against the file the read came from: two files of
+			// one session may hold records at the same offset.
+			used[row.SessionID][toolBodyCheckUsedKey(filepath.Base(reader.hit), ref)] = true
 			report.Checked++
 		}
 		for _, r := range readers {
@@ -612,7 +655,7 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
-		orphans, bytes, err := countToolBodyOrphans(file.path, used[file.sessionID])
+		orphans, bytes, err := countToolBodyOrphans(file.path, file.name, used[file.sessionID])
 		if err != nil {
 			report.addProblem(err.Error())
 			continue
@@ -623,6 +666,13 @@ func (s *Store) ToolBodyCheck(ctx context.Context) (ToolBodyCheckReport, error) 
 	return report, nil
 }
 
+// toolBodyCheckUsedKey is the orphan key of one stub: the file it points into and
+// the record span. Two files of one session may hold the same offset, so the name
+// belongs to the key.
+func toolBodyCheckUsedKey(name string, ref BodyRef) string {
+	return fmt.Sprintf("%s@%d,%d", name, ref.Off, ref.Len)
+}
+
 // addProblem keeps the first few failures (a broken ledger can have thousands).
 func (r *ToolBodyCheckReport) addProblem(msg string) {
 	if len(r.Problems) < 10 {
@@ -631,8 +681,8 @@ func (r *ToolBodyCheckReport) addProblem(msg string) {
 }
 
 // countToolBodyOrphans walks the records of one file and counts those the stubs
-// of the session do not reference.
-func countToolBodyOrphans(path string, used map[string]bool) (int64, int64, error) {
+// of the session do not reference; name is the file name the stub keys carry.
+func countToolBodyOrphans(path, name string, used map[string]bool) (int64, int64, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, 0, fmt.Errorf("read %s: %w", path, err)
@@ -650,7 +700,7 @@ func countToolBodyOrphans(path string, used map[string]bool) (int64, int64, erro
 		if !ok {
 			continue
 		}
-		if used == nil || !used[fmt.Sprintf("%d,%d", off, length)] {
+		if used == nil || !used[toolBodyCheckUsedKey(name, BodyRef{Off: off, Len: length})] {
 			orphans++
 			orphanBytes += length
 		}
@@ -673,13 +723,16 @@ func toolBodyRecordSpan(line []byte, lineStart int64) (int64, int64, bool) {
 	return lineStart + int64(bodyStart), int64(len(line) - bodyStart - 1), true
 }
 
-// toolBodyFile is one session file found on disk.
+// toolBodyFile is one session file found on disk; name is the file name (the
+// current one or the v0.36 one), so a session holding both is reported twice and
+// its orphans are counted per file.
 type toolBodyFile struct {
 	sessionID string
+	name      string
 	path      string
 }
 
-// toolBodyFiles lists the session files under the sessions root.
+// toolBodyFiles lists the session files under the sessions root, both names.
 func (s *Store) toolBodyFiles() ([]toolBodyFile, error) {
 	dirs, err := os.ReadDir(s.sessionsDir)
 	if err != nil {
@@ -693,14 +746,16 @@ func (s *Store) toolBodyFiles() ([]toolBodyFile, error) {
 		if !dir.IsDir() {
 			continue
 		}
-		path, ok := s.toolBodyPath(dir.Name())
-		if !ok {
-			continue
+		for _, name := range []string{BodyFileName, LegacyBodyFileName} {
+			path, ok := s.toolBodyPathName(dir.Name(), name)
+			if !ok {
+				continue
+			}
+			if _, err := os.Stat(path); err != nil {
+				continue
+			}
+			out = append(out, toolBodyFile{sessionID: dir.Name(), name: name, path: path})
 		}
-		if _, err := os.Stat(path); err != nil {
-			continue
-		}
-		out = append(out, toolBodyFile{sessionID: dir.Name(), path: path})
 	}
 	return out, nil
 }
@@ -718,13 +773,27 @@ func (s *Store) ToolBodyStatus(ctx context.Context) (ToolBodyStatus, error) {
 	default:
 		status.MoveEnabled = value != "0"
 	}
+	if status.BodyFileNameEnabled, err = s.bodyFileNameSwitch(ctx); err != nil {
+		return status, err
+	}
 	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(length(CAST(json AS BLOB))), 0) FROM entries
         WHERE type = 'tool' AND COALESCE(body_ref, '') = '' AND length(CAST(json AS BLOB)) > ?`,
 		s.toolBodyInlineBytes).Scan(&status.PendingRows, &status.PendingBytes)
 	if err != nil {
 		return status, fmt.Errorf("count pending tool bodies: %w", err)
 	}
-	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE COALESCE(body_ref, '') <> ''`).Scan(&status.MovedRows)
+	// Assistant rows move when the stub saves more than the threshold; the SQL
+	// length of Content is an estimate of the stub, the pass decides exactly.
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(length(CAST(json AS BLOB))), 0) FROM entries
+        WHERE type = 'assistant' AND COALESCE(body_ref, '') = ''
+          AND length(CAST(json AS BLOB)) - length(CAST(COALESCE(json_extract(json, '$.Content'), '') AS BLOB)) > ?`,
+		s.toolBodyInlineBytes).Scan(&status.AssistantPendingRows, &status.AssistantPending)
+	if err != nil {
+		return status, fmt.Errorf("count pending assistant bodies: %w", err)
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN type = 'tool' THEN 1 ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN type = 'assistant' THEN 1 ELSE 0 END), 0) FROM entries WHERE COALESCE(body_ref, '') <> ''`).
+		Scan(&status.MovedRows, &status.AssistantMovedRows)
 	if err != nil {
 		return status, fmt.Errorf("count moved tool bodies: %w", err)
 	}
@@ -735,6 +804,11 @@ func (s *Store) ToolBodyStatus(ctx context.Context) (ToolBodyStatus, error) {
 	files, err := s.toolBodyFiles()
 	if err != nil {
 		return status, err
+	}
+	for _, file := range files {
+		if file.name == LegacyBodyFileName {
+			status.LegacyNameFiles++
+		}
 	}
 	status.Files = len(files)
 	for _, file := range files {
@@ -751,6 +825,13 @@ func (s *Store) ToolBodyStatus(ctx context.Context) (ToolBodyStatus, error) {
 	}
 	status.MoveStarted, status.MoveComplete = move.Started, move.Complete
 	status.MoveSession, status.MoveSeq, status.MoveRows = move.SessionID, move.Seq, move.Rows
+	assistant, err := s.toolBodyCursor(ctx, toolBodyAssistantJob)
+	if err != nil {
+		return status, err
+	}
+	status.AssistantMoveStarted, status.AssistantMoveComplete = assistant.Started, assistant.Complete
+	status.AssistantMoveSession, status.AssistantMoveSeq = assistant.SessionID, assistant.Seq
+	status.AssistantMoveRows = assistant.Rows
 	undo, err := s.toolBodyCursor(ctx, toolBodyUndoJob)
 	if err != nil {
 		return status, err
@@ -796,6 +877,85 @@ func (s *Store) RemoveToolBodyFiles(ctx context.Context) (removed int, err error
 		removed++
 	}
 	return removed, nil
+}
+
+// BodyRenameReport is what --rename-files did.
+type BodyRenameReport struct {
+	// Renamed is how many sessions moved their file to the current name.
+	Renamed int
+	// Skipped lists the sessions that hold both names: nothing is overwritten, the
+	// reader tells the two apart by sha256.
+	Skipped []string
+	// SwitchSet is true when the file name switch now points at the current name,
+	// so new writes use it.
+	SwitchSet bool
+}
+
+// RenameBodyFiles renames sessions/<id>/tools.jsonl to bodies.jsonl, one session per
+// write transaction, and sets the file name switch only after the pass ran. It
+// must run inside the exclusive window (`--rename-files` takes it): an older suga
+// running next to this one would recreate the legacy file for a session it still
+// has open. A session already renamed is skipped, so an interrupted pass resumes
+// by running it again.
+func (s *Store) RenameBodyFiles(ctx context.Context) (BodyRenameReport, error) {
+	var report BodyRenameReport
+	dirs, err := os.ReadDir(s.sessionsDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return report, fmt.Errorf("read sessions root: %w", err)
+	}
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return report, err // resumable: the sessions not yet visited keep the old name
+		}
+		legacy, ok := s.toolBodyPathName(dir.Name(), LegacyBodyFileName)
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(legacy); errors.Is(err, os.ErrNotExist) {
+			continue // renamed already, or a session without a body file
+		} else if err != nil {
+			return report, fmt.Errorf("stat %s: %w", legacy, err)
+		}
+		current, ok := s.toolBodyPathName(dir.Name(), BodyFileName)
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(current); err == nil {
+			report.Skipped = append(report.Skipped, dir.Name())
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return report, fmt.Errorf("stat %s: %w", current, err)
+		}
+		if err := s.renameBodyFile(ctx, legacy, current); err != nil {
+			return report, err
+		}
+		report.Renamed++
+	}
+	if err := s.SetBodyFileNameSwitch(ctx, true); err != nil {
+		return report, err
+	}
+	report.SwitchSet = true
+	return report, nil
+}
+
+// renameBodyFile moves one session file under the write lock, so a writer that
+// appends to it cannot interleave with the rename.
+func (s *Store) renameBodyFile(ctx context.Context, legacy, current string) error {
+	tx, err := s.beginWriteTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after Commit
+	if err := os.Rename(legacy, current); err != nil {
+		return fmt.Errorf("rename %s: %w", legacy, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // DeleteSessionFiles removes the files of sessions the ledger no longer has
