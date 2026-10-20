@@ -34,6 +34,8 @@ func TestSwitchModelFiltersViewImageByVision(t *testing.T) {
 		"models": map[string]any{
 			"gpt-4o":              map[string]any{},
 			"deepseek-v4.1-flash": map[string]any{},
+			"deepseek-chat":       map[string]any{},
+			"glm-4":               map[string]any{},
 			"pinned":              map[string]any{"model_id": "glm-5.3-flash", "vision": true},
 		}}})
 	rt := openTestRuntime(t, "")
@@ -44,10 +46,18 @@ func TestSwitchModelFiltersViewImageByVision(t *testing.T) {
 	}
 
 	assert.True(t, hasViewImage())
+	// The user confirmed deepseek-v4.1-flash sees images (2026-10-20), so the
+	// table keeps view_image; its sibling deepseek-chat stays text-only.
 	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-v4.1-flash")
 	assert.Require(t, assert.NoErr(t, err))
+	assert.True(t, hasViewImage())
+	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-chat")
+	assert.Require(t, assert.NoErr(t, err))
 	assert.False(t, hasViewImage())
-	// The configured vision: true wins over the inferred "glm" answer.
+	// Non-flash members of both families stay text-only by inference.
+	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/glm-4")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.False(t, hasViewImage())
 	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/pinned")
 	assert.Require(t, assert.NoErr(t, err))
 	assert.True(t, hasViewImage())
@@ -57,7 +67,7 @@ func TestSwitchModelFiltersViewImageByVision(t *testing.T) {
 	assert.True(t, hasViewImage())
 
 	// The tool itself refuses a stale call of a text-only model.
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-v4.1-flash")
+	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-chat")
 	assert.Require(t, assert.NoErr(t, err))
 	_, err = rt.Runner.ToolRegistry().ExecuteTool(context.Background(), agentcore.ToolCall{CallID: "c1", Name: "view_image",
 		Arguments: map[string]any{"path": "x.png"}})
