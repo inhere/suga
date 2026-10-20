@@ -42,6 +42,22 @@ type replayStep struct {
 // rules), so the client sees what the next turn's model sees. Past 2MB only
 // the most recent messages ride along and a leading thought note says so.
 func (a *Agent) replayHistory(ctx context.Context, id acp.SessionId, hist personal.SegmentHistory) error {
+	conn := a.connection()
+	if conn == nil {
+		return fmt.Errorf("ACP connection is not ready")
+	}
+	for _, update := range buildReplay(hist, replayByteLimit) {
+		if err := conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: id, Update: update}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// buildReplay returns the updates of one replay in send order: the head notes
+// (compaction summary, then the truncation note when limit is exceeded), then
+// the kept messages oldest first.
+func buildReplay(hist personal.SegmentHistory, limit int) []acp.SessionUpdate {
 	// The head note (compaction summary) is part of the counted budget: it
 	// must never make the tail of the segment disappear instead.
 	notes := make([]acp.SessionUpdate, 0, 2)
@@ -57,34 +73,34 @@ func (a *Agent) replayHistory(ctx context.Context, id acp.SessionId, hist person
 		items = append(items, replayStep{update: update, bytes: size})
 		bytes += size
 	}
-	if bytes > replayByteLimit {
+	if bytes > limit {
 		// Drop the oldest messages until the rest fits; the note tells the
-		// client how much was left out (it reads the replay from the top).
-		dropped := 0
-		for len(items) > 0 && bytes > replayByteLimit {
+		// client how much was left out (it reads the replay from the top) and
+		// how large the whole history was.
+		total, dropped := bytes, 0
+		for len(items) > 0 && bytes > limit {
 			bytes -= items[0].bytes
 			items = items[1:]
 			dropped++
 		}
 		notes = append(notes, acp.UpdateAgentThoughtText(fmt.Sprintf(
-			"（历史较长（约 %.1f MB，超过 %.0f MB 的回放上限），仅回放最近 %d 条消息，更早的 %d 条未包含）\n",
-			float64(bytes)/1024/1024, float64(replayByteLimit)/1024/1024, len(items), dropped)))
+			"（历史较长（约 %s，超过 %s 的回放上限），仅回放最近 %d 条消息，更早的 %d 条未包含）\n",
+			replaySize(total), replaySize(limit), len(items), dropped)))
 	}
-	conn := a.connection()
-	if conn == nil {
-		return fmt.Errorf("ACP connection is not ready")
-	}
-	for _, update := range notes {
-		if err := conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: id, Update: update}); err != nil {
-			return err
-		}
-	}
+	out := notes
 	for _, item := range items {
-		if err := conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: id, Update: item.update}); err != nil {
-			return err
-		}
+		out = append(out, item.update)
 	}
-	return nil
+	return out
+}
+
+// replaySize renders a byte count for the truncation note: MB from 1 MB up,
+// KB below (a small limit would otherwise read "0.0 MB").
+func replaySize(n int) string {
+	if n >= 1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(n)/1024/1024)
+	}
+	return fmt.Sprintf("%.1f KB", float64(n)/1024)
 }
 
 // replayItem maps one persisted message onto its session/update:
