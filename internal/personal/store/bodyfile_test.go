@@ -125,6 +125,33 @@ func TestBodyFilesCoexist(t *testing.T) {
 	assert.Eq(t, int64(0), report.OrphanRecords, "a record of either file counts as used: %v", report.Problems)
 }
 
+// TestRenameBodyFilesResumesAfterInterruption: a cancelled run renames nothing it
+// had not finished, leaves the switch off, and the next run completes the pass.
+func TestRenameBodyFilesResumesAfterInterruption(t *testing.T) {
+	s := openTemp(t)
+	for _, id := range []string{"s1", "s2"} {
+		createSession(t, s, id, "/w")
+		appendAll(t, s, id, NewEntry{Type: EntryAssistant, JSON: msgJSON(t, bigAssistantMessage("c-"+id))})
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := s.RenameBodyFiles(cancelled)
+	assert.Err(t, err)
+	for _, id := range []string{"s1", "s2"} {
+		assert.True(t, bodyFileExists(t, s, id, LegacyBodyFileName), "%s keeps the old name", id)
+	}
+	enabled, err := s.bodyFileNameSwitch(context.Background())
+	assert.Require(t, assert.NoErr(t, err))
+	assert.False(t, enabled, "an interrupted run must not switch the name")
+
+	report, err := s.RenameBodyFiles(context.Background())
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, 2, report.Renamed)
+	assert.True(t, report.SwitchSet)
+}
+
+// TestRenameBodyFiles renames both names once, keeps a session that holds both
+// untouched and is idempotent on a rerun.
 func TestRenameBodyFiles(t *testing.T) {
 	ctx := context.Background()
 	s := openTemp(t)
