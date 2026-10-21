@@ -152,6 +152,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "agents.max_steps", Type: ConfigTypeInt, Writable: true, Reader: "agents"},
 	{Pattern: "agents.max_tokens", Type: ConfigTypeInt, Writable: true, Reader: "agents"},
 	{Pattern: "agents.timeout", Type: ConfigTypeDuration, Writable: true, Reader: "agents"},
+	{Pattern: "agents.nudge", Type: ConfigTypeString, Writable: true, Reader: "agents"},
 	{Pattern: "mcp.call_timeout_sec", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "mcp.startup_timeout_sec", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "mcp.servers", Type: ConfigTypeYAML, Writable: true, Reader: "mcp"},

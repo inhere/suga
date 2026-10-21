@@ -398,6 +398,12 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		// tail of its last output; stdout stays the answer only.
 		fmt.Fprintln(stderr, verifySummary(opts.Verify, verifyRep))
 	}
+	// A turn that looks finished too early is pushed back with an injected turn
+	// (personal.CheckNudge). A --verify command already checked the delivery, so
+	// N1 is skipped there.
+	if err == nil && result.State == personal.RunCompleted {
+		result, err = nudgeAfterTurn(ctx, runner, sessionID, result, strings.TrimSpace(opts.Verify) != "", emit, live, encoder, stderr)
+	}
 	streamed := live.Finish() // end the streamed line before any error or status output
 	_, _, window, _ := runner.ModelSettings()
 	if encoder == nil {

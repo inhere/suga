@@ -347,6 +347,13 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 		return a.connection().SessionUpdate(ctx, acp.SessionNotification{SessionId: req.SessionId, Update: acp.UpdateAgentMessageText(event.Text)})
 	}
 	result, runErr := runtime.Runner.Run(turnCtx, personal.RunRequest{SessionID: string(req.SessionId), Prompt: prompt, Images: images, Emit: emit})
+	// A turn that looks finished too early is only recorded in the trace here
+	// (personal.CheckNudge): the client owns what happens next, so ACP neither
+	// pushes the model back nor shows a hint. It is written before the runtime
+	// closes the session store.
+	for _, finding := range runtime.Runner.NudgeFindings(ctx, string(req.SessionId), result) {
+		personal.RecordNudge(ctx, runtime.Runner, string(req.SessionId), personal.NudgeActionRecorded, finding)
+	}
 	closeErr := runtime.close()
 	if turnCtx.Err() != nil || errors.Is(runErr, context.Canceled) {
 		// A cancelled turn still consumed tokens; report them before returning.

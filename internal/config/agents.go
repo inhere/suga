@@ -27,6 +27,24 @@ type AgentSettings struct {
 // DefaultAgentSettings are the agents.* defaults.
 var DefaultAgentSettings = AgentSettings{Enabled: true, MaxSteps: 30, MaxTokens: 400_000, Timeout: 10 * time.Minute}
 
+// ReadNudgeSetting reads agents.nudge (default on): whether a turn that looks
+// finished too early is checked (personal.CheckNudge). "on"/"true" and
+// "off"/"false" are accepted; off makes every host skip the check.
+func ReadNudgeSetting() (bool, error) {
+	const key = "agents.nudge"
+	if gkconfig.Get(key) == nil {
+		return true, nil
+	}
+	raw := strings.TrimSpace(gkconfig.String(key))
+	switch strings.ToLower(raw) {
+	case "on", "true", "yes", "1":
+		return true, nil
+	case "off", "false", "no", "0":
+		return false, nil
+	}
+	return true, fmt.Errorf("%s must be on or off, got %q", key, raw)
+}
+
 // ReadAgentSettings reads agents.*; unset keys take DefaultAgentSettings.
 func ReadAgentSettings() (AgentSettings, error) {
 	out := DefaultAgentSettings
