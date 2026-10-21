@@ -393,7 +393,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		}
 		result, verifyRep, err = verifyAfterTurn(ctx, runner, verifySettingsFrom(opts, workspace), sessionID, result, emit, live, encoder, stderr)
 	}
-	if verifyRep != nil && !verifyRep.Passed && err == nil && result.State == personal.RunCompleted {
+	if encoder == nil && verifyRep != nil && !verifyRep.Passed && err == nil && result.State == personal.RunCompleted {
 		// Text mode: the check that never passed is summarised on stderr, with the
 		// tail of its last output; stdout stays the answer only.
 		fmt.Fprintln(stderr, verifySummary(opts.Verify, verifyRep))
