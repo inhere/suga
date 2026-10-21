@@ -134,6 +134,7 @@
 | `tools.read_roots` | `[]` | 额外只读目录列表（绝对路径，支持 `~`）。只影响 file_read/list/grep/find。只想对某个会话生效时用 `--add-dir <目录>` 或 `SUGA_ADD_DIRS`（`:rw` 可写） |
 | `tools.web_fetch.allow_private` | `false` | 允许 `web_fetch` 访问私网/本机地址 |
 | `tools.web_fetch.proxy` | `""` | `web_fetch` 的代理（`http://`、`https://`、`socks5://`）；只影响 web_fetch，不影响模型请求 |
+| `tools.web_fetch.user_agent` | `""` | `web_fetch` 发出的 User-Agent；空 = `suga-web-fetch/1.0`，可改成浏览器 UA，例如 `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36` |
 | `tools.auto_allow` | `[]` | MCP 放行名单（普通运行），条目 `server/toolglob`（裸 `toolglob` 也接受，会匹配任意 server） |
 | `tools.read_only_allow` | `[]` | `--read-only` 时**唯一**使用的放行名单，条目必须写成 `server/toolglob` |
 
