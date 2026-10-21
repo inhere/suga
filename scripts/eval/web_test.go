@@ -71,6 +71,20 @@ func TestForceApprovalRules(t *testing.T) {
 	assert.Eq(t, "fake/m1", cfg["model"])
 }
 
+// TestWebLabel: compare.md records the network policy of a variant, also when
+// its rows differ or carry none.
+func TestWebLabel(t *testing.T) {
+	t.Run("single value", func(t *testing.T) {
+		assert.Eq(t, webOff, webLabel([]Result{{Web: webOff}, {Web: webOff}}))
+	})
+	t.Run("mixed values keep the order off, on, unsupported", func(t *testing.T) {
+		assert.Eq(t, "off+unsupported", webLabel([]Result{{Web: webUnsupported}, {Web: webOff}}))
+	})
+	t.Run("no rows", func(t *testing.T) {
+		assert.Eq(t, "-", webLabel(nil))
+	})
+}
+
 // TestPrintWebNote: the summary below the table says whether the run had web
 // access, including the agent the eval cannot restrict.
 func TestPrintWebNote(t *testing.T) {

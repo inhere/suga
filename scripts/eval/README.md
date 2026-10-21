@@ -212,6 +212,7 @@ go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--n
 variant 的 `name` 默认取目录名；目录重复时（同名）启动即报错。有 `--variant` 时输出为 `<out>/<variant>/<task>[-r<i>]/`，
 session id 带 `<variant>-` 前缀，`results.jsonl` 每行多一个 `variant` 字段；结束时打印并写 `<out>/compare.md`：
 各 variant 的通过率、平均 CALLS、平均 prompt（未缓存+缓存读写）、平均未缓存输入、总 prompt、缓存命中率与平均耗时，
+WEB 列记录该 variant 本次是否禁网（`off`/`on`/`unsupported`，多个用 `+` 连接）：
 以及逐任务一行（PASS/FAIL/TIMEOUT、CALLS、prompt、耗时），variant 之间结果不同的任务在“结果不一致”列标为 **是**。
 不给 `--variant` 时输出结构与以前完全一致（无 variant 字段、无 compare.md）。任务必须用 `--agent suga`（且与
 `--probe-prefix` 互斥）。

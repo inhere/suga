@@ -17,8 +17,8 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 
 	// Per-variant totals.
 	fmt.Fprintf(&b, "## variant 总览\n\n")
-	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | 平均耗时 |")
-	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|")
+	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | 平均耗时 | WEB |")
+	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|")
 	for _, v := range variants {
 		sub := variantResults(rs, v.Name)
 		if len(sub) == 0 {
@@ -26,8 +26,8 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 		}
 		a := averageRounds(sub)
 		total, hit := totals(sub)
-		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %.1fs |\n",
-			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, a.Seconds)
+		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %.1fs | %s |\n",
+			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, a.Seconds, webLabel(sub))
 	}
 	fmt.Fprintln(&b)
 
@@ -70,6 +70,25 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 	fmt.Printf("\n%s\n", b.String())
 	fmt.Printf("compare: %s\n", path)
 	return nil
+}
+
+// webLabel summarises the Result.Web values of one variant's rows ("off",
+// "on", "unsupported", joined with +) so compare.md records whether the run
+// had web access; "-" when nothing is recorded.
+func webLabel(rs []Result) string {
+	var parts []string
+	for _, value := range []string{webOff, webOn, webUnsupported} {
+		for _, r := range rs {
+			if r.Web == value {
+				parts = append(parts, value)
+				break
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, "+")
 }
 
 // variantResults keeps the result rows of one variant, in run order.
