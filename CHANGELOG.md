@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+### 变更
+
+- chat 里工具调用的第一行按工具显示内容，不再一律是参数 JSON：`file_read` 显示路径（多个用 `, ` 分隔，带 offset/limit 时附 `:起-止`），`shell_exec` 显示命令本身（多行只显首行并加 `…`，timeout/background 等作简短附注），`file_write`/`file_edit` 显示路径加字节与行数/处数，`file_list`、`file_find`、`file_grep`、`file_symbols`、`file_refs` 显示目录、pattern、glob 或符号，`web_fetch`/`web_search`/`view_image`、`agent`、`session_message`、`session_search`、`recall`、`skill`、`tool_search`、`memory` 同样各显示自己的关键参数；工作区内的路径显示为相对路径。没有登记摘要的工具（`update_plan`、MCP 工具）、参数无法解析或摘要为空时仍是原来的 JSON，截断与 `redact` 规则不变；子 agent 的进度行用同一套摘要。只是显示：`run`、stream-json、ACP、trace 与转录不受影响。
+- chat 启动提示只列每轮常用命令，去掉 `:add-dir/:dirs/:rm-dir`、`:checkpoints`、`:undo [N] [force]`；这些命令照旧可用、照旧补全，完整列表仍在 `:help`。
+
 ## [0.42.0] - 2026-10-21
 
 chat 输入与评测：回合进行中按 Tab 把输入排到本轮结束后（`:queue`）；Windows Terminal 里原生 Ctrl+Enter 换行（win32-input-mode，`chat.win32_input_mode`）；skill 目录作为只读可读目录（读 skill 的 references 不再要授权）；`suga inspect manifest` 不再写文件；评测新增 `--variant` 配置对比与 Aider polyglot Go 题转换器；历史折叠可按上下文体积触发（`context.fold_at`，默认关闭）并只折叠被重复读取或已过时的旧工具结果。

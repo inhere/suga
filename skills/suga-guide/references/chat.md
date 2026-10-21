@@ -108,6 +108,13 @@
 - 默认 `summary`：不逐条打印子 agent 的工具调用；等待状态行按 description 显示运行中的数量与各自调用次数，子 agent 结束时在结果旁显示调用总数与耗时。多个并行子 agent 按名字分别计数。
 - `full` 保留逐条的 `  · <工具> <参数>` 行；`off` 隐藏逐条进度和汇总，但 agent 工具本身的调用行与结果行不变。
 - 前台子 agent 的汇总跟随 agent 工具结果；`background: true` 的子 agent 在后台任务完成通知之前显示汇总。终端状态行沿用已有 spinner/steering 行，过长内容会按终端宽度截断。
+## 启动提示与工具调用行
+
+- 启动提示只列每轮常用的命令（`:session`、`:compact`、`:diff`、`:quit`/`:exit`、`:help` 与换行键）；`:add-dir`/`:dirs`/`:rm-dir`、`:checkpoints`、`:undo` 照样可用、照样补全，完整列表看 `:help`。
+- 工具调用的第一行按工具显示内容而不是参数 JSON：`file_read` 显示路径（多个用 `, ` 分隔，带 offset/limit 时附 `:起-止`），`shell_exec` 显示命令本身（多行只显首行并加 `…`，有 timeout/background/every/watch_paths 时附简短说明），`file_write` 路径加字节/行数，`file_edit` 路径加处数，`file_remove`/`view_image` 路径，`file_list` 目录与 depth，`file_find` 的 pattern 加目录，`file_grep` 的 `"pattern"` 加目录/glob，`file_symbols`/`file_refs` 的符号（带路径），`web_fetch` 的 URL，`web_search`/`tool_search`/`session_search` 的查询词，`recall` 的 ref，`skill` 的技能名，`memory` 的动作加标题，`agent` 的子 agent 类型加任务（background 时注明），`session_message` 的 `list` 或 `→ <对方> "<文本首行>"`。
+- 工作区内的路径显示为相对路径（工作区外、只读依赖根下的保持原样）；没有登记摘要的工具（如 `update_plan`、MCP 工具）、参数无法解析或摘要为空时仍显示原来的参数 JSON。
+- 摘要与 JSON 用同一宽度截断（`callArgsLimit`），敏感值同样经 `redact` 处理；子 agent 的进度行（`chat.agent_progress: full`）用同一套摘要。只是显示：`run`、stream-json、ACP、trace 与转录里仍是完整的参数 JSON。
+
 ## 通知与终端显示
 
 长回合结束或审批等待时的通知（`chat.notify`、`chat.notify_after`）、markdown 渲染、spinner、输入高亮与终端标题等显示开关见 `references/config.md` 的 `chat.*` 一节。
