@@ -90,7 +90,7 @@ Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 
 ## Sub-agents
 
-Details: [references/tools.md#子-agent](skills/suga-guide/references/tools.md#子-agent) (Chinese)
+Details: [references/tools.md#子agent](skills/suga-guide/references/tools.md#子agent) (Chinese)
 
 - The `agent` tool hands an independent task to a read-only sub-agent and brings back only its final report.
 - Two types: `explore` (default, workspace read tools) and `research` (adds `web_fetch` and `web_search`).
