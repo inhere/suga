@@ -154,11 +154,11 @@ def main():
     # The positive run repeats past the R1 rule (four reads: R1 at the third,
     # R2 at the fourth, then silence).
     results += [("on: " + name, ok) for name, ok in
-                loop_turn(args.bin, os.path.join(args.work, "on"), 18796, True)]
+                loop_turn(args.bin, os.path.join(args.work, "on"), 18861, True)]
     # The reverse: tools.loop_guard: false in config.yaml must silence all of
     # it, so every positive check below would fail without the wiring.
     results += [("off: " + name, ok) for name, ok in
-                loop_turn(args.bin, os.path.join(args.work, "off"), 18797, False)]
+                loop_turn(args.bin, os.path.join(args.work, "off"), 18862, False)]
     failed = [name for name, ok in results if not ok]
     print(f"{len(results) - len(failed)}/{len(results)} passed")
     for name in failed:
