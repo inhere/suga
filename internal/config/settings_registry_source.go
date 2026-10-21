@@ -109,6 +109,9 @@ func directEnvOverride(key string) string {
 		return "SUGA_BUDGET_ESTIMATE_FACTOR"
 	case "budget.notice_ratio":
 		return "SUGA_BUDGET_NOTICE_RATIO"
+	// chat.theme: the palette of chat's markdown rendering (chat.theme / SUGA_THEME).
+	case "chat.theme":
+		return "SUGA_THEME"
 	default:
 		return ""
 	}
