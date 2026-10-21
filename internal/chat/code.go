@@ -39,6 +39,7 @@ func (r *Renderer) ShowCode(arg string) {
 	r.stopThinking()
 	r.Hint(fmt.Sprintf("第 %d 个代码块（%s，共 %d 行）", index+1, codeBlockLang(block), len(block.Lines)))
 	term := output.NewMDTerm(r.opts.Out, r.opts.Color)
+	term.SetTheme(r.opts.Theme)
 	// No fold limit: :code shows the whole block.
 	term.SetCode(r.opts.CodeHighlight, 0)
 	term.Print("```" + block.Lang + "\n" + strings.Join(block.Lines, "\n") + "\n```\n")

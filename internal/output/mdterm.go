@@ -27,14 +27,43 @@ const (
 	mdFence = "───"
 )
 
-// Terminal styles of the markdown elements.
-var (
-	mdHeadingStyle = color.Style{color.OpBold, color.FgCyan}
-	mdDimStyle     = color.Style{color.FgGray}
-	mdCodeStyle    = color.Style{color.FgLightYellow}
-	// mdHeaderStyle marks the header line of an aligned table (mdtable.go).
-	mdHeaderStyle = color.Style{color.OpBold}
-)
+// mdPalette is one theme's (chat.theme) terminal styles of the markdown elements
+// and of the code highlighter (mdcode.go). dark keeps the palette chat had
+// before the theme option existed, byte for byte; light wraps the same elements
+// in colors that stay legible on a light terminal background, where the dark
+// palette (bold cyan headings, bright yellow inline code, the marginally
+// readable cyan keyword) almost disappears.
+type mdPalette struct {
+	heading, dim, code, header color.Style
+	comment, codeStr           color.Style
+	number, keyword            color.Style
+}
+
+// The two themes of chat.theme (resolved by axconfig.ChatTheme); one MDTerm is
+// built on one of them, and anything outside the map keeps the dark theme.
+var mdThemes = map[string]*mdPalette{
+	"dark": {
+		heading: color.Style{color.OpBold, color.FgCyan},
+		dim:     color.Style{color.FgGray},
+		code:    color.Style{color.FgLightYellow},
+		// The header line of an aligned table (mdtable.go).
+		header:  color.Style{color.OpBold},
+		comment: color.Style{color.FgGray},
+		codeStr: color.Style{color.FgGreen},
+		number:  color.Style{color.FgMagenta},
+		keyword: color.Style{color.FgCyan},
+	},
+	"light": {
+		heading: color.Style{color.OpBold, color.FgBlue},
+		dim:     color.Style{color.FgBlack},
+		code:    color.Style{color.FgMagenta},
+		header:  color.Style{color.OpBold},
+		comment: color.Style{color.FgGray},
+		codeStr: color.Style{color.FgGreen},
+		number:  color.Style{color.FgMagenta},
+		keyword: color.Style{color.FgBlue},
+	},
+}
 
 // List items: the indent, the marker and the space behind it are kept, only the
 // bullet of an unordered list is replaced. The marker needs a space behind it,
@@ -51,6 +80,9 @@ type MDTerm struct {
 	color   bool
 	pending string // text after the last newline, not rendered yet
 	block   bool   // inside a fenced code block; spans the lines of one message
+	// theme is the palette the markdown elements and the code highlighter are
+	// painted with (chat.theme, dark unless SetTheme names another one).
+	theme *mdPalette
 	// Code highlighting of a fenced block (chat.code_highlight): the language
 	// of its fence picks the rules that color it (mdcode.go).
 	highlight bool
@@ -80,9 +112,18 @@ type MDTerm struct {
 	started bool // the current message already printed its prefix
 }
 
-// NewMDTerm returns an MDTerm writing rendered lines to w; color styles them.
+// NewMDTerm returns an MDTerm writing rendered lines to w; color styles them,
+// with the dark theme's palette (SetTheme switches it).
 func NewMDTerm(w io.Writer, color bool) *MDTerm {
-	return &MDTerm{w: w, color: color}
+	return &MDTerm{w: w, color: color, theme: mdThemes["dark"]}
+}
+
+// SetTheme switches the palette the elements are painted with (chat.theme,
+// "dark" or "light"); an unknown name keeps the previous one.
+func (t *MDTerm) SetTheme(name string) {
+	if palette := mdThemes[name]; palette != nil {
+		t.theme = palette
+	}
 }
 
 // SetCode configures fenced code blocks: highlight colors them by their
@@ -198,13 +239,13 @@ func (t *MDTerm) renderLine(s string) (string, bool) {
 			t.block = true
 			t.startCode(info)
 			if info != "" {
-				return t.paint(mdDimStyle, mdFence+" "+info), true
+				return t.paint(t.theme.dim, mdFence+" "+info), true
 			}
-			return t.paint(mdDimStyle, mdFence), true
+			return t.paint(t.theme.dim, mdFence), true
 		case info == "":
 			t.endCode()
 			t.block = false
-			return t.paint(mdDimStyle, mdFence), true
+			return t.paint(t.theme.dim, mdFence), true
 		}
 		// A "```lang" line inside the block is content, not a closing fence.
 	}
@@ -224,10 +265,10 @@ func (t *MDTerm) renderLine(s string) (string, bool) {
 		}
 	}
 	if mdRule(trimmed) {
-		return t.paint(mdDimStyle, strings.Repeat("─", mdRuleWidth)), true
+		return t.paint(t.theme.dim, strings.Repeat("─", mdRuleWidth)), true
 	}
 	if _, text, ok := mdHeading(trimmed); ok {
-		return t.inline(text, mdHeadingStyle), true
+		return t.inline(text, t.theme.heading), true
 	}
 	if strings.HasPrefix(trimmed, "|") {
 		// The line may open a GFM table: its next line (the delimiter row) decides,
@@ -236,7 +277,7 @@ func (t *MDTerm) renderLine(s string) (string, bool) {
 		return "", false
 	}
 	if text, depth, ok := mdQuote(s); ok {
-		return t.paint(mdDimStyle, strings.Repeat("│ ", depth)) + t.inline(text, mdDimStyle), true
+		return t.paint(t.theme.dim, strings.Repeat("│ ", depth)) + t.inline(text, t.theme.dim), true
 	}
 	if m := mdBulletItem.FindStringSubmatch(s); m != nil {
 		return m[1] + "•" + m[3] + t.inline(m[4], nil), true
@@ -255,7 +296,7 @@ func (t *MDTerm) startCode(info string) {
 	t.codeText, t.codeLines, t.codeFolded = nil, 0, 0
 	t.code = nil
 	if t.highlight && t.color {
-		t.code = newMDCode(info)
+		t.code = newMDCode(info, t.theme)
 	}
 }
 
@@ -272,7 +313,7 @@ func (t *MDTerm) codeLine(s string) (string, bool) {
 	if t.code != nil {
 		return t.code.line(s), true
 	}
-	return t.paint(mdDimStyle, s), true // code keeps its exact text and is dimmed
+	return t.paint(t.theme.dim, s), true // code keeps its exact text and is dimmed
 }
 
 // endCode ends the open code block: its lines are kept for :code and a folded
@@ -282,7 +323,7 @@ func (t *MDTerm) endCode() {
 		t.blocks = append(t.blocks, CodeBlock{Lang: t.codeLang, Lines: t.codeText, Folded: t.codeFolded})
 	}
 	if t.codeFolded > 0 {
-		t.extra = append(t.extra, t.paint(mdDimStyle,
+		t.extra = append(t.extra, t.paint(t.theme.dim,
 			fmt.Sprintf("… 还有 %d 行（:code 查看全部）", t.codeFolded)))
 	}
 	t.code, t.codeLang, t.codeText, t.codeLines, t.codeFolded = nil, "", nil, 0, 0
@@ -307,7 +348,7 @@ func (t *MDTerm) inline(s string, base color.Style) string {
 		case rest[0] == '`':
 			if j := strings.IndexByte(rest[1:], '`'); j >= 0 {
 				flush()
-				out.WriteString(t.paint(mdCodeStyle, rest[1:1+j]))
+				out.WriteString(t.paint(t.theme.code, rest[1:1+j]))
 				i += j + 2
 				continue
 			}

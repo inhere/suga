@@ -182,12 +182,12 @@ func (t *MDTerm) alignTable(rows []string, aligns []mdTableAlign) ([]string, boo
 	lines := make([]string, 0, len(body)+2)
 	// The header keeps its inline markers' rendering but is bold as a whole: a
 	// reader tells it from the body at a glance.
-	lines = append(lines, t.paint(mdHeaderStyle, strings.Join([]string{
+	lines = append(lines, t.paint(t.theme.header, strings.Join([]string{
 		mdTableBorder,
 		mdTableLine(headerCells, widths, aligns, true),
 		mdTableBorder,
 	}, " ")))
-	lines = append(lines, t.paint(mdDimStyle, strings.Repeat("─", total)))
+	lines = append(lines, t.paint(t.theme.dim, strings.Repeat("─", total)))
 	for _, cells := range bodyCells {
 		lines = append(lines, strings.Join([]string{
 			mdTableBorder,
