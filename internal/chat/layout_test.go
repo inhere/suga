@@ -18,10 +18,25 @@ import (
 // single byte (plain and colored): every case below asserts the whole output,
 // not just a part of it.
 
+// TestBannerHelpTextKeepsRareCommandsInHelp: the banner names the commands of
+// every turn only; the removed ones still work, still complete and are listed
+// by :help.
+func TestBannerHelpTextKeepsRareCommandsInHelp(t *testing.T) {
+	for _, cmd := range []string{":add-dir", ":dirs", ":rm-dir", ":checkpoints", ":undo"} {
+		assert.StrNotContains(t, bannerHelpText, cmd)
+		assert.StrContains(t, chatHelpText, cmd)
+	}
+	// The commands that stay are still named, in a readable sentence.
+	for _, cmd := range []string{":session", ":compact", ":diff", ":quit/:exit", ":help"} {
+		assert.StrContains(t, bannerHelpText, cmd)
+	}
+	assert.StrNotContains(t, bannerHelpText, "，，")
+}
+
 // TestLayoutBanner: the four banner lines, whole, with and without colors and
 // with every part of the head present or missing.
 func TestLayoutBanner(t *testing.T) {
-	const help = "输入任务开始对话；!<命令> 直接在本地执行（!!<命令> 把结果附给下一条消息）；:session 显示会话，:add-dir/:dirs/:rm-dir 管理附加目录，:compact 压缩上下文，:diff 显示文件改动，:checkpoints 列出快照，:undo [N] [force] 回滚文件改动，:quit/:exit 退出；:help 查看命令；Alt+Enter（Windows 上 Ctrl+Enter / Ctrl+J）在输入里换行，多行时上下键移动光标。"
+	const help = "输入任务开始对话；!<命令> 直接在本地执行（!!<命令> 把结果附给下一条消息）；:session 显示会话，:compact 压缩上下文，:diff 显示文件改动，:quit/:exit 退出；:help 查看命令；Alt+Enter（Windows 上 Ctrl+Enter / Ctrl+J）在输入里换行，多行时上下键移动光标。"
 	const readOnly = "工具：只读。要写文件、执行 shell，在 SUGA_HOME/config.yaml 设 tools.allow_write: true。"
 	const writeOK = "工具：可读写文件、执行 shell（tools.approval 决定是否先确认）。"
 
