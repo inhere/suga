@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,17 @@ import (
 	"github.com/gookit/goutil/x/assert"
 	sugahooks "github.com/inhere/suga/internal/hooks"
 )
+
+// TestQueueCommandAtThePrompt: :queue is an ordinary local command at the prompt
+// too (the turn is where it is most useful, see TestQueueCommandDuringTurn).
+func TestQueueCommandAtThePrompt(t *testing.T) {
+	runner, _ := newCLITestRunner(t, &hookTestProvider{})
+	var stdout, stderr strings.Builder
+	input := strings.NewReader(":queue\n:queue clear\n:queue bogus\n:quit\n")
+	assert.NoErr(t, Run(context.Background(), runner, Options{}, input, &stdout, &stderr, nil))
+	assert.StrContains(t, stdout.String(), chatQueueEmpty)
+	assert.StrContains(t, stdout.String(), queueUsageHint)
+}
 
 // TestFollowUpQueue: the queue a turn fills keeps messages in order and can be
 // read and cleared from either side.
