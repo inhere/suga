@@ -44,6 +44,7 @@ var sampleFiles = []string{
 	"php/Store.php", "php/StoreTest.php",
 	"yaml/config.yaml", "toml/config.toml",
 	"rs/lib.rs", "docs/guide.md",
+	"csharp/Store.cs", "kotlin/Store.kt", "ruby/store.rb", "cpp/store.cpp",
 }
 
 // goldenCases records one symbols and two references calls per language, the two
@@ -74,6 +75,10 @@ func goldenCases() []goldenCase {
 		{"yaml", "yaml/config.yaml", "port"},
 		{"toml", "toml/config.toml", "port"},
 		{"rs", "rs/lib.rs", "store"},
+		{"csharp", "csharp/Store.cs", "Reload"},
+		{"kotlin", "kotlin/Store.kt", "reload"},
+		{"ruby", "ruby/store.rb", "reload"},
+		{"cpp", "cpp/store.cpp", "reload"},
 	} {
 		cases = append(cases,
 			goldenCase{name: "refs-" + c.name, tool: "file_refs", args: map[string]any{"name": c.ident, "path": c.file}},

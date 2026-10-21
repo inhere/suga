@@ -1,0 +1,36 @@
+# JavaScript and TypeScript: the declaration lines the built-in recogniser read
+# from jsDecls in Go code until the rule files took over (design
+# docs/design/2026-10-22-lang-rules-design.md, section 4.2). The results are
+# byte-identical: the patterns, their order and their member/body flags are the
+# old table's.
+languages:
+  - name: JavaScript/TypeScript
+    exts: [.ts, .tsx, .mts, .cts, .js, .jsx, .mjs, .cjs]
+    markers: [package.json, package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lockb, bun.lock, tsconfig.json]
+    test_commands: '\b(npm (run )?test|pnpm (run )?test|yarn test|jest|vitest)\b'
+    focused_flags: ['-t']
+    ctags:
+      .ts: TypeScript
+      .tsx: TypeScript
+      .mts: TypeScript
+      .cts: TypeScript
+      .js: JavaScript
+      .jsx: JavaScript
+      .mjs: JavaScript
+      .cjs: JavaScript
+    syntax:
+      line_comment: ['//']
+      block_comment: [['/*', '*/']]
+      strings: ['"', "'"]
+      multiline_strings: ['"""', '`']
+    blocks: brace
+    decls:
+      - {pattern: '^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)', kind: class, name: 1, body: true}
+      - {pattern: '^(?:export\s+)?(?:declare\s+)?interface\s+([A-Za-z_$][\w$]*)', kind: interface, name: 1, body: true}
+      - {pattern: '^(?:export\s+)?(?:declare\s+)?type\s+([A-Za-z_$][\w$]*)\s*[=<]', kind: type, name: 1}
+      - {pattern: '^(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+([A-Za-z_$][\w$]*)', kind: enum, name: 1, body: true}
+      - {pattern: '^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)', kind: func, name: 1}
+      - {pattern: '^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)', kind: const, name: 1}
+      - {pattern: '^(?:export\s+)?(?:let|var)\s+([A-Za-z_$][\w$]*)', kind: var, name: 1}
+      # A class member: modifiers, then the name, then its parameter list.
+      - {pattern: '^(?:(?:public|private|protected|static|async|readonly|override|declare|abstract|get|set)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*\(', kind: method, name: 1, member: true}

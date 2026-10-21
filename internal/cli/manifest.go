@@ -164,6 +164,27 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 		fmt.Fprintf(&b, "  %s: %s (%s)\n", r.Name, r.Kind, r.Source)
 	}
 
+	// Language rules: the effective declaration languages of file_symbols and
+	// file_refs (their test commands too) and the rule files a load skipped, so a
+	// lang-rules.yaml with a typo does not silently do nothing.
+	b.WriteString("\nLanguage rules\n")
+	if len(m.LangRules) == 0 {
+		b.WriteString("  none\n")
+	}
+	for _, l := range m.LangRules {
+		fmt.Fprintf(&b, "  %s: %s (%s, %s", l.Name, strings.Join(l.Exts, ", "), l.Blocks, l.Source)
+		if l.Ctags {
+			b.WriteString(", ctags")
+		}
+		b.WriteString(")\n")
+	}
+	if len(m.LangRuleSkips) > 0 {
+		b.WriteString("  skipped:\n")
+		for _, s := range m.LangRuleSkips {
+			fmt.Fprintf(&b, "    %s: %s\n", s.File, s.Err)
+		}
+	}
+
 	_, err := io.WriteString(out, b.String())
 	return err
 }

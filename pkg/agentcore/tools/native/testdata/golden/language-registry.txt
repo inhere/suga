@@ -4,6 +4,10 @@ Java markers=["pom.xml" "build.gradle" "build.gradle.kts" "settings.gradle" "set
 JavaScript/TypeScript markers=["package.json" "package-lock.json" "pnpm-lock.yaml" "yarn.lock" "bun.lockb" "bun.lock" "tsconfig.json"] api="" tests="\\b(npm (run )?test|pnpm (run )?test|yarn test|jest|vitest)\\b" focused=["-t"]
 Python markers=["pyproject.toml" "requirements.txt" "setup.py" "setup.cfg" "tox.ini" "Pipfile"] api="" tests="\\b(pytest|python3? -m pytest)\\b" focused=["-k"]
 PHP markers=["composer.json" "composer.lock"] api="" tests="\\b(vendor/bin/phpunit|phpunit|pest)\\b" focused=["--filter"]
+C# markers=["*.csproj" "*.sln"] api="" tests="\\bdotnet test\\b" focused=[]
+Kotlin markers=["build.gradle.kts" "settings.gradle.kts"] api="" tests="\\bgradlew?(\\.bat)?( \\S+)* test\\b" focused=["--tests"]
+Ruby markers=["Gemfile" "Rakefile" "config.ru"] api="" tests="\\b(rspec|rake test|bundle exec rspec|bundle exec rake test)\\b" focused=["-e" "--example"]
+C/C++ markers=["CMakeLists.txt" "Makefile"] api="" tests="\\b(ctest|make test)\\b" focused=[]
 test-commands:
   go test ./...                            test=true focused=false
   go test -run TestX ./pkg                 test=true focused=true

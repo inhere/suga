@@ -5,7 +5,10 @@ import (
 	"regexp"
 )
 
-// maskStyle selects which spans maskSpans blanks for a line recogniser.
+// maskStyle selects which spans maskSpans blanks for a line recogniser. The
+// built-in styles are spelled as one maskSpec each (mask_spec.go), so a
+// built-in language and a rule language take the same masking path; PHP keeps
+// its own code, whose heredoc/nowdoc bodies and #[ attributes no spec covers.
 type maskStyle int
 
 const (
@@ -60,6 +63,9 @@ func maskLineComment(src []byte, i int, style maskStyle) bool {
 // reads whole declaration lines and a brace inside a "# ..." comment must not
 // shift the depth of what follows.
 func maskSpans(src []byte, style maskStyle) []byte {
+	if spec, ok := style.spec(); ok {
+		return maskSpansSpec(src, spec)
+	}
 	out := append([]byte(nil), src...)
 	blank := func(from, to int) {
 		for i := from; i < to && i < len(out); i++ {
@@ -87,122 +93,37 @@ func maskSpans(src []byte, style maskStyle) []byte {
 	}
 	for i := 0; i < len(src); i++ {
 		c := src[i]
-		switch style {
-		case maskBraces:
-			switch {
-			case hasAt(i, "//"):
-				for i < len(src) && src[i] != '\n' {
-					i++
-				}
-			case hasAt(i, "/*"):
-				end := closing(i+2, "*/", false)
-				blank(i, end)
-				i = end - 1
-			case hasAt(i, `"""`):
-				end := closing(i+3, `"""`, true)
-				blank(i+3, end-3)
-				i = end - 1
-			case c == '`':
-				end := closing(i+1, "`", true)
-				blank(i+1, end-1)
-				i = end - 1
-			case c == '"' || c == '\'':
-				// A one-line string: skipped so a /* or a backtick inside it
-				// opens nothing.
-				for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
-					if src[j] == '\\' {
-						j++
-						continue
-					}
-					if src[j] == c {
-						i = j
-						break
-					}
-				}
+		switch {
+		case maskLineComment(src, i, maskPhp):
+			end := i
+			for end < len(src) && src[end] != '\n' {
+				end++
 			}
-		case maskPython:
-			switch {
-			case c == '#':
-				for i < len(src) && src[i] != '\n' {
-					i++
-				}
-			case hasAt(i, `"""`) || hasAt(i, "'''"):
-				quote := string(src[i : i+3])
-				end := closing(i+3, quote, true)
-				blank(i+3, end-3)
+			blank(i, end)
+			i = end - 1
+		case hasAt(i, "/*"):
+			end := closing(i+2, "*/", false)
+			blank(i, end)
+			i = end - 1
+		case hasAt(i, "<<<"):
+			// A heredoc or nowdoc: only blanked when its closing label is
+			// found, so an unterminated opener never swallows the file (e.g. a
+			// "<<<" in the HTML after a ?>).
+			if end, ok := phpHeredocEnd(src, i); ok {
+				blank(i, end)
 				i = end - 1
-			case c == '"' || c == '\'':
-				for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
-					if src[j] == '\\' {
-						j++
-						continue
-					}
-					if src[j] == c {
-						i = j
-						break
-					}
-				}
 			}
-		case maskHash, maskToml:
-			switch {
-			case maskLineComment(src, i, style):
-				end := i
-				for end < len(src) && src[end] != '\n' {
-					end++
+		case c == '"' || c == '\'':
+			// A one-line string: skipped so a //, # or <<< inside it opens
+			// nothing.
+			for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
+				if src[j] == '\\' {
+					j++
+					continue
 				}
-				blank(i, end)
-				i = end - 1
-			case style == maskToml && (hasAt(i, `"""`) || hasAt(i, "'''")):
-				quote := string(src[i : i+3])
-				end := closing(i+3, quote, true)
-				blank(i+3, end-3)
-				i = end - 1
-			case style == maskToml && (c == '"' || c == '\''):
-				// A one-line string: skipped so a # inside it opens no comment.
-				for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
-					if src[j] == '\\' {
-						j++
-						continue
-					}
-					if src[j] == c {
-						i = j
-						break
-					}
-				}
-			}
-		case maskPhp:
-			switch {
-			case maskLineComment(src, i, maskPhp):
-				end := i
-				for end < len(src) && src[end] != '\n' {
-					end++
-				}
-				blank(i, end)
-				i = end - 1
-			case hasAt(i, "/*"):
-				end := closing(i+2, "*/", false)
-				blank(i, end)
-				i = end - 1
-			case hasAt(i, "<<<"):
-				// A heredoc or nowdoc: only blanked when its closing label is
-				// found, so an unterminated opener never swallows the file (e.g. a
-				// "<<<" in the HTML after a ?>).
-				if end, ok := phpHeredocEnd(src, i); ok {
-					blank(i, end)
-					i = end - 1
-				}
-			case c == '"' || c == '\'':
-				// A one-line string: skipped so a //, # or <<< inside it opens
-				// nothing.
-				for j := i + 1; j < len(src) && src[j] != '\n'; j++ {
-					if src[j] == '\\' {
-						j++
-						continue
-					}
-					if src[j] == c {
-						i = j
-						break
-					}
+				if src[j] == c {
+					i = j
+					break
 				}
 			}
 		}
@@ -267,6 +188,9 @@ func phpIdentByte(c byte) bool {
 // template strings are not looked at here: maskSpans already blanks them,
 // single-line or not.
 func maskInline(src []byte, style maskStyle) []byte {
+	if spec, ok := style.spec(); ok {
+		return maskInlineSpec(src, spec)
+	}
 	out := append([]byte(nil), src...)
 	blank := func(from, to int) {
 		if to > len(out) {
@@ -277,9 +201,6 @@ func maskInline(src []byte, style maskStyle) []byte {
 				out[i] = ' '
 			}
 		}
-	}
-	hasAt := func(i int, s string) bool {
-		return i+len(s) <= len(src) && string(src[i:i+len(s)]) == s
 	}
 	lineEnd := func(i int) int {
 		for ; i < len(src) && src[i] != '\n'; i++ {
@@ -294,7 +215,7 @@ func maskInline(src []byte, style maskStyle) []byte {
 				j++
 				continue
 			}
-			if hasAt(j, closer) {
+			if j+len(closer) <= len(src) && string(src[j:j+len(closer)]) == closer {
 				return j + len(closer)
 			}
 		}
@@ -302,23 +223,15 @@ func maskInline(src []byte, style maskStyle) []byte {
 	}
 	for i := 0; i < len(src); i++ {
 		c := src[i]
-		if maskLineComment(src, i, style) {
+		if maskLineComment(src, i, maskPhp) {
 			end := lineEnd(i)
 			blank(i, end)
 			i = end - 1
 			continue
 		}
-		if style == maskHash {
-			// A configuration file's value is how it names things, and these two
-			// formats keep the degraded text match they had before they had an
-			// extractor: their string literals stay visible here.
-			continue
-		}
 		if c != '"' && c != '\'' {
 			continue
 		}
-		// A triple-quoted string is already blanked by maskSpans, single-line or
-		// not: only " and ' open a one-line string here.
 		end := closing(i+1, string(c))
 		blank(i, end)
 		i = end - 1

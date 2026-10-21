@@ -43,7 +43,8 @@ func TestLanguagesRegistry(t *testing.T) {
 			clauses = append(clauses, lang.Name)
 		}
 	}
-	assert.Eq(t, []string{"Go", "Rust", "Java", "JavaScript/TypeScript", "Python", "PHP"}, names)
+	assert.Eq(t, []string{"Go", "Rust", "Java", "JavaScript/TypeScript", "Python", "PHP",
+		"C#", "Kotlin", "Ruby", "C/C++"}, names)
 	// These two are the languages the prompt's dependency-API line names.
 	assert.Eq(t, []string{"Go", "Java"}, clauses)
 }

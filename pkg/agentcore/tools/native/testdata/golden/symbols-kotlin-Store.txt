@@ -1,0 +1,10 @@
+kotlin/Store.kt:4 class Item data class Item(val name: String)
+kotlin/Store.kt:6 class Store class Store(private val loader: Loader) {
+kotlin/Store.kt:7 var items private val items = mutableListOf<Item>()
+kotlin/Store.kt:9 method reload fun reload(): Int {
+kotlin/Store.kt:15 method name fun name(item: Item): String {
+kotlin/Store.kt:24 interface Loader interface Loader {
+kotlin/Store.kt:25 method load fun load(path: String): Int
+kotlin/Store.kt:28 class Registry object Registry {
+kotlin/Store.kt:29 var store val store: Store = Store(Loader())
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

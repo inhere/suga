@@ -1,0 +1,23 @@
+# Java: the type and method lines the built-in recogniser read from javaDecls in
+# Go code until the rule files took over (design section 4.2). Field declarations
+# are left out on purpose: a field is not what a "where is this used" question
+# looks for, and keeping them would bury the methods.
+languages:
+  - name: Java
+    exts: [.java]
+    markers: [pom.xml, build.gradle, build.gradle.kts, settings.gradle, settings.gradle.kts]
+    test_commands: '\bmvnw?(\.cmd)?( \S+)* (test|verify)\b|\bgradlew?(\.bat)?( \S+)* (:[A-Za-z0-9_.-]+:)?test\b'
+    focused_flags: ['-Dtest', '--tests']
+    ctags: {.java: Java}
+    syntax:
+      line_comment: ['//']
+      block_comment: [['/*', '*/']]
+      strings: ['"', "'"]
+      multiline_strings: ['"""', '`']
+    blocks: brace
+    decls:
+      - {pattern: '^\s*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed|strictfp)\s+)*(class|interface|enum|record)\s+([A-Za-z_$][\w$]*)', kind_group: 1, name: 2, body: true}
+      # A method: modifiers, an optional return type, the name, then parameters.
+      # The return type excludes "." and "=" on purpose: a qualified type or a
+      # field initializer then does not look like a method.
+      - {pattern: '^\s*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\s+)*(?:[\w$<>\[\],\s?]+\s+)?([A-Za-z_$][\w$]*)\s*\(', kind: method, name: 1, member: true}

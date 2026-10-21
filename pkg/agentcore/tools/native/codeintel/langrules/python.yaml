@@ -1,0 +1,21 @@
+# Python: the class and def lines the built-in recogniser read from pyClassRe /
+# pyDefRe in Go code until the rule files took over (design section 4.2). An
+# indentation-delimited language: a def inside a class body is a method, which
+# the first (member) rule reports, the second the same line at file level.
+languages:
+  - name: Python
+    exts: [.py, .pyi]
+    markers: [pyproject.toml, requirements.txt, setup.py, setup.cfg, tox.ini, Pipfile]
+    test_commands: '\b(pytest|python3? -m pytest)\b'
+    focused_flags: ['-k']
+    ctags: {.py: Python, .pyi: Python}
+    syntax:
+      line_comment: ['#']
+      strings: ['"', "'"]
+      multiline_strings: ['"""', "'''"]
+    blocks: indent
+    decls:
+      - {pattern: '^class\s+([A-Za-z_]\w*)', kind: class, name: 1, body: true}
+      # A def opens no type body: a def inside a def is a function, not a method.
+      - {pattern: '^(?:async\s+)?def\s+([A-Za-z_]\w*)', kind: method, name: 1, member: true}
+      - {pattern: '^(?:async\s+)?def\s+([A-Za-z_]\w*)', kind: func, name: 1}

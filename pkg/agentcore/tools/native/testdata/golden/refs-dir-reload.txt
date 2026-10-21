@@ -1,11 +1,15 @@
+cpp/store.cpp:13 ref void reload();
+cpp/store.cpp:18 ref void Store::reload() {
 java/Store.java:15 ref public void reload() {
 java/Store.java:21 ref void reload() {
+kotlin/Store.kt:9 ref fun reload(): Int {
 php/Store.php:11 ref public function reload(): void
 php/Store.php:25 ref public function reload(): void
 py/loader.py:15 ref def reload(self):
 py/loader.py:21 ref def reload(self):
 py/loader.py:25 ref def reload(path):
 py/loader.py:26 ref return Loader(path).reload()
+ruby/store.rb:11 ref def reload
 toml/config.toml:12 def reload = true
 ts/loader.ts:3 ref reload: boolean;
 ts/loader.ts:13 ref reload(): void {
@@ -14,7 +18,7 @@ ts/loader.ts:30 ref const loader = new Loader({ reload: true });
 ts/loader.ts:31 ref loader.reload();
 yaml/config.yaml:13 def reload: true
 [no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
-[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
 [approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]
 [skipped 5 test file(s); pass include_tests: true to search them]
 [skipped 1 documentation file(s) (.md, .txt, .rst)]

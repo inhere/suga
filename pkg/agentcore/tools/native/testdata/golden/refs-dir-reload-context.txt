@@ -1,3 +1,10 @@
+cpp/store.cpp-12- explicit Store(int capacity);
+cpp/store.cpp:13 ref void reload();
+cpp/store.cpp-14- int size() const;
+--
+cpp/store.cpp-17- // reload in a comment is no reference.
+cpp/store.cpp:18 ref void Store::reload() {
+cpp/store.cpp-19- const char *label = "reload in a string is no reference";
 java/Store.java-14- /** reload the items */
 java/Store.java:15 ref public void reload() {
 java/Store.java-16- String note = "reload kept the order";
@@ -5,6 +12,9 @@ java/Store.java-16- String note = "reload kept the order";
 java/Store.java-20- public static class Nested {
 java/Store.java:21 ref void reload() {
 java/Store.java-22- }
+kotlin/Store.kt-8- 
+kotlin/Store.kt:9 ref fun reload(): Int {
+kotlin/Store.kt-10- // reload in a comment is no reference.
 php/Store.php-10- /** reload the items */
 php/Store.php:11 ref public function reload(): void
 php/Store.php-12- {
@@ -23,6 +33,9 @@ py/loader.py-22- return None
 py/loader.py-24- 
 py/loader.py:25 ref def reload(path):
 py/loader.py:26 ref return Loader(path).reload()
+ruby/store.rb-10- # reload in a comment is no reference.
+ruby/store.rb:11 ref def reload
+ruby/store.rb-12- label = 'reload in a string is no reference'
 toml/config.toml-11- [features]
 toml/config.toml:12 def reload = true
 toml/config.toml-13- flags = ["fast", "slow"]
@@ -43,7 +56,7 @@ yaml/config.yaml-12- features:
 yaml/config.yaml:13 def reload: true
 yaml/config.yaml-14- flags:
 [no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
-[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
 [approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]
 [skipped 5 test file(s); pass include_tests: true to search them]
 [skipped 1 documentation file(s) (.md, .txt, .rst)]

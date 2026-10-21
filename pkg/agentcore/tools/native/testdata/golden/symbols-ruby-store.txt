@@ -1,0 +1,9 @@
+ruby/store.rb:2 type Sample module Sample
+ruby/store.rb:3 class Store class Store
+ruby/store.rb:6 method initialize def initialize(name)
+ruby/store.rb:11 method reload def reload
+ruby/store.rb:16 method build def self.build(name)
+ruby/store.rb:20 class Nested class Nested
+ruby/store.rb:21 method reload_nested def reload_nested
+ruby/store.rb:27 method helper def self.helper
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

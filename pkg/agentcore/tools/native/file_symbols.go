@@ -42,7 +42,7 @@ func (t *FileSymbolsTool) Description() string {
 	return "List the declarations of a source file, or of every source file under a directory (recursive): " +
 		"one `path:line kind name signature` line each, sorted by path and line. Use it instead of guessing " +
 		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
-		"JavaScript/TypeScript, Python, Java, PHP and TOML are recognised from their declaration lines and marked " +
+		codeintel.DeclLineLanguages() + " are recognised from their declaration lines and marked " +
 		"approx (confirm a name with file_grep). A YAML/TOML file lists its keys by their dotted key path " +
 		"(server.http.port, services[].name), a mapping/table as kind section and a leaf as kind key, with the " +
 		"value preview in the signature; YAML is parsed with go-yaml (a file the parser rejects falls back to " +
@@ -310,7 +310,7 @@ func (o *symbolOut) notes(limit int) []string {
 		notes = append(notes, note+"]")
 	}
 	if o.approx {
-		notes = append(notes, "[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line "+
+		notes = append(notes, "[approx: "+codeintel.DeclLineLanguages()+" declarations come from declaration-line "+
 			"detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]")
 	}
 	notes = append(notes, o.extraNotes...)
