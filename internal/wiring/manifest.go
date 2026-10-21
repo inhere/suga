@@ -460,7 +460,9 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 	ledger := personal.NewLedger(st.sessionsDir)
 	reg.Register(native.NewSessionSearchTool(ledger))
 	reg.Register(native.NewRecallTool(ledger, st.inlineBytes))
-	skillReg := buildDefaultSkillRegistry(workspace)
+	// Read-only diagnose: the built-in skills are enumerated from the embedded
+	// resources instead of being released into <SUGA_HOME>/skills.
+	skillReg := buildReadOnlySkillRegistry(workspace)
 	if skillReg.Len() > 0 {
 		reg.Register(native.NewSkillTool(skillReg, st.spillBytes))
 	}

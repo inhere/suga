@@ -17,6 +17,7 @@ const (
 :diff [N] 显示文件改动
 :code [N] 展开上一条回答的代码块
 :image <路径|clear> 管理待发图片（附到下一条消息）
+:queue [clear] 列出/清空排队的消息（回合中 Tab 排队，本轮结束后发送）
 :checkpoints 列出写操作快照
 :undo [N] [force] 回滚文件改动
 :help 显示此帮助
@@ -24,7 +25,7 @@ const (
 :tasks 显示后台任务
 :quit/:exit 退出
 !<命令> 本地执行；!!<命令> 执行并附给下一条消息
-按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Alt+V 贴剪贴板图片；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`
+按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Tab 补全命令（回合中 Tab 把该行排到本轮结束后发送）；Alt+V 贴剪贴板图片；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`
 	chatUsageHint  = ":usage 用量：本次 %d 轮 · 输入 %d / 输出 %d · 缓存读 %d / 写 %d · 成本 $%.6f；会话累计输入 %d / 输出 %d · 成本 $%.6f"
 	chatTasksEmpty = "没有后台任务"
 )
@@ -218,6 +219,9 @@ func (s *chatState) runChatCommand(line string) bool {
 		}
 	case line == ":usage":
 		fmt.Fprintln(s.source, BuildChatUsage(*s.stats))
+	case isQueueCommand(line):
+		// The messages queued with Tab during a turn (followup.go).
+		s.runQueueCommand(line)
 	case line == ":tasks":
 		if s.tasks == nil {
 			fmt.Fprintln(s.source, chatTasksEmpty)

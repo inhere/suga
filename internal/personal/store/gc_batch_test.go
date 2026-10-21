@@ -104,6 +104,15 @@ func TestCollectGarbageBatchesSessions(t *testing.T) {
 		orphans := gcCount(t, s, `SELECT COUNT(*) FROM entries_fts WHERE session_id NOT IN (SELECT id FROM sessions)`)
 		assert.Eq(t, int64(0), orphans)
 
+		// left == 0 is a legal outcome too: the cancel landed at the very end of
+		// the run (its watcher was slower than the batches, or only the orphan
+		// events step saw the canceled ctx), so every batch had already committed
+		// and there is nothing left to resume. Only a run that stopped between
+		// two batches leaves something for the second run to remove.
+		if left == 0 {
+			assert.Eq(t, int64(0), gcCount(t, s, `SELECT COUNT(*) FROM entries_fts`))
+			return
+		}
 		report, err := s.CollectGarbage(ctx, cutoff, nil, true)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.True(t, report.Applied)

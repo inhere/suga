@@ -2,8 +2,10 @@ package wiring
 
 import (
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -13,6 +15,7 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	capskills "github.com/inhere/suga/pkg/agentcore/skills"
+	builtinskills "github.com/inhere/suga/skills"
 )
 
 // buildDefaultSkillRegistry scans the skill roots once at startup, releasing
@@ -22,6 +25,47 @@ func buildDefaultSkillRegistry(workspace string) *capskills.Registry {
 	sugaHome := sugaHomeWithBuiltinSkills()
 	homeDir, _ := os.UserHomeDir()
 	return capskills.LoadRoots(defaultSkillRoots(workspace, homeDir, sugaHome))
+}
+
+// buildReadOnlySkillRegistry is the skill scan of the read-only diagnose
+// commands (LoadManifest and LoadLocalEnv): the roots are read as they are,
+// without releasing the built-in skills first, and a built-in skill not on
+// disk is enumerated from the embedded resources instead of being written.
+// A built-in skill is registered only when no scanned skill of the same name
+// exists, so a released one and the user's own skill of that name keep the
+// priority the roots list gives them. The embedded entries carry no Path and
+// Dir: they are counted and listed, but a body is loaded only from disk (the
+// session side, which releases first).
+func buildReadOnlySkillRegistry(workspace string) *capskills.Registry {
+	sugaHome, err := appconfig.ResolveSugaHome()
+	if err != nil {
+		slog.Warn("cannot resolve SUGA_HOME for the skill roots", "err", err)
+		sugaHome = ""
+	}
+	homeDir, _ := os.UserHomeDir()
+	reg := capskills.LoadRoots(defaultSkillRoots(workspace, homeDir, sugaHome))
+	names, err := builtinSkillNames(builtinskills.FS)
+	if err != nil {
+		slog.Warn("cannot list the built-in skills", "err", err)
+		return reg
+	}
+	for _, name := range names {
+		if _, ok := reg.Get(name); ok {
+			continue // already released, or the user's own skill of that name
+		}
+		data, err := fs.ReadFile(builtinskills.FS, path.Join(name, "SKILL.md"))
+		if err != nil {
+			slog.Warn("cannot read the built-in skill", "name", name, "err", err)
+			continue
+		}
+		skill, _, err := capskills.Parse(data)
+		if err != nil {
+			slog.Warn("skip invalid built-in skill", "name", name, "err", err)
+			continue
+		}
+		reg.Register(skill)
+	}
+	return reg
 }
 
 // defaultSkillRoots lists the skill directories in priority order: the

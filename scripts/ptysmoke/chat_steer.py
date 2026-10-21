@@ -19,6 +19,11 @@ turn only. The scenarios (each on its own scratch home and fake model):
              reply): the answer stands and the message becomes the next turn at
              once (design D3) - the second request carries it as its prompt, the
              trace records it returned (completed_untaken, next_turn).
+  followup   Tab on the line typed while the model answers queues it instead
+             (suga-8pug): chat shows [排队] …（本轮结束后发送）, the line leaves the
+             input line, the running turn's request never carries it, and once
+             that turn ends the queued line runs at once as the next turn (the
+             second request's prompt, shown as [排队] …（已发送）).
   abort      Esc ends the turn only: chat goes on, the message waits in the input
              line and runs only when the person submits it (Enter); a single
              Ctrl-C ends a turn the same way, two of them leave chat.
@@ -134,6 +139,15 @@ UNVERIFIED here):
   the clear scenario still passes, but chat_tool_ctrlc.py's single Ctrl-C and
   chat_approval.py's question checks are what catch that - a question would let
   the press drop the typed answer instead of cancelling itself.
+
+Reverse verification of the followup scenario (suga-8pug; to run in the Linux
+container, UNVERIFIED here):
+- dropping the Tab branch of installCompletion's AutoCompleteCallback: followup
+  fails - no 排队 line ever shows and the request after the answer is never the
+  typed line (the text stays on the input line instead).
+- leaving source.setFollowUp out of startTurnInput (or dropping the queue drain in
+  chatState.runTurn): followup fails the same way - nothing is queued, or the
+  queued line never runs as a turn.
 """
 import argparse
 import json
@@ -552,6 +566,39 @@ def next_turn_scenario(c):
     attrs = (returned[0].get("attrs") or {}) if returned else {}
     c.check("completed and untaken", attrs.get("reason") == "completed_untaken")
     c.check("handed to the next turn", attrs.get("disposition") == "next_turn")
+
+
+def followup_scenario(c):
+    """Tab queues the line typed during a turn for the turn after it (suga-8pug)."""
+    s = c.session
+    m = s.mark()
+    c.check("❯ prompt", s.until(r"❯ ", m))
+    m = s.mark()
+    s.line("先看看")
+    c.check("the prompt becomes ↳ while the model answers", s.until(STEER_PROMPT, m))
+    # The model's own delay keeps the turn running while the line is typed.
+    time.sleep(1.0)
+    m = s.mark()
+    s.send("改成 README")
+    s.send("\t")
+    c.check("the queued line is shown", s.until(r"\[排队\] 改成 README（本轮结束后发送）", m))
+    # Tab took the line: nothing of it went into the running turn.
+    c.check("nothing is inserted", not s.contains(r"\[插话\]", m))
+    c.check("the first answer", s.until(c.reply, m))
+    c.check("the queued line is shown as sent", s.until(r"\[排队\] 改成 README（已发送）", m))
+
+    requests = c.log.wait(2)
+    c.check("two requests", len(requests) >= 2)
+    if len(requests) >= 2:
+        c.check("the first request has no queued message",
+                "改成 README" not in " ".join(user_texts(requests[0])))
+        c.check("the next turn asks the queued line", last_user(requests[1]) == "改成 README")
+    c.check("chat is back at the prompt", s.until(r"❯ ", m))
+
+    events = c.trace()
+    c.check("two turns", len([e for e in events if e.get("kind") == "turn"]) == 2)
+    c.check("a queued line is no inserted message",
+            not [e for e in events if e.get("kind") == "steer"])
 
 
 def abort_scenario(c):
@@ -1221,6 +1268,10 @@ def main():
          paste_scenario, {}),
         ("next-turn", ["--mode", "text", "--delay", "3", "--reply", reply], QUICK_TOOL, auto, "",
          next_turn_scenario, {}),
+        # Tab on the line typed while the model answers: it waits for the turn after
+        # this one instead of entering it (suga-8pug).
+        ("followup", ["--mode", "text", "--delay", "3", "--reply", reply], QUICK_TOOL, auto, "",
+         followup_scenario, {}),
         ("abort", ["--mode", "tool", "--delay", "0.2", "--reply", reply], SLOW_TOOL, auto, "",
          abort_scenario, {}),
         # `suga send --steer` from outside: the model's own delay keeps the turn

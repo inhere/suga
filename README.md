@@ -52,7 +52,7 @@ Details: [references/chat.md](skills/suga-guide/references/chat.md) (Chinese)
 - **Local commands**: `:session`, `:compact`, `:quit`/`:exit`, `:diff [N]`, `:code [N]`, `:model [p/m]`, `:add-dir`/`:dirs`/`:rm-dir`, `:image <路径|clear>`（附图到下一条消息）, `:help`, `:usage`, `:tasks`; keyboard input only.
 - **Rendering**: answers are rendered as terminal markdown (`chat.markdown`); code blocks are highlighted line by line by the language of their fence (`chat.code_highlight`: comments, strings, numbers and keywords in 16 colors) and folded after `chat.code_max_lines` lines, `:code [N]` shows a folded block of the last answer whole; GFM tables are aligned by display width (CJK counts two columns).
 - **Input**: Up/Down history, Ctrl+R reverse search, Tab completion for `:` commands and directories; newline with `Ctrl+Enter` (Windows Terminal, native via win32-input-mode; `Ctrl+J` elsewhere on Windows) or `Alt+Enter`; `Alt+V` pastes the clipboard's picture onto the same queue as `:image`.
-- **Steering**: while the model works the prompt becomes `↳ ` and Enter adds the line to the running turn; `Esc` stops only the turn, two `Ctrl-C` within 3s quit.
+- **Steering**: while the model works the prompt becomes `↳ ` and Enter adds the line to the running turn; `Tab` queues the line for the turn after this one instead (`[排队] …（本轮结束后发送）`, `:queue` lists and `:queue clear` drops the queue); `Esc` stops only the turn, two `Ctrl-C` within 3s quit.
 - **`!` local commands**: `!cmd` runs in the local shell without the model; `!!cmd` also attaches the result to your next message.
 - **Resume preview**: resuming shows the last model reply first; a session left `running` by a killed process is recovered.
 - **Delivery**: `suga send --session <id|short name> <text>` feeds a running chat; `--steer` targets the current turn, `--wait` waits for delivery, `--image <path>` (repeatable) delivers pictures the same way.
@@ -90,7 +90,7 @@ Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 
 ## Sub-agents
 
-Details: [references/tools.md#子-agent](skills/suga-guide/references/tools.md#子-agent) (Chinese)
+Details: [references/tools.md#子agent](skills/suga-guide/references/tools.md#子agent) (Chinese)
 
 - The `agent` tool hands an independent task to a read-only sub-agent and brings back only its final report.
 - Two types: `explore` (default, workspace read tools) and `research` (adds `web_fetch` and `web_search`).

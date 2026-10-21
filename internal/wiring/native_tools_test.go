@@ -177,6 +177,13 @@ func TestDisabledToolHints(t *testing.T) {
 		assert.ErrIs(t, execErr, tools.ErrDenied)
 		assert.StrContains(t, execErr.Error(), "serpapi_key")
 	})
+	t.Run("session_message off", func(t *testing.T) {
+		t.Setenv("SUGA_SESSION_MESSAGE", "off")
+		rt, err := OpenCLI(context.Background(), Options{})
+		execErr := call(t, rt, err, "session_message")
+		assert.ErrIs(t, execErr, tools.ErrDenied)
+		assert.StrContains(t, execErr.Error(), "tools.session_message.enabled")
+	})
 	t.Run("unknown name is not a denial", func(t *testing.T) {
 		rt, err := OpenCLI(context.Background(), Options{})
 		execErr := call(t, rt, err, "bash")

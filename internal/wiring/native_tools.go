@@ -21,8 +21,9 @@ func writeToolHint(opts Options) string {
 }
 
 // disabledToolHints lists the catalog tools that registry lacks with the hint
-// for each: write tools get the per-entry hint, web_search the missing key.
-// Names outside the catalog are not listed: calling them is a plain
+// for each: write tools get the per-entry hint, web_search the missing key,
+// session_message its config switch. Names outside the catalog are not listed:
+// calling them is a plain
 // "not found" that does not count as a denial.
 func disabledToolHints(registry *tools.Registry, opts Options) map[string]string {
 	hints := map[string]string{}
@@ -32,6 +33,10 @@ func disabledToolHints(registry *tools.Registry, opts Options) map[string]string
 		}
 		if spec.Name == "web_search" {
 			hints[spec.Name] = "未配置 serpapi_key；在 SUGA_HOME/config.yaml 设 serpapi_key 后可用"
+			continue
+		}
+		if spec.Name == "session_message" {
+			hints[spec.Name] = "该工具已在配置中关闭（tools.session_message.enabled / SUGA_SESSION_MESSAGE）"
 			continue
 		}
 		// Building with an empty Env only reads the tool's own metadata.
