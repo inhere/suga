@@ -186,6 +186,10 @@ type Config struct {
 	// (and of older sessions without one on their next turn); session_search
 	// scope workspace matches sessions by it.
 	Workspace string
+	// NudgeRules returns the enabled nudge rules CheckNudge evaluates
+	// (personal/nudge_rules.go); wiring loads the layered rule files. nil =
+	// the built-in rules.
+	NudgeRules func() []NudgeRule
 	// DiffPreview attaches what a file tool call changes on disk
 	// (internal/diffview, the same construction ACP sends its client) to its
 	// "tool_call" event, read before the tool runs. Chat asks for it (chat.diff),

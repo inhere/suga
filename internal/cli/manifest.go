@@ -154,6 +154,16 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 	fmt.Fprintf(&b, "\nOutput\n  inline_bytes=%d spill_bytes=%d\n  sessions_dir=%s\n", m.Output.InlineBytes, m.Output.SpillBytes, m.Output.SessionsDir)
 	fmt.Fprintf(&b, "\nTaint\n  taint_tools=%s\n  taint_on_spill=%s\n", strings.Join(m.Taint.TaintTools, ","), strings.Join(m.Taint.TaintOnSpill, ","))
 
+	// Nudge rules: the effective ones of the layered load (builtin, SUGA_HOME,
+	// workspace), so a rule file's changes show up here.
+	b.WriteString("\nNudge rules\n")
+	if len(m.NudgeRules) == 0 {
+		b.WriteString("  none\n")
+	}
+	for _, r := range m.NudgeRules {
+		fmt.Fprintf(&b, "  %s: %s (%s)\n", r.Name, r.Kind, r.Source)
+	}
+
 	_, err := io.WriteString(out, b.String())
 	return err
 }

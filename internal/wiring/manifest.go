@@ -42,6 +42,8 @@ type Manifest struct {
 	Taint         ManifestTaint         `json:"taint"`
 	WritePolicy   ManifestWritePolicy   `json:"write_policy"`
 	ApprovalRules ManifestApprovalRules `json:"approval_rules"`
+	// NudgeRules lists the effective nudge rules (name, kind, source layer).
+	NudgeRules []ManifestNudgeRule `json:"nudge_rules"`
 	// ToolConflicts lists same-name tool collisions of the live registry; it is
 	// always present and stays empty when nothing collided.
 	ToolConflicts []ManifestToolConflict `json:"tool_conflicts"`
@@ -190,6 +192,27 @@ type ManifestApprovalDefaults struct {
 	ToolsApproval string `json:"tools_approval"`
 }
 
+// ManifestNudgeRule is one effective nudge rule: its name, fixed kind and
+// where it came from (builtin, or the loaded rule file's path).
+type ManifestNudgeRule struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Source string `json:"source"`
+}
+
+// manifestNudgeRules converts the loaded nudge rules into the manifest's
+// summary.
+func manifestNudgeRules(rules []personal.NudgeRule) []ManifestNudgeRule {
+	if rules == nil {
+		return []ManifestNudgeRule{}
+	}
+	out := make([]ManifestNudgeRule, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, ManifestNudgeRule{Name: rule.Name, Kind: rule.Kind, Source: rule.Source})
+	}
+	return out
+}
+
 // ManifestReadRoot is one read-only root directory outside the workspace the
 // read-only file tools may read (dependency sources, idev-std sources, skill
 // directories, tools.read_roots). It carries no secrets.
@@ -237,6 +260,8 @@ type ManifestInput struct {
 	InlineBytes, SpillBytes  int
 	SessionsDir              string
 	TaintTools, TaintOnSpill []string
+	// NudgeRules are the effective nudge rules (LoadNudgeRules result).
+	NudgeRules []personal.NudgeRule
 	// ReadRoots are the read-only root directories the read-only file tools may
 	// read (labels included, so a manifest shows their source).
 	ReadRoots []native.ReadRoot
@@ -256,6 +281,7 @@ func BuildManifest(in ManifestInput) Manifest {
 		},
 		WritePolicy:   ManifestWritePolicy{MemoryWrite: in.Policy.Write, MemoryWriteTainted: in.Policy.Tainted},
 		ApprovalRules: manifestApprovalRules(in.Approval, in.ToolsApproval),
+		NudgeRules:    manifestNudgeRules(in.NudgeRules),
 		Tools:         []ManifestTool{},
 		MCPServers:    []ManifestMCPServer{},
 		Preferred:     []ManifestPreferred{},
@@ -512,6 +538,7 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		ToolsApproval: manifestToolsApprovalAction(),
 		InlineBytes:   st.inlineBytes, SpillBytes: st.spillBytes, SessionsDir: st.sessionsDir,
 		TaintTools: st.taintTools, TaintOnSpill: st.taintOnSpill,
+		NudgeRules: loadNudgeRuleFiles(workspace),
 	})
 	return m, manifestParts{workspace: workspace, registry: reg, skills: skillReg}, nil
 }

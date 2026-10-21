@@ -36,7 +36,7 @@
 | `chat_images.py` | 附图：假剪贴板（`SUGA_FAKE_CLIPBOARD_IMAGE`）测 Alt+V 与 `:image`；不支持看图的模型拒绝且不落盘；支持看图时两张图都写进 `sessions/<sid>/images/`。反向验证：去掉 Alt+V 解析 7 项失败，去掉图片落盘 1 项失败 |
 | `chat_send_image.py` | `suga send --image`：chat 空闲时另一个进程投递一张图，检查发送端退出 0、假模型的请求里最后一条用户消息带 `image_url` 部件、`sessions/<sid>/images/<sha256>.png` 按内容寻址落盘、trace 有这一回合。Linux 专用（PTY），Windows 上未运行；反向验证见脚本 docstring |
 | `chat_sanitize.py` | 终端输出清洗：假模型回答与工具结果带 OSC 52、CSI 2J 等序列，检查 PTY 原始字节没有危险序列且正常文本仍显示；反向验证见脚本 docstring
-| `chat_nudge.py` | fakellm `--mode nudge`：改文件后直接收尾且结尾承诺继续。chat 要显示一行灰色提示（N1 未验证 + N2 说了要做），且不得自动开新回合（假模型只收到本回合的两次请求），trace 里 `nudge` 事件 `action=hinted`；反向验证见脚本 docstring |
+| `chat_nudge.py` | fakellm `--mode nudge`：改文件后直接收尾且结尾承诺继续。chat 要显示一行灰色提示（unverified-write 未验证 + promise-zh 说了要做），且不得自动开新回合（假模型只收到本回合的两次请求），trace 里 `nudge` 事件带规则名与 kind、`action=hinted`；第二部分在 workspace 写 `.suga/nudge-rules.yaml` 关掉 `promise-*`（第二个 fakellm 在 `--port+4`，自己的 SUGA_HOME），同一回答不再出现“说要继续”的提示，trace 只剩 `unverified-write`；反向验证见脚本 docstring。未运行，待监督在 Linux 容器验证 |
 | `chat_empty_final.py` | 工具成功后模型连续空回复：检查 chat 正常结束且不打印空的 `▣` 前缀，`suga inspect trace --json` 的回合/模型事件带 `empty_final`；反向验证见脚本 docstring
 | `chat_render.py` | 渲染增强：回答带中文表格与 47 行 go 代码块，检查高亮 ANSI 序列、表格按显示宽度对齐、折叠提示与 `:code`/`:code N`；反向验证：去掉表格缓存对齐用例失败，去掉折叠则折叠用例失败 |
 | `chat_theme.py` | 配色主题（chat.theme，suga-exbd）：同一个含标题/行内代码/go 代码块的回答先在不设 `COLORFGBG`/`SUGA_THEME` 的环境跑（dark：`ESC[1;36m` 标题、`ESC[93m` 行内代码、`ESC[36m` 关键字），再用 `SUGA_THEME=light` 跑（light：`ESC[1;34m`、`ESC[35m`、`ESC[34m`，且对方调色板不出现）。反向验证：让 `SetMarkdownTheme` 不再生效（chat 不传 theme）后两轮各报对方的 SGR 检查失败 |

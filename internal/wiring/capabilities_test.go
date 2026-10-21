@@ -357,6 +357,38 @@ func TestMinimizeOutputLoadsRuleFiles(t *testing.T) {
 	assert.Nil(t, minimizeOutput(workspace))
 }
 
+func TestLoadNudgeRuleFilesLayers(t *testing.T) {
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+	home, workspace := t.TempDir(), t.TempDir()
+	t.Setenv("SUGA_HOME", home)
+
+	names := func(rules []personal.NudgeRule) []string {
+		out := make([]string, 0, len(rules))
+		for _, rule := range rules {
+			out = append(out, rule.Name)
+		}
+		return out
+	}
+
+	// The built-in rules are the base of the three layers.
+	rules := loadNudgeRuleFiles(workspace)
+	assert.Contains(t, names(rules), personal.NudgeRuleUnverifiedWrite)
+
+	// The SUGA_HOME file adds a rule, the workspace file turns one off and
+	// wins over the SUGA_HOME file.
+	assert.NoErr(t, os.WriteFile(filepath.Join(home, "nudge-rules.yaml"),
+		[]byte("rules:\n  - name: promise-later\n    kind: promise\n    patterns: ['我稍后(会|再)']\n"), 0o644))
+	rules = loadNudgeRuleFiles(workspace)
+	assert.Contains(t, names(rules), "promise-later")
+
+	assert.NoErr(t, os.MkdirAll(filepath.Join(workspace, ".suga"), 0o755))
+	assert.NoErr(t, os.WriteFile(filepath.Join(workspace, ".suga", "nudge-rules.yaml"),
+		[]byte("rules:\n  - name: plan-open\n    enabled: false\n"), 0o644))
+	rules = loadNudgeRuleFiles(workspace)
+	assert.NotContains(t, names(rules), personal.NudgeRulePlanOpen)
+}
+
 func TestUnlistedSkillNames(t *testing.T) {
 	var rest []capskills.Skill
 	for i := range 400 {

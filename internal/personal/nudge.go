@@ -20,15 +20,9 @@ import (
 // the end of its answer. Each host decides what to do with a finding: run pushes
 // the model back, chat only hints, ACP records it in the trace.
 
-// The rule names a finding and the trace event carry.
+// The rule names a finding and the trace event carry; the kinds of those rules
+// are nudge_rules.go's NudgeKind* constants.
 const (
-	// NudgeRuleUnverified is N1: work was not checked or not finished - a write
-	// tool ran and no shell_exec followed it, or the session plan still has open
-	// steps.
-	NudgeRuleUnverified = "N1"
-	// NudgeRulePromise is N2: the answer ends with "and now I will ..." but no
-	// tool call follows it.
-	NudgeRulePromise = "N2"
 	// The actions a host reports for a finding.
 	NudgeActionPushed   = "pushed"
 	NudgeActionHinted   = "hinted"
@@ -39,11 +33,8 @@ const (
 // (about 300 characters, counted in runes).
 const nudgeTailChars = 300
 
-// nudgeWriteTools are the tools whose successful call changed the workspace.
-var nudgeWriteTools = map[string]bool{"file_edit": true, "file_write": true, "file_remove": true}
-
-// nudgeCheckTool is the tool that validates a change.
-const nudgeCheckTool = "shell_exec"
+// nudgeWriteTools and nudgeCheckTool (the built-in rule defaults) live in
+// nudge_rules.go now: the rules carry them per rule.
 
 // NudgeToolCall is one tool call of the turn, in execution order.
 type NudgeToolCall struct {
@@ -53,57 +44,60 @@ type NudgeToolCall struct {
 	OK bool
 	// Targets are the files or directories the call was about (trace attr target).
 	Targets []string
+	// Command is the command a check tool ran (trace attr command, recorded for
+	// shell calls), so a write rule's check_command can match it. Empty when
+	// the call was not a shell command.
+	Command string
 }
 
 // NudgeFinding is one hit rule with the evidence the model (or the trace) is
 // told about.
 type NudgeFinding struct {
-	Rule     string
+	Rule string
+	// Kind is the rule's kind (NudgeKind*), so hosts treat every rule kind the
+	// same without knowing rule names.
+	Kind     string
 	Evidence string
 }
 
-// nudgePromisePatterns are the "I will continue" phrasings of N2. A match has to
-// sit in the answer's last paragraph and the answer must not end with a question:
-// asking whether to go on leaves the decision to the person.
-var nudgePromisePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`接下来(我)?(会|将|来|去|先|再)`),
-	regexp.MustCompile(`(我)?(先|再|现在|马上|这就)(去)?(运行|执行|跑|检查|验证|测试|修改|更新|修复|继续)`),
-	regexp.MustCompile(`让我(先|再)?(运行|执行|跑|检查|验证|测试|修改|更新|修复)`),
-	regexp.MustCompile(`下一步(我)?(将|会|来|要)`),
-	regexp.MustCompile(`(?i)\bI('ll| will| am going to|'m going to)\s+(now\s+)?(run|check|fix|update|add|write|test|verify|continue)`),
-	regexp.MustCompile(`(?i)\bNext,?\s+I('ll|’ll| will)`),
-	regexp.MustCompile(`(?i)\bLet me\s+(now\s+)?(run|check|fix|update|add|write|test|verify|try)`),
-}
-
-// CheckNudge evaluates N1 and N2 for one finished turn and returns the findings
-// in rule order. completed says the turn ended with a plain-text answer (the
-// final assistant message carried no tool call); plan is the session's latest
-// plan, nil when the session never made one.
-func CheckNudge(calls []NudgeToolCall, plan *native.Plan, finalText string, completed bool) []NudgeFinding {
+// CheckNudge evaluates the rules over one finished turn and returns the
+// findings in rule order. rules are the enabled ones (LoadNudgeRules);
+// completed says the turn ended with a plain-text answer (the final assistant
+// message carried no tool call); plan is the session's latest plan, nil when
+// the session never made one.
+func CheckNudge(rules []NudgeRule, calls []NudgeToolCall, plan *native.Plan, finalText string, completed bool) []NudgeFinding {
 	var findings []NudgeFinding
-	if evidence := unverifiedEvidence(calls, plan); evidence != "" {
-		findings = append(findings, NudgeFinding{Rule: NudgeRuleUnverified, Evidence: evidence})
-	}
-	if completed {
-		if evidence := promiseEvidence(finalText); evidence != "" {
-			findings = append(findings, NudgeFinding{Rule: NudgeRulePromise, Evidence: evidence})
+	for i := range rules {
+		rule := &rules[i]
+		var evidence string
+		switch rule.Kind {
+		case NudgeKindUnverifiedWrite:
+			evidence = unverifiedWriteEvidence(rule, calls)
+		case NudgeKindPlanOpen:
+			if open := openPlanSteps(plan); len(open) > 0 {
+				evidence = fmt.Sprintf("计划还有 %d 项未完成：%s", len(open), strings.Join(open, "；"))
+			}
+		case NudgeKindPromise:
+			if completed {
+				evidence = promiseEvidence(rule.patterns, finalText)
+			}
+		}
+		if evidence != "" {
+			findings = append(findings, NudgeFinding{Rule: rule.Name, Kind: rule.Kind, Evidence: evidence})
 		}
 	}
 	return findings
 }
 
-// unverifiedEvidence is N1's evidence, or "" when neither condition holds: after
-// the last successful write no shell_exec ran, or the session plan still has open
-// steps.
-func unverifiedEvidence(calls []NudgeToolCall, plan *native.Plan) string {
-	var parts []string
-	if target, ok := uncheckedWrite(calls); ok {
-		parts = append(parts, fmt.Sprintf("最后修改 %s 之后没有运行 %s", target, nudgeCheckTool))
+// unverifiedWriteEvidence is a write rule's evidence, or "" when the last
+// successful write was followed by a check: a call of the rule's check tool
+// whose command matches its check_command (the old N1's first condition).
+func unverifiedWriteEvidence(rule *NudgeRule, calls []NudgeToolCall) string {
+	target, ok := uncheckedWrite(rule, calls)
+	if !ok {
+		return ""
 	}
-	if open := openPlanSteps(plan); len(open) > 0 {
-		parts = append(parts, fmt.Sprintf("计划还有 %d 项未完成：%s", len(open), strings.Join(open, "；")))
-	}
-	return strings.Join(parts, "；")
+	return fmt.Sprintf("最后修改 %s 之后没有运行 %s", target, defaultCheckTool)
 }
 
 // nudgeOneLine collapses text to one line, so a plan step name or the quoted
@@ -111,11 +105,12 @@ func unverifiedEvidence(calls []NudgeToolCall, plan *native.Plan) string {
 func nudgeOneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // uncheckedWrite reports the target of the last successful write tool when no
-// shell_exec call followed it.
-func uncheckedWrite(calls []NudgeToolCall) (string, bool) {
+// check followed it: a call of the rule's check tool whose command matches its
+// check_command (any command does when the rule names none).
+func uncheckedWrite(rule *NudgeRule, calls []NudgeToolCall) (string, bool) {
 	lastWrite := -1
 	for i, call := range calls {
-		if call.OK && nudgeWriteTools[call.Name] {
+		if call.OK && rule.writeTools[call.Name] {
 			lastWrite = i
 		}
 	}
@@ -123,9 +118,13 @@ func uncheckedWrite(calls []NudgeToolCall) (string, bool) {
 		return "", false
 	}
 	for _, call := range calls[lastWrite+1:] {
-		if call.Name == nudgeCheckTool {
-			return "", false
+		if !rule.checkTools[call.Name] {
+			continue
 		}
+		if rule.checkCmd != nil && !rule.checkCmd.MatchString(call.Command) {
+			continue
+		}
+		return "", false
 	}
 	target := "文件"
 	if targets := calls[lastWrite].Targets; len(targets) > 0 {
@@ -149,14 +148,15 @@ func openPlanSteps(plan *native.Plan) []string {
 	return open
 }
 
-// promiseEvidence is N2's evidence when the answer's end promises more work:
-// the last paragraph matches a continuation phrase and does not ask a question.
-func promiseEvidence(finalText string) string {
+// promiseEvidence is a promise rule's evidence when the answer's end promises
+// more work: the last paragraph matches one of the rule's patterns and does
+// not ask a question.
+func promiseEvidence(patterns []*regexp.Regexp, finalText string) string {
 	tail := nudgeTail(finalText)
 	if tail == "" || nudgeQuestionEnd(tail) {
 		return ""
 	}
-	for _, pattern := range nudgePromisePatterns {
+	for _, pattern := range patterns {
 		loc := pattern.FindStringIndex(tail)
 		if loc == nil {
 			continue
@@ -209,7 +209,11 @@ func (r *Runner) NudgeFindings(ctx context.Context, sessionID string, result Run
 	if result.State != RunCompleted || result.Status != agentcore.RunCompleted || result.WrapUp != "" {
 		return nil
 	}
-	return CheckNudge(r.turnToolCalls(ctx, sessionID, result.TurnID), latestPlanModel(sessionID, r.latestPlan(ctx, sessionID)), result.Output, true)
+	rules := r.cfg.NudgeRules
+	if rules == nil {
+		rules = builtinNudgeRuleFunc()
+	}
+	return CheckNudge(rules(), r.turnToolCalls(ctx, sessionID, result.TurnID), latestPlanModel(sessionID, r.latestPlan(ctx, sessionID)), result.Output, true)
 }
 
 // latestPlanModel decodes the session's latest plan entry; nil when the session
@@ -237,9 +241,17 @@ func (r *Runner) turnToolCalls(ctx context.Context, sessionID, turnID string) []
 	}
 	calls := make([]NudgeToolCall, 0, len(events))
 	for _, event := range events {
-		calls = append(calls, NudgeToolCall{Name: event.Name, OK: event.Status == eventOK, Targets: eventTargets(event)})
+		calls = append(calls, NudgeToolCall{Name: event.Name, OK: event.Status == eventOK,
+			Targets: eventTargets(event), Command: eventCommand(event)})
 	}
 	return calls
+}
+
+// eventCommand reads a tool event's recorded command (shell calls, see
+// addCallAttrs), so a write rule's check_command can match it.
+func eventCommand(event store.Event) string {
+	command, _ := event.Attrs["command"].(string)
+	return command
 }
 
 // eventTargets reads a tool event's recorded targets (file tools, see addCallAttrs).
@@ -267,11 +279,12 @@ type nudgeRecorder interface {
 	RecordEvent(ctx context.Context, sessionID string, ev HostEvent)
 }
 
-// RecordNudge writes the "nudge" trace event of one finding: attrs rule (N1/N2),
-// action (pushed/hinted/recorded) and the evidence summary.
+// RecordNudge writes the "nudge" trace event of one finding: attrs rule (the
+// rule name), kind (its kind), action (pushed/hinted/recorded) and the evidence
+// summary.
 func RecordNudge(ctx context.Context, rec nudgeRecorder, sessionID, action string, finding NudgeFinding) {
 	rec.RecordEvent(ctx, sessionID, HostEvent{
 		Kind: store.EventNudge, Name: "turn", Status: "ok",
-		Attrs: map[string]any{"rule": finding.Rule, "action": action, "evidence": finding.Evidence},
+		Attrs: map[string]any{"rule": finding.Rule, "kind": finding.Kind, "action": action, "evidence": finding.Evidence},
 	})
 }

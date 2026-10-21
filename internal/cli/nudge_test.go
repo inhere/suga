@@ -45,9 +45,9 @@ func (f *fakeNudgeRunner) RecordEvent(_ context.Context, _ string, ev personal.H
 }
 
 func TestNudgeAfterTurnLimits(t *testing.T) {
-	unverified := []personal.NudgeFinding{{Rule: personal.NudgeRuleUnverified, Evidence: "改后没跑"}}
-	promise := []personal.NudgeFinding{{Rule: personal.NudgeRulePromise, Evidence: "承诺继续"}}
-	t.Run("N2 is pushed twice, then the run ends", func(t *testing.T) {
+	unverified := []personal.NudgeFinding{{Rule: personal.NudgeRuleUnverifiedWrite, Kind: personal.NudgeKindUnverifiedWrite, Evidence: "改后没跑"}}
+	promise := []personal.NudgeFinding{{Rule: personal.NudgeRulePromiseZh, Kind: personal.NudgeKindPromise, Evidence: "承诺继续"}}
+	t.Run("promise is pushed twice, then the run ends", func(t *testing.T) {
 		f := &fakeNudgeRunner{findings: [][]personal.NudgeFinding{promise, promise, promise, promise}}
 		result, err := nudgeAfterTurn(context.Background(), f, "s1", personal.RunResult{State: personal.RunCompleted},
 			false, nil, nil, nil, io.Discard)
@@ -55,14 +55,14 @@ func TestNudgeAfterTurnLimits(t *testing.T) {
 		assert.Eq(t, personal.RunCompleted, result.State)
 		assert.Eq(t, maxNudgePromisePushes, f.turns)
 	})
-	t.Run("N1 is pushed once", func(t *testing.T) {
+	t.Run("unverified-write is pushed once", func(t *testing.T) {
 		f := &fakeNudgeRunner{findings: [][]personal.NudgeFinding{unverified, unverified, unverified}}
 		_, err := nudgeAfterTurn(context.Background(), f, "s1", personal.RunResult{State: personal.RunCompleted},
 			false, nil, nil, nil, io.Discard)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, maxNudgeUnverifiedPushes, f.turns)
 	})
-	t.Run("--verify skips N1 and leaves N2", func(t *testing.T) {
+	t.Run("--verify skips the checked kinds and leaves promise", func(t *testing.T) {
 		f := &fakeNudgeRunner{findings: [][]personal.NudgeFinding{
 			{unverified[0], promise[0]},
 			{promise[0]},
@@ -71,10 +71,10 @@ func TestNudgeAfterTurnLimits(t *testing.T) {
 		_, err := nudgeAfterTurn(context.Background(), f, "s1", personal.RunResult{State: personal.RunCompleted},
 			true, nil, nil, nil, io.Discard)
 		assert.Require(t, assert.NoErr(t, err))
-		// N2 keeps its own limit; N1 is never pushed.
+		// promise keeps its own limit; the checked kinds are never pushed.
 		assert.Eq(t, maxNudgePromisePushes, f.turns)
 		for _, event := range f.events {
-			assert.Eq(t, personal.NudgeRulePromise, event.Attrs["rule"])
+			assert.Eq(t, personal.NudgeKindPromise, event.Attrs["kind"])
 		}
 	})
 	t.Run("no finding means no turn", func(t *testing.T) {
@@ -161,17 +161,19 @@ func TestRunNudgeEndToEnd(t *testing.T) {
 			}
 		}
 		assert.Require(t, assert.Len(t, nudges, 1))
-		assert.Eq(t, "N2", nudges[0]["rule"])
+		assert.Eq(t, personal.NudgeRulePromiseZh, nudges[0]["rule"])
+		assert.Eq(t, personal.NudgeKindPromise, nudges[0]["kind"])
 		assert.Eq(t, "pushed", nudges[0]["action"])
 		assert.StrContains(t, nudges[0]["evidence"].(string), "结尾说")
 		assert.Eq(t, "result", lastStreamLine(t, out.Bytes())["type"])
 
 		events := nudgeEvents(t, "nudge-e2e")
 		assert.Require(t, assert.Len(t, events, 1))
-		assert.Eq(t, "N2", events[0].Attrs["rule"])
+		assert.Eq(t, personal.NudgeRulePromiseZh, events[0].Attrs["rule"])
+		assert.Eq(t, personal.NudgeKindPromise, events[0].Attrs["kind"])
 		assert.Eq(t, "pushed", events[0].Attrs["action"])
 	})
-	t.Run("N2 is pushed twice at most", func(t *testing.T) {
+	t.Run("promise is pushed twice at most", func(t *testing.T) {
 		verifyRunDir(t)
 		server, calls := nudgeServer(t, func(int) string { return "接下来我去跑测试。" })
 		setTestProvider(t, server.URL)
@@ -226,10 +228,11 @@ func TestRunNudgeEndToEnd(t *testing.T) {
 			}
 		}
 		assert.Require(t, assert.Len(t, nudges, 1))
-		assert.Eq(t, "N1", nudges[0]["rule"])
+		assert.Eq(t, personal.NudgeRuleUnverifiedWrite, nudges[0]["rule"])
+		assert.Eq(t, personal.NudgeKindUnverifiedWrite, nudges[0]["kind"])
 		assert.StrContains(t, nudges[0]["evidence"].(string), "没有运行 shell_exec")
 	})
-	t.Run("--verify skips N1", func(t *testing.T) {
+	t.Run("--verify skips unverified-write", func(t *testing.T) {
 		workspace := verifyRunDir(t)
 		assert.NoErr(t, gkconfig.Set("tools.allow_write", true))
 		path := filepath.Join(workspace, "a.txt")
@@ -296,7 +299,8 @@ func TestRunNudgeEndToEnd(t *testing.T) {
 			}
 		}
 		assert.Require(t, assert.Len(t, nudges, 1))
-		assert.Eq(t, "N1", nudges[0]["rule"])
+		assert.Eq(t, personal.NudgeRulePlanOpen, nudges[0]["rule"])
+		assert.Eq(t, personal.NudgeKindPlanOpen, nudges[0]["kind"])
 		assert.StrContains(t, nudges[0]["evidence"].(string), "计划还有 1 项未完成：run the tests")
 	})
 	t.Run("agents.nudge off pushes nothing", func(t *testing.T) {

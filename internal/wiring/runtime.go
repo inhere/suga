@@ -465,6 +465,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			ToolsApproval: manifestToolsApprovalAction(),
 			InlineBytes:   rs.inlineBytes, SpillBytes: rs.spillBytes, SessionsDir: sessionsDir,
 			TaintTools: taintTools, TaintOnSpill: taintOnSpill,
+			NudgeRules: loadNudgeRuleFiles(workspace),
 		}), nil
 	}))
 	// Tool registry stack, outer to inner: observe (added in personal.New) ->
@@ -594,6 +595,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		SessionsDir:       sessionsDir,
 		Spiller:           personal.NewSessionSpiller(sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
 		MinimizeOutput:    minimizeOutput(workspace),
+		NudgeRules:        nudgeRuleSource(workspace),
 		PrefetchTools:     prefetchTools(capabilities.Registry),
 		// The loop guard is on unless tools.loop_guard says otherwise.
 		LoopGuard:     gkconfig.Bool("tools.loop_guard", true),

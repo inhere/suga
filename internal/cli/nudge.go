@@ -17,11 +17,12 @@ import (
 // the work is not is pushed back with an injected turn, the same way
 // finishBackgroundTasks and the --verify loop give a turn one more chance.
 const (
-	// maxNudgePromisePushes is N2's per-run limit: asking twice is enough, a
-	// model that keeps promising is not helped by a third request.
+	// maxNudgePromisePushes is the promise kinds' per-run limit: asking twice is
+	// enough, a model that keeps promising is not helped by a third request.
 	maxNudgePromisePushes = 2
-	// maxNudgeUnverifiedPushes is N1's per-run limit: it points at a missing check
-	// once; whether a change needs one is the model's call.
+	// maxNudgeUnverifiedPushes is the per-run limit the unverified_write and
+	// plan_open kinds share: it points at a missing check or open step once;
+	// whether a change needs one is the model's call.
 	maxNudgeUnverifiedPushes = 1
 )
 
@@ -34,10 +35,11 @@ type nudgeRunner interface {
 }
 
 // nudgeAfterTurn re-runs the model while the finished turn hits a rule, at most
-// maxNudgePromisePushes (N2) and maxNudgeUnverifiedPushes (N1) pushes per run.
-// skipUnverified drops N1 because a --verify command already checked the
-// delivery. It returns the last turn's result; an error is returned only when a
-// push could not run or the context ended.
+// maxNudgePromisePushes (the promise kind) and maxNudgeUnverifiedPushes (the
+// unverified_write and plan_open kinds together) pushes per run.
+// skipUnverified drops those two kinds because a --verify command already
+// checked the delivery. It returns the last turn's result; an error is returned
+// only when a push could not run or the context ended.
 func nudgeAfterTurn(ctx context.Context, nr nudgeRunner, sessionID string, result personal.RunResult,
 	skipUnverified bool, emit personal.EmitFunc, live *output.LiveText, encoder *json.Encoder, stderr io.Writer) (personal.RunResult, error) {
 	if result.Status == agentcore.RunYielded || result.WrapUp != "" || result.Truncated {
@@ -55,7 +57,7 @@ func nudgeAfterTurn(ctx context.Context, nr nudgeRunner, sessionID string, resul
 			live.Finish() // end the streamed answer line before the pushed turn starts
 		}
 		for _, finding := range hits {
-			pushed[finding.Rule]++
+			pushed[nudgePushBucket(finding.Kind)]++
 			personal.RecordNudge(ctx, nr, sessionID, personal.NudgeActionPushed, finding)
 			if err := emitNudge(encoder, stderr, finding); err != nil {
 				return result, err
@@ -76,24 +78,31 @@ func nudgeAfterTurn(ctx context.Context, nr nudgeRunner, sessionID string, resul
 	}
 }
 
-// nudgePushes keeps the findings that may still be pushed: their per-run limit is
-// not reached and N1 is not covered by --verify.
+// nudgePushes keeps the findings that may still be pushed: their kind's limit
+// is not reached and --verify does not cover their kind.
 func nudgePushes(findings []personal.NudgeFinding, pushed map[string]int, skipUnverified bool) []personal.NudgeFinding {
 	var hits []personal.NudgeFinding
 	for _, finding := range findings {
-		switch finding.Rule {
-		case personal.NudgeRuleUnverified:
-			if skipUnverified || pushed[finding.Rule] >= maxNudgeUnverifiedPushes {
+		if finding.Kind != personal.NudgeKindPromise {
+			if skipUnverified || pushed[nudgePushBucket(finding.Kind)] >= maxNudgeUnverifiedPushes {
 				continue
 			}
-		default:
-			if pushed[finding.Rule] >= maxNudgePromisePushes {
-				continue
-			}
+		} else if pushed[personal.NudgeKindPromise] >= maxNudgePromisePushes {
+			continue
 		}
 		hits = append(hits, finding)
 	}
 	return hits
+}
+
+// nudgePushBucket is the counter a kind's pushes are counted in: the
+// unverified_write and plan_open kinds share theirs, the promises have one of
+// their own.
+func nudgePushBucket(kind string) string {
+	if kind == personal.NudgeKindPromise {
+		return personal.NudgeKindPromise
+	}
+	return personal.NudgeKindUnverifiedWrite
 }
 
 // nudgePrompt is the injected turn: what the rules found, and the two ways out -
@@ -115,5 +124,5 @@ func emitNudge(encoder *json.Encoder, stderr io.Writer, finding personal.NudgeFi
 		fmt.Fprintf(stderr, "nudge: %s %s\n", finding.Rule, finding.Evidence)
 		return nil
 	}
-	return encoder.Encode(output.NudgeLine(finding.Rule, personal.NudgeActionPushed, finding.Evidence))
+	return encoder.Encode(output.NudgeLine(finding.Rule, finding.Kind, personal.NudgeActionPushed, finding.Evidence))
 }
