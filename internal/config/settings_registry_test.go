@@ -39,7 +39,7 @@ func TestReferenceConfigLeavesAreRegistered(t *testing.T) {
 func TestDocumentedSimpleKeysRemainWritable(t *testing.T) {
 	for _, key := range []string{
 		"tools.allow_write", "tools.approval", "tools.deferred", "tools.parallel_reads",
-		"tools.minimize_output", "tools.loop_guard", "tools.web_fetch.allow_private", "workspace",
+		"tools.minimize_output", "tools.loop_guard", "tools.web_fetch.allow_private", "tools.web_fetch.user_agent", "workspace",
 		"mcp.call_timeout_sec", "memory.write", "memory.write_tainted", "memory.taint_tools",
 		"memory.user.backend", "memory.project.backend", "hooks.timeout_ms", "hooks.stop_background",
 		"skills.list_max", "skills.always_load",

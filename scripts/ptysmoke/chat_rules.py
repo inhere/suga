@@ -63,8 +63,16 @@ def rules_file(home, body):
         f.write("rules:\n" + body)
 
 
-def exit_chat(s):
-    """Exit from the prompt and return the persisted session id from the summary."""
+def exit_chat(s, turn_mark=None):
+    """Exit from the prompt and return the persisted session id from the summary.
+
+    turn_mark is where the last turn's output starts: the callers see the model's
+    reply ("完成") before the turn has ended, and a Ctrl-C sent then cancels the
+    turn instead of asking to exit (seen under load in the verify workflow). Wait
+    for the turn's status line first."""
+    if turn_mark is not None:
+        s.check("exit: the turn has ended", s.until(r"tokens · ", turn_mark, timeout=60))
+        s.drain(0.3)
     mark = s.mark()
     s.send(CTRL_C)
     s.check("exit: first Ctrl-C gives a hint", s.until(r"再按一次 Ctrl\+C 退出", mark))
@@ -114,7 +122,7 @@ def check_case(binary, work, port, rule_body, command, expected_question, answer
         if expect_denied:
             s.check("rule case reports tool denial", s.until(r"规则 .*拒绝执行|用户拒绝执行", mark))
         s.check("turn completes", s.until(r"完成", mark))
-        exit_chat(s)
+        exit_chat(s, mark)
         s.close()
         return s.results
     finally:
@@ -143,7 +151,7 @@ def session_scope(binary, work, port):
         s.line("second")
         s.check("same command prefix is not asked again", not s.until(QUESTION, mark, timeout=0.8))
         s.check("same command prefix completes", s.until(r"完成", mark))
-        exit_chat(s)
+        exit_chat(s, mark)
         s.close()
         return s.results
     finally:
@@ -174,7 +182,7 @@ def path_scope(binary, work, port):
         s.check("same directory is not asked again", not s.until(QUESTION, mark, timeout=0.8))
         s.check("same directory write completes", s.until(r"完成", mark))
         s.check("directory scoped file was written", os.path.exists(os.path.join(ws, "docs", "one.txt")))
-        exit_chat(s)
+        exit_chat(s, mark)
         s.close()
         return s.results
     finally:
@@ -204,7 +212,7 @@ def deny_scope(binary, work, port):
         s.line("second")
         s.check("same denied scope is not asked again", not s.until(QUESTION, mark, timeout=0.8))
         s.check("denied second turn continues", s.until(r"完成", mark))
-        exit_chat(s)
+        exit_chat(s, mark)
         s.close()
         return s.results
     finally:
@@ -234,14 +242,14 @@ def user_persistence(binary, work, port):
                 text = f.read()
             s.check("user rule file contains allow", "action: allow" in text and "echo USER_RULE" in text)
         first_results = s.results[:]
-        exit_chat(s)
+        exit_chat(s, mark)
         s.close()
 
         s2 = PtySession([binary, "chat"], env=env, cwd=ws, size=(100, 30))
         mark = s2.mark(); s2.until(r"❯ ", mark); s2.line("new process")
         s2.check("new process uses user rule without asking", not s2.until(QUESTION, mark, timeout=0.8))
         s2.check("new process user rule completes", s2.until(r"完成", mark))
-        exit_chat(s2)
+        exit_chat(s2, mark)
         s2.close()
         return first_results + s2.results
     finally:
@@ -273,7 +281,7 @@ def project_persistence_and_diagnostics(binary, work, port):
             with open(project_path, encoding="utf-8") as f:
                 text = f.read()
             s.check("project file contains deny only", "action: deny" in text and "action: allow" not in text)
-        session = exit_chat(s)
+        session = exit_chat(s, mark)
         s.close()
 
         out, events = trace_events(binary, env, session, ws) if session else (None, [])
@@ -296,7 +304,7 @@ def project_persistence_and_diagnostics(binary, work, port):
         s2.check("new process uses project deny without asking", not s2.until(QUESTION, mark, timeout=0.8))
         s2.check("new process project denial continues", s2.until(r"完成", mark))
         first_results = s.results[:]
-        exit_chat(s2)
+        exit_chat(s2, mark)
         s2.close()
         return first_results + s2.results
     finally:
@@ -320,7 +328,7 @@ def control_text(binary, work, port):
         s.check("command control bytes are cleaned", s.until(r"命令：echoCONTROL", mark))
         s.check("unsafe shell has no allow-always option", not s.contains(r"\[a\]本会话总是允许", mark))
         s.check("command escape is not written", not s.contains_raw(re.escape("命令：echo\x1b[2K"), mark))
-        s.line("n"); s.until(r"完成", mark); exit_chat(s); s.close(); results = s.results
+        s.line("n"); s.until(r"完成", mark); exit_chat(s, mark); s.close(); results = s.results
     finally:
         if s is not None:
             s.close(grace=0)
@@ -335,7 +343,7 @@ def control_text(binary, work, port):
         mark = s.mark(); s.until(r"❯ ", mark); s.line("只写")
         s.check("path control bytes are cleaned", s.until(r"路径：.*dir/file.txt", mark))
         s.check("path escape is not written", not s.contains_raw(re.escape("dir\x1b[2K"), mark))
-        s.line("n"); s.until(r"完成", mark); exit_chat(s); s.close(); results += s.results
+        s.line("n"); s.until(r"完成", mark); exit_chat(s, mark); s.close(); results += s.results
     finally:
         if s is not None:
             s.close(grace=0)
@@ -359,7 +367,7 @@ def legacy_disabled(binary, work, port):
         mark = s.mark(); s.line("legacy second")
         s.check("disabled rules old always is not asked again", not s.until(QUESTION, mark, timeout=0.8))
         s.check("disabled rules second turn completes", s.until(r"完成", mark))
-        exit_chat(s); s.close(); return s.results
+        exit_chat(s, mark); s.close(); return s.results
     finally:
         if s is not None:
             s.close(grace=0)

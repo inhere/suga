@@ -84,8 +84,11 @@ type rendererOptions struct {
 	// (config chat.code_highlight, on by default), CodeMaxLines folds a block after
 	// that many lines (chat.code_max_lines, default 40; 0 folds nothing), naming
 	// :code for the rest. Both need the markdown rendering and a colored terminal.
+	// Theme is the palette the markdown elements are painted with (chat.theme,
+	// "dark" or "light" as resolved; empty keeps the dark default).
 	CodeHighlight bool
 	CodeMaxLines  int
+	Theme         string
 	// InputLineUp is true while chat keeps its input line on screen for the whole
 	// turn running (chat.steering with a terminal). The output then works around
 	// that line (r3 M1): the streamed text leaves only complete lines - the line
@@ -233,6 +236,9 @@ func (r *Renderer) resetLive() {
 	// so a pipe, a redirected output or NO_COLOR keeps the raw text.
 	if r.opts.Markdown && r.opts.Color {
 		r.live.SetMarkdown(true)
+		// The palette the elements are painted with (chat.theme, resolved to dark
+		// or light before chat starts).
+		r.live.SetMarkdownTheme(r.opts.Theme)
 		// Code highlighting and folding, and the terminal width a table must fit
 		// in (:code, mdcode.go, mdtable.go).
 		r.live.SetCode(r.opts.CodeHighlight, r.opts.CodeMaxLines, r.highlightWidth())

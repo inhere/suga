@@ -10,7 +10,7 @@
 | `file_list` | 读 | 列目录，`depth`（≤ 5）可递归 |
 | `file_grep` | 读 | RE2 正则搜索，支持 `glob`、`ignore_case`、`output: content\|files` |
 | `file_find` | 读 | 支持 `**` 的 glob 查找，按修改时间从新到旧 |
-| `web_fetch` | 读 | 抓取网页正文（保留标题、链接、代码块）；拒绝内网和本机地址 |
+| `web_fetch` | 读 | 抓取网页正文（保留标题、链接、代码块）；`url` 或 `urls`（1–5 个，并发、按输入顺序分段）二选一；拒绝内网和本机地址 |
 | `web_search` | 读 | SerpAPI 搜索（需 `serpapi_key`） |
 | `skill` | 读 | 加载 skill、读取其文件，或检索 skills（`query`；`"*"` 列出全部名字） |
 | `session_search` | 读 | 全文检索过往消息与摘要（`scope`：workspace、current、all，`kind`：user、assistant、compaction、handoff）；tool 输出不进索引，用 `recall` 读；带 `ref=out:...` 时在那份已保存的输出内检索 |
@@ -170,7 +170,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 - 文件工具经 `os.OpenRoot` 访问，不会顺着 symlink 跑出工作区。
 - `shell_exec` 超时会终止整个进程树。
-- `web_fetch` 检查实际连接的 IP，跳转也一样受限；所有工具结果都有上限。
+- `web_fetch` 检查实际连接的 IP，跳转也一样受限；`urls` 一次抓 1–5 个（并发，按输入顺序分段，单段失败不影响其他）；User-Agent 由 `tools.web_fetch.user_agent` 配置；所有工具结果都有上限。
 
 ## 大输出外置与输出整理
 

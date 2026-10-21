@@ -2,6 +2,7 @@ package axconfig
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -178,6 +179,58 @@ func ChatNotifyMode() (string, error) {
 		return value, nil
 	}
 	return "", fmt.Errorf("chat.notify must be auto, bell, osc9 or off, got %q", value)
+}
+
+// ChatTheme resolves chat.theme to the actual terminal palette chat paints its
+// markdown and code with: "dark" or "light". A theme in the config file is the
+// default; the environment variable SUGA_THEME (dark|light) overrides it, which
+// lets one shell run chat on the other palette without touching config.yaml.
+// auto (the default) takes the background from the terminal's COLORFGBG report
+// ("foreground;background"; the last segment is the background): 7 or 15 mean a
+// light background, anything else (or no report) a dark one. No terminal query
+// is made; an unset COLORFGBG stays dark, like before the option existed.
+func ChatTheme() (string, error) {
+	if raw := strings.TrimSpace(os.Getenv("SUGA_THEME")); raw != "" {
+		value := strings.ToLower(raw)
+		switch value {
+		case ChatThemeDark, ChatThemeLight:
+			return value, nil
+		default:
+			return "", fmt.Errorf("SUGA_THEME must be dark or light, got %q", raw)
+		}
+	}
+	value := strings.ToLower(strings.TrimSpace(gkconfig.String("chat.theme")))
+	if value == "" {
+		value = ChatThemeAuto
+	}
+	switch value {
+	case ChatThemeDark, ChatThemeLight:
+		return value, nil
+	case ChatThemeAuto:
+		return colorFgbgBackground(), nil
+	}
+	return "", fmt.Errorf("chat.theme must be auto, dark or light, got %q", value)
+}
+
+// ChatTheme* are the values chat.theme (and SUGA_THEME) accept: auto | dark | light.
+const (
+	ChatThemeAuto  = "auto"
+	ChatThemeDark  = "dark"
+	ChatThemeLight = "light"
+)
+
+// colorFgbgBackground reads the background color of the terminal from the
+// COLORFGBG environment variable ("foreground;background"; some emulators add a
+// third segment, so the last one is taken): light for a background of 7 or 15,
+// dark for anything else - including a report chat cannot make sense of.
+func colorFgbgBackground() string {
+	raw := os.Getenv("COLORFGBG")
+	segments := strings.Split(raw, ";")
+	background := strings.TrimSpace(segments[len(segments)-1])
+	if background == "7" || background == "15" {
+		return ChatThemeLight
+	}
+	return ChatThemeDark
 }
 
 // ChatWin32InputMode selects win32-input-mode (DECSET 9001) for the chat input:

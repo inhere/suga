@@ -15,14 +15,9 @@ import (
 // terminal's own color. Coloring a line on its own cannot know a multi-line
 // string, so only a block comment carries a state from one line to the next.
 
-// The four styles of a highlighted line: 16 color ANSI ones, so they stay legible
-// with any terminal palette.
-var (
-	mdCodeCommentStyle = color.Style{color.FgGray}
-	mdCodeStringStyle  = color.Style{color.FgGreen}
-	mdCodeNumberStyle  = color.Style{color.FgMagenta}
-	mdCodeKeywordStyle = color.Style{color.FgCyan}
-)
+// The four styles of a highlighted line are those of the theme's palette
+// (mdThemes in mdterm.go): 16 color ANSI ones, so they stay legible with any
+// terminal palette.
 
 // mdLang is what the highlighter knows about one language: the words it colors
 // as keywords, the markers starting a comment and the quote characters opening a
@@ -154,12 +149,13 @@ func mdWordSet(words string) map[string]bool {
 type mdCode struct {
 	lang    string
 	rules   *mdLang
-	inBlock bool // inside a block comment that started on an earlier line
+	styles  *mdPalette // the theme's code highlight colors (chat.theme)
+	inBlock bool       // inside a block comment that started on an earlier line
 }
 
 // newMDCode returns the highlighter of the block opened by a fence with info, or
 // nil when the language is unknown (the block then keeps the plain dim text).
-func newMDCode(info string) *mdCode {
+func newMDCode(info string, styles *mdPalette) *mdCode {
 	lang := mdCodeLang(info)
 	if lang == "" {
 		return nil
@@ -168,7 +164,7 @@ func newMDCode(info string) *mdCode {
 	if rules == nil {
 		return nil
 	}
-	return &mdCode{lang: lang, rules: rules}
+	return &mdCode{lang: lang, rules: rules, styles: styles}
 }
 
 // mdCodeLang is the language a fence names: its first word, without braces or a
@@ -195,30 +191,30 @@ func (c *mdCode) line(s string) string {
 		if c.inBlock {
 			end, closed := mdCodeBlockEnd(s, i, c.rules.block[1])
 			c.inBlock = !closed
-			out.WriteString(mdCodePaint(mdCodeCommentStyle, s[i:end]))
+			out.WriteString(mdCodePaint(c.styles.comment, s[i:end]))
 			i = end
 			continue
 		}
 		if open := c.rules.block[0]; open != "" && strings.HasPrefix(s[i:], open) {
 			end, closed := mdCodeBlockEnd(s, i+len(open), c.rules.block[1])
 			c.inBlock = !closed
-			out.WriteString(mdCodePaint(mdCodeCommentStyle, s[i:end]))
+			out.WriteString(mdCodePaint(c.styles.comment, s[i:end]))
 			i = end
 			continue
 		}
 		if c.rules.lineCommentAt(s, i) {
-			out.WriteString(mdCodePaint(mdCodeCommentStyle, s[i:]))
+			out.WriteString(mdCodePaint(c.styles.comment, s[i:]))
 			return out.String()
 		}
 		if strings.IndexByte(c.rules.quotes, s[i]) >= 0 {
 			end := mdCodeStringEnd(s, i, s[i])
-			out.WriteString(mdCodePaint(mdCodeStringStyle, s[i:end]))
+			out.WriteString(mdCodePaint(c.styles.codeStr, s[i:end]))
 			i = end
 			continue
 		}
 		if mdCodeDigit(s[i]) && (i == 0 || !mdWordByte(s[i-1])) {
 			end := mdCodeNumberEnd(s, i)
-			out.WriteString(mdCodePaint(mdCodeNumberStyle, s[i:end]))
+			out.WriteString(mdCodePaint(c.styles.number, s[i:end]))
 			i = end
 			continue
 		}
@@ -229,7 +225,7 @@ func (c *mdCode) line(s string) string {
 			}
 			word := s[i:end]
 			if c.rules.keyword(word) {
-				out.WriteString(mdCodePaint(mdCodeKeywordStyle, word))
+				out.WriteString(mdCodePaint(c.styles.keyword, word))
 			} else {
 				out.WriteString(word)
 			}

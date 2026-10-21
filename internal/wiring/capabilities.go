@@ -280,6 +280,7 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		Interpreters:      detectInterpreters(),
 		FetchAllowPrivate: gkconfig.Bool("tools.web_fetch.allow_private"),
 		FetchProxy:        gkconfig.String("tools.web_fetch.proxy"),
+		FetchUserAgent:    gkconfig.String("tools.web_fetch.user_agent"),
 		NetworkProxy:      configuredNetworkProxy(),
 		ShellTimeoutMax: time.Duration(gkconfig.Int("tools.shell_timeout_max",
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,
