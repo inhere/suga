@@ -380,11 +380,20 @@ func (s *chatInputSource) readResult(mode inputMode, line string, err error) (ch
 	case errors.Is(err, lineedit.ErrInterrupt):
 		// Ctrl-C during a turn: end this turn only. A second press within
 		// exitConfirmWindow asks to leave chat; the clock is the source's, shared with
-		// the prompt read (m7).
-		if s.takeInterrupt() {
-			return chatInputEvent{key: keyExit, gen: s.steerGenNow()}, true
+		// the prompt read (m7). The line the read leaves behind (a read that keeps
+		// the line on Ctrl-C - a running local command's - may have text on it) is
+		// taken out of the editor here and rides on the event: the watcher of a local
+		// command puts it back into the input line, so the half-typed line survives
+		// however the timing falls out between the read and the next prompt. A read
+		// that clears the line itself has nothing here to take.
+		taken := ""
+		if s.terminal != nil {
+			taken = s.terminal.TakeInterruptedLine()
 		}
-		return chatInputEvent{key: keyAbort, gen: s.steerGenNow()}, true
+		if s.takeInterrupt() {
+			return chatInputEvent{key: keyExit, line: taken, gen: s.steerGenNow()}, true
+		}
+		return chatInputEvent{key: keyAbort, line: taken, gen: s.steerGenNow()}, true
 	case errors.Is(err, io.EOF) && s.stickyEOF() == nil:
 		// Ctrl-D on an empty line: a turn ignores it.
 		return chatInputEvent{}, false
