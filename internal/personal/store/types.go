@@ -103,6 +103,10 @@ const (
 	// EventUndo records a user rollback; its attrs include the file outcome
 	// counts and the seq of the deferred suga.undo entry when available.
 	EventUndo = "undo"
+	// EventVerify records one run of the --verify delivery check (suga run
+	// --verify): name "run", attrs round (0 = the first check), exit, duration_ms,
+	// output_len (everything the command wrote) and passed.
+	EventVerify = "verify"
 )
 
 // Session is one conversation. Meta holds free-form keys (rules hash, append

@@ -49,6 +49,16 @@ type personalOptions struct {
 	// MaxSteps (run only) overrides the config's max_steps for this turn
 	// (--max-steps); 0 uses SUGA_MAX_STEPS, then the config.
 	MaxSteps int
+	// Verify (run only) is the --verify command: after a normally finished turn
+	// suga runs it in the session workspace and hands a failure back to the
+	// model as an injected turn (--verify-timeout, --verify-rounds).
+	Verify string
+	// VerifyRounds is how many fix rounds follow a failing check (1-5); the
+	// first check does not count.
+	VerifyRounds int
+	// VerifyTimeout bounds one run of the verify command; a timeout is a
+	// failure.
+	VerifyTimeout time.Duration
 	// MaxOutputTokens overrides the config's max_output_tokens for this
 	// invocation (--max-output-tokens); 0 uses SUGA_MAX_OUTPUT_TOKENS, then
 	// models.<m>.max_output_tokens, then providers.<id>.max_output_tokens.
@@ -232,6 +242,9 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 		cmd.StringVar(&opts.Prompt, "prompt", "", "task prompt for run mode;;p")
 		cmd.BoolVar(&opts.Injected, "injected", false, "mark this turn's prompt as not typed by a person")
 		cmd.IntVar(&opts.MaxSteps, "max-steps", 0, "max tool steps in this turn, >= 1 (overrides SUGA_MAX_STEPS and max_steps); sub-agent agents.max_steps is unaffected")
+		cmd.StringVar(&opts.Verify, "verify", "", "command to run after a finished turn; a failure is handed back to the model to fix (does not go through approval)")
+		cmd.IntVar(&opts.VerifyRounds, "verify-rounds", DefaultVerifyRounds, "how many fix rounds follow a failing --verify command, 1-5")
+		cmd.DurationVar(&opts.VerifyTimeout, "verify-timeout", DefaultVerifyTimeout, "timeout of one --verify command run, e.g. 10m; a timeout is a failure")
 	}
 	return cmd
 }
@@ -282,6 +295,15 @@ func validatePersonalOptions(mode string, opts personalOptions) error {
 	}
 	if opts.MaxOutputTokens < 0 {
 		return fmt.Errorf("--max-output-tokens must be a whole number >= 1, got %d", opts.MaxOutputTokens)
+	}
+	if mode != "run" && (opts.Verify != "" || opts.VerifyRounds != 0) {
+		return fmt.Errorf("--verify is only supported in run mode")
+	}
+	if opts.VerifyRounds < 1 || opts.VerifyRounds > MaxVerifyRounds {
+		return fmt.Errorf("--verify-rounds must be a whole number between 1 and %d, got %d", MaxVerifyRounds, opts.VerifyRounds)
+	}
+	if opts.VerifyTimeout < 0 {
+		return fmt.Errorf("--verify-timeout must be a positive duration, got %s", opts.VerifyTimeout)
 	}
 	if opts.Budget.Tokens < 0 {
 		return fmt.Errorf("--budget-tokens must be a whole number >= 0, got %d", opts.Budget.Tokens)
@@ -353,6 +375,23 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	if err == nil && result.State == personal.RunCompleted && opts.tasks != nil {
 		result, err = finishBackgroundTasks(ctx, runner, opts.tasks, sessionID, result, emit, live, stderr)
 	}
+	// The caller's --verify check runs after a turn finished normally (background
+	// tasks settled first): a failing command comes back as an injected turn, so
+	// the model gets a chance to fix it before the run ends. A turn that failed,
+	// yielded or was cancelled is not checked.
+	var verifyRep *verifyReport
+	if opts.needsVerify(result, err) {
+		workspace, wsErr := effectiveWorkspace()
+		if wsErr != nil {
+			return wsErr
+		}
+		result, verifyRep, err = verifyAfterTurn(ctx, runner, verifySettingsFrom(opts, workspace), sessionID, result, emit, live, encoder, stderr)
+	}
+	if verifyRep != nil && !verifyRep.Passed && err == nil && result.State == personal.RunCompleted {
+		// Text mode: the check that never passed is summarised on stderr, with the
+		// tail of its last output; stdout stays the answer only.
+		fmt.Fprintln(stderr, verifySummary(opts.Verify, verifyRep))
+	}
 	streamed := live.Finish() // end the streamed line before any error or status output
 	_, _, window, _ := runner.ModelSettings()
 	if encoder == nil {
@@ -391,14 +430,27 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 			return err
 		}
 	}
+	// A check that never passed still reports the answer and the verify outcome on
+	// the result line; the run then ends with exit code 5 (design §5).
+	failedVerify := verifyRep != nil && !verifyRep.Passed
 	if encoder != nil {
-		return encoder.Encode(output.WithModel(output.ResultLineWithContext(sessionID, result, window, budget), runModelRef(runner)))
+		line := output.ResultLineWithContext(sessionID, result, window, budget)
+		if verifyRep != nil {
+			line = output.WithVerify(line, verifyRep.Passed, verifyRep.Rounds)
+		}
+		if err := encoder.Encode(output.WithModel(line, runModelRef(runner))); err != nil {
+			return err
+		}
+	} else if !streamed {
+		if _, err := fmt.Fprintln(stdout, result.Output); err != nil {
+			return err
+		}
 	}
-	if streamed {
-		return nil
+	if failedVerify {
+		return processExitError{code: 5, err: fmt.Errorf("%w: %s → exit %d（已回灌 %d 轮）", ErrVerifyFailed,
+			oneLineText(termtext.Clean(opts.Verify)), verifyRep.Last.ExitCode, max(verifyRep.Rounds-1, 0))}
 	}
-	_, err = fmt.Fprintln(stdout, result.Output)
-	return err
+	return nil
 }
 
 func openRequestedSession(ctx context.Context, runner *personal.Runner, opts personalOptions) (string, error) {

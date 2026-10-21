@@ -197,6 +197,9 @@ func traceLine(e store.Event) string {
 	if e.Kind == store.EventLocalCommand {
 		parts = append(parts, localCommandTraceParts(e)...)
 	}
+	if e.Kind == store.EventVerify {
+		parts = append(parts, verifyTraceParts(e)...)
+	}
 	if e.Kind == store.EventSession {
 		parts = append(parts, sessionTraceParts(e)...)
 	}
@@ -516,6 +519,30 @@ func localCommandTraceParts(e store.Event) []string {
 	}
 	if command, _ := e.Attrs["command"].(string); command != "" {
 		parts = append(parts, "["+command+"]")
+	}
+	return parts
+}
+
+// verifyTraceParts renders one --verify check of a run: the round, whether it
+// passed, the exit code, the output bytes and how long it ran.
+func verifyTraceParts(e store.Event) []string {
+	var parts []string
+	if round, ok := e.Attrs["round"]; ok {
+		parts = append(parts, fmt.Sprintf("round=%v", round))
+	}
+	if passed, _ := e.Attrs["passed"].(bool); passed {
+		parts = append(parts, "passed")
+	} else {
+		parts = append(parts, "failed")
+	}
+	if code, ok := e.Attrs["exit"]; ok {
+		parts = append(parts, fmt.Sprintf("exit=%v", code))
+	}
+	if n, ok := e.Attrs["output_len"]; ok {
+		parts = append(parts, fmt.Sprintf("bytes=%v", n))
+	}
+	if timedOut, _ := e.Attrs["timeout"].(bool); timedOut {
+		parts = append(parts, "timeout")
 	}
 	return parts
 }

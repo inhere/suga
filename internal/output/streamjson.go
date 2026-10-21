@@ -2,6 +2,7 @@ package output
 
 import (
 	"strings"
+	"time"
 
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -89,6 +90,24 @@ func EventLine(event personal.Event) (line map[string]any, ok bool) {
 
 // toolSummaryLimit caps the tool_result summary, in runes.
 const toolSummaryLimit = 200
+
+// VerifyLine is the stream-json line of one --verify check: round counts from
+// 0 (the check that follows the first turn), command is the caller's command
+// (secrets masked) and passed is what its exit code says.
+func VerifyLine(round int, command string, exitCode int, passed bool, duration time.Duration) map[string]any {
+	return map[string]any{
+		"type": "verify", "round": round, "command": command, "exit_code": exitCode,
+		"passed": passed, "duration_ms": duration.Milliseconds(),
+	}
+}
+
+// WithVerify adds the run's --verify outcome to the closing result line: how
+// many checks ran and whether the last one passed. A run without --verify
+// leaves the line exactly as it was.
+func WithVerify(line map[string]any, passed bool, rounds int) map[string]any {
+	line["verify"] = map[string]any{"passed": passed, "rounds": rounds}
+	return line
+}
 
 // ToolResultSummary condenses a tool result for stream-json. Secrets are
 // redacted first and the result truncated afterwards, so a cut can never leave
