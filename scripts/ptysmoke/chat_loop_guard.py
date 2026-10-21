@@ -149,6 +149,8 @@ def main():
     p.add_argument("--bin", default="suga", help="the suga binary under test")
     p.add_argument("--work", default="tmp/smoke-loop-guard")
     args = p.parse_args()
+    # chat runs in its own workspace: a relative --bin would not resolve there.
+    args.bin = os.path.abspath(args.bin)
 
     results = []
     # The positive run repeats past the R1 rule (four reads: R1 at the third,
