@@ -18,6 +18,7 @@ go run ./scripts/eval --model opencode-go/deepseek-v4.1-flash --config-from ~/.s
 参数：`--bin`（默认 `tmp/smoke/suga`，Windows 自动补 `.exe`）、`--task`（任务名 glob，默认全部）、
 `--model`、`--fake`、`--config-from <dir>`、`--out`（默认 `tmp/eval/<run-id>/`）、`--timeout`（每任务，默认 10m）、
 `--suga-args` / `--omp-args` / `--repeat`（见“附加参数、tool_counts 与重复运行”）、
+`--variant <dir>`（可重复，见“variant 对比”，仅 suga）、
 `--probe-prefix` / `--probe-repeat` / `--probe-gap`（见“前缀缓存探针”）。
 终端输出汇总表；`<out>/results.jsonl` 每任务一行（成败、checks 明细、答案、调用/token/命中率/成本/工具调用数、
 `tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga inspect stats` 提供之前为 null）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
@@ -107,6 +108,36 @@ go run ./scripts/eval --task repo-t9-schedule --model <model> --config-from ~/.s
 
 ```bash
 go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--no-project-rules"
+```
+
+## variant 对比
+
+`--variant <dir>`（可重复，仅 suga）让你用同一批任务在多个配置/规则下对比：每个任务对每个 variant 各跑
+`--repeat` 轮。variant 目录可以包含三样东西，都不必同时出现：
+
+- `config.yaml`：**叠加**到临时 SUGA_HOME 的配置上（先从 `--config-from` 或 fake provider 写入基础配置、再应用 `--suga-set`
+  最后按 YAML 键深度合并该文件——map 递归合并，其它值直接覆盖，variant 优先级最高）。
+- `env`：额外环境变量，`KEY=VALUE` 每行一个（`#` 注释与空行忽略；`SUGA_HOME`/`SUGA_CONFIG`/`SUGA_MODEL`/`HOME`/`USERPROFILE`
+  不允许覆盖，保住隔离），传给该任务的子进程。
+- `workspace/`：在任务工作区准备好（fixture/仓库快照之后、agent 运行之前）复制进每题工作区的文件，覆盖同名，
+  如 `AGENTS.md`、`.agents/skills/...`。
+
+variant 的 `name` 默认取目录名；目录重复时（同名）启动即报错。有 `--variant` 时输出为 `<out>/<variant>/<task>[-r<i>]/`，
+session id 带 `<variant>-` 前缀，`results.jsonl` 每行多一个 `variant` 字段；结束时打印并写 `<out>/compare.md`：
+各 variant 的通过率、平均 CALLS、平均 prompt（未缓存+缓存读写）、平均未缓存输入、总 prompt、缓存命中率与平均耗时，
+以及逐任务一行（PASS/FAIL/TIMEOUT、CALLS、prompt、耗时），variant 之间结果不同的任务在“结果不一致”列标为 **是**。
+不给 `--variant` 时输出结构与以前完全一致（无 variant 字段、无 compare.md）。任务必须用 `--agent suga`（且与
+`--probe-prefix` 互斥）。
+
+例子：两个 variant，一个关历史折叠、一个开到 0.5：
+
+```bash
+mkdir -p variants/fold-off variants/fold-on
+printf 'context:\n  fold_at: 0\n'   > variants/fold-off/config.yaml
+printf 'context:\n  fold_at: 0.5\n' > variants/fold-on/config.yaml
+
+go run ./scripts/eval --task fix-failing-test --model opencode-go/deepseek-v4.1-flash \
+  --config-from ~/.suga --variant variants/fold-off --variant variants/fold-on --repeat 2
 ```
 
 ## 历史折叠与思考档位
