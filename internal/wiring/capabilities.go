@@ -14,6 +14,7 @@ import (
 	gkconfig "github.com/gookit/config/v2"
 
 	axconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/netproxy"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -247,6 +248,39 @@ func prefetchTools(reg *tools.Registry) func(context.Context, []agentcore.ToolCa
 
 // outputRulesFile names the user and project output rule files.
 const outputRulesFile = "output-rules.yaml"
+
+// nudgeRulesFile names the user and project nudge rule files.
+const nudgeRulesFile = "nudge-rules.yaml"
+
+// loadNudgeRuleFiles returns the effective nudge rules (personal.LoadNudgeRules):
+// the built-in ones, overridden and extended by $SUGA_HOME/nudge-rules.yaml and
+// then <workspace>/.suga/nudge-rules.yaml. A file that does not parse or holds
+// a broken rule is reported and skipped as a whole, like an output-rules file.
+func loadNudgeRuleFiles(workspace string) []personal.NudgeRule {
+	var files []string
+	if home, err := axconfig.ResolveSugaHome(); err == nil && filepath.IsAbs(home) {
+		files = append(files, filepath.Join(home, nudgeRulesFile))
+	}
+	if workspace != "" {
+		files = append(files, filepath.Join(workspace, ".suga", nudgeRulesFile))
+	}
+	rules, errs := personal.LoadNudgeRules(files...)
+	for _, err := range errs {
+		slog.Warn("skip nudge rules file", "err", err)
+	}
+	return rules
+}
+
+// nudgeRuleSource is the runner's rules source: the layered files, read once
+// per process.
+func nudgeRuleSource(workspace string) func() []personal.NudgeRule {
+	var once sync.Once
+	var rules []personal.NudgeRule
+	return func() []personal.NudgeRule {
+		once.Do(func() { rules = loadNudgeRuleFiles(workspace) })
+		return rules
+	}
+}
 
 // trashDir is where file_remove moves removed paths: <SUGA_HOME>/trash, or
 // "" (file_remove unavailable) when SUGA_HOME cannot be resolved.
