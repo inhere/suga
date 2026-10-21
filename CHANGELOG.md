@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- 循环调用检测（`tools.loop_guard`）改为按“动作 + 结果”判定，不再把正常迭代当成死循环：重复调用的键现在包含结果摘要（是否出错 + 追加提示前结果正文的哈希），结果变了就不算重复；同一条成功写入类工具（`file_edit`/`file_write`/`file_remove`）之后 R1/R2 的计数清零，`改代码 → go test → 再改 → 再 go test` 这样累计 4 次不再提示。新增 R3：同一条 `shell_exec` 命令在一个回合内失败 3 次（中间有编辑也计数，改了还失败才是死路）时提示“这条命令已失败 N 次”，trace 的 `loop_guard` 事件 `rule` 新增 `R3`，chat 显示 `↻ shell_exec 已失败 ×N，已提醒模型`。提示语按规则如实描述：R1/R2 说“第 N 次相同调用且结果没有变化”，R3 说“第 N 次失败”；每组每回合最多提醒 2 次与排除工具（`update_plan`/`session_message`/`agent`）不变。
+
 ## [0.43.0] - 2026-10-21
 
 本版：chat 工具调用按工具显示摘要、Markdown 浅色配色 `chat.theme`、会话 ID 前缀改为 `sg_`；新增 `run --verify` 交付前验证循环、重复调用检测 `tools.loop_guard`、通用工具开关 `tools.disabled`、`web_fetch` 多 URL 与可配置 UA；评测默认禁网并只按验收测试判分。
