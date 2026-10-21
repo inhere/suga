@@ -107,6 +107,12 @@ func (t *Terminal) AbortLine() {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
+	t.abortLocked()
+}
+
+// abortLocked is AbortLine with t.lock held, so the same tidy-up can run from a
+// caller that already owns the lock (TakeInterruptedLine).
+func (t *Terminal) abortLocked() {
 	if t.statusOn {
 		// A status line above the input line (chat.steering) goes with the read it
 		// belonged to: its row is cleared where it is, leaving the line and the cursor
@@ -127,6 +133,27 @@ func (t *Terminal) AbortLine() {
 	}
 	t.line, t.pos = t.line[:0], 0
 	t.cursorX, t.cursorY, t.maxLine = 0, 0, 0
+}
+
+// TakeInterruptedLine takes the line a just-finished read left in the editor
+// out of it and clears it from the screen, and returns its content. It is how
+// chat reports what the person had typed when Ctrl-C ended a read that keeps
+// the line (a running local command's read, whose Ctrl-C means "end the
+// command"): the content rides on the read's abort event, so putting it back
+// into the input line does not depend on the editor buffer surviving to the
+// next read. A read that clears the line itself has nothing here to take; a
+// read that is not over yet (a later ReadLine already runs) waits for it. When
+// nothing is on the line the editor is left as it is.
+func (t *Terminal) TakeInterruptedLine() string {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	if t.reading || len(t.line) == 0 {
+		return ""
+	}
+	line := string(t.line)
+	t.abortLocked()
+	return line
 }
 
 // keepRemainder stores the unprocessed input rest (a slice of t.inBuf) for

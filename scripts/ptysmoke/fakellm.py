@@ -36,8 +36,13 @@ Modes (--mode):
         per-tool tool lines (chat_tool_lines.py).
   loop  one turn with four identical file_read calls of loop_target.txt, then
         the text --reply: the smoke of the loop guard (chat_loop_guard.py).
-        Each request logs an extra line {"loop": true, "step", "hint_seen"}
-        saying whether it carried the guard's reminder.
+        Each request logs an extra line {"loop": true, "step", "hint_seen",
+        "hint_kind"} saying whether it carried the guard's reminder.
+  loop-edit  the same successful shell_exec (--loop-command, identical output)
+        four times with a successful file_edit in between: the guard must stay
+        quiet because the workspace changed between two runs.
+  loop-fail  the same failing shell_exec (--loop-fail-command) three times: the
+        guard's R3 reminder for a command that keeps failing.
   nudge one turn that writes --write-path and then answers --reply (a closing
         sentence that promises to continue), without running any command: the
         turn hits both "stopped too early" rules, so chat shows its gray hint
@@ -187,6 +192,31 @@ def chunked(chunks, size):
 SESSION_TAG = re.compile(r"\[来自会话 (\S+?)（")
 SESSION_TO = re.compile(r"发给 (\S+?)[：:]")
 
+# The loop-guard modes: each drives one turn of repeated calls for the guard smoke.
+LOOP_MODES = ("loop", "loop-edit", "loop-fail")
+
+
+def loop_plan(args):
+    """The calls of a loop-guard mode, in order (one per model turn).
+
+    loop: four identical reads of an unchanged file (R1 on the third, R2 on the
+    fourth). loop-edit: the same successful command four times with a file_edit
+    in between (the workspace changes, so no reminder may appear). loop-fail:
+    the same failing command three times (R3 on the third failure).
+    """
+    if args.mode == "loop-edit":
+        plan = []
+        for i in range(4):
+            plan.append(("shell_exec", {"command": args.loop_command}))
+            if i < 3:
+                # Alternating old/new keeps every edit a successful one.
+                old, new = (args.edit_old, args.edit_new) if i % 2 == 0 else (args.edit_new, args.edit_old)
+                plan.append(("file_edit", {"path": args.edit_path, "old_string": old, "new_string": new}))
+        return plan
+    if args.mode == "loop-fail":
+        return [("shell_exec", {"command": args.loop_fail_command})] * 3
+    return [("file_read", {"path": "loop_target.txt"})] * 4
+
 
 def session_target(text):
     """The short name a session-mode answer goes to: the sender a received session
@@ -312,14 +342,13 @@ def make_handler(args):
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
-            elif args.mode == "loop" and step < 4:
-                # loop-guard mode: four identical file_read calls in one turn, then
-                # the answer - R1 fires on the third call, R2 on the fourth. The
-                # chat_loop_guard smoke also checks the reminder the guard appends
-                # to the third result (the next request must carry it, see the
-                # loop-mode log line below and chat_loop_guard.py).
+            elif args.mode in LOOP_MODES and step < len(loop_plan(args)):
+                # loop-guard modes: the plan's call of this step (R1/R2 on the
+                # repeated reads, a quiet edit/shell alternation, or R3 on the
+                # third failure). See loop_plan and chat_loop_guard.py.
+                name, arguments = loop_plan(args)[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
-                        "function": {"name": "file_read", "arguments": json.dumps({"path": "loop_target.txt"})}}
+                        "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "edit" and step < len(edit_calls):
                 name, arguments = edit_calls[step]
@@ -375,13 +404,14 @@ def make_handler(args):
                 chunks = [{"choices": [{"delta": {"content": build_reply(args)}}]}]
             usage = None if args.no_usage else {"prompt_tokens": args.prompt_tokens, "completion_tokens": 2,
                                                 "total_tokens": args.prompt_tokens + 2}
-            if args.mode == "loop":
-                # loop mode: whether this request carried the loop guard's hint.
-                # The tool results of this step are already in body["messages"];
-                # the guard appends hint to a repeated call's result.
-                print(json.dumps({"loop": True, "step": step,
-                                  "hint_seen": any("换一种方法" in str(m.get("content") or "")
-                                                   for m in body["messages"])}), flush=True)
+            if args.mode in LOOP_MODES:
+                # loop modes: whether this request carried the loop guard's hint,
+                # and which rule's wording it had (R3 says "已失败", R1/R2 say
+                # the result did not change). The step's tool results are already
+                # in body["messages"].
+                text = "\n".join(str(m.get("content") or "") for m in body["messages"])
+                kind = "r3" if "已失败" in text else ("repeat" if "换一种方法" in text else "")
+                print(json.dumps({"loop": True, "step": step, "hint_seen": bool(kind), "hint_kind": kind}), flush=True)
             chunks = chunked(chunks, args.chunk) if args.chunk > 0 else chunks
             if not body.get("stream"):
                 # Non-streaming calls (e.g. the compaction summary) get one JSON body.
@@ -469,7 +499,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "nudge"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")
@@ -493,6 +523,8 @@ def main():
     p.add_argument("--remove-path", default="delete.txt", help="edit mode: file_remove target")
     p.add_argument("--preferred-tool", default="preferred_lookup", help="preferred mode: MCP tool to call")
     p.add_argument("--shell-command", default="echo SMOKE_SHELL", help="edit mode: shell_exec command")
+    p.add_argument("--loop-command", default="echo SMOKE_LOOP_SHELL", help="loop-edit mode: the successful command repeated")
+    p.add_argument("--loop-fail-command", default="false", help="loop-fail mode: the command that keeps failing")
     p.add_argument("--agent", action="store_true", help="tool mode: call the agent tool instead of shell_exec")
     p.add_argument("--session-text", default="SMOKE_SESSION_TEXT",
                    help="session mode: the text one session_message send carries")

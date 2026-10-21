@@ -368,3 +368,34 @@ func TestRunLocalCommandCtrlCWithTextOnTheLine(t *testing.T) {
 	// What was typed is not lost: the next prompt read carries it.
 	assert.Eq(t, "半行", h.turnInputLine(t))
 }
+
+// TestRunLocalCommandCtrlCAbortCarriesTheLine: the Ctrl-C that ends a local
+// command's read reports the line it was typed on instead of leaving the text
+// to the editor buffer. The abort event carries the line (the read reports it
+// and the editor is cleared on the way), so the half-typed line still reaches
+// the next prompt whichever goroutine gets there first - the contract behind
+// TestRunLocalCommandCtrlCWithTextOnTheLine, driven here without the command
+// and its watcher, on the read and the event alone.
+func TestRunLocalCommandCtrlCAbortCarriesTheLine(t *testing.T) {
+	h := newSteerHarness(t, newGateProv())
+	_, ok := h.source.RequestCommandKeys()
+	assert.True(t, ok)
+	waitUntil(t, "the read waits for input", func() bool { return h.kb.Reading() > 0 })
+
+	h.kb.Type("半行\x03") // typed, then the press that ends the command
+	var event chatInputEvent
+	select {
+	case event = <-h.source.TurnEvents():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the abort event did not arrive")
+	}
+	assert.Eq(t, keyAbort, event.key)
+	assert.Eq(t, "半行", event.line, "the abort event carries the line")
+	// The editor keeps nothing of it: the line rides on the event.
+	assert.Eq(t, "", h.turnInputLine(t))
+
+	// What was typed comes back on the input line, the way the command's watcher
+	// puts it back: whatever the next prompt read is, the text is there.
+	h.source.putBackLine(event.line)
+	assert.Eq(t, "半行", h.turnInputLine(t))
+}
