@@ -182,6 +182,14 @@ func (w *localKeyWatch) handle(event chatInputEvent, cancel context.CancelFunc) 
 		if event.gen != w.gen {
 			return // a key of another read (a turn's): not this command's business
 		}
+		// The key that ends the command (Ctrl-C, Esc) may carry the line it ends it
+		// on (the read reports it: a local command's read keeps the line on Ctrl-C).
+		// It belongs to the command exactly like a line event, so it goes back to
+		// the input now - the editor was cleared on the way here, and the next
+		// prompt must not be left without what was on the line.
+		if strings.TrimSpace(event.line) != "" {
+			w.source.putBackLine(event.line)
+		}
 		cancel()
 		return
 	}
@@ -202,7 +210,14 @@ func (w *localKeyWatch) stop() {
 	for {
 		select {
 		case event := <-w.source.TurnEvents():
-			if event.key == keyNone && event.err == nil && strings.TrimSpace(event.line) != "" {
+			// A key the watcher never acted on (its quit turned ready first): since
+			// the command is over either way, only what a key carried - the line it
+			// was typed on - belongs here; the wait loop's handle puts it back the
+			// same way.
+			if event.key != keyNone && strings.TrimSpace(event.line) == "" {
+				continue
+			}
+			if strings.TrimSpace(event.line) != "" {
 				w.source.putBackLine(event.line)
 			}
 		default:
