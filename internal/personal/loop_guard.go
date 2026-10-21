@@ -111,20 +111,19 @@ func (h *loopGuardHook) AfterTool(ctx context.Context, event *agentcore.ToolEven
 	if event.Call.Name == loopGuardShellTool && failed {
 		h.fails[group]++
 	}
-	rule, n, hintKey := "", 0, ""
+	rule, n := "", 0
 	switch {
 	case event.Call.Name == loopGuardShellTool && h.fails[group] >= loopGuardRule3Fails:
 		// R3 优先：一条反复失败的命令比“结果没变”更值得提醒（失败命令的输出
 		// 往往每次都一样，否则 R1 会先抢到这一次）。
-		rule, n, hintKey = "R3", h.fails[group], "R3"+loopGuardSeq+group
+		rule, n = "R3", h.fails[group]
 	default:
 		rule, n = loopGuardRule(total, h.streak)
-		hintKey = group
 	}
-	if rule == "" || h.hints[hintKey] >= loopGuardMaxHints {
+	if rule == "" || h.hints[group] >= loopGuardMaxHints {
 		return nil
 	}
-	h.hints[hintKey]++
+	h.hints[group]++
 	hint := loopGuardHint(rule, event.Call.Name, n)
 	event.Result.Content = appendLoopGuardHint(event.Result.Content, hint)
 	h.trace(ctx, event.Call.Name, rule, n)
