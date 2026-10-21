@@ -390,7 +390,8 @@ func addCallAttrs(attrs map[string]any, call agentcore.ToolCall, res *agentcore.
 		if command, ok := call.Arguments["command"].(string); ok && command != "" {
 			// The command the check can match against (personal/nudge.go's
 			// write rules name it check_command); capped at a sane length.
-			attrs["command"] = truncateRunes(command, 500)
+			// Redacted like "arg": a command line can carry a token.
+			attrs["command"] = truncateRunes(redact.Secrets(command), 500)
 		}
 	case "task":
 		// The action and task id as attrs, so --analyze and the web page need

@@ -2,6 +2,7 @@ package personal
 
 import (
 	"fmt"
+	"github.com/inhere/suga/pkg/agentcore"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,4 +285,16 @@ func longText(n int) string {
 		out = append(out, []rune("填充文字 ")...)
 	}
 	return string(out)
+}
+
+// TestShellCommandAttrIsRedacted: the trace keeps the shell command for the
+// check_command rule, redacted like the other call attributes.
+func TestShellCommandAttrIsRedacted(t *testing.T) {
+	attrs := map[string]any{}
+	call := agentcore.ToolCall{Name: "shell_exec", Arguments: map[string]any{
+		"command": "curl -H 'Authorization: Bearer sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789' https://x"}}
+	addCallAttrs(attrs, call, &agentcore.ToolResult{}, "")
+	command, _ := attrs["command"].(string)
+	assert.StrContains(t, command, "curl")
+	assert.NotContains(t, command, "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789")
 }
