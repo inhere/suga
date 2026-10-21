@@ -486,7 +486,9 @@ func (t *WebFetchTool) fetch(ctx context.Context, raw string, maxBytes int) (str
 // fetchMany fetches the URLs of one call concurrently (one goroutine each, at
 // most maxFetchURLs) and returns one section per URL in input order. A failing
 // URL is reported in its own section so the others still come back; only a
-// call where every URL failed is an error result.
+// call where every URL failed is an error result. The whole result stays within
+// the raw output cap (rawLimit), the sections that no longer fit being named
+// instead of shown.
 func (t *WebFetchTool) fetchMany(ctx context.Context, call api.ToolCall, urls []string, maxBytes int) *api.ToolResult {
 	type fetchResult struct {
 		content string
@@ -505,22 +507,37 @@ func (t *WebFetchTool) fetchMany(ctx context.Context, call api.ToolCall, urls []
 	wg.Wait()
 
 	var sb strings.Builder
-	failed := 0
+	failed, skipped := 0, 0
+	limit := rawLimit(t.maxOut)
 	for i, res := range results {
-		if i > 0 {
-			sb.WriteString("\n\n")
-		}
-		fmt.Fprintf(&sb, "## [%d/%d] %s\n", i+1, len(urls), urls[i])
-		if res.err != nil {
+		var section strings.Builder
+		fmt.Fprintf(&section, "## [%d/%d] %s\n", i+1, len(urls), urls[i])
+		switch {
+		case res.err != nil:
 			failed++
-			fmt.Fprintf(&sb, "Status: failed: %v\n", res.err)
+			fmt.Fprintf(&section, "Status: failed: %v\n", res.err)
+		default:
+			// The section starts with the URL already, so its own "URL:" line is
+			// dropped: only the status line and the content follow the head.
+			if _, rest, found := strings.Cut(res.content, "\n"); found {
+				section.WriteString(rest)
+			}
+		}
+		// One call stays within the raw output cap (tools.max_spill_bytes, as
+		// every other tool's result): a section that no longer fits is named,
+		// not shown, and the model fetches it in another call.
+		if sb.Len() > 0 && sb.Len()+section.Len() > limit {
+			skipped++
 			continue
 		}
-		// The section starts with the URL already, so its own "URL:" line is
-		// dropped: only the status line and the content follow the head.
-		if _, rest, found := strings.Cut(res.content, "\n"); found {
-			sb.WriteString(rest)
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
 		}
+		sb.WriteString(section.String())
+	}
+	if skipped > 0 {
+		fmt.Fprintf(&sb, "\n\n[output cap reached: %d section(s) not shown (limit %d bytes); fetch them in another call]",
+			skipped, limit)
 	}
 	return &api.ToolResult{CallID: call.CallID, Name: t.Name(), Content: sb.String(), IsError: failed == len(urls)}
 }

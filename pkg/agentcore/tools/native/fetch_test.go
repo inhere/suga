@@ -231,13 +231,20 @@ func TestFetchManyURLs(t *testing.T) {
 		assert.StrContains(t, res.Content, "## [2/3] http://127.0.0.1:1/refused\nStatus: failed: web_fetch: ")
 		assert.StrContains(t, res.Content, "## [3/3] "+srv.URL+"/y\nStatus: 200 OK")
 	})
-	t.Run("every URL failing is an error result", func(t *testing.T) {
-		res, err := tool.Execute(t.Context(), callWith(map[string]any{"urls": []any{
-			"http://127.0.0.1:1/a", "http://127.0.0.1:2/b"}}))
+	t.Run("the whole result stays within the raw output cap", func(t *testing.T) {
+		big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte(strings.Repeat("x", 400)))
+		}))
+		t.Cleanup(big.Close)
+		capped := mustFetchTool(t, true, "")
+		capped.maxOut = 300
+		res, err := capped.Execute(t.Context(), callWith(map[string]any{"urls": []any{big.URL + "/one", big.URL + "/two"}}))
 		assert.Require(t, assert.NoErr(t, err))
-		assert.True(t, res.IsError)
-		assert.StrContains(t, res.Content, "## [1/2] http://127.0.0.1:1/a\nStatus: failed:")
-		assert.StrContains(t, res.Content, "## [2/2] http://127.0.0.1:2/b\nStatus: failed:")
+		assert.StrContains(t, res.Content, "## [1/2] "+big.URL+"/one")
+		assert.NotContains(t, res.Content, "## [2/2]")
+		assert.StrContains(t, res.Content, "[output cap reached: 1 section(s) not shown (limit 300 bytes); fetch them in another call]")
+		assert.False(t, res.IsError) // the skipped section was fetched, only not shown
 	})
 }
 
