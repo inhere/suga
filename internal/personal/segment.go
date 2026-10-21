@@ -196,8 +196,10 @@ func segmentMeta(seg *segmentContext) map[string]any {
 		"personal_rules_hash":    seg.RulesHash,
 		// An empty string (not nil) so PatchSessionMeta stores it.
 		"personal_append_prompt": seg.AppendPrompt,
-		// A new segment starts folding afresh (fold events count from 0).
+		// A new segment starts folding afresh (fold events count from 0, and the
+		// size trigger has to fire again).
 		metaFoldBoundary: 0,
+		metaFoldActive:   false,
 	}
 	if seg.MemoryHash != "" {
 		out[metaMemoryIndexContent], out[metaMemoryIndexHash] = seg.MemoryIndex, seg.MemoryHash

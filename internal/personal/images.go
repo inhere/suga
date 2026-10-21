@@ -145,7 +145,11 @@ func (b *contextBuilder) prepareImages(view []agentcore.Message) []agentcore.Mes
 	if bytes <= 0 {
 		bytes = appconfig.DefaultImageRequestBytes
 	}
-	cut := imageHistoryCut(view, b.r.cfg.FoldEvery, b.r.cfg.FoldKeep, turns)
+	// Same cadence as the fold boundary: the size-triggered parameters apply
+	// once folding is on (foldParams), so pictures are trimmed on the batch that
+	// already invalidates the cached prefix.
+	every, keep := b.foldParams()
+	cut := imageHistoryCut(view, every, keep, turns)
 	out := make([]agentcore.Message, len(view))
 	for i, m := range view {
 		trimmed := i < cut

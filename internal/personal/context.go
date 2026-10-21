@@ -285,9 +285,13 @@ type contextBuilder struct {
 
 	// foldBase is the fold boundary already recorded in this segment (session
 	// meta fold_boundary); foldPending is a larger boundary seen by the latest
-	// compose, recorded by recordFold once the view is final.
+	// compose, recorded by recordFold once the view is final. foldAt is the
+	// size trigger (context.fold_at) and foldActive whether it fired in this
+	// segment (session meta fold_active, reset by a segment break).
 	foldBase    int
 	foldPending *foldStats
+	foldAt      float64
+	foldActive  bool
 
 	// contextRecorded: this turn's context event (recordContext) is written.
 	contextRecorded bool
@@ -312,7 +316,7 @@ func (r *Runner) newContextBuilder(sessionID, turnID string, hist historyView, p
 	return &contextBuilder{
 		r: r, sessionID: sessionID, turnID: turnID, prompt: prompt, usage: usage, hookContext: hookContext,
 		summary: hist.summary, fromHandoff: hist.fromHandoff, prev: hist.items, seg: hist.segment, eff: hist.eff,
-		window: window, reserve: reserve,
+		window: window, reserve: reserve, foldAt: r.cfg.FoldAt,
 	}
 }
 
@@ -334,6 +338,15 @@ func (b *contextBuilder) BuildMessages(ctx context.Context, state *agentcore.Run
 	// below counts what the request will actually carry.
 	view = b.prepareImages(view)
 	est := b.estimate(ctx, state, view)
+	// Folding by size (context.fold_at): the pre-fold estimate of this request
+	// has to pass fold_at × the compaction threshold before the segment starts
+	// folding; once it did, the segment keeps folding (foldBySize).
+	if b.foldAt > 0 && !b.foldActive && est > b.foldThreshold() {
+		b.foldBySize(ctx, est)
+		view = b.compose(state)
+		view = b.prepareImages(view)
+		est = b.estimate(ctx, state, view)
+	}
 	if est > b.threshold() {
 		_, err := b.startSegment(ctx, state, segmentReasonThreshold, est)
 		switch {
@@ -395,16 +408,21 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 	for ; next < len(b.injected); next++ {
 		out = append(out, b.injected[next].msg)
 	}
-	every, keep := b.r.cfg.FoldEvery, b.r.cfg.FoldKeep
+	every, keep := b.foldParams()
 	b.foldPending = nil
 	boundary, steps := foldBoundary(out, every, keep)
 	if boundary == 0 {
 		return out
 	}
 	folded := foldHistory(out, every, keep)
+	// Old results of re-runnable read-only tools are replaced by a note at the
+	// same boundary (design 2026-10-21, 0.2): the model can read again.
+	folded, toolStats := foldToolResults(folded, boundary, b.r.refoldableTool)
 	if boundary > b.foldBase {
 		b.foldPending = &foldStats{boundary: boundary, steps: steps,
-			charsBefore: charsOfMessages(out), charsAfter: charsOfMessages(folded)}
+			charsBefore: charsOfMessages(out), charsAfter: charsOfMessages(folded),
+			toolResults: toolStats.results, toolCharsBefore: toolStats.charsBefore,
+			toolCharsAfter: toolStats.charsAfter}
 	}
 	return folded
 }
