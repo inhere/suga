@@ -34,6 +34,10 @@ Modes (--mode):
         shell_exec of a two-line command (the first line and an ellipsis), and
         update_plan (no summary of its own: the JSON stays): the smoke of the
         per-tool tool lines (chat_tool_lines.py).
+  loop  one turn with four identical file_read calls of loop_target.txt, then
+        the text --reply: the smoke of the loop guard (chat_loop_guard.py).
+        Each request logs an extra line {"loop": true, "step", "hint_seen"}
+        saying whether it carried the guard's reminder.
 
 --delay seconds are slept before each response, so a test can type while a
 turn is running. --chunk splits a streamed text reply into pieces of that many
@@ -304,6 +308,15 @@ def make_handler(args):
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "loop" and step < 4:
+                # loop-guard mode: four identical file_read calls in one turn, then
+                # the answer - R1 fires on the third call, R2 on the fourth. The
+                # chat_loop_guard smoke also checks the reminder the guard appends
+                # to the third result (the next request must carry it, see the
+                # loop-mode log line below and chat_loop_guard.py).
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": "file_read", "arguments": json.dumps({"path": "loop_target.txt"})}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "edit" and step < len(edit_calls):
                 name, arguments = edit_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
@@ -351,6 +364,13 @@ def make_handler(args):
                 chunks = [{"choices": [{"delta": {"content": build_reply(args)}}]}]
             usage = None if args.no_usage else {"prompt_tokens": args.prompt_tokens, "completion_tokens": 2,
                                                 "total_tokens": args.prompt_tokens + 2}
+            if args.mode == "loop":
+                # loop mode: whether this request carried the loop guard's hint.
+                # The tool results of this step are already in body["messages"];
+                # the guard appends hint to a repeated call's result.
+                print(json.dumps({"loop": True, "step": step,
+                                  "hint_seen": any("换一种方法" in str(m.get("content") or "")
+                                                   for m in body["messages"])}), flush=True)
             chunks = chunked(chunks, args.chunk) if args.chunk > 0 else chunks
             if not body.get("stream"):
                 # Non-streaming calls (e.g. the compaction summary) get one JSON body.
@@ -438,7 +458,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")

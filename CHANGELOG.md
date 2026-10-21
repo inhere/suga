@@ -8,6 +8,10 @@
 
 - 新增配置 `tools.disabled`（工具名列表，默认空）：列出的工具不注册到运行时，模型完全看不到（不在工具列表、`tool_search` 加载不到、`suga inspect manifest` 不列），而不是每次调用被拒；子 agent 的工具集同样过滤。名字既不是内置工具也不是 `server/tool` 形式的 MCP 工具时启动报错并列出可用工具名，避免拼写错误静默失效。典型用法：不想让模型联网时写 `tools.disabled: [web_fetch, web_search]`。
 - `scripts/eval/polyglot` 转换器跳过无法判定实现的例题：原题在 `.meta/.skip_tests` 标记跳过测试（如 `counter`），或测试文件里没有任何测试函数（只检验能否编译）时不再生成任务，清单与原因打印在转换日志里；README 同时记录已知问题（13 题桩代码不能单独编译、3 题占位签名与测试不匹配）。
+- 循环调用检测（`tools.loop_guard`，默认 `on`）：模型在一个回合里反复以相同参数调用同一工具（典型：同一文件反复 `file_read`、同一命令反复 `shell_exec` 得到同样结果）时，触发的那次工具调用不被拦截，但在其结果末尾追加一段中文提醒，说明这是本回合第 N 次相同调用、结果若没有变化请换方法或停下说明原因；连续 3 次相同调用触发（R1），同一组非连续累计 4 次也会触发（R2），同一组每回合最多提醒 2 次以免刷屏。`update_plan`、`session_message`、`agent` 不计入。trace 新增 `loop_guard` 事件（attrs `rule`、`count`），chat 在该次结果下方显示一行灰色提示 `↻ 重复调用 <工具> ×N，已提醒模型`；提醒只进模型上下文，`run`/stream-json/ACP/trace 的结果原文不变。关掉用 `tools.loop_guard: false`。
+- chat 新增 `chat.theme`（`auto|dark|light`，默认 `auto`）：Markdown 标题、行内代码、代码高亮等在浅色终端背景上换个配色（标题粗体蓝 `1;34`、行内代码品红 `35`、代码关键字蓝 `34`，引用与代码围栏的浅灰改用普通前景色），`dark` 保持原配色逐字节不变；`auto` 按 `COLORFGBG` 最后一段的背景色判断（`7`/`15` → light，否则 dark），不作终端查询；环境变量 `SUGA_THEME`（dark/light）覆盖配置，非法值报错；`suga config` 可读写。
+- `web_fetch` 一次抓多个 URL：新增参数 `urls`（1–5 个），与 `url` 二选一（都给或都不给报错，超过 5 个报错）；各 URL 并发抓取，每个仍走完整规则（私网拦截、跳转检查、5MB 下载上限、20 秒超时、内容类型），结果按输入顺序分段 `## [i/N] <url>` 并带状态；某个失败只占自己那一段，全部失败时整次调用才是 `IsError`；单 `url` 的输出格式不变，总输出仍受原有上限与 spill 外置规则约束。chat 里这类调用显示 `N 个 URL：<第一个>, …`。
+- `web_fetch` 的 User-Agent 可配置：新增 `tools.web_fetch.user_agent`（空 = 原有的 `suga-web-fetch/1.0`），可设成浏览器 UA 以访问只认浏览器头的站点；不给模型新增参数，`suga config set tools.web_fetch.user_agent …` 即可读写。
 
 ### 修复
 

@@ -12,6 +12,8 @@ import (
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+
+	appconfig "github.com/inhere/suga/internal/config"
 )
 
 // catalogNames returns the native catalog tool names, read tools only unless
@@ -43,6 +45,25 @@ func (stubSessionMessenger) Peers(context.Context) ([]native.SessionPeer, error)
 
 func (stubSessionMessenger) Send(context.Context, string, string, string) (native.SessionSendResult, error) {
 	return native.SessionSendResult{}, nil
+}
+
+// TestWebFetchUserAgentWiring covers tools.web_fetch.user_agent: the config key
+// the registry accepts, the default when it is unset, and the value the native
+// environment hands to the tool.
+func TestWebFetchUserAgentWiring(t *testing.T) {
+	t.Run("unset keeps the built-in default", func(t *testing.T) {
+		resetConfig(t)
+		descriptor, err := appconfig.MatchConfigKey("tools.web_fetch.user_agent")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, descriptor.Writable)
+		assert.Eq(t, "", nativeEnv(t.TempDir(), nil).FetchUserAgent)
+	})
+	t.Run("a configured value reaches the tool", func(t *testing.T) {
+		resetConfig(t)
+		assert.NoErr(t, gkconfig.Set("tools", map[string]any{"web_fetch": map[string]any{
+			"user_agent": "Mozilla/5.0 (X11; Linux x86_64)"}}))
+		assert.Eq(t, "Mozilla/5.0 (X11; Linux x86_64)", nativeEnv(t.TempDir(), nil).FetchUserAgent)
+	})
 }
 
 // TestRegisteredToolsFollowTheCatalog pins the run/chat/ACP tool sets to the

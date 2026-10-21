@@ -138,6 +138,10 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "chat.notify", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
 	{Pattern: "chat.notify_after", Type: ConfigTypeDuration, Writable: true, Reader: "chat"},
 	{Pattern: "chat.win32_input_mode", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
+	// chat.theme: auto | dark | light, the palette of chat's markdown and code
+	// rendering (auto reads the terminal background from $COLORFGBG; SUGA_THEME
+	// overrides the config, see ChatTheme).
+	{Pattern: "chat.theme", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
 	{Pattern: "rules.file", Type: ConfigTypeString, Writable: true, Reader: "rules"},
 	{Pattern: "transcripts", Type: ConfigTypeSwitch, Writable: true},
 	{Pattern: "tasks.max_running", Type: ConfigTypeInt, Writable: true, Reader: "tasks"},
@@ -171,6 +175,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.read_page_bytes", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.parallel_reads", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.minimize_output", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.loop_guard", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.dependency_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.standards_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true},
@@ -179,6 +184,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.shell_background_after", Type: ConfigTypeDuration, Writable: true},
 	{Pattern: "tools.web_fetch.allow_private", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.web_fetch.proxy", Type: ConfigTypeString, Sensitive: true},
+	// tools.web_fetch.user_agent is the User-Agent the tool sends; empty keeps the
+	// built-in suga-web-fetch/1.0.
+	{Pattern: "tools.web_fetch.user_agent", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.interpreters", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.read_roots", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.auto_allow", Type: ConfigTypeStringList, Writable: true},
@@ -438,6 +446,8 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = []string{"auto", "bell", "osc9", "off"}
 	case key == "chat.win32_input_mode":
 		allowed = []string{"auto", "on", "off"}
+	case key == "chat.theme":
+		allowed = []string{ChatThemeAuto, ChatThemeDark, ChatThemeLight}
 	case key == "tools.deferred":
 		allowed = []string{string(tools.DeferredAuto), string(tools.DeferredAlways), string(tools.DeferredNever)}
 	case key == "tools.approval":
@@ -629,6 +639,7 @@ type ChatSettings struct {
 	Notify                                     string
 	NotifyAfter                                time.Duration
 	Win32InputMode                             string
+	Theme                                      string
 }
 
 func ReadChatSettings() (ChatSettings, error) {
@@ -660,6 +671,10 @@ func ReadChatSettings() (ChatSettings, error) {
 	if err != nil {
 		return ChatSettings{}, err
 	}
+	theme, err := ChatTheme()
+	if err != nil {
+		return ChatSettings{}, err
+	}
 	return ChatSettings{
 		History: ChatHistoryEnabled(), Markdown: ChatMarkdownEnabled(), Spinner: ChatSpinnerEnabled(),
 		HighlightInput: ChatHighlightInputEnabled(), Steering: ChatSteeringEnabled(),
@@ -668,7 +683,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		AgentProgress: agentProgress,
 		HistorySize:   historySize, DiffLines: diffLines, Notify: notify, NotifyAfter: notifyAfter,
 		CodeHighlight: ChatCodeHighlightEnabled(), CodeMaxLines: codeMaxLines,
-		Win32InputMode: win32InputMode,
+		Win32InputMode: win32InputMode, Theme: theme,
 	}, nil
 }
 
@@ -813,7 +828,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.At, true, nil
 		}
 		return settings.Keep, true, nil
-	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode":
+	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -891,7 +906,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return value, true, nil
 		}
 		return "ask", false, nil
-	case "tools.parallel_reads", "tools.minimize_output", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots":
+	case "tools.parallel_reads", "tools.minimize_output", "tools.loop_guard", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots":
 		if value, present := lookupRawConfig(key); present {
 			return value, true, nil
 		}
@@ -994,6 +1009,8 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.Notify
 	case "chat.win32_input_mode":
 		return settings.Win32InputMode
+	case "chat.theme":
+		return settings.Theme
 	default:
 		return settings.NotifyAfter
 	}

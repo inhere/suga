@@ -101,6 +101,10 @@ type Options struct {
 	// terminal.
 	CodeHighlight bool
 	CodeMaxLines  int
+	// Theme is the palette the markdown rendering paints with (chat.theme,
+	// resolved to "dark" or "light"; empty keeps the dark default). Like the code
+	// options it only applies to a colored terminal.
+	Theme string
 	// terminalTitleOut is where the title sequences go (nil: the chat output);
 	// tests point it at a buffer to check when the title changes without a
 	// terminal.
@@ -360,6 +364,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		AgentProgress: opts.AgentProgress,
 		Diff:          opts.Diff, DiffLines: opts.DiffLines,
 		CodeHighlight: opts.CodeHighlight, CodeMaxLines: opts.CodeMaxLines,
+		Theme:          opts.Theme,
 		HighlightInput: opts.HighlightInput, HighlightWidth: inputSource.highlightWidth,
 		// The input line stays on screen while a turn runs: the streamed text then
 		// leaves only complete lines, and the waiting line becomes a status line above

@@ -90,6 +90,7 @@
 | `chat.diff_lines` | `20` | 改动预览最多显示的行数（超出时提示用 `:diff` 查看全部） |
 | `chat.code_highlight` | `true` | 代码块按围栏语言逐行着色（注译、字符串、数字、关键字四类，16 色 ANSI）；`false`、未知语言、非终端或 `NO_COLOR` 时按原文显示 |
 | `chat.code_max_lines` | `40` | 单个代码块最多显示的行数，超出部分折叠并提示 `… 还有 N 行（:code 查看全部）`；`0` 不折叠 |
+| `chat.theme` | `auto` | chat 里 Markdown 与代码着色用的调色板：`auto` 按环境变量 `COLORFGBG` 最后一段的背景色判断（`7` 或 `15` 即浅色背景 → light，其余或未设置 → dark），`dark`/`light` 直接指定；环境变量 `SUGA_THEME`（dark/light）优先于配置，配置值非法时启动报错 |
 | `chat.ask_outside_dirs` | `true` | 文件工具越出工作区、只读根与附加目录时询问 `[r] 只读 [w] 读写 [n] 拒绝`，答应后把目录写进会话；关闭时越界调用直接拒绝 |
 | `chat.win32_input_mode` | `auto` | Windows Terminal 下原生的 `Ctrl+Enter` 换行：`auto` 只在 `WT_SESSION` 存在时请求 win32-input-mode（`ESC[?9001h`），`on` 总是请求，`off` 关闭（仍可用 `Ctrl+J`/`Alt+Enter` 换行）。退出行编辑、Ctrl-C、退出 chat 与 `!` 本地命令前后都恢复 `ESC[?9001l`；终端不认识该序列时按键仍按原字节解析 |
 
@@ -125,6 +126,7 @@
 | `tools.parallel_reads` | `true` | 同一次回复里的多个本地读调用（file_read/list/grep/find）并发执行 |
 | `tools.read_page_bytes` | `32768` | `file_read` 每页字节数（它自己分页，不受 `max_output_bytes` 限制） |
 | `tools.minimize_output` | `true` | shell 结果进上下文前整理（去色、折叠重复行、按输出规则裁剪测试/构建/git/grep 输出），原文留 ref |
+| `tools.loop_guard` | `true` | 循环调用检测：一个回合内连续 3 次或累计 4 次以相同参数调用同一工具时，在该次结果末尾追加提醒（换方法或停下说明原因），trace 记 `loop_guard` 事件、chat 显示一行灰色提示；同一组每回合最多提醒 2 次（`update_plan`/`session_message`/`agent` 不计入） |
 | `tools.shell` | `""`（Windows：pwsh 优先，否则 powershell；其它：sh） | `shell_exec` 使用的 shell（命令名或路径） |
 | `tools.interpreters` | 自动探测 | 启动时探测 PATH 上的脚本解释器（默认候选 `python3`、`python`、`node`）：每进程探测一次并缓存（`--version`，2 秒超时），命中的写进环境段（可写模式）并提示优先写脚本执行。`false`（或 `off`）关闭；也可给名称或绝对路径列表，如 `[python, C:\Python312\python.exe]`（绝对路径按你的选择只校验 `--version`）。Windows 上自动探测会跳过 `%LOCALAPPDATA%\Microsoft\WindowsApps` 下的应用商店别名（运行只会跳商店或不出输出版本），商店包自身的安装目录（`C:\Program Files\WindowsApps\...`）不受影响 |
 | `tools.shell_timeout_max` | `600` | `shell_exec` 单次 `timeout` 的上限秒数（单次默认 120） |
@@ -134,6 +136,7 @@
 | `tools.read_roots` | `[]` | 额外只读目录列表（绝对路径，支持 `~`）。只影响 file_read/list/grep/find。只想对某个会话生效时用 `--add-dir <目录>` 或 `SUGA_ADD_DIRS`（`:rw` 可写） |
 | `tools.web_fetch.allow_private` | `false` | 允许 `web_fetch` 访问私网/本机地址 |
 | `tools.web_fetch.proxy` | `""` | `web_fetch` 的代理（`http://`、`https://`、`socks5://`）；只影响 web_fetch，不影响模型请求 |
+| `tools.web_fetch.user_agent` | `""` | `web_fetch` 发出的 User-Agent；空 = `suga-web-fetch/1.0`，可改成浏览器 UA，例如 `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36` |
 | `tools.auto_allow` | `[]` | MCP 放行名单（普通运行），条目 `server/toolglob`（裸 `toolglob` 也接受，会匹配任意 server） |
 | `tools.read_only_allow` | `[]` | `--read-only` 时**唯一**使用的放行名单，条目必须写成 `server/toolglob` |
 
