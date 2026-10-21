@@ -75,7 +75,7 @@ func TestAcceptanceInjectionAndCommandCheck(t *testing.T) {
 		},
 	}
 	var r Result
-	task.finish(ws, "", &r)
+	task.finish(ws, nil, "", &r)
 	assert.Eq(t, 5, len(r.Checks))
 	assert.True(t, r.Checks[0].Passed)
 	assert.True(t, r.Checks[1].Passed)
@@ -112,7 +112,7 @@ func TestCommandCheckTimeoutAndOutputTail(t *testing.T) {
 func TestAcceptanceMissingDirFails(t *testing.T) {
 	task := &Task{dir: t.TempDir(), Acceptance: "nope"}
 	var r Result
-	task.finish(t.TempDir(), "", &r)
+	task.finish(t.TempDir(), nil, "", &r)
 	assert.False(t, allPassed(r.Checks))
 }
 

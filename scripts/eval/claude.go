@@ -38,6 +38,8 @@ func runClaude(ctx context.Context, o *options, t *Task, timeout time.Duration, 
 	}
 	defer os.Remove(filepath.Join(configDir, "settings.json"))
 
+	before := snapshotWorkspace(ws)
+
 	var allOut []byte
 	start := time.Now()
 	var err error
@@ -49,6 +51,9 @@ func runClaude(ctx context.Context, o *options, t *Task, timeout time.Duration, 
 		}
 		if o.model != "" {
 			args = append(args, "--model", o.model)
+		}
+		if r.Web == webOff { // the same default as suga: no web tools while scoring
+			args = append(args, "--disallowedTools", "WebFetch,WebSearch")
 		}
 		args = append(args, splitArgs(o.claudeArgs)...)
 		args = append(args, prompt)
@@ -64,7 +69,7 @@ func runClaude(ctx context.Context, o *options, t *Task, timeout time.Duration, 
 	// The raw event stream, for analysis (no settings or token in it).
 	_ = os.WriteFile(filepath.Join(filepath.Dir(configDir), "claude-events.jsonl"), allOut, 0o644)
 	parseClaudeEvents(allOut, r)
-	t.finish(ws, r.Answer, r)
+	t.finish(ws, before, r.Answer, r)
 	r.Passed = err == nil && allPassed(r.Checks)
 }
 

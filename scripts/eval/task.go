@@ -31,6 +31,14 @@ type Task struct {
 	// before the checks run: tests the agent never saw.
 	Acceptance string `yaml:"acceptance"`
 
+	// AllowWeb turns the agent's network tools back on for this task; without
+	// it the run keeps web_fetch/web_search off (see the README's "禁网").
+	AllowWeb bool `yaml:"allow_web"`
+	// KeepTests leaves the test files the agent wrote in the workspace, for a
+	// task whose checks judge that test file on purpose (default: judging only
+	// sees the task's own and the injected acceptance tests).
+	KeepTests bool `yaml:"keep_tests"`
+
 	// Repo makes the workspace a snapshot of a git ref of the repository the
 	// eval is started in (exclusive with fixture/). See repo.go.
 	Repo *RepoSpec `yaml:"repo"`
@@ -168,9 +176,14 @@ func (t *Task) injectAcceptance(ws string) error {
 	return copyDir(src, ws)
 }
 
-// finish injects the acceptance files and evaluates the checks.
-func (t *Task) finish(ws, answer string, r *Result) {
+// finish injects the acceptance files, drops the tests the agent wrote itself
+// (judging runs the task's own and the injected ones only) and evaluates the
+// checks. before is the workspace file set from before the agent ran.
+func (t *Task) finish(ws string, before map[string]bool, answer string, r *Result) {
 	accErr := t.injectAcceptance(ws)
+	if !t.KeepTests {
+		r.RemovedTests = removeForeignTests(ws, before, t.injectedFiles(ws))
+	}
 	r.Checks = runChecks(ws, answer, t.Checks)
 	if accErr != nil { // a task that cannot be judged must not pass
 		r.Checks = append(r.Checks, CheckResult{Type: "acceptance", Text: t.Acceptance, Detail: accErr.Error()})

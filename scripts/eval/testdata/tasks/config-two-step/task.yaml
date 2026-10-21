@@ -1,6 +1,8 @@
 name: config-two-step
 mode: allow-write
 fake_mode: edit
+# The agent's own test file is what this task checks, so judging keeps it.
+keep_tests: true
 # Turn 2 depends on the conclusion of turn 1 (which default is wrong).
 prompts:
   - 阅读 config.go，告诉我 Port() 在 APP_PORT 不是合法整数时会返回什么。不要修改任何文件。
