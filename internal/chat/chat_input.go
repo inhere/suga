@@ -92,6 +92,10 @@ type chatInputSource struct {
 	// turn runs (steering.go): startTurnInput installs the running turn's own and
 	// turnInput.end clears it. nil keeps Up's usual meaning (history).
 	withdraw func() (string, bool)
+	// followUp is what Tab on a non-empty line does while a turn runs (followup.go):
+	// the turn queues the line for the turn after it. startTurnInput installs it and
+	// turnInput.end clears it, so outside a turn Tab only completes a ":..." line.
+	followUp func(text string) bool
 	// screenWidth is the terminal's column count when it could be read (0: unknown).
 	screenWidth int
 	// sizeFD is the descriptor the terminal size is read from (-1 without a

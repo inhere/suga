@@ -51,7 +51,7 @@ suga chat                                         # 在当前目录开启交互�
 
 - **本地命令**：`:session`、`:compact`、`:quit`/`:exit`、`:diff [N]`、`:model [p/m]`、`:add-dir`/`:dirs`/`:rm-dir`、`:help`、`:usage`、`:tasks`；只认本地键盘输入。
 - **输入**：Up/Down 历史、Ctrl+R 反查、`:` 命令与目录 Tab 补全；多行输入用 `Ctrl+Enter`/`Ctrl+J`（Windows）或 `Alt+Enter`。
-- **插话（steering）**：模型干活时提示符变成 `↳ `，回车把这句插进当前回合；`Esc` 只中止本轮，3 秒内两次 `Ctrl-C` 才退出。
+- **插话（steering）**：模型干活时提示符变成 `↳ `，回车把这句插进当前回合；`Tab` 把这句排到本轮结束后（下一条用户消息，`:queue` 列出、`:queue clear` 清空）；`Esc` 只中止本轮，3 秒内两次 `Ctrl-C` 才退出。
 - **`!` 本地命令**：`!cmd` 直接在本地 shell 执行、不叫模型；`!!cmd` 把结果附在下一条消息里给模型。
 - **续接预览**：续接时先显示上一次模型回复；被强杀留下的 `running` 会话会自动恢复。
 - **投递**：`suga send --session <id|短名称> <文本>` 把文本送进正在运行的 chat，`--steer` 插进当前回合，`--wait` 等待送达。

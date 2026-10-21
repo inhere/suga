@@ -88,6 +88,9 @@ type chatState struct {
 	// steerSeq names the messages inserted into a turn of this chat process
 	// (nextSteerID).
 	steerSeq int
+	// followUps holds the messages queued with Tab while a turn ran (followup.go):
+	// they run as the turns after it, one message per turn.
+	followUps followUpQueue
 	// turnMu guards sendTurn, the turn whose input read is open right now: the
 	// session socket inserts `suga send --steer` messages into it (steer_send.go).
 	turnMu   sync.Mutex
@@ -134,8 +137,20 @@ func localSystemContext(local, hook string) string {
 func (s *chatState) runTurn(line string, injected bool, images []agentcore.ImagePart) error {
 	for {
 		next, err := s.runOneTurn(line, injected, images)
-		if err != nil || next == nil {
+		if err != nil {
 			return err
+		}
+		if next == nil {
+			// Nothing of the finished turn is left to run: a message queued with Tab
+			// during it starts the next turn now, before whatever arrives next
+			// (followup.go). Ended means ended here, a cancelled turn included.
+			queued, ok := s.takeFollowUp()
+			if !ok {
+				return nil
+			}
+			// The person typed it here and it is not being inserted into a running
+			// turn: the turn it starts is their own input.
+			next = &steerTurn{line: queued, injected: false}
 		}
 		// The messages the finished turn handed back now run as a turn of their
 		// own: a `suga send --steer --wait` sender learns its message is running

@@ -425,6 +425,11 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		if n := state.heldSessionCount(); n > 0 {
 			fmt.Fprintf(stderr, "Warning: %d session message(s) were still waiting for your next input on exit.\n", n)
 		}
+		// Messages queued with Tab during a turn that never got their turn either
+		// (chat ended first): they are not persisted, so they go now (followup.go).
+		if n := len(state.followUps.pending()); n > 0 {
+			fmt.Fprintf(stderr, "Warning: %d queued follow-up message(s) were not run on exit.\n", n)
+		}
 		// Messages `suga send --steer` inserted into the last turn: they will not run
 		// either, and their senders are told here (steer_send.go) rather than by a
 		// dropped connection.
@@ -544,7 +549,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// Show a code block of the last answer in full (:code [N]).
 			render.ShowCode(strings.TrimPrefix(line, codeCmd))
 			continue
-		case isImageCommand(line), isModelCommand(line), line == ":help", line == ":usage", line == ":tasks":
+		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), line == ":help", line == ":usage", line == ":tasks":
 			// The reference, this session's usage and its background tasks
 			// (chat_commands.go); like every : command, keyboard only.
 			state.runChatCommand(line)
