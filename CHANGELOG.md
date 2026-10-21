@@ -8,6 +8,7 @@
 
 - Windows Terminal 下 `Ctrl+Enter` 换行（issue suga-tcgw）：chat 在 `WT_SESSION` 里进入行编辑前请求 win32-input-mode（`ESC[?9001h`），终端此后把每个按键按 `CSI Vk;Sc;Uc;Kd;Cs;Rc _` 记录送达，行编辑器把记录映射回原有按键（字符、方向键、Home/End、Backspace/Delete、Enter、Tab、Esc、Ctrl+字母、Alt 组合、粘贴），其中 `Ctrl+Enter`/`Shift+Enter`/`Alt+Enter` 插入换行而不提交；抬键记录（Kd=0）被忽略，按住键的重复次数（Rc）按次数展开，中文与 emoji（代理对两个记录）照常输入。退出行编辑、Ctrl-C、退出 chat（含 panic）与 `!` 本地命令运行前后都恢复 `ESC[?9001l`。**配置**：`chat.win32_input_mode: auto|on|off`（默认 `auto`，只在 Windows Terminal 开启；`off` 关闭后仍是 `Ctrl+J`/`Alt+Enter` 换行）。终端不支持该序列时（非 Windows Terminal、旧版终端）按键仍按原字节解析，行为不变。
 - 回合中按 `Tab` 把输入行排到本轮结束后（issue suga-8pug）：这一行不插进正在运行的回合，回合结束后作为下一条用户消息自动发送（与 `suga send` 不带 `--steer` 的排队语义一致），显示 `[排队] <内容>（本轮结束后发送）`，发送时显示“（已发送）”；可连续排多条、按顺序发送，`Ctrl-C` 中止本轮时保留。新增 `:queue` 列出排队内容、`:queue clear` 清空。以 `:` 开头的行 Tab 仍是命令补全，空行与没有回合在跑时行为不变。
+- `scripts/eval/polyglot`：把 Aider polyglot benchmark 的 Go 39 题（Exercism）转换成评测任务目录（fixture 为桩代码与说明、acceptance 为原题测试、check 为 `go test ./...`），支持 `-visible-tests` 与 `-only` glob；转换器进仓库，生成的任务不进仓库，用法见 `scripts/eval/README.md` 的“Aider polyglot”一节。
 
 ### 修复
 
