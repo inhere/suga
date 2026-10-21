@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.43.0] - 2026-10-21
+
+本版：chat 工具调用按工具显示摘要、Markdown 浅色配色 `chat.theme`、会话 ID 前缀改为 `sg_`；新增 `run --verify` 交付前验证循环、重复调用检测 `tools.loop_guard`、通用工具开关 `tools.disabled`、`web_fetch` 多 URL 与可配置 UA；评测默认禁网并只按验收测试判分。
+
 ### 新增
 
 - `suga run --verify <命令>`：回合正常完成后由 suga 自己在会话工作区（与 `shell_exec` 同一个 shell）跑调用者给的验证命令，不通过就把失败（命令、退出码、耗时、脱敏后的输出尾部：最后 120 行且不超过 8000 字符）作为一条注入回合交给模型修复，最多回灌 `--verify-rounds` 轮（默认 2，1–5），单次超时 `--verify-timeout`（默认 10m，超时按失败）；用完轮数仍失败时 `run` 以退出码 5 结束（新增退出码），回灌提示里写明“不要修改验证命令或删除测试来让它通过”。文本模式每次验证在 stderr 打一行 `verify #1: … → exit 1 (12.3s)`、最终失败再打尾部摘要（stdout 仍只有答复）；stream-json 新增 `{"type":"verify",…}` 行与结果行的 `verify` 字段（未开 `--verify` 时所有行逐字节不变）；trace 新增 `verify` 事件（`suga inspect trace` 可见）。回合出错、yield、被取消不验证；回合因预算或步数上限收尾时不再回灌。验证命令不走审批，但 Ctrl-C/取消会连同进程组一起终止。
@@ -1024,7 +1028,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.42.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/inhere/suga/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/inhere/suga/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/inhere/suga/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/inhere/suga/compare/v0.39.0...v0.40.0
