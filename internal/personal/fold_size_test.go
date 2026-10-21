@@ -189,6 +189,31 @@ func TestFoldBySize(t *testing.T) {
 		}
 	})
 
+	t.Run("the default cadence after the trigger is every 10 / keep 6", func(t *testing.T) {
+		// fold_every unset: the size trigger alone turns folding on with its own
+		// cadence (design Q3). window 8000 -> threshold 6400, trigger 3200; 17
+		// steps of 1200 chars are about 5100 tokens.
+		foldedCfg := Config{ContextWindow: 8000, FoldAt: 0.5}
+		b, _, repo, id := foldBuildSetup(t, foldedCfg)
+		state := &agentcore.RunState{Messages: foldResultSteps(17, 1200, "file_read")}
+		view, err := b.BuildMessages(foldCtx(b.sessionID), state)
+		assert.Require(t, assert.NoErr(t, err))
+		foldedSteps := 0
+		for _, m := range view {
+			if m.Role == "assistant" && folded(m) {
+				foldedSteps++
+			}
+		}
+		assert.Eq(t, 10, foldedSteps) // (17 - 6) / 10 * 10
+		var boundary float64
+		for _, ev := range eventsOf(t, repo, id, store.EventFold) {
+			if v, ok := ev.Attrs["boundary"].(float64); ok {
+				boundary = v
+			}
+		}
+		assert.Eq(t, float64(10), boundary)
+	})
+
 	t.Run("fold_every alone keeps the old behaviour", func(t *testing.T) {
 		// fold_at 0: the configured cadence folds from the first step, whatever
 		// the size, and no size event is written.
