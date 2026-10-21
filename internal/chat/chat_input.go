@@ -84,6 +84,13 @@ type chatInputSource struct {
 	// then reads the input line instead of going cooked (SetBusy, design
 	// "chat：输入层按模式分流"). Set once, before the main loop.
 	steering bool
+	// win32Input is the decision of chat.win32_input_mode for this chat (SetWin32InputMode):
+	// the reads ask the terminal for win32-input-mode records (DECSET 9001). win32On
+	// says the mode is asked for right now, and win32Paused that a subprocess owns the
+	// keyboard for the moment (a `!` local command).
+	win32Input  bool
+	win32On     bool
+	win32Paused bool
 	// steerGen counts the steer reads (RequestSteer): events of a read carry the
 	// generation they were produced in, so a key the pump decided just as a turn
 	// ended cannot end the next one.
@@ -367,6 +374,68 @@ func (s *chatInputSource) SetSteering(on bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.steering = on && s.terminal != nil
+}
+
+// win32InputModeWanted turns chat.win32_input_mode (auto|on|off) into the decision
+// for one chat: auto asks for win32-input-mode in Windows Terminal only (WT_SESSION
+// is what it sets for itself and for a ConPTY child), on everywhere, off nowhere.
+func win32InputModeWanted(mode string) bool {
+	switch mode {
+	case "on":
+		return true
+	case "off":
+		return false
+	}
+	return os.Getenv("WT_SESSION") != ""
+}
+
+// SetWin32InputMode decides whether the line editor asks the terminal for
+// win32-input-mode records (chat.win32_input_mode, win32input.go): with them a
+// Ctrl+Enter puts a newline into the input line instead of submitting it. Without
+// a terminal there is nothing to ask.
+func (s *chatInputSource) SetWin32InputMode(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.win32Input = on && s.terminal != nil
+}
+
+// PauseWin32Input stops win32-input-mode (DECSET 9001) while a child process owns
+// the keyboard: a local command reads plain key bytes and knows nothing about the
+// records. It is a no-op without the mode, and the read that still holds raw mode
+// keeps its bracketed paste and its byte-level parser (which reads the bytes as the
+// child would).
+func (s *chatInputSource) PauseWin32Input() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.win32Input || s.win32Paused {
+		return
+	}
+	s.win32Paused = true
+	s.setWin32InputLocked(false)
+}
+
+// ResumeWin32Input turns win32-input-mode back on once the child process is done.
+// Only a read that still holds raw mode gets the mode back at once: a read that
+// starts later turns it on itself (enterRawLocked).
+func (s *chatInputSource) ResumeWin32Input() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.win32Paused {
+		return
+	}
+	s.win32Paused = false
+	if s.restoreRaw != nil {
+		s.setWin32InputLocked(true)
+	}
+}
+
+// win32Records reports whether the read in progress gets win32-input-mode records
+// instead of key bytes: the byte pump's guesses about a lone Esc, a pasted newline
+// and Alt+Enter then do not apply, since a record carries the whole key.
+func (s *chatInputSource) win32Records() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.win32On
 }
 
 // SetBusy marks a turn start/end. Starting a turn forces the tty back to cooked mode even when a
@@ -672,6 +741,11 @@ func (s *chatInputSource) enterRawLocked() error {
 	// terminal that does not support it is unaffected: the byte pump recognises
 	// such a paste by the bytes that follow (input_pump.go).
 	s.setBracketedPasteLocked(true)
+	// With it, ask for win32-input-mode records where chat.win32_input_mode wants
+	// them (Windows Terminal): the key the byte protocol cannot express - Ctrl+Enter
+	// above all - only arrives that way (win32input.go). Both go off together with
+	// the raw mode, so a turn and a child process get plain keys again.
+	s.setWin32InputLocked(true)
 	return nil
 }
 
@@ -719,6 +793,9 @@ func (s *chatInputSource) leaveRawLocked() error {
 	// terminal must not keep bracketing pastes, whose markers would otherwise
 	// reach a cooked-mode line read as bytes (SetBracketedPasteMode).
 	s.setBracketedPasteLocked(false)
+	// The key records go with them (SetWin32InputMode): a cooked-mode line read, a
+	// turn and a child process expect plain key bytes.
+	s.setWin32InputLocked(false)
 	err := s.restoreRaw()
 	s.restoreRaw = nil
 	return err
@@ -730,6 +807,20 @@ func (s *chatInputSource) setBracketedPasteLocked(on bool) {
 	if s.terminal != nil {
 		s.terminal.SetBracketedPasteMode(on)
 	}
+}
+
+// setWin32InputLocked asks the terminal for win32-input-mode records (on) or for
+// plain key bytes (off). Nothing is written where the mode was never wanted, and a
+// paused source (a child process owns the keyboard) stays off. t.lock of the source
+// must be held.
+func (s *chatInputSource) setWin32InputLocked(on bool) {
+	if s.terminal == nil || !s.win32Input {
+		s.win32On = false
+		return
+	}
+	on = on && !s.win32Paused
+	s.win32On = on
+	s.terminal.SetWin32InputMode(on)
 }
 
 // run serves one read request after another, so no read is started before one was

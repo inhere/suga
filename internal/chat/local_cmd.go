@@ -91,7 +91,12 @@ func (s *chatState) runLocalCommand(cmd localCommand) {
 	// The command's own read: Ctrl-C and Esc arrive as bytes instead of a SIGINT
 	// that would end chat, and end this command only (nil without a terminal).
 	watch := s.watchLocalCommand(cancel)
+	// A child process reads plain key bytes: win32-input-mode's key records (DECSET
+	// 9001, Ctrl+Enter) would mean nothing to it, so the terminal goes back to bytes
+	// for as long as it runs and takes the mode up again afterwards.
+	s.source.PauseWin32Input()
 	res, err := s.local.Run(ctx, command, s.source)
+	s.source.ResumeWin32Input()
 	watch.stop()
 	// A Ctrl-C that ended a command is not the first of the two presses that
 	// leave chat: the next one at the prompt starts the confirmation over.

@@ -103,6 +103,9 @@ func (r *chatActivityReader) Read(p []byte) (int, error) {
 	}
 	// Asking for more input means the previous byte has been processed.
 	r.source.byteConsumed()
+	// Records carry whole keys, so the byte-level guesses below are off while they
+	// are what the editor reads (win32-input-mode).
+	records := r.source.win32Records()
 	for {
 		// An input that has already ended answers its EOF at once: a later request
 		// must not block in a read that will not return.
@@ -124,7 +127,7 @@ func (r *chatActivityReader) Read(p []byte) (int, error) {
 				return 0, err
 			}
 		}
-		if b == escByte && r.source.altEnterWanted() && r.source.waitInput(escWaitTimeout) {
+		if !records && b == escByte && r.source.altEnterWanted() && r.source.waitInput(escWaitTimeout) {
 			// A byte follows the ESC within the Esc window: Alt+Enter (ESC CR, or ESC LF
 			// where the terminal turns Alt+Enter into that) asks for a newline inside the
 			// input, not a submit. The ESC is dropped and the newline is declared as
@@ -147,13 +150,13 @@ func (r *chatActivityReader) Read(p []byte) (int, error) {
 				r.held = &heldByte{b: next, epoch: nepoch}
 			}
 		}
-		if b == lfByte && ctrlJIsInputNewline {
+		if !records && b == lfByte && ctrlJIsInputNewline {
 			// A bare LF is Ctrl+J on Windows (a console hands a cooked line over as
 			// CRLF, whose LF the pump drops): a newline inside the input. On Unix ICRNL
 			// turns Enter itself into a bare LF, so there it has to submit
 			// (ctrlj_windows.go / ctrlj_other.go).
 			r.source.declareNewlineAsText()
-		} else if b == crByte || b == lfByte {
+		} else if !records && (b == crByte || b == lfByte) {
 			// The newline may be text of a paste instead of a submit, which a
 			// terminal without bracketed paste gives no other sign of. Decide it
 			// before handing the byte over, so the editor inserts the newline
@@ -162,7 +165,7 @@ func (r *chatActivityReader) Read(p []byte) (int, error) {
 				r.source.declareNewlineAsText()
 			}
 		}
-		if b == escByte && r.source.escKeyWanted() && !r.source.waitInput(escWaitTimeout) {
+		if !records && b == escByte && r.source.escKeyWanted() && !r.source.waitInput(escWaitTimeout) {
 			// Nothing followed the 0x1b within escWaitTimeout: it is the Esc key, not
 			// the start of a sequence. Declare it before handing the byte over, so the
 			// editor reports the key instead of waiting for the rest of a sequence.

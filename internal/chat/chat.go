@@ -76,6 +76,11 @@ type Options struct {
 	// three seconds leaves chat. It needs a terminal: with a pipe or a redirected
 	// input a turn keeps the plain behaviour (nothing is read while it runs).
 	Steering bool
+	// Win32InputMode is chat.win32_input_mode (auto|on|off): whether the input
+	// read asks the terminal for win32-input-mode records (DECSET 9001), which is
+	// what makes Ctrl+Enter insert a newline instead of submitting the line. auto
+	// (the empty string) asks for it in Windows Terminal only.
+	Win32InputMode string
 	// TerminalTitle sets the terminal's window/tab title to the session, "suga ·
 	// <short name> · <session title>" (config chat.terminal_title, on by
 	// default). Like Markdown it needs a colored terminal: a pipe, a redirected
@@ -310,6 +315,10 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// The turn-time input line (chat.steering): a turn then reads it instead of
 	// letting the tty go cooked, so the person can steer or end the turn.
 	inputSource.SetSteering(opts.Steering)
+	// Ctrl+Enter as a newline inside the input line (chat.win32_input_mode): the read
+	// asks the terminal for win32-input-mode records where the config and the
+	// terminal allow it (Windows Terminal in the default auto mode).
+	inputSource.SetWin32InputMode(win32InputModeWanted(opts.Win32InputMode))
 	// steering is true while a turn keeps reading the input line (chat.steering with
 	// a terminal): the turn's output then has to keep that line out of its way.
 	steering := opts.Steering && inputSource.terminal != nil
