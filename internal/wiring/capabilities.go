@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -158,8 +159,9 @@ var warnReadRootsOnce sync.Once
 
 // readRoots returns the directories outside the workspace the read-only file
 // tools may read: the detected dependency sources (tools.dependency_roots,
-// default true), idev-std sources (tools.standards_roots, default true), and
-// tools.read_roots. The optional workspace is used for workspace-bound roots.
+// default true), the idev-std sources (tools.standards_roots, default true),
+// the skill directories (tools.skill_roots, default true), and tools.read_roots.
+// The optional workspace is used for workspace-bound roots.
 func readRoots(workspaces ...string) ([]native.ReadRoot, []error) {
 	workspace := ""
 	if len(workspaces) > 0 {
@@ -174,8 +176,36 @@ func readRoots(workspaces ...string) ([]native.ReadRoot, []error) {
 	if gkconfig.Bool("tools.standards_roots", true) {
 		roots = append(roots, native.StandardsRoots(workspace)...)
 	}
+	if gkconfig.Bool("tools.skill_roots", true) {
+		// The skill roots outside the workspace (SUGA_HOME/skills and
+		// ~/.agents/skills; the workspace ones are already reachable), so the
+		// file tools read a skill's references without an approval question.
+		roots = append(roots, skillReadRoots(workspace)...)
+	}
 	extra, errs := native.ConfiguredReadRoots(gkconfig.Strings("tools.read_roots"))
 	return native.DeduplicateReadRoots(append(roots, extra...)), errs
+}
+
+// skillReadRoots turns the skill directories outside the workspace into read
+// roots: only existing directories are kept, like the other root detectors.
+// Workspace skill roots are skipped: they already lie inside the workspace the
+// file tools reach.
+func skillReadRoots(workspace string) []native.ReadRoot {
+	homeDir, _ := os.UserHomeDir()
+	sugaHome, err := axconfig.ResolveSugaHome()
+	if err != nil {
+		sugaHome = ""
+	}
+	var roots []native.ReadRoot
+	for _, sk := range defaultSkillRoots(workspace, homeDir, sugaHome) {
+		if sk.Workspace {
+			continue
+		}
+		if root, ok := native.ExistingReadRoot("skills", sk.Dir); ok {
+			roots = append(roots, root)
+		}
+	}
+	return roots
 }
 
 // minimizeOutput is the tool result tidier (tools.minimize_output, default

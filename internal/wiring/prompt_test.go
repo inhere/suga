@@ -118,6 +118,7 @@ func TestEnvironmentPrompt(t *testing.T) {
 		resetConfig(t)
 		dir := t.TempDir()
 		assert.NoErr(t, gkconfig.Set("tools.dependency_roots", false))
+		assert.NoErr(t, gkconfig.Set("tools.skill_roots", false))
 		assert.NoErr(t, gkconfig.Set("tools.read_roots", []string{dir}))
 		p := environmentPrompt(Options{Workspace: "/w"})
 		assert.StrContains(t, p, "Read-only roots outside the workspace")
@@ -127,6 +128,7 @@ func TestEnvironmentPrompt(t *testing.T) {
 	t.Run("no read roots, no section", func(t *testing.T) {
 		resetConfig(t)
 		assert.NoErr(t, gkconfig.Set("tools.dependency_roots", false))
+		assert.NoErr(t, gkconfig.Set("tools.skill_roots", false))
 		assert.NotContains(t, environmentPrompt(Options{Workspace: "/w"}), "Read-only roots")
 		assert.Empty(t, nativeEnv("/w", nil).ReadRoots)
 	})

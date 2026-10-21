@@ -37,6 +37,9 @@ type outsideCaseOptions struct {
 	askOutside *bool
 	// auto sets tools.approval: auto on the approver.
 	auto bool
+	// config runs after the helper reset the config: a case that needs other
+	// settings (tools.skill_roots, tools.read_roots) sets them here.
+	config func(t *testing.T)
 	// readRoots are the approver's static read-only roots.
 	readRoots []string
 	// paths respells the workspace and the outside directory of the case, so a
@@ -55,6 +58,9 @@ func newOutsideCase(t *testing.T, asker tools.Asker, o outsideCaseOptions) outsi
 	assert.NoErr(t, os.WriteFile(filepath.Join(ws, "in.txt"), []byte("inside\n"), 0o644))
 	assert.NoErr(t, os.WriteFile(filepath.Join(outside, "b.txt"), []byte("outside\n"), 0o644))
 	addDirsSessionConfig(t, ws)
+	if o.config != nil {
+		o.config(t)
+	}
 	rt, sessionID := openAddDirsChatSession(t, Options{AllowWrite: !o.readOnly, ReadOnly: o.readOnly})
 	askOutside := true
 	if o.askOutside != nil {

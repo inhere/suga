@@ -33,6 +33,12 @@ func StandardsRoots(workspace string) []ReadRoot {
 	return DeduplicateReadRoots(roots)
 }
 
+// ExistingReadRoot reports the read root for dir (absolute, existing directory
+// only), matching the safety boundary used by configured and dependency roots.
+func ExistingReadRoot(label, dir string) (ReadRoot, bool) {
+	return existingReadRoot(label, dir)
+}
+
 // existingReadRoot accepts only absolute, existing directories, matching the
 // safety boundary used by configured and dependency roots.
 func existingReadRoot(label, dir string) (ReadRoot, bool) {
