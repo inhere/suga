@@ -126,6 +126,9 @@ func (s *chatState) startTurnInput(cancel context.CancelFunc) *turnInput {
 	// line asks it for the messages it is still waiting to deliver.
 	s.setCurrentTurn(turn)
 	s.source.setWithdraw(turn.withdraw)
+	// Tab on a non-empty line queues it for the next turn instead of inserting it
+	// into this one (followup.go, issue suga-8pug).
+	s.source.setFollowUp(s.queueFollowUp)
 	go turn.consume()
 	return turn
 }
@@ -209,6 +212,13 @@ func (t *turnInput) insert(line string) {
 	if isUndoCommand(text) || isCheckpointCommand(text) {
 		t.state.render.Hint(undoBusyHint)
 		t.state.source.putBackLine(line)
+		return
+	}
+	// :queue reads and clears this chat's own follow-up queue, which a turn is
+	// what fills: it changes no session state, so it runs right here instead of
+	// going back to the input line (followup.go).
+	if isQueueCommand(text) {
+		t.state.runQueueCommand(text)
 		return
 	}
 	// A local command cannot run while the turn does (the prompt belongs to the
@@ -318,6 +328,7 @@ func (t *turnInput) end() turnEnd {
 	// longer has a waiting message to take back.
 	t.state.dropCurrentTurn(t)
 	t.state.source.setWithdraw(nil)
+	t.state.source.setFollowUp(nil)
 	close(t.stop)
 	<-t.done
 	t.drain()

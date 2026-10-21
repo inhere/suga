@@ -572,6 +572,25 @@ func (r *Renderer) SteerWithdrawn(text string) {
 	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerWithdrawnSuffix)))
 }
 
+// FollowUpQueued prints the line a Tab press queued during a turn (followup.go):
+// it does not go into the running turn, it waits for the next one.
+func (r *Renderer) FollowUpQueued(text string) {
+	r.stopThinking()
+	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(text, followUpQueuedSuffix)))
+}
+
+// FollowUpSent prints that line again when the turn it was queued for starts.
+func (r *Renderer) FollowUpSent(text string) {
+	r.stopThinking()
+	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(text, followUpSentSuffix)))
+}
+
+// followUpNotice is the one-line display of a queued message, laid out like
+// steerNotice.
+func followUpNotice(text, suffix string) string {
+	return "[排队] " + truncateLine(text, resultSummaryLimit) + suffix
+}
+
 // steerNotice is the one-line display of an inserted message: the marker, the
 // message collapsed like a tool line, and its state.
 func steerNotice(text, suffix string) string {
