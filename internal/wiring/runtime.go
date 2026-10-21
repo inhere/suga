@@ -748,6 +748,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Spiller:           personal.NewSessionSpiller(sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
 		MinimizeOutput:    minimizeOutput(workspace),
 		PrefetchTools:     prefetchTools(capabilities.Registry),
+		// The loop guard is on unless tools.loop_guard says otherwise.
+		LoopGuard: gkconfig.Bool("tools.loop_guard", true),
 		Repository:        repo,
 		Provider:          provider,
 		Model:             settings.Main.Model,

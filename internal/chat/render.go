@@ -456,6 +456,12 @@ func (r *Renderer) Handle(event personal.Event) {
 	case string(agentcore.StreamEventRetry):
 		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, output.RetryNotice(event)))
 		r.startThinking() // the request is retried: still waiting for the model
+	case "loop_guard":
+		// The loop guard reminds the model not to repeat an identical tool call
+		// (internal/personal/loop_guard.go): the person sees one gray line for it.
+		r.live.Finish()
+		fmt.Fprintln(r.opts.Out, r.paint(color.Gray, event.Text))
+		r.startThinking()
 	case personal.EventSessionRecovered:
 		// The session was left running by a process that died mid-turn and has
 		// been taken back to open before this turn (personal/recovery.go): say so
