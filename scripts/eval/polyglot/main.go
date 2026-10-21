@@ -253,7 +253,7 @@ func writeTaskYAML(out, exercise string, stubs []string, visibleTests bool) (str
 func promptFor(stubs []string, visibleTests bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "按 .docs/instructions.md（若有 instructions.append.md 也一并遵循）实现 %s 里的函数与类型。", strings.Join(stubs, "、"))
-	b.WriteString("这是 Exercism 的 Go 练习：只修改这些桩文件，不要修改或删除测试文件，保持已有的函数名、类型名与方法签名不变，只使用标准库。")
+	b.WriteString("这是 Exercism 的 Go 练习：只修改这些桩文件，不要修改或删除测试文件，不要改函数名与类型名；桩代码里未定义的类型或占位签名按说明补全。只使用标准库。")
 	if visibleTests {
 		b.WriteString("本次测试文件也在工作区里，你可以运行 go test ./... 验证，直到测试通过。")
 	} else {
