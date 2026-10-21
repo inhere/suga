@@ -207,8 +207,8 @@ func runVerifyCommand(ctx context.Context, set verifySettings, round int) (verif
 // terminal control sequences dropped first, then cut to the last 120 lines and
 // at most 8000 characters, so a cut can never leave a partially masked
 // credential behind.
-func verifyTail(output string) string {
-	text := strings.TrimRight(termtext.Clean(redact.Secrets(output)), "\n")
+func verifyTail(written string) string {
+	text := strings.TrimRight(termtext.Clean(redact.Secrets(written)), "\n")
 	if lines := strings.Split(text, "\n"); len(lines) > verifyTailLines {
 		text = strings.Join(lines[len(lines)-verifyTailLines:], "\n")
 	}
