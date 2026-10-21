@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 历史折叠按上下文体积触发设计
 
-> 状态：Draft 0.1 / 待用户审批
+> 状态：Draft 0.2 / 已批准，可实施（“0.2 修订”优先于后文）
 > 日期：2026-10-21
 > 关联：issue `suag-ldi7`；`docs/design/2026-10-12-history-folding-design.md`；`internal/personal/fold.go`、`internal/personal/context.go:398-409`、`internal/personal/compact.go:53-80`
 
@@ -10,15 +10,30 @@
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-21 | 监督（Claude） | 用户 2026-10-21 开始第二十六批，ldi7 先出设计。 |
+| 0.2 | 2026-10-21 | 监督（Claude） | 用户：“加进去，ldi7 两点一起按推荐”。新增第二点：折叠边界之前，本地可重复执行的只读工具（工具元数据 ReadOnly、非 External、Prefetchable）的较大结果换成一行说明；Q1–Q4 按推荐批准。 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
+
+## 0.2 修订（优先于后文）
+
+用户 2026-10-21 批准两点一起做：
+
+1. **按体积触发**（原方案，Q1–Q4 按推荐）：`context.fold_at` 默认 0.5（相对压缩阈值），开启后本段保持，开启时默认 every 10 / keep 6，显式 `fold_every` 单独设置时行为不变。
+2. **折叠可重复执行的只读工具的旧结果**（新增）：
+   - 范围：折叠边界之前（与推理、长参数同一个边界）的 tool 结果，且该工具的元数据 `ReadOnly && !External && Prefetchable`（当前为 file_read、file_grep、file_find、file_list、file_symbols、file_refs）；按元数据判定，不写死工具名，以后新增的同类工具自动适用。
+   - 只折叠较大的结果：结果文本超过 1000 字符（与长参数同一个阈值 `foldArgChars`）；小结果保持原样。
+   - 换成一行说明：`[已折叠的 <工具名> 结果：原 <N> 字符；参数见上方调用；文件可能已变化，需要时重新调用读取]`。对应的 assistant 工具调用保留工具名和短参数（path、行号范围、pattern 等），模型知道当时读了什么。
+   - 不折叠：`web_fetch`、`web_search`、ledger 搜索等 External 工具（重新获取可能得到不同内容）；`shell_exec` 等非只读工具（不能重放）；错误结果（保留原文，便于理解后续步骤）。这些工具较大的结果已由输出治理转存成摘录加 ref（> 8000 字节），留在上下文里的部分本来就小。
+   - 存储不变；只影响请求视图；前缀仍按批变化（与推理折叠同一边界）。
+3. **可观察**：fold 事件 attrs 增加 `tool_results_folded`（条数）与 `tool_chars_before/after`；`suga inspect trace --analyze` 的折叠归因照常。
+4. **测试补充**：只折叠满足元数据条件的工具、阈值以下不折叠、External/非只读/错误结果不折叠、说明文字含工具名与原长度、调用参数保留；真实验证里比较折叠前后的请求体积（file_read 为主的探索任务）。
 
 ## 思考模式与范围冻结
 
 - thinking_mode：RIGOROUS。
 - core_objective：折叠只在会话真的变长时才开始，短任务不再为折叠付出前缀重建；长会话在压缩之前先折叠，推迟压缩。
 - allowed_scope：`internal/personal/fold.go`、`internal/personal/context.go` 的折叠接入、`internal/config/fold.go` 与配置注册、trace 事件、测试与文档。
-- non_goals：改变折叠的内容（仍只去掉早期步骤的推理与长参数）；改变压缩；改变工具结果截断。
+- non_goals：改变压缩；改变工具结果截断与转存；折叠 External 或非只读工具的结果。
 - expansion_policy：DEFER_OR_REQUEST。
 - review budget：低–中。
 - 停止条件：用户批准前不改代码。
@@ -88,11 +103,11 @@
 
 | # | 问题 | 当前倾向 |
 |---|---|---|
-| Q1 | 默认 `fold_at = 0.5`（相对压缩阈值）开启？ | 是 |
-| Q2 | 开启后本段保持，不因体积回落关闭？ | 是 |
-| Q3 | 按体积开启时默认 `every = 10`、`keep = 6`？ | 是 |
-| Q4 | 实施前独立审核？ | 否（实施后用真实长会话对比验证） |
+| Q1 | 默认 `fold_at = 0.5`（相对压缩阈值）开启？ | 已定：是 |
+| Q2 | 开启后本段保持，不因体积回落关闭？ | 已定：是 |
+| Q3 | 按体积开启时默认 `every = 10`、`keep = 6`？ | 已定：是 |
+| Q4 | 实施前独立审核？ | 已定：否（实施后用真实长会话对比验证） |
 
 ## 结论与人工计划 Gate
 
-用相对压缩阈值的体积比例触发折叠、开启后本段保持，默认开启 `fold_at = 0.5`；用户批准 Q1–Q4 后派出实施，批准前不改代码。
+用相对压缩阈值的体积比例触发折叠、开启后本段保持，默认开启 `fold_at = 0.5`；用户已于 2026-10-21 批准（含 0.2 新增的可重读工具结果折叠），派出实施。
