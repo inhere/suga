@@ -53,7 +53,7 @@ from chat_observe import trace_events  # noqa: E402
 PROMPT = "❯ "
 # What chat prints for its session (:session line and banner): the full ID and the
 # short name `suga send --session <name>` accepts.
-SESSION_LINE = re.compile(r"session id: ((?:sess_|s_)\S+)(?: · 会话 (\S+))?")
+SESSION_LINE = re.compile(r"session id: ((?:sess_|sg_|s_)\S+)(?: · 会话 (\S+))?")
 REPLY = "SESSION_OK"
 # The question the person asks chat A to pass on.
 ASK = "你的工作目录里有什么文件？"
@@ -97,9 +97,9 @@ def exit_chat(s):
     for _ in range(3):
         time.sleep(0.3)
         s.send("\x03")
-        if s.until(r"续接：suga chat --resume (?:sess_|s_)", m, timeout=1):
+        if s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m, timeout=1):
             return
-    s.until(r"续接：suga chat --resume (?:sess_|s_)", m, timeout=10)
+    s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m, timeout=10)
 
 
 def main():

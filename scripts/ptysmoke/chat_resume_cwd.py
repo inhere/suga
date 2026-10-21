@@ -100,7 +100,7 @@ def create_session(s):
     m = s.mark()
     s.line(":exit")
     s.check("create: exit summary names the resume command", s.until(r"续接：suga chat --resume ", m))
-    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
+    found = re.search(r"--resume ((?:sess_|sg_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 

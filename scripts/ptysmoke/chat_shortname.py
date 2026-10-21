@@ -60,7 +60,7 @@ def scenario(s, binary, env):
     s.check("banner shows the short name", s.until(BANNER, m))
     found = re.search(r"会话 (" + NAME_PATTERN + ")", s.text(m))
     name = found.group(1) if found else ""
-    session = re.search(r"session id: ((?:sess_|s_)\S+)", s.text(m))
+    session = re.search(r"session id: ((?:sess_|sg_|s_)\S+)", s.text(m))
     sid = session.group(1) if session else ""
     s.check("the same line shows the session id", bool(sid))
     if not (sid and name):

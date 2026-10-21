@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 变更
+
+- 新建会话的 ID 前缀由 `s_` 改为 `sg_`（`sg_` + 12 位随机 base32，长度 15，如 `sg_3k9m2q1p0v7r`），旧前缀更明显易认。旧 ID（`s_…`、更早的 `sess_…`）继续有效：读取与续接会话的地方均不按前缀判断；回合 ID（`t_…`）不变。
+
 ## [0.42.0] - 2026-10-21
 
 chat 输入与评测：回合进行中按 Tab 把输入排到本轮结束后（`:queue`）；Windows Terminal 里原生 Ctrl+Enter 换行（win32-input-mode，`chat.win32_input_mode`）；skill 目录作为只读可读目录（读 skill 的 references 不再要授权）；`suga inspect manifest` 不再写文件；评测新增 `--variant` 配置对比与 Aider polyglot Go 题转换器；历史折叠可按上下文体积触发（`context.fold_at`，默认关闭）并只折叠被重复读取或已过时的旧工具结果。

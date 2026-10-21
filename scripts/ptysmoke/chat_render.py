@@ -79,7 +79,7 @@ def main():
         s.line(':code 9')
         s.check(':code N hint', s.until(r'上一条回答只有 1 个代码块', m))
         s.send(CTRL_C); s.until(r'再按一次 Ctrl\+C 退出', m); s.send(CTRL_C)
-        s.until(r'续接：suga chat --resume (?:sess_|s_)', m)
+        s.until(r'续接：suga chat --resume (?:sess_|sg_|s_)', m)
         s.close()
     finally:
         if s: s.close(grace=0)

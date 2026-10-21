@@ -19,7 +19,7 @@ def main():
     fake=subprocess.Popen([sys.executable,'-I',os.path.join(here,'fakellm.py'),'--port',str(a.port),'--mode','edit','--delay','0.2'],stdout=subprocess.PIPE,text=True)
     s=None
     try:
-        wait_port(fake); s=PtySession([os.path.abspath(a.bin),'chat'],env=env,cwd=ws); m=s.mark(); s.until(r'Suga chat · fake/m1',m); s.line('改文件'); s.check('approval diff old',s.until(r'-  2 SMOKE_TARGET old',m)); s.check('approval diff new',s.until(r'\+  2 SMOKE_TARGET new',m)); s.check('approval question',s.until(r'\[y\]是',m)); m=s.mark(); s.line('y'); s.check('result diff',s.until(r'diff target.txt',m)); s.check('the edit is applied',s.until(r'tokens · ',m) and not s.contains(r'用户拒绝执行',m)); m=s.mark(); s.line(':diff'); s.check('full diff command',s.until(r'\+  2 SMOKE_TARGET new',m)); s.send(CTRL_C); s.until(r'再按一次 Ctrl\+C 退出',m); s.send(CTRL_C); s.until(r'续接：suga chat --resume (?:sess_|s_)',m); s.close()
+        wait_port(fake); s=PtySession([os.path.abspath(a.bin),'chat'],env=env,cwd=ws); m=s.mark(); s.until(r'Suga chat · fake/m1',m); s.line('改文件'); s.check('approval diff old',s.until(r'-  2 SMOKE_TARGET old',m)); s.check('approval diff new',s.until(r'\+  2 SMOKE_TARGET new',m)); s.check('approval question',s.until(r'\[y\]是',m)); m=s.mark(); s.line('y'); s.check('result diff',s.until(r'diff target.txt',m)); s.check('the edit is applied',s.until(r'tokens · ',m) and not s.contains(r'用户拒绝执行',m)); m=s.mark(); s.line(':diff'); s.check('full diff command',s.until(r'\+  2 SMOKE_TARGET new',m)); s.send(CTRL_C); s.until(r'再按一次 Ctrl\+C 退出',m); s.send(CTRL_C); s.until(r'续接：suga chat --resume (?:sess_|sg_|s_)',m); s.close()
     finally:
         if s: s.close(grace=0)
         fake.terminate(); fake.wait(timeout=5)

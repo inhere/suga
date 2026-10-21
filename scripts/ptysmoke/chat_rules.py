@@ -33,7 +33,7 @@ from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 from ptydrive import CTRL_C, PtySession  # noqa: E402
 
 QUESTION = r"允许执行 shell_exec"
-RESUME = r"续接：suga chat --resume (?:sess_|s_)"
+RESUME = r"续接：suga chat --resume (?:sess_|sg_|s_)"
 
 
 def start(binary, work, port, mode="tool", command="echo RULE_OK", write_path="",
@@ -70,7 +70,7 @@ def exit_chat(s):
     s.check("exit: first Ctrl-C gives a hint", s.until(r"再按一次 Ctrl\+C 退出", mark))
     s.send(CTRL_C)
     s.check("exit: resume summary", s.until(RESUME, mark))
-    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(mark))
+    found = re.search(r"--resume ((?:sess_|sg_|s_)\S+)", s.text(mark))
     return found.group(1) if found else ""
 
 
