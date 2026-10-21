@@ -304,6 +304,15 @@ def make_handler(args):
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "loop" and step < 4:
+                # loop-guard mode: four identical file_read calls in one turn, then
+                # the answer - R1 fires on the third call, R2 on the fourth. The
+                # chat_loop_guard smoke also checks the reminder the guard appends
+                # to the third result (the next request must carry it, see the
+                # loop-mode log line below and chat_loop_guard.py).
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": "file_read", "arguments": json.dumps({"path": "loop_target.txt"})}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "edit" and step < len(edit_calls):
                 name, arguments = edit_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
@@ -351,6 +360,13 @@ def make_handler(args):
                 chunks = [{"choices": [{"delta": {"content": build_reply(args)}}]}]
             usage = None if args.no_usage else {"prompt_tokens": args.prompt_tokens, "completion_tokens": 2,
                                                 "total_tokens": args.prompt_tokens + 2}
+            if args.mode == "loop":
+                # loop mode: whether this request carried the loop guard's hint.
+                # The tool results of this step are already in body["messages"];
+                # the guard appends hint to a repeated call's result.
+                print(json.dumps({"loop": True, "step": step,
+                                  "hint_seen": any("换一种方法" in str(m.get("content") or "")
+                                                   for m in body["messages"])}), flush=True)
             chunks = chunked(chunks, args.chunk) if args.chunk > 0 else chunks
             if not body.get("stream"):
                 # Non-streaming calls (e.g. the compaction summary) get one JSON body.
