@@ -16,11 +16,12 @@ import (
 const (
 	DefaultFoldEvery = 0
 	DefaultFoldKeep  = 5
-	// DefaultFoldAt turns folding on by size: with the default, a request view
-	// estimated at more than half the compaction threshold starts folding
-	// (docs/design/2026-10-21-fold-by-size-design.md). 0 = only the explicit
-	// step cadence of context.fold_every applies, as before.
-	DefaultFoldAt = 0.5
+	// DefaultFoldAt is the size trigger of folding: a request view estimated at
+	// more than this share of the compaction threshold starts folding
+	// (docs/design/2026-10-21-fold-by-size-design.md). It defaults to 0 (off):
+	// two real comparisons (design 0.4) showed smaller requests but no clear
+	// net gain once the cache rebuilds were counted; 0.5 is the tested value.
+	DefaultFoldAt = 0
 )
 
 // FoldSettings configures history folding of the request view.

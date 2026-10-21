@@ -44,7 +44,7 @@
 | `retry.reset_after` | `10m` | 连续这么久没有失败就把等待档位回到 `base_delay` |
 | `context.fold_every` | `0`（关） | 每 N 步前移一次历史折叠点（如 `10`） |
 | `context.fold_keep` | `5`（≥1） | 最近多少步保持完整 |
-| `context.fold_at` | `0.5`（0..1，`0` 关） | 折叠加前估算体积超过压缩阈值的这个比例时，本段开始折叠（之后本段保持）；`0` 时只按 `context.fold_every` 从第一步折叠 |
+| `context.fold_at` | `0`（关；0..1，建议 `0.5`） | 折叠加前估算体积超过压缩阈值的这个比例时，本段开始折叠（之后本段保持）；`0` 时只按 `context.fold_every` 从第一步折叠 |
 | `context.idle_after` | `15m`（`0` 关） | 仅 chat：空闲这么久且上下文达到阈值比例时在后台开启新段 |
 | `context.idle_min_ratio` | `0.65` | 空闲整理要求的上下文占比（相对阈值 `窗口-预留`；0..1） |
 

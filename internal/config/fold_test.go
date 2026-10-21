@@ -7,17 +7,17 @@ import (
 )
 
 func TestReadFoldSettings(t *testing.T) {
-	t.Run("defaults: size trigger at half the threshold, keep 5", func(t *testing.T) {
+	t.Run("defaults: size trigger off, keep 5", func(t *testing.T) {
 		loadYAML(t, "")
 		s, err := ReadFoldSettings()
 		assert.NoErr(t, err)
-		assert.Eq(t, FoldSettings{Every: 0, Keep: 5, At: 0.5}, s)
+		assert.Eq(t, FoldSettings{Every: 0, Keep: 5, At: 0}, s)
 	})
 	t.Run("configured on", func(t *testing.T) {
 		loadYAML(t, "context:\n  fold_every: 10\n  fold_keep: 2\n")
 		s, err := ReadFoldSettings()
 		assert.NoErr(t, err)
-		assert.Eq(t, FoldSettings{Every: 10, Keep: 2, At: 0.5}, s)
+		assert.Eq(t, FoldSettings{Every: 10, Keep: 2, At: 0}, s)
 	})
 	t.Run("size trigger off", func(t *testing.T) {
 		loadYAML(t, "context:\n  fold_every: 4\n  fold_at: 0\n")
