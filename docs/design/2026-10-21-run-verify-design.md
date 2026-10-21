@@ -1,6 +1,6 @@
 # `suga run --verify`：交付前验证循环 设计
 
-> 状态：草案 0.1（2026-10-21），待用户批准后实施。issue：suga-p4gn。
+> 状态：0.2 已批准（2026-10-21，用户：按推荐，退出码 5 可以）。issue：suga-p4gn。
 > 来源：Nomi Harness 的“Ralph 验证循环”（交付前独立核对，不通过就回灌）；整理见工作区 `local/analysis/2026-10-21-jev-nomi-borrowing.md`。
 
 ## 1. 问题
@@ -69,11 +69,11 @@ eval：`scripts/eval` 不默认使用。验收测试一旦作为 `--verify` 交�
 
 gofer：派活时 gofer 可以把 `--verify` 加到 suga 的参数里（gofer 侧改动，由 gofer 会话决定）。
 
-## 6. 待定（请用户决定）
+## 6. 已定（2026-10-21 用户批准）
 
-1. **项目配置**：是否允许 `.suga/config.yaml` 里写 `run.verify`？方便但等于“仓库内容决定执行什么命令”，需要 `project_trust` 才生效。建议 v1 不做。
-2. **退出码 5** 是否合适（send 已用 2/3/4）。
-3. **默认轮数 2**：太少修不完，太多烧钱。建议 2，可按评测数据调整。
+1. **项目配置**：v1 不支持 `.suga/config.yaml` 的 `run.verify`（仓库内容不能决定执行什么命令）；以后要做时需 `project_trust`。
+2. **退出码 5**：用完轮数仍失败。
+3. **默认轮数 2**，可用 `--verify-rounds` 调整（1–5）。
 
 ## 7. 测试
 
