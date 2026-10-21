@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
+	sugahooks "github.com/inhere/suga/internal/hooks"
 )
 
 // TestFollowUpQueue: the queue a turn fills keeps messages in order and can be
@@ -33,6 +34,25 @@ func TestFollowUpQueue(t *testing.T) {
 		assert.Eq(t, 2, q.clear())
 		assert.Eq(t, 0, len(q.pending()))
 	})
+}
+
+// TestTakeFollowUpCutsTheStopWait: a queued line starts the turn after this one,
+// so a Stop hook still waiting when the turn ended is cut short the way typing at
+// the prompt cuts it: its reply joins that turn as context.
+func TestTakeFollowUpCutsTheStopWait(t *testing.T) {
+	h := newSteerHarness(t, newGateProv())
+	interrupted := false
+	h.state.waiting = &fakeStopWait{done: make(chan sugahooks.Result, 1), lost: "网页回复",
+		interrupt: func() { interrupted = true }}
+	h.state.followUps.push("下一句")
+
+	line, ok := h.state.takeFollowUp()
+	assert.True(t, ok)
+	assert.Eq(t, "下一句", line)
+	assert.True(t, interrupted)
+	// The wait is gone: the next prompt does not wait for it again.
+	assert.Nil(t, h.state.waiting)
+	assert.StrContains(t, h.state.lostReply, "网页回复")
 }
 
 // TestTabQueuesFollowUp: Tab on a non-empty line during a turn queues that line
