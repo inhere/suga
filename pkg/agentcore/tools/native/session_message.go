@@ -154,7 +154,6 @@ func (t *SessionMessageTool) list(ctx context.Context) (string, error) {
 func (t *SessionMessageTool) send(ctx context.Context, args map[string]any) (string, error) {
 	to := strings.TrimSpace(stringArg(args, "to"))
 	text := strings.TrimSpace(stringArg(args, "text"))
-	mode := strings.TrimSpace(stringArg(args, "mode"))
 	if to == "" {
 		return "", fmt.Errorf("send 需要 to：对方的短名称（如 suga-k7）或会话 ID（可用 action=list 查看）")
 	}
@@ -164,7 +163,7 @@ func (t *SessionMessageTool) send(ctx context.Context, args map[string]any) (str
 	// A session message always waits for a turn of its own (the receiver queues a
 	// steered one as well): only then does the hop limit see every reply. The
 	// tool therefore has no mode; a stray value from a model is ignored.
-	mode = "follow_up"
+	const mode = "follow_up"
 	if err := t.reserveSend(ctx); err != nil {
 		return "", err
 	}
