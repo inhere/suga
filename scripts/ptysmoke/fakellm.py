@@ -266,7 +266,7 @@ def make_handler(args):
             # (update_plan keeps the JSON of its arguments).
             display_calls = [("file_read", {"path": "target.txt", "offset": 1, "limit": 2}),
                              ("shell_exec", {"command": "echo SMOKE_DISPLAY\n  echo SMOKE_SECOND"}),
-                             ("update_plan", {"steps": [{"step": "read", "status": "in_progress"}]})]
+                             ("update_plan", {"plan": [{"step": "read", "status": "in_progress"}]})]
             if args.mode == "adddir":
                 # 只读/只写 asks for one of the two calls only (a smoke that needs
                 # one of them to meet a question of its own first).

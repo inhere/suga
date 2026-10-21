@@ -9,7 +9,7 @@ line for each:
 - shell_exec of a two-line command -> the command itself, first line only, the
   rest marked with `…` (`⏺ shell_exec echo SMOKE_DISPLAY …`);
 - update_plan -> no summary of the tool, so the compact JSON of the arguments
-  stays (`⏺ update_plan {"steps":[{"status":"in_progress","step":"read"}]}`).
+  stays (`⏺ update_plan {"plan":[{"status":"in_progress","step":"read"}]}`).
 
 It also checks the trimmed startup hint: the banner no longer names
 :add-dir/:dirs/:rm-dir, :checkpoints and :undo, while `:help` still lists them
@@ -51,7 +51,7 @@ TARGET = "SMOKE_TARGET first\nSMOKE_TARGET second\nSMOKE_TARGET third\n"
 # The lines chat prints for the three calls of the turn.
 FILE_READ_LINE = r"⏺ file_read target\.txt:1-2"
 SHELL_LINE = r"⏺ shell_exec echo SMOKE_DISPLAY …"
-PLAN_LINE = r'⏺ update_plan \{"steps":\[\{"status":"in_progress","step":"read"\}\]\}'
+PLAN_LINE = r'⏺ update_plan \{"plan":\[\{"status":"in_progress","step":"read"\}\]\}'
 
 
 def scenario(s):

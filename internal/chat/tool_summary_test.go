@@ -130,8 +130,8 @@ func TestToolCallSummaryFallsBackToJSON(t *testing.T) {
 		name, tool, args, want string
 	}{
 		{name: "update_plan keeps the JSON (its own plan display follows)", tool: "update_plan",
-			args: `{"steps":[{"step":"read","status":"in_progress"}]}`,
-			want: `⏺ update_plan {"steps":[{"status":"in_progress","step":"read"}]}`},
+			args: `{"plan":[{"step":"read","status":"in_progress"}]}`,
+			want: `⏺ update_plan {"plan":[{"status":"in_progress","step":"read"}]}`},
 		{name: "an MCP tool", tool: "mcp__github__create_issue", args: `{"title":"x","body":"y"}`,
 			want: `⏺ mcp__github__create_issue {"body":"y","title":"x"}`},
 		{name: "a tool without summary", tool: "task", args: `{"action":"list"}`,
