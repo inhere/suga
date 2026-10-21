@@ -16,6 +16,11 @@ import (
 const (
 	DefaultFoldEvery = 0
 	DefaultFoldKeep  = 5
+	// DefaultFoldAt turns folding on by size: with the default, a request view
+	// estimated at more than half the compaction threshold starts folding
+	// (docs/design/2026-10-21-fold-by-size-design.md). 0 = only the explicit
+	// step cadence of context.fold_every applies, as before.
+	DefaultFoldAt = 0.5
 )
 
 // FoldSettings configures history folding of the request view.
@@ -25,12 +30,17 @@ type FoldSettings struct {
 	Every int
 	// Keep (context.fold_keep) is how many recent steps stay whole (>= 1).
 	Keep int
+	// At (context.fold_at) is the share of the compaction threshold the
+	// pre-fold request estimate has to pass before the segment starts folding
+	// (0 <= at < 1; 0 disables the size trigger).
+	At float64
 }
 
-// ReadFoldSettings reads context.fold_every (>= 0) and context.fold_keep
-// (>= 1). Unset keys take the defaults; an invalid value is an error.
+// ReadFoldSettings reads context.fold_every (>= 0), context.fold_keep
+// (>= 1) and context.fold_at (0 <= at < 1). Unset keys take the defaults; an
+// invalid value is an error.
 func ReadFoldSettings() (FoldSettings, error) {
-	out := FoldSettings{Every: DefaultFoldEvery, Keep: DefaultFoldKeep}
+	out := FoldSettings{Every: DefaultFoldEvery, Keep: DefaultFoldKeep, At: DefaultFoldAt}
 	read := func(key string, min int, dst *int) error {
 		if gkconfig.Get(key) == nil {
 			return nil
@@ -48,6 +58,14 @@ func ReadFoldSettings() (FoldSettings, error) {
 	}
 	if err := read("context.fold_keep", 1, &out.Keep); err != nil {
 		return FoldSettings{}, err
+	}
+	if gkconfig.Get("context.fold_at") != nil {
+		raw := strings.TrimSpace(gkconfig.String("context.fold_at"))
+		at, err := strconv.ParseFloat(raw, 64)
+		if err != nil || at < 0 || at >= 1 {
+			return FoldSettings{}, fmt.Errorf("context.fold_at must be a number >= 0 and < 1, got %q", raw)
+		}
+		out.At = at
 	}
 	return out, nil
 }

@@ -116,6 +116,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "context.idle_min_ratio", Type: ConfigTypeFloat, Writable: true, Reader: "idle"},
 	{Pattern: "context.fold_every", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
 	{Pattern: "context.fold_keep", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
+	{Pattern: "context.fold_at", Type: ConfigTypeFloat, Writable: true, Reader: "fold"},
 	{Pattern: "images.history_turns", Type: ConfigTypeInt, Writable: true, Reader: "images"},
 	{Pattern: "images.max_request_count", Type: ConfigTypeInt, Writable: true, Reader: "images"},
 	{Pattern: "images.max_request_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "images"},
@@ -787,13 +788,16 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.After, true, nil
 		}
 		return settings.MinRatio, true, nil
-	case "context.fold_every", "context.fold_keep":
+	case "context.fold_every", "context.fold_keep", "context.fold_at":
 		settings, err := ReadFoldSettings()
 		if err != nil {
 			return nil, false, err
 		}
-		if key == "context.fold_every" {
+		switch key {
+		case "context.fold_every":
 			return settings.Every, true, nil
+		case "context.fold_at":
+			return settings.At, true, nil
 		}
 		return settings.Keep, true, nil
 	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines":
