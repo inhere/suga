@@ -153,6 +153,10 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.preferred", Type: ConfigTypeYAML, Writable: true, Reader: "preferred_tools"},
 	{Pattern: "tools.deferred", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "tools.allow_write", Type: ConfigTypeBool, Writable: true},
+	// session_message: the tool that lets a model message the other chat sessions
+	// of this SUGA_HOME, and how deep their automatic replies may go.
+	{Pattern: "tools.session_message.enabled", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.session_message.max_hops", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.approval", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "tools.max_output_bytes", Type: ConfigTypeInt64, Writable: true},
 	{Pattern: "tools.max_spill_bytes", Type: ConfigTypeInt64, Writable: true},

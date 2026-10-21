@@ -37,7 +37,7 @@ func newSendImageHarness(t *testing.T, sessionID string, features []string, warn
 	t.Setenv("SUGA_HOME", home)
 	h := &sendImageHarness{session: sessionID, images: make(chan []process.ImageRef, 8), warning: warning}
 	server, err := process.StartWaitImages(filepath.Join(home, "run"), sessionID, "img", t.TempDir(), features,
-		func(mode, text, from string, refs []process.ImageRef) (process.Delivery, <-chan error, error) {
+		func(mode, text, from, fromName string, hops int, refs []process.ImageRef) (process.Delivery, <-chan error, error) {
 			h.images <- refs
 			return process.Delivery{Queued: true, Warning: h.warning}, nil, nil
 		})

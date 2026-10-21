@@ -45,6 +45,18 @@ type Record struct {
 // Request.Images (`suga send --image`).
 const FeatureImages = "images"
 
+// FeatureHops is the Record.Features entry of a process whose chat understands
+// Request.Hops: it holds a message that arrived at the automatic-reply limit
+// instead of starting a turn. A record without it belongs to an older version,
+// which ignores the field and starts a turn every time (design session_message
+// "兼容").
+const FeatureHops = "hops"
+
+// SessionFromPrefix starts Request.From of a message one suga session sends to
+// another ("session:<full session ID>"): the receiver shows it as a message of a
+// peer session, not as a person's instruction.
+const SessionFromPrefix = "session:"
+
 // HasFeature reports whether the record declares feature in its Features.
 func (r Record) HasFeature(feature string) bool {
 	for _, have := range r.Features {
@@ -85,6 +97,16 @@ type Request struct {
 	SessionID string `json:"session_id,omitempty"`
 	Text      string `json:"text,omitempty"`
 	From      string `json:"from,omitempty"`
+	// FromName is the short name of the sender when From names a session
+	// ("session:<id>"): the receiver shows it instead of the raw id. An older
+	// server ignores the field.
+	FromName string `json:"from_name,omitempty"`
+	// Hops is how many automatic replies this message is away from the person who
+	// started the exchange: 0 for a message typed at a keyboard or sent by `suga
+	// send` on the command line, h+1 for a message a session sent during a turn
+	// that a hops-h message started (design session_message D3). An older server
+	// ignores it; its Record.Features then lacks FeatureHops.
+	Hops int `json:"hops,omitempty"`
 	// Wait asks the server to keep the connection open after a "queued"/"steered" acknowledgement and
 	// send a second Response once the message is delivered or starts a turn (OK) or is discarded (Error).
 	Wait bool `json:"wait,omitempty"`
@@ -126,11 +148,12 @@ type Delivery struct {
 // Request.Mode of the sender (ModeFollowUp when it sent none).
 type DeliverFunc func(mode, text, from string) (Delivery, error)
 
-// DeliverImagesFunc is a DeliverWaitFunc that also receives the images of the
-// request (Record.Features carrying FeatureImages). A server started without one
-// answers images requests with "images_unsupported", so an old receiver never
-// takes the text and drops the pictures.
-type DeliverImagesFunc func(mode, text, from string, images []ImageRef) (Delivery, <-chan error, error)
+// DeliverImagesFunc is a DeliverWaitFunc that also receives the request's
+// FromName, Hops and images (Record.Features carrying FeatureImages /
+// FeatureHops). A server started without one answers images requests with
+// "images_unsupported", so an old receiver never takes the text and drops the
+// pictures.
+type DeliverImagesFunc func(mode, text, from, fromName string, hops int, images []ImageRef) (Delivery, <-chan error, error)
 
 // DeliverWaitFunc is a DeliverFunc that can also report the final fate of an accepted message:
 // settled (may be nil) yields nil once the message is delivered or starts a turn (OK), or an
@@ -400,7 +423,7 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages De
 	deliverFunc := deliver
 	if deliverImages != nil {
 		deliverFunc = func(mode, text, from string) (Delivery, <-chan error, error) {
-			return deliverImages(mode, text, from, request.Images)
+			return deliverImages(mode, text, from, request.FromName, request.Hops, request.Images)
 		}
 	}
 	delivery, settled, err := deliverFunc(mode, request.Text, request.From)

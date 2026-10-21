@@ -264,7 +264,12 @@ type RunRequest struct {
 	Images        []agentcore.ImagePart
 	SystemContext string
 	Injected      bool
-	Emit          EmitFunc
+	// Hops is the automatic-reply depth of this turn (personal.TurnHops): how many
+	// session messages it is away from the person. 0 for a turn a person started
+	// (a typed line, `suga send`), h for a turn a hops-h session message started
+	// (design session_message D3).
+	Hops int
+	Emit EmitFunc
 }
 
 type RunResult struct {
@@ -666,6 +671,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	// log line can be lined up with `suga trace` (see logscope.go).
 	ctx = withTurnLogger(ctx, model.ID, turnID)
 	ctx = context.WithValue(ctx, turnInputKey{}, turnInput{chars: len(req.Prompt), injected: req.Injected})
+	// The automatic-reply depth of this turn (design session_message D3): the
+	// session_message tool reads it and sends h+1.
+	ctx = WithTurnHops(ctx, req.Hops)
 	// Refused tool calls are counted per turn in ctx (see denial.go).
 	ctx, denials := withTurnDenials(ctx)
 	// The run-scoped usage is counted at the observe layer and published after

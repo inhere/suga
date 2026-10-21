@@ -255,6 +255,10 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,
 		ShellBackgroundAfter: shellBackgroundAfter(),
 		ImageMaxSide:         imageMaxSide(),
+		// session_message: the tool that messages the other chat sessions of this
+		// SUGA_HOME; nil when it is turned off.
+		SessionMessenger: newSessionMessenger(),
+		TurnID:           currentTurnID,
 	}
 }
 

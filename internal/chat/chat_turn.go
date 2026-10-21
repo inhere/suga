@@ -100,6 +100,15 @@ type chatState struct {
 	// steersDropped counts the inserted messages chat did not run because it is
 	// exiting; the exit summary warns about them, like queued deliveries.
 	steersDropped int
+	// sessionMu guards sessionHeld, the session messages that arrived at the
+	// automatic-reply limit and wait for the next turn the person starts (design
+	// session_message; session_message.go).
+	sessionMu   sync.Mutex
+	sessionHeld []string
+	// turnHops is the automatic-reply depth of the turn runTurn is about to run
+	// (personal.RunRequest.Hops): 0 for a turn the person started, h for a turn a
+	// hops-h session message started.
+	turnHops int
 }
 
 // errWriter is where chat writes what must not land on the input line: the
@@ -158,8 +167,18 @@ type steerTurn struct {
 // left behind (nil: none). A turn that merely failed, yielded or answered
 // reports itself through the renderer and the stats.
 func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.ImagePart) (*steerTurn, error) {
+	// Session messages that arrived at the automatic-reply limit run with this turn
+	// as its context (design session_message D3): the person's own next input is
+	// what continues them.
+	if held := s.takeHeldSessionMessages(); len(held) > 0 {
+		line = appendContext(strings.Join(held, "\n\n"), line)
+	}
 	// A turn starts: no idle consolidation until it has ended (EndTurn).
 	s.idle.Pause()
+	// The depth belongs to this turn only: the next one sets its own (0 unless a
+	// session message starts it).
+	hops := s.turnHops
+	s.turnHops = 0
 	if s.createdAtStartup {
 		if err := s.runner.SetSessionTitle(s.ctx, s.sessionID, line); err != nil {
 			return nil, err
@@ -210,6 +229,9 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 		// model reads it as context of this message; the hook context follows.
 		SystemContext: localSystemContext(s.localContext, s.pendingContext),
 		Injected:      injected,
+		// The automatic-reply depth of this turn: a session message sent by its
+		// tools carries hops+1 (design session_message D3).
+		Hops: hops,
 		Emit: func(eventCtx context.Context, event personal.Event) error {
 			if event.Kind == "steer_delivered" {
 				// A model request of this turn carried an inserted message: show it as

@@ -122,7 +122,7 @@ func TestDeliverMessageImagesFollowUp(t *testing.T) {
 	h := newSendImageHarness(t, prov, sessionsDir, true)
 	ref := deliveryImageFile(t, sessionsDir, h.sessID, []byte("picture bytes"))
 
-	delivery, _, err := h.state.deliverMessage(personalprocess.ModeFollowUp, "看看这张", "cli",
+	delivery, _, err := h.state.deliverMessage(personalprocess.ModeFollowUp, "看看这张", "cli", "", 0,
 		[]personalprocess.ImageRef{ref})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, "", delivery.Warning)
@@ -160,7 +160,7 @@ func TestDeliverMessageImagesSteer(t *testing.T) {
 	done := h.startTurn()
 	<-prov.started()
 
-	delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, "看看这张", "cli",
+	delivery, _, err := h.state.deliverMessage(personalprocess.ModeSteer, "看看这张", "cli", "", 0,
 		[]personalprocess.ImageRef{ref})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.True(t, delivery.Steered)
@@ -182,7 +182,7 @@ func TestDeliverMessageImagesWithoutVisionWarns(t *testing.T) {
 	h := newSendImageHarness(t, newToolGateProv(), sessionsDir, false)
 	ref := deliveryImageFile(t, sessionsDir, h.sessID, []byte("picture bytes"))
 
-	delivery, _, err := h.state.deliverMessage(personalprocess.ModeFollowUp, "看看这张", "cli",
+	delivery, _, err := h.state.deliverMessage(personalprocess.ModeFollowUp, "看看这张", "cli", "", 0,
 		[]personalprocess.ImageRef{ref})
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NotEmpty(t, delivery.Warning)
@@ -205,7 +205,7 @@ func TestDeliverMessageImagesRejected(t *testing.T) {
 	ref := deliveryImageFile(t, sessionsDir, h.sessID, []byte("picture bytes"))
 	ref.SHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
 
-	_, _, err := h.state.deliverMessage(personalprocess.ModeFollowUp, "看看这张", "cli",
+	_, _, err := h.state.deliverMessage(personalprocess.ModeFollowUp, "看看这张", "cli", "", 0,
 		[]personalprocess.ImageRef{ref})
 	assert.Require(t, assert.Err(t, err))
 	assert.ErrIs(t, err, personalprocess.ErrImageRejected)

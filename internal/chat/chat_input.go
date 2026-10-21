@@ -35,6 +35,11 @@ type chatInputEvent struct {
 	// images (deliveries only) are the pictures a `suga send --image` message
 	// carries; they ride with the turn this delivery starts.
 	images []agentcore.ImagePart
+	// fromName and hops (deliveries of a session message only) are the sender's
+	// short name and the automatic-reply depth of the message (design
+	// session_message): the turn this delivery starts runs at that depth.
+	fromName string
+	hops     int
 }
 
 // settle reports the delivery's final fate to a waiting sender; never blocks.
@@ -235,18 +240,27 @@ func (s *chatInputSource) Deliver(text, from string) (bool, error) {
 // DeliverWait enqueues a message for the chat loop. settled yields nil once the message starts
 // a turn, or process.ErrDiscarded if the chat exits while it is still queued.
 func (s *chatInputSource) DeliverWait(text, from string) (bool, <-chan error, error) {
-	return s.DeliverImages(text, from, nil)
+	return s.DeliverImages(text, from, "", 0, nil)
 }
 
 // DeliverImages enqueues a message that carries pictures for the chat loop: they
 // are attached to the turn the delivery starts (`suga send --image`, design
-// send --image D3).
-func (s *chatInputSource) DeliverImages(text, from string, images []agentcore.ImagePart) (bool, <-chan error, error) {
+// send --image D3). fromName and hops belong to a message another session sent
+// (design session_message): the line names that session, and hops is the
+// automatic-reply depth the turn it starts carries.
+func (s *chatInputSource) DeliverImages(text, from, fromName string, hops int, images []agentcore.ImagePart) (bool, <-chan error, error) {
 	if strings.TrimSpace(text) == "" {
 		return false, nil, fmt.Errorf("delivery text is empty")
 	}
 	settled := make(chan error, 1)
-	event := chatInputEvent{line: deliveryLine(text, from), injected: true, settled: settled, images: images}
+	line := deliveryLine(text, from)
+	if strings.HasPrefix(from, process.SessionFromPrefix) {
+		// A message of another session names the peer and its full ID, so the model
+		// reads it as a request or report of a companion, not as the person's own
+		// instruction (design session_message "来源标记").
+		line = sessionDeliveryLine(text, from, fromName)
+	}
+	event := chatInputEvent{line: line, injected: true, settled: settled, images: images, fromName: fromName, hops: hops}
 	// Hold mu across the closed check and the enqueue so DiscardQueued cannot miss a delivery.
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -290,6 +304,21 @@ func deliveryLine(text, from string) string {
 	return "[来自 " + safeSender(from) + "] " + text
 }
 
+// sessionDeliveryLine labels a message another suga session sent: "[来自会话 <短名称>
+// （<会话 ID>）的消息] text". The short name is what the person sees in `suga ps`;
+// the full ID tells the model which session to answer. Text the sender already
+// tagged is kept as it is.
+func sessionDeliveryLine(text, from, fromName string) string {
+	if hasSourceTag(text) {
+		return text
+	}
+	name := strings.TrimSpace(fromName)
+	if name == "" {
+		name = "未知会话"
+	}
+	return "[来自会话 " + safeSender(name) + "（" + safeSender(strings.TrimPrefix(from, process.SessionFromPrefix)) + "）的消息] " + text
+}
+
 // hasSourceTag reports whether text starts with a non-empty "[label]" on its first line
 // followed by a space.
 func hasSourceTag(text string) bool {
@@ -299,6 +328,15 @@ func hasSourceTag(text string) bool {
 	firstLine, _, _ := strings.Cut(text, "\n")
 	end := strings.IndexByte(firstLine, ']')
 	return end > 1 && end+1 < len(firstLine) && firstLine[end+1] == ' '
+}
+
+// deliveryLineFor is the line a delivery shows and records: the session label for
+// a message another suga session sent, the plain source label otherwise.
+func deliveryLineFor(text, from, fromName string) string {
+	if strings.HasPrefix(from, process.SessionFromPrefix) {
+		return sessionDeliveryLine(text, from, fromName)
+	}
+	return deliveryLine(text, from)
 }
 
 // safeSender is the source label: the request's From (`suga send --source`),

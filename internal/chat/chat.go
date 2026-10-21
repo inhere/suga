@@ -419,6 +419,12 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		if n := inputSource.DiscardQueued(); n > 0 {
 			fmt.Fprintf(stderr, "Warning: %d queued message(s) were discarded on exit and not run.\n", n)
 		}
+		// Session messages held at the automatic-reply limit never ran either: the
+		// person learns how many were still waiting when chat ends (design
+		// session_message).
+		if n := state.heldSessionCount(); n > 0 {
+			fmt.Fprintf(stderr, "Warning: %d session message(s) were still waiting for your next input on exit.\n", n)
+		}
 		// Messages `suga send --steer` inserted into the last turn: they will not run
 		// either, and their senders are told here (steer_send.go) rather than by a
 		// dropped connection.
@@ -549,6 +555,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			continue
 		}
 		// The turn itself, from the idle pause to its Stop hook (chat_turn.go).
+		state.turnHops = in.hops
 		if err := state.runTurn(line, injected, in.images); err != nil {
 			if errors.Is(err, errExitChat) {
 				// A second Ctrl-C during a turn: leave chat like the second one at
@@ -596,6 +603,10 @@ type chatInput struct {
 	// images are the pictures of a `suga send --image` delivery: they ride with the
 	// turn this input starts.
 	images []agentcore.ImagePart
+	// hops is the automatic-reply depth of the delivery that produced this input
+	// (design session_message): a turn started by a hops-h session message runs at
+	// h, every other turn at 0.
+	hops int
 }
 
 func nextChatInput(ctx context.Context, source *chatInputSource, render *Renderer, waiting sugahooks.Wait, lost *string) (chatInput, error) {
@@ -639,7 +650,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 			}
 			render.External(delivery.line)
 			delivery.settle(nil)
-			return chatInput{line: delivery.line, hasLine: true, injected: true, interrupted: interrupted, images: delivery.images}, nil
+			return chatInput{line: delivery.line, hasLine: true, injected: true, interrupted: interrupted, images: delivery.images, hops: delivery.hops}, nil
 		default:
 		}
 		select {
@@ -682,7 +693,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 			}
 			render.External(delivery.line)
 			delivery.settle(nil)
-			return chatInput{line: delivery.line, hasLine: true, injected: delivery.injected, interrupted: interrupted, images: delivery.images}, nil
+			return chatInput{line: delivery.line, hasLine: true, injected: delivery.injected, interrupted: interrupted, images: delivery.images, hops: delivery.hops}, nil
 		case <-ctx.Done():
 			return chatInput{interrupted: interrupted}, ctx.Err()
 		}
