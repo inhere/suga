@@ -98,7 +98,9 @@ func TestVerifyAfterTurn(t *testing.T) {
 		// The failure text carries the command and the rule about the check itself.
 		assert.True(t, f.calls[0].Injected)
 		assert.StrContains(t, f.calls[0].Prompt, "[verify failed]")
-		assert.StrContains(t, f.calls[0].Prompt, "cat fixed.txt")
+		assert.StrContains(t, f.calls[0].Prompt, "命令: cat fixed.txt")
+		assert.StrContains(t, f.calls[0].Prompt, "退出码: 1")
+		assert.StrContains(t, f.calls[0].Prompt, "耗时: ")
 		assert.StrContains(t, f.calls[0].Prompt, "不要修改验证命令或删除测试来让它通过")
 		assert.StrContains(t, diag, "verify #1: cat fixed.txt → exit 1")
 		assert.StrContains(t, diag, "verify #2: cat fixed.txt → exit 0")
