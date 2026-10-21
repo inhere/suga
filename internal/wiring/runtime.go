@@ -716,9 +716,10 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	runner, err := personal.New(personal.Config{
 		Tasks:         taskNotices,
 		ContextWindow: contextWindow,
-		// History folding of the request view (context.fold_every/fold_keep).
+		// History folding of the request view (context.fold_every/fold_keep/fold_at).
 		FoldEvery:         rs.fold.Every,
 		FoldKeep:          rs.fold.Keep,
+		FoldAt:            rs.fold.At,
 		ImageHistoryTurns: images.HistoryTurns, ImageRequestCount: images.MaxRequestCount,
 		ImageRequestBytes: images.MaxRequestBytes,
 		CompactProvider:   compactProvider,

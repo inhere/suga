@@ -9,12 +9,13 @@ import (
 )
 
 // TestRunnerFoldSettings checks that the runner gets the folding defaults
-// (off, keep 5) and the configured values.
+// (no step cadence, size trigger at half the threshold, keep 5) and the
+// configured values.
 func TestRunnerFoldSettings(t *testing.T) {
 	resetConfig(t)
 	setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k"}})
 	assert.NoErr(t, gkconfig.Set("model", "openai/gpt-4o"))
-	fold := func(t *testing.T) (int, int) {
+	fold := func(t *testing.T) (int, int, float64) {
 		t.Helper()
 		rt, err := OpenCLI(context.Background(), Options{})
 		assert.Require(t, assert.NoErr(t, err))
@@ -22,13 +23,19 @@ func TestRunnerFoldSettings(t *testing.T) {
 		return rt.Runner.Fold()
 	}
 
-	every, keep := fold(t)
+	every, keep, at := fold(t)
 	assert.Eq(t, 0, every)
 	assert.Eq(t, 5, keep)
+	assert.Eq(t, 0.0, at) // the size trigger is off by default (design 0.4)
 
 	assert.NoErr(t, gkconfig.Set("context.fold_every", 10))
-	every, _ = fold(t)
+	every, _, at = fold(t)
 	assert.Eq(t, 10, every)
+	assert.Eq(t, 0.0, at)
+
+	assert.NoErr(t, gkconfig.Set("context.fold_at", 0.5))
+	_, _, at = fold(t)
+	assert.Eq(t, 0.5, at)
 }
 
 // TestRunnerFoldOffForAnthropic: folding rewrites earlier messages, which
@@ -41,6 +48,7 @@ func TestRunnerFoldOffForAnthropic(t *testing.T) {
 	rt, err := OpenCLI(context.Background(), Options{})
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = rt.Close() })
-	every, _ := rt.Runner.Fold()
+	every, _, at := rt.Runner.Fold()
 	assert.Eq(t, 0, every)
+	assert.Eq(t, 0.0, at) // the size trigger is off too
 }

@@ -135,7 +135,7 @@ Details: [references/sessions.md](skills/suga-guide/references/sessions.md) (Chi
 - Near the context window or on `:compact` a new segment starts with a handoff summary (fixed sections); old segments stay reachable through `session_search` / `recall`, and `session_search` with `kind: handoff` finds the summaries themselves.
 - `session_search` covers user and assistant messages and compaction/handoff summaries; tool outputs are not indexed - read them with `recall`. A ledger from before this change still holds historical tool rows: `suga data shrink-fts` was removed in v0.41.0, so cleaning such a ledger needs suga v0.40; `suga data vacuum` then returns the file space.
 - An interrupted turn is replayed up to its last complete tool call, with a short recap.
-- Optional history folding (`context.fold_every`); idle chat compacts in the background (`context.idle_after`).
+- History folding starts by context size (`context.fold_at`, off by default; e.g. 0.5 starts folding at half the compaction threshold) and then folds old results of re-runnable read-only tools too; idle chat compacts in the background (`context.idle_after`).
 - The system prompt holds only stable content; environment, rules (`AGENTS.md`), memory index and skills list go into each segment's context message.
 
 ## Using with Gofer

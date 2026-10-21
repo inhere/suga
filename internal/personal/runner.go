@@ -127,6 +127,11 @@ type Config struct {
 	// FoldEvery/FoldKeep configure history folding of the request view
 	// (context.fold_every / context.fold_keep, see foldHistory); FoldEvery 0 = off.
 	FoldEvery, FoldKeep int
+	// FoldAt is the size trigger of folding (context.fold_at): the segment
+	// starts folding once the pre-fold request estimate passes FoldAt × the
+	// compaction threshold. 0 turns the trigger off (FoldEvery then applies from
+	// the first step, as before).
+	FoldAt float64
 	// ImageHistoryTurns, ImageRequestCount and ImageRequestBytes are the image
 	// input limits of the request view (images.history_turns / max_request_count /
 	// max_request_bytes); 0 uses the built-in default (appconfig.DefaultImage*).
@@ -474,8 +479,11 @@ func (r *Runner) ToolRegistry() agentcore.ToolRegistry {
 // it in the text-mode wrap-up notice.
 func (r *Runner) MaxSteps() int { return r.cfg.MaxSteps }
 
-// Fold returns the history folding settings (every, keep); every 0 = off.
-func (r *Runner) Fold() (every, keep int) { return r.cfg.FoldEvery, r.cfg.FoldKeep }
+// Fold returns the history folding settings (every, keep) and the size
+// trigger (at); every 0 = no step cadence, at 0 = no size trigger.
+func (r *Runner) Fold() (every, keep int, at float64) {
+	return r.cfg.FoldEvery, r.cfg.FoldKeep, r.cfg.FoldAt
+}
 
 func (r *Runner) NewSession(ctx context.Context, id, title string) (Session, error) {
 	return r.NewSessionWithMeta(ctx, id, title, nil)
@@ -790,8 +798,10 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	promptBuilder := stablePromptBuilder{base: r.cfg.PromptBuilder}
 	// The hook context (req.SystemContext) is a user message of this turn.
 	contextBuilder := r.newContextBuilder(model.ID, turnID, history, promptBuilder, usage, req.SystemContext)
-	// Fold events already recorded in this segment (an earlier turn's builder).
+	// Fold events already recorded in this segment (an earlier turn's builder),
+	// and whether the size trigger already turned folding on for it.
 	contextBuilder.foldBase = metaCount(model.Meta[metaFoldBoundary])
+	contextBuilder.foldActive = metaBool(model.Meta[metaFoldActive])
 	// The session's steering inbox is open from here to the end of the turn
 	// (design N7): every early return above happens before this point, so a Steer
 	// arriving earlier is not accepted and becomes the caller's next turn. finish
