@@ -107,50 +107,48 @@ func (t *Terminal) SetWin32InputMode(on bool) {
 // that is not a record takes the byte parser, bracketed-paste markers included.
 // t.lock must be held.
 func (t *Terminal) win32Key(rest *[]byte) rune {
-	for {
-		b := *rest
-		if t.pasteActive || len(b) == 0 {
-			// Text of a paste is text, not key presses (its markers included), and an
-			// empty rest is a partial sequence like any other.
-			key, after := bytesToKey(b, t.pasteActive)
-			*rest = after
-			return key
-		}
-		rec, after, state := parseWin32Record(b)
-		switch state {
-		case win32Incomplete:
-			return utf8.RuneError
-		case win32NotRecord:
-			key, after := bytesToKey(b, false)
-			*rest = after
-			return key
-		}
+	b := *rest
+	if t.pasteActive || len(b) == 0 {
+		// Text of a paste is text, not key presses (its markers included), and an
+		// empty rest is a partial sequence like any other.
+		key, after := bytesToKey(b, t.pasteActive)
 		*rest = after
-		if rec.kd != 1 {
-			// Kd=0 is the key going up again, never a key press.
-			return keyIgnored
-		}
-		key, ok := win32KeyOf(rec, &t.win32High)
-		if !ok {
-			// A record nothing maps: its bytes go to the byte parser, which either
-			// knows them or drops the key (keyUnknown) - the mode must not swallow a
-			// key it does not understand.
-			if key, rem := bytesToKey(after, false); key != utf8.RuneError {
-				*rest = rem
-				return key
-			}
-			return keyUnknown
-		}
-		if rec.rc > 1 && key != keyIgnored {
-			// A held key: the record stands for rc presses, this one and the rest,
-			// which the next loop turns hand over one by one.
-			t.win32Repeat = make([]rune, rec.rc-1)
-			for i := range t.win32Repeat {
-				t.win32Repeat[i] = key
-			}
-		}
 		return key
 	}
+	rec, after, state := parseWin32Record(b)
+	switch state {
+	case win32Incomplete:
+		return utf8.RuneError
+	case win32NotRecord:
+		key, consumed := bytesToKey(b, false)
+		*rest = consumed
+		return key
+	}
+	*rest = after
+	if rec.kd != 1 {
+		// Kd=0 is the key going up again, never a key press.
+		return keyIgnored
+	}
+	key, ok := win32KeyOf(rec, &t.win32High)
+	if !ok {
+		// A record nothing maps: its bytes go to the byte parser, which either knows
+		// them or drops the key (keyUnknown) - the mode must not swallow a key it
+		// does not understand.
+		if key, rem := bytesToKey(after, false); key != utf8.RuneError {
+			*rest = rem
+			return key
+		}
+		return keyUnknown
+	}
+	if rec.rc > 1 && key != keyIgnored {
+		// A held key: the record stands for rc presses, this one and the rest, which
+		// the next loop turns of readLine hand over one by one.
+		t.win32Repeat = make([]rune, rec.rc-1)
+		for i := range t.win32Repeat {
+			t.win32Repeat[i] = key
+		}
+	}
+	return key
 }
 
 // win32KeyOf maps one key-down record to the key press it stands for. ok is false
