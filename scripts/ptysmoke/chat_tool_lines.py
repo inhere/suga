@@ -86,8 +86,8 @@ def scenario(s):
     s.send(CTRL_C)
     time.sleep(0.3)
     s.send(CTRL_C)
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
-    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m))
+    found = re.search(r"--resume ((?:sess_|sg_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 
@@ -100,9 +100,11 @@ def check_trace(s, events):
         return
     attrs = [e.get("attrs") or {} for e in tools]
     s.check("trace: the file_read kept its path", attrs[0].get("target") == ["target.txt"])
-    s.check("trace: the argument summaries are still the JSON of the calls",
-            "path=target.txt" in str(attrs[0].get("arg") or "")
-            and "offset=1" in str(attrs[0].get("arg") or ""))
+    # The trace keeps its own key=value summary (personal.summarizeToolArgs),
+    # not the chat line: no ":1-2" range, the command under its key.
+    s.check("trace: the argument summaries keep the trace's own form",
+            attrs[0].get("arg") == "path=target.txt"
+            and str(attrs[1].get("arg") or "").startswith("command=echo SMOKE_DISPLAY"))
 
 
 def main():
