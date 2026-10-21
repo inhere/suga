@@ -280,21 +280,15 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		runClaude(ctx, o, t, timeout, ws, filepath.Join(root, "claude-home"), &r)
 		return r, nil
 	}
-	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, v)
+	// The web policy goes into the temp SUGA_HOME config suga actually reads (its
+	// general tools.disabled setting), so no change to suga itself is needed to
+	// keep scoring tasks off the network.
+	sets := append(append([]string{}, o.sugaSet...), webSets(r.Web)...)
+	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, v, sets)
 	if err != nil {
 		return r, err
 	}
 	defer stop()
-	// The deny rules go into the temp SUGA_HOME suga actually reads, so no
-	// change to suga itself is needed to keep scoring tasks off the network.
-	if err := writeWebDenyRules(home, r.Web == webOff); err != nil {
-		return r, err
-	}
-	if r.Web == webOff {
-		if err := forceApprovalRules(home); err != nil {
-			return r, err
-		}
-	}
 	before := snapshotWorkspace(ws)
 
 	env := withVariantEnv(isolatedEnv(home), v)
@@ -351,20 +345,20 @@ func sugaRunArgs(sid, prompt, model string, allowWrite bool, extra []string) []s
 // setupSugaHome creates home with an isolated config (fake provider with a
 // fresh fakellm, or a copy of --config-from, then the variant overlay) and
 // returns the model to pass (empty = config default) and a stop func for the
-// fake server.
-func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Variant) (string, func(), error) {
+// fake server. sets are the dotted.key=value overrides applied to that config.
+func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Variant, sets []string) (string, func(), error) {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return "", nil, err
 	}
 	if !o.fake {
-		model, stop, err := o.model, func() {}, writeConfig(home, o.configFrom, 0, o.sugaSet)
+		model, stop, err := o.model, func() {}, writeConfig(home, o.configFrom, 0, sets)
 		return model, stop, firstErr(err, applyVariantConfig(home, v))
 	}
 	stop, port, err := startFake(ctx, fakeMode)
 	if err != nil {
 		return "", nil, err
 	}
-	if err := writeConfig(home, "", port, o.sugaSet); err != nil {
+	if err := writeConfig(home, "", port, sets); err != nil {
 		stop()
 		return "", nil, err
 	}

@@ -2,11 +2,8 @@ package main
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/goccy/go-yaml"
 	"github.com/gookit/goutil/x/assert"
 )
 
@@ -32,43 +29,15 @@ func TestWebPolicy(t *testing.T) {
 	}
 }
 
-// TestWriteWebDenyRules: the deny file lands in the temp SUGA_HOME (which suga
-// reads as its user approval-rules.yaml) and names both web tools; with the web
-// allowed nothing is written.
-func TestWriteWebDenyRules(t *testing.T) {
-	t.Run("deny writes both rules", func(t *testing.T) {
-		home := t.TempDir()
-		assert.NoErr(t, writeWebDenyRules(home, true))
-		raw, err := os.ReadFile(filepath.Join(home, "approval-rules.yaml"))
-		assert.NoErr(t, err)
-		assert.StrContains(t, string(raw), "tool: web_fetch")
-		assert.StrContains(t, string(raw), "tool: web_search")
-		assert.StrContains(t, string(raw), "action: deny")
-	})
-	t.Run("allow writes nothing", func(t *testing.T) {
-		home := t.TempDir()
-		assert.NoErr(t, writeWebDenyRules(home, false))
-		_, err := os.Stat(filepath.Join(home, "approval-rules.yaml"))
-		assert.True(t, os.IsNotExist(err))
-	})
-}
-
-// TestForceApprovalRules: a --config-from copy that switched the rule layer off
-// would make the deny rules a no-op, so the temp config is turned back on and
-// the user's other keys survive.
-func TestForceApprovalRules(t *testing.T) {
-	home := t.TempDir()
-	writeFile(t, filepath.Join(home, "config.yaml"), "model: fake/m1\ntools:\n  approval_rules:\n    enabled: false\n  allow_write: true\n")
-	assert.NoErr(t, forceApprovalRules(home))
-	raw, err := os.ReadFile(filepath.Join(home, "config.yaml"))
-	assert.NoErr(t, err)
-	var cfg map[string]any
-	assert.NoErr(t, yaml.Unmarshal(raw, &cfg))
-	tools, _ := cfg["tools"].(map[string]any)
-	rules, _ := tools["approval_rules"].(map[string]any)
-	assert.Eq(t, true, rules["enabled"])
-	assert.Eq(t, true, tools["allow_write"])
-	assert.Eq(t, "fake/m1", cfg["model"])
+// TestWebSets: the temp config override that hides the two web tools is added
+// only for the runs whose policy is off; it uses suga's general tools.disabled,
+// so the model never sees the tools (denying each call would show them and end
+// the turn after a few refusals).
+func TestWebSets(t *testing.T) {
+	assert.Eq(t, []string{"tools.disabled=[web_fetch, web_search]"}, webSets(webOff))
+	assert.Eq(t, webOffSet, webSets(webOff)[0])
+	assert.Eq(t, 0, len(webSets(webOn)))
+	assert.Eq(t, 0, len(webSets(webUnsupported)))
 }
 
 // TestWebLabel: compare.md records the network policy of a variant, also when
@@ -91,6 +60,7 @@ func TestPrintWebNote(t *testing.T) {
 	var buf bytes.Buffer
 	printWebNote(&buf, []Result{{Web: webOff}, {Web: webOff}, {Web: webUnsupported}})
 	assert.StrContains(t, buf.String(), "off=2 on=0 unsupported=1")
+	assert.StrContains(t, buf.String(), "tools.disabled")
 	assert.StrContains(t, buf.String(), "not restricted")
 
 	buf.Reset()

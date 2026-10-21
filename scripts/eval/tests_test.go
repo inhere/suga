@@ -192,6 +192,11 @@ func TestAccept(t *testing.T) {
 	assert.Eq(t, webOff, r.Web)
 	assert.Eq(t, "done", r.Answer)
 	assert.True(t, r.Passed, r.Checks)
-	// The deny rules landed in the SUGA_HOME suga would read.
-	assert.True(t, exists(t, filepath.Join(o.out, "score", "home", "approval-rules.yaml")))
+	// The web policy landed in the SUGA_HOME config suga would read: the general
+	// tools.disabled setting, so the tools are not registered at all.
+	raw, err := os.ReadFile(filepath.Join(o.out, "score", "home", "config.yaml"))
+	assert.NoErr(t, err)
+	assert.StrContains(t, string(raw), "web_fetch")
+	assert.StrContains(t, string(raw), "web_search")
+	assert.StrContains(t, string(raw), "disabled")
 }

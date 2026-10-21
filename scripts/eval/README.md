@@ -77,9 +77,10 @@ task.yaml 写 `keep_tests: true`，本题不做清理。
 2026-10-21 的 polyglot Go 基线（hidden 35/39）中模型调用 `web_fetch` 79 次，可能查到 Exercism 题解，分数偏高。
 因此评测默认关网：suga 与 claude 默认禁用 `web_fetch`/`web_search`，`--allow-web` 或 task.yaml 的 `allow_web: true` 打开。
 
-- suga：在临时 `SUGA_HOME` 写 `approval-rules.yaml`（suga 已有的用户级审批规则文件），规则为 `web_fetch`/`web_search` + `action: deny`，
-  并把临时 config 的 `tools.approval_rules.enabled` 置为 `true`（副本配置关掉规则层时 deny 才会生效）；
-  不改 suga 主程序、不加命令行开关。命中规则时模型收到拒绝提示，`tool_counts` 里的调用照样计数。
+- suga：临时 `SUGA_HOME/config.yaml` 写 `tools.disabled: [web_fetch, web_search]`（suga 的通用配置：列出的工具不注册），
+  所以模型根本看不到这两个工具（不在工具列表、`tool_search` 加载不到、`suga inspect manifest` 不列）；
+  不用按次拒绝（那样模型仍会看到它们，且一回合被拒几次就结束回合，结果失真）。
+  证明：拿该次运行的临时 SUGA_HOME 运行 `suga inspect manifest --json`，工具列表里没有这两个工具。
 - claude：每个 prompt 加 `--disallowedTools WebFetch,WebSearch`。
 - omp：评测没有可用的工具开关，**未禁网**；汇总表的 WEB 列记为 `unsupported`。
 - 记录：汇总表新增 WEB 列（`off`/`on`/`unsupported`），表格下方输出一行 `web: off=N on=N unsupported=N`，
