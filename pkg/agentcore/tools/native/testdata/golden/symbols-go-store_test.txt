@@ -1,0 +1,1 @@
+go/store_test.go:5 func TestReload func TestReload(t *testing.T) {

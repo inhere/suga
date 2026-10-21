@@ -1,0 +1,3 @@
+java/StoreTest.java:3 class StoreTest public class StoreTest {
+java/StoreTest.java:4 method reload void reload() {
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

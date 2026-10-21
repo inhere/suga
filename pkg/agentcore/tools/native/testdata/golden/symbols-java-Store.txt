@@ -1,0 +1,9 @@
+java/Store.java:6 class Store public class Store {
+java/Store.java:10 method Store public Store(List<String> items) {
+java/Store.java:15 method reload public void reload() {
+java/Store.java:20 class Nested public static class Nested {
+java/Store.java:21 method reload void reload() {
+java/Store.java:25 interface Finder public interface Finder {
+java/Store.java:26 method find String find(String name);
+java/Store.java:29 enum Mode public enum Mode {
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

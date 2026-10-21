@@ -1,0 +1,7 @@
+py/loader.py:8 class Loader class Loader:
+py/loader.py:12 method __init__ def __init__(self, path):
+py/loader.py:15 method reload def reload(self):
+py/loader.py:20 class Nested class Nested:
+py/loader.py:21 method reload def reload(self):
+py/loader.py:25 func reload def reload(path):
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

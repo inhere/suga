@@ -11,13 +11,14 @@ import (
 
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 const (
 	defaultGrepResults = 100
 	maxGrepResults     = 1000
 	// maxGrepLineBytes trims very long matching lines (minified files).
-	maxGrepLineBytes = 300
+	maxGrepLineBytes = codeintel.MaxGrepLineBytes
 )
 
 // FileGrepTool searches file contents in the workspace with a regular

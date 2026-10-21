@@ -11,6 +11,7 @@ import (
 
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 const debugPromptNonceEnv = "SUGA_DEBUG_PROMPT_NONCE"
@@ -107,13 +108,13 @@ func basePrompt() string {
 // dependencyAPILine is the base prompt's dependency-API line: one command to
 // read a dependency's API instead of reading its files one by one, named per
 // language. The clauses are the ones the language registry declares (suga-xt0o,
-// native.Languages); they are joined in registry order and the sentence around
+// codeintel.Languages); they are joined in registry order and the sentence around
 // them is fixed, so the line reads as it did before the split and the prompt
 // prefix cache keeps hitting. A language without a clause of its own is left
 // out.
 func dependencyAPILine() string {
 	var clauses []string
-	for _, lang := range native.Languages() {
+	for _, lang := range codeintel.Languages() {
 		if lang.DependencyAPI != "" {
 			clauses = append(clauses, lang.DependencyAPI)
 		}

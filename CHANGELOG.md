@@ -33,6 +33,7 @@
 - chat 里工具调用的第一行按工具显示内容，不再一律是参数 JSON：`file_read` 显示路径（多个用 `, ` 分隔，带 offset/limit 时附 `:起-止`），`shell_exec` 显示命令本身（多行只显首行并加 `…`，timeout/background 等作简短附注），`file_write`/`file_edit` 显示路径加字节与行数/处数，`file_list`、`file_find`、`file_grep`、`file_symbols`、`file_refs` 显示目录、pattern、glob 或符号，`web_fetch`/`web_search`/`view_image`、`agent`、`session_message`、`session_search`、`recall`、`skill`、`tool_search`、`memory` 同样各显示自己的关键参数；工作区内的路径显示为相对路径。没有登记摘要的工具（`update_plan`、MCP 工具）、参数无法解析或摘要为空时仍是原来的 JSON，截断与 `redact` 规则不变；子 agent 的进度行用同一套摘要。只是显示：`run`、stream-json、ACP、trace 与转录不受影响。
 - chat 启动提示只列每轮常用命令，去掉 `:add-dir/:dirs/:rm-dir`、`:checkpoints`、`:undo [N] [force]`；这些命令照旧可用、照旧补全，完整列表仍在 `:help`。
 - eval 默认关闭联网工具（issues suga-okgw）：suga 在临时 SUGA_HOME 的 config 写 `tools.disabled: [web_fetch, web_search]`（通用配置，列出的工具不注册，模型看不到），claude 加 `--disallowedTools WebFetch,WebSearch`，`--allow-web` 或任务 `allow_web: true` 打开；omp 无可用开关，记为 `unsupported`（未禁网）。汇总表新增 WEB 列、表格下输出 `web: off/on/unsupported` 计数，`results.jsonl` 每行新增 `web` 字段，避免把查到在线题解的分数当成解题能力。
+- 语言相关实现（语言注册表、注释/字符串遮蔽、各语言符号提取器、引用行匹配与分类、universal-ctags 调用）从 `pkg/agentcore/tools/native` 抽到子包 `pkg/agentcore/tools/native/codeintel`：子包只做纯分析（输入“路径 + 内容”，返回符号与引用），工具外壳（参数、路径解析、只读根、遍历、大小上限、输出拼装）与依赖根探测留在 `native`，为下一步用规则文件支持新语言做准备。工具描述文本、基础提示与 `file_symbols`/`file_refs` 的输出逐字节不变（characterization 黄金文件守护），并新增分层测试禁止 `codeintel` 反向 import `native`。
 
 ### 修复
 

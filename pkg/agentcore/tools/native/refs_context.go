@@ -2,6 +2,7 @@ package native
 
 import (
 	"fmt"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,7 @@ func (c *refSourceCache) read(file string) []string {
 	if err != nil {
 		return nil
 	}
-	lines := newSourceLines(data).lines
+	lines := codeintel.NewSourceLines(data).Lines
 	// A file ending in a newline has one empty element left over; it is not a
 	// line and must not widen a block at the end of the file.
 	if n := len(lines); n > 0 && lines[n-1] == "" {
@@ -69,7 +70,7 @@ func (c *refSourceCache) read(file string) []string {
 // around each match is shown, adjacent or overlapping blocks are merged, and the
 // context lines do not consume the caller's match limit (the caller has already
 // applied it).
-func refGroupLines(refs []Ref, radius int, src *refSourceCache) []string {
+func refGroupLines(refs []codeintel.Ref, radius int, src *refSourceCache) []string {
 	if radius == 0 || src == nil {
 		out := make([]string, 0, len(refs))
 		for _, r := range refs {
@@ -92,7 +93,7 @@ func refGroupLines(refs []Ref, radius int, src *refSourceCache) []string {
 // refFileContextLines formats the matches of one file with radius lines of
 // source around each: blocks of close matches merge, and a file that is not
 // readable any more falls back to the match lines alone.
-func refFileContextLines(refs []Ref, radius int, src *refSourceCache) []string {
+func refFileContextLines(refs []codeintel.Ref, radius int, src *refSourceCache) []string {
 	name := refs[0].File
 	source := src.linesOf(name)
 	if len(source) == 0 {
@@ -102,7 +103,7 @@ func refFileContextLines(refs []Ref, radius int, src *refSourceCache) []string {
 		}
 		return out
 	}
-	hits := make(map[int]Ref, len(refs))
+	hits := make(map[int]codeintel.Ref, len(refs))
 	for _, r := range refs {
 		hits[r.Line] = r
 	}
@@ -131,13 +132,13 @@ func refFileContextLines(refs []Ref, radius int, src *refSourceCache) []string {
 			if line < 1 || line > len(source) {
 				continue
 			}
-			out = append(out, fmt.Sprintf("%s-%d- %s", name, line, refLineText(strings.TrimSpace(source[line-1]))))
+			out = append(out, fmt.Sprintf("%s-%d- %s", name, line, codeintel.RefLineText(strings.TrimSpace(source[line-1]))))
 		}
 	}
 	return out
 }
 
 // formatRefLine is one match line of the result.
-func formatRefLine(r Ref) string {
-	return fmt.Sprintf("%s:%d %s %s", r.File, r.Line, refClass(r), r.Text)
+func formatRefLine(r codeintel.Ref) string {
+	return fmt.Sprintf("%s:%d %s %s", r.File, r.Line, codeintel.RefClass(r), r.Text)
 }

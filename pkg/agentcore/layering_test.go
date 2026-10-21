@@ -59,7 +59,9 @@ var layerAllowed = map[string][]string{
 	"tools":            {"api", "testing"},
 	"tools/rules":      {},
 	"tools/mcp":        {"api", "extproc", "tools"},
-	"tools/native":     {"api", "internal/proctree", "memory", "memory/files", "netproxy", "redact", "skills", "tasks", "testutil", "tools"},
+	"tools/native":     {"api", "internal/proctree", "memory", "memory/files", "netproxy", "redact", "skills", "tasks", "testutil", "tools", "tools/native/codeintel"},
+	// the pure analysis below the tool shell: no path policy, no file system
+	"tools/native/codeintel": {},
 	// host-side test suites above the kernel
 	"mock":     {".", "api", "tools"},
 	"testing":  {".", "mock", "storage/files", "tools"},

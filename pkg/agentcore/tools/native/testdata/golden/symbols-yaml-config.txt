@@ -1,0 +1,13 @@
+yaml/config.yaml:2 section server {…}
+yaml/config.yaml:3 key server.host localhost
+yaml/config.yaml:4 section server.http {…}
+yaml/config.yaml:5 key server.http.port 8080
+yaml/config.yaml:6 key server.http.timeout 30s
+yaml/config.yaml:7 section services […]
+yaml/config.yaml:8 key services[].name api ×2
+yaml/config.yaml:9 key services[].port 8081 ×2
+yaml/config.yaml:12 section features {…}
+yaml/config.yaml:13 key features.reload true
+yaml/config.yaml:14 key features.flags […]
+yaml/config.yaml:17 key quoted.key kept
+[yaml: 2 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]

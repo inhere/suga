@@ -1,0 +1,6 @@
+rs/lib.rs:1 ref // lib.rs: store keeps the entries; file_symbols has no extractor for Rust.
+rs/lib.rs:10 def pub fn store(name: &str) -> Store {
+rs/lib.rs:11 ref     let note = "store built";
+rs/lib.rs:17 call     store("x").find("y")
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
+[approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]

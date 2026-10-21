@@ -1,0 +1,3 @@
+php/StoreTest.php:3 class StoreTest class StoreTest
+php/StoreTest.php:5 method testReload public function testReload(): void
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

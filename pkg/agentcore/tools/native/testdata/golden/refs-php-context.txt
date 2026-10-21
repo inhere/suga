@@ -1,0 +1,13 @@
+php/Store.php-9- 
+php/Store.php-10- /** reload the items */
+php/Store.php:11 ref public function reload(): void
+php/Store.php-12- {
+php/Store.php-13- $note = 'reload kept the order';
+--
+php/Store.php-23- trait Reloadable
+php/Store.php-24- {
+php/Store.php:25 ref public function reload(): void
+php/Store.php-26- {
+php/Store.php-27- }
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
+[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
