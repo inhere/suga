@@ -197,21 +197,17 @@ func (r *Runner) refoldableTool(name string) bool {
 	return meta.ReadOnly && !meta.External && meta.Prefetchable
 }
 
-// foldedToolResultNote is the one-line stand-in for an old result of a
-// re-runnable read-only tool: it keeps the tool name and the original size,
-// and tells the model to call the tool again instead of trusting the files
-// as they were.
-func foldedToolResultNote(name string, chars int) string {
-	return fmt.Sprintf("[已折叠的 %s 结果：原 %d 字符；参数见上方调用；文件可能已变化，需要时重新调用读取]", name, chars)
-}
-
-// foldToolResults replaces the text of old tool results of re-runnable
-// read-only tools with a one-line note: only results before the first
+// foldToolResults replaces the text of old tool results that a later step of
+// the view made redundant with a one-line note: only results before the first
 // `boundary` assistant steps (the same boundary as the reasoning folding, so
 // the cached prefix still changes once per batch), only texts longer than
 // foldArgChars, never error results (they explain what went wrong later) and
 // never results of tools the metadata does not mark re-runnable (External,
-// shell_exec, ...). msgs is not modified; the stored history stays complete.
+// shell_exec, ...). A result is replaced only when a later call superseded it
+// (foldSuperseded: re-read with the same arguments or the same file_read
+// window, or the read file was modified afterwards), so the model keeps the
+// old results it may still need (design 2026-10-21, 0.3). msgs is not
+// modified; the stored history stays complete.
 func foldToolResults(msgs []agentcore.Message, boundary int, refoldable func(name string) bool) ([]agentcore.Message, toolFoldStats) {
 	var st toolFoldStats
 	if boundary <= 0 || refoldable == nil {
@@ -228,6 +224,10 @@ func foldToolResults(msgs []agentcore.Message, boundary int, refoldable func(nam
 			step++
 		}
 	}
+	superseded := foldSuperseded(msgs, cut)
+	if len(superseded) == 0 {
+		return msgs, st
+	}
 	out := msgs
 	copied := false
 	for i := 0; i < cut; i++ {
@@ -242,13 +242,18 @@ func foldToolResults(msgs []agentcore.Message, boundary int, refoldable func(nam
 		if len(content) <= foldArgChars || !refoldable(m.ToolResult.Name) {
 			continue
 		}
+		s, ok := superseded[i]
+		if !ok {
+			// Nothing later replaced or outdated this result: keep it whole.
+			continue
+		}
 		if !copied {
 			// Copy on the first change only: an untouched view is returned as is.
 			cp := make([]agentcore.Message, len(msgs))
 			copy(cp, msgs)
 			out, copied = cp, true
 		}
-		note := foldedToolResultNote(m.ToolResult.Name, len(content))
+		note := s.note()
 		res := *m.ToolResult
 		res.Content = note
 		m.ToolResult = &res
