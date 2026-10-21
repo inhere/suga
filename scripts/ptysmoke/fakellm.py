@@ -29,6 +29,11 @@ Modes (--mode):
         the smoke for --add-dir, where both paths live outside the workspace.
         A user message containing "只读" or "只写" narrows it to that one call,
         so a smoke can drive the read and the write of one turn separately.
+  display  one turn with three calls whose lines chat shows differently:
+        file_read of target.txt with a line window (a summary of its own),
+        shell_exec of a two-line command (the first line and an ellipsis), and
+        update_plan (no summary of its own: the JSON stays): the smoke of the
+        per-tool tool lines (chat_tool_lines.py).
 
 --delay seconds are slept before each response, so a test can type while a
 turn is running. --chunk splits a streamed text reply into pieces of that many
@@ -256,6 +261,12 @@ def make_handler(args):
             # refs mode: the file-level call first, then the directory-level one.
             ref_calls = [("file_refs", {"name": args.ref_name, "path": args.ref_file}),
                          ("file_refs", {"name": args.ref_name, "path": args.ref_dir})]
+            # display mode: a summary of its own twice (a file read with a line
+            # window, a two-line shell command) and one tool without any
+            # (update_plan keeps the JSON of its arguments).
+            display_calls = [("file_read", {"path": "target.txt", "offset": 1, "limit": 2}),
+                             ("shell_exec", {"command": "echo SMOKE_DISPLAY\n  echo SMOKE_SECOND"}),
+                             ("update_plan", {"steps": [{"step": "read", "status": "in_progress"}]})]
             if args.mode == "adddir":
                 # 只读/只写 asks for one of the two calls only (a smoke that needs
                 # one of them to meet a question of its own first).
@@ -285,6 +296,11 @@ def make_handler(args):
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "refs" and step < len(ref_calls):
                 name, arguments = ref_calls[step]
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": name, "arguments": json.dumps(arguments)}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "display" and step < len(display_calls):
+                name, arguments = display_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
@@ -422,7 +438,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")

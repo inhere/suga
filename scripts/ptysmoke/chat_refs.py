@@ -87,14 +87,14 @@ def scenario(s):
     m = s.mark()
     s.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark(); s.line("谁用了 Load")
-    # The call line shows the arguments the model sent; the result line the first
-    # match of the sorted result (svc/svc.go comes before web/app.ts).
+    # The call lines show the arguments the model sent in the form of the tool:
+    # file_refs prints the identifier and the path it searches.
     s.check("call 1: file-level arguments",
-            s.until(r'⏺ file_refs \{"name":"Load","path":"svc/svc\.go"\}', m))
+            s.until(r'⏺ file_refs Load svc/svc\.go', m))
     s.check("result 1: the first match is the classified call",
             s.until(r"⎿ ok: svc/svc\.go:6 call\(pkg:db\) ", m))
     s.check("call 2: directory-level arguments",
-            s.until(r'⏺ file_refs \{"name":"Load","path":"\."\}', m))
+            s.until(r'⏺ file_refs Load\n', m))
     s.check("result 2: the Go file comes first", s.until(r"⎿ ok: svc/svc\.go:6 ", m))
     s.check("turn ends", s.until(r"tokens · ", m))
     m = s.mark(); time.sleep(0.3); s.send(CTRL_C); time.sleep(0.3); s.send(CTRL_C)
