@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 回合中按 `Tab` 把输入行排到本轮结束后（issue suga-8pug）：这一行不插进正在运行的回合，回合结束后作为下一条用户消息自动发送（与 `suga send` 不带 `--steer` 的排队语义一致），显示 `[排队] <内容>（本轮结束后发送）`，发送时显示“（已发送）”；可连续排多条、按顺序发送，`Ctrl-C` 中止本轮时保留。新增 `:queue` 列出排队内容、`:queue clear` 清空。以 `:` 开头的行 Tab 仍是命令补全，空行与没有回合在跑时行为不变。
+
 ## [0.41.0] - 2026-10-21
 
 会话协作与可观察性：新增 `session_message` 工具，同机 chat 会话之间互发消息（不依赖 gofer，连续自动回复上限 3 跳，可在配置关闭）；`suga inspect trace --transcript` 把轨迹渲染成模型可读的文本；`suga inspect manifest` 报告常驻上下文各部分体积并提示规则截断与 skill 跳过/遮蔽；常驻提示词说明外部内容是数据不是指令；gofer 记忆后端接入 title 字段。不兼容：移除 v0.39.0 标记的一次性迁移命令与旧别名（`data tool-bodies`、`dedupe-tool-results`、`shrink-fts`、`bodies --slim`/`--rename-files`），旧配置键 `store.tool_body_inline_bytes` 仅警告并忽略；迁移旧库请用 v0.40。
