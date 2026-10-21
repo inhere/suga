@@ -107,6 +107,12 @@ func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspa
 		built.recordConflicts(provider)
 		built.closers = append(built.closers, provider)
 	}
+	// tools.disabled: a listed tool is not registered, so it is absent from the
+	// schemas (and from tool_search and the manifest) instead of failing on call.
+	if err := applyDisabledTools(registry); err != nil {
+		_ = built.Close()
+		return defaultCapabilities{}, err
+	}
 	return built, nil
 }
 

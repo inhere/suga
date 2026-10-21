@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 新增配置 `tools.disabled`（工具名列表，默认空）：列出的工具不注册到运行时，模型完全看不到（不在工具列表、`tool_search` 加载不到、`suga inspect manifest` 不列），而不是每次调用被拒；子 agent 的工具集同样过滤。名字既不是内置工具也不是 `server/tool` 形式的 MCP 工具时启动报错并列出可用工具名，避免拼写错误静默失效。典型用法：不想让模型联网时写 `tools.disabled: [web_fetch, web_search]`。
 - `scripts/eval/polyglot` 转换器跳过无法判定实现的例题：原题在 `.meta/.skip_tests` 标记跳过测试（如 `counter`），或测试文件里没有任何测试函数（只检验能否编译）时不再生成任务，清单与原因打印在转换日志里；README 同时记录已知问题（13 题桩代码不能单独编译、3 题占位签名与测试不匹配）。
 
 ### 修复

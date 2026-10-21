@@ -103,6 +103,15 @@ func (r *Registry) MustRegister(t api.Tool) {
 	r.tools[t.Name()] = t
 }
 
+// Remove drops the tool with the given name; an unregistered name is ignored.
+// The host uses it for a policy the model must not even see (a disabled tool is
+// missing from Schemas and from ToolSearch, not merely refused on call).
+func (r *Registry) Remove(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.tools, name)
+}
+
 // Get returns the tool with the given name, or an error if not found.
 func (r *Registry) Get(name string) (api.Tool, error) {
 	r.mu.RLock()
