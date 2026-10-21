@@ -1,0 +1,68 @@
+go/store.go:6 type Store type Store struct {
+go/store.go:11 type Item type Item struct {
+go/store.go:17 const maxItems maxItems = 10
+go/store.go:18 const version version  = "v1"
+go/store.go:22 var ErrEmpty var ErrEmpty = errors.New("store is empty")
+go/store.go:25 type Finder type Finder interface {
+go/store.go:30 func New func New() *Store {
+go/store.go:35 method Reload func (s *Store) Reload() error {
+go/store.go:47 method Load func (s *Store) Load() error {
+java/Store.java:6 class Store public class Store {
+java/Store.java:10 method Store public Store(List<String> items) {
+java/Store.java:15 method reload public void reload() {
+java/Store.java:20 class Nested public static class Nested {
+java/Store.java:21 method reload void reload() {
+java/Store.java:25 interface Finder public interface Finder {
+java/Store.java:26 method find String find(String name);
+java/Store.java:29 enum Mode public enum Mode {
+php/Store.php:3 type Sample namespace Sample;
+php/Store.php:6 class Store class Store
+php/Store.php:8 const MAX_ITEMS private const MAX_ITEMS = 10;
+php/Store.php:11 method reload public function reload(): void
+php/Store.php:17 method find public function find(string $name): string
+php/Store.php:23 trait Reloadable trait Reloadable
+php/Store.php:25 method reload public function reload(): void
+php/Store.php:30 interface Finder interface Finder
+php/Store.php:32 method find public function find(string $name): string;
+py/loader.py:8 class Loader class Loader:
+py/loader.py:12 method __init__ def __init__(self, path):
+py/loader.py:15 method reload def reload(self):
+py/loader.py:20 class Nested class Nested:
+py/loader.py:21 method reload def reload(self):
+py/loader.py:25 func reload def reload(path):
+toml/config.toml:2 key title "sample"
+toml/config.toml:4 section server {…}
+toml/config.toml:5 key server.host "localhost"
+toml/config.toml:7 section server.http {…}
+toml/config.toml:8 key server.http.port 8080
+toml/config.toml:9 key server.http.timeout "30s"
+toml/config.toml:11 section features {…}
+toml/config.toml:12 key features.reload true
+toml/config.toml:13 key features.flags […]
+toml/config.toml:15 section services[] […] ×2
+toml/config.toml:16 key services[].name "api" ×2
+toml/config.toml:17 key services[].port 8081 ×2
+ts/loader.ts:2 interface LoaderOptions export interface LoaderOptions {
+ts/loader.ts:7 class Loader export class Loader {
+ts/loader.ts:10 method constructor constructor(private readonly opts: LoaderOptions) {}
+ts/loader.ts:13 method reload reload(): void {
+ts/loader.ts:19 method create static create(opts: LoaderOptions): Loader {
+ts/loader.ts:24 enum Mode export enum Mode {
+ts/loader.ts:29 func reload export function reload(): void {
+yaml/config.yaml:2 section server {…}
+yaml/config.yaml:3 key server.host localhost
+yaml/config.yaml:4 section server.http {…}
+yaml/config.yaml:5 key server.http.port 8080
+yaml/config.yaml:6 key server.http.timeout 30s
+yaml/config.yaml:7 section services […]
+yaml/config.yaml:8 key services[].name api ×2
+yaml/config.yaml:9 key services[].port 8081 ×2
+yaml/config.yaml:12 section features {…}
+yaml/config.yaml:13 key features.reload true
+yaml/config.yaml:14 key features.flags […]
+yaml/config.yaml:17 key quoted.key kept
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[toml: 3 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
+[yaml: 2 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
+[skipped 5 test file(s); pass include_tests: true to include them]
+[skipped 2 file(s) with no declaration extractor; use file_grep with pattern: "\\bname\\b"; file_read outline=true is unavailable for these files]

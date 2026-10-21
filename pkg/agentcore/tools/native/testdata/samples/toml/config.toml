@@ -1,0 +1,21 @@
+# config.toml: a reload of the server reads these keys
+title = "sample"
+
+[server]
+host = "localhost"
+
+[server.http]
+port = 8080
+timeout = "30s"
+
+[features]
+reload = true
+flags = ["fast", "slow"]
+
+[[services]]
+name = "api"
+port = 8081
+
+[[services]]
+name = "web"
+port = 8082

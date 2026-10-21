@@ -1,0 +1,8 @@
+ts/loader.ts:2 interface LoaderOptions export interface LoaderOptions {
+ts/loader.ts:7 class Loader export class Loader {
+ts/loader.ts:10 method constructor constructor(private readonly opts: LoaderOptions) {}
+ts/loader.ts:13 method reload reload(): void {
+ts/loader.ts:19 method create static create(opts: LoaderOptions): Loader {
+ts/loader.ts:24 enum Mode export enum Mode {
+ts/loader.ts:29 func reload export function reload(): void {
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

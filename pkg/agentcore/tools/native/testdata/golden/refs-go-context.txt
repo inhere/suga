@@ -1,0 +1,12 @@
+go/store.go-33- 
+go/store.go-34- // Reload fills the store again after a reload request.
+go/store.go:35 def func (s *Store) Reload() error {
+go/store.go-36- msg := "reload failed"
+go/store.go-37- if len(s.Items) > maxItems {
+--
+go/store.go-46- // Load reloads the store through Reload.
+go/store.go-47- func (s *Store) Load() error {
+go/store.go:48 call(s) return s.Reload()
+go/store.go-49- }
+[Go results come from a syntax parse and list every occurrence; only confirm same-named other objects - no file_grep needed to fill in]
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]

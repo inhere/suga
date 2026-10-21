@@ -1,0 +1,4 @@
+go/store.go:35 def func (s *Store) Reload() error {
+go/store.go:48 call(s) return s.Reload()
+[Go results come from a syntax parse and list every occurrence; only confirm same-named other objects - no file_grep needed to fill in]
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]

@@ -1,0 +1,1 @@
+ERROR: file_symbols: file type ".rs" has no declaration extractor; use file_grep with pattern: "\\bfn name\\b|\\bstruct name\\b"; file_read outline=true is unavailable

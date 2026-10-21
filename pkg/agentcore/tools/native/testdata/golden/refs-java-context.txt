@@ -1,0 +1,13 @@
+java/Store.java-13- 
+java/Store.java-14- /** reload the items */
+java/Store.java:15 ref public void reload() {
+java/Store.java-16- String note = "reload kept the order";
+java/Store.java-17- System.out.println(note);
+--
+java/Store.java-19- 
+java/Store.java-20- public static class Nested {
+java/Store.java:21 ref void reload() {
+java/Store.java-22- }
+java/Store.java-23- }
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
+[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]

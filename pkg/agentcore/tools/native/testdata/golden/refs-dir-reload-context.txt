@@ -1,0 +1,49 @@
+java/Store.java-14- /** reload the items */
+java/Store.java:15 ref public void reload() {
+java/Store.java-16- String note = "reload kept the order";
+--
+java/Store.java-20- public static class Nested {
+java/Store.java:21 ref void reload() {
+java/Store.java-22- }
+php/Store.php-10- /** reload the items */
+php/Store.php:11 ref public function reload(): void
+php/Store.php-12- {
+--
+php/Store.php-24- {
+php/Store.php:25 ref public function reload(): void
+php/Store.php-26- {
+py/loader.py-14- 
+py/loader.py:15 ref def reload(self):
+py/loader.py-16- note = "reload kept the keys"
+--
+py/loader.py-20- class Nested:
+py/loader.py:21 ref def reload(self):
+py/loader.py-22- return None
+--
+py/loader.py-24- 
+py/loader.py:25 ref def reload(path):
+py/loader.py:26 ref return Loader(path).reload()
+toml/config.toml-11- [features]
+toml/config.toml:12 def reload = true
+toml/config.toml-13- flags = ["fast", "slow"]
+ts/loader.ts-2- export interface LoaderOptions {
+ts/loader.ts:3 ref reload: boolean;
+ts/loader.ts-4- retries?: number;
+--
+ts/loader.ts-12- /** reload the configuration */
+ts/loader.ts:13 ref reload(): void {
+ts/loader.ts-14- const note = "reload kept the keys";
+--
+ts/loader.ts-28- 
+ts/loader.ts:29 ref export function reload(): void {
+ts/loader.ts:30 ref const loader = new Loader({ reload: true });
+ts/loader.ts:31 ref loader.reload();
+ts/loader.ts-32- }
+yaml/config.yaml-12- features:
+yaml/config.yaml:13 def reload: true
+yaml/config.yaml-14- flags:
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
+[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
+[approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]
+[skipped 5 test file(s); pass include_tests: true to search them]
+[skipped 1 documentation file(s) (.md, .txt, .rst)]

@@ -1,0 +1,30 @@
+Go markers=["go.mod" "go.sum"] api="`go doc <package>` (or a grep for the exported names) for Go" tests="\\bgo test\\b" focused=["-run"]
+Rust markers=["Cargo.toml" "Cargo.lock"] api="" tests="\\bcargo test\\b" focused=["--test"]
+Java markers=["pom.xml" "build.gradle" "build.gradle.kts" "settings.gradle" "settings.gradle.kts"] api="for Java, `javap -public -cp <jar> <fully.qualified.Class>` with the jar under ~/.m2/repository/<group path>/<artifact>/<version>/ (`mvn -o dependency:sources` fetches the sources)" tests="\\bmvnw?(\\.cmd)?( \\S+)* (test|verify)\\b|\\bgradlew?(\\.bat)?( \\S+)* (:[A-Za-z0-9_.-]+:)?test\\b" focused=["-Dtest" "--tests"]
+JavaScript/TypeScript markers=["package.json" "package-lock.json" "pnpm-lock.yaml" "yarn.lock" "bun.lockb" "bun.lock" "tsconfig.json"] api="" tests="\\b(npm (run )?test|pnpm (run )?test|yarn test|jest|vitest)\\b" focused=["-t"]
+Python markers=["pyproject.toml" "requirements.txt" "setup.py" "setup.cfg" "tox.ini" "Pipfile"] api="" tests="\\b(pytest|python3? -m pytest)\\b" focused=["-k"]
+PHP markers=["composer.json" "composer.lock"] api="" tests="\\b(vendor/bin/phpunit|phpunit|pest)\\b" focused=["--filter"]
+test-commands:
+  go test ./...                            test=true focused=false
+  go test -run TestX ./pkg                 test=true focused=true
+  mvn -o test                              test=true focused=false
+  ./mvnw verify                            test=true focused=false
+  gradlew :app:test                        test=true focused=false
+  gradle --tests Foo test                  test=true focused=true
+  cargo test                               test=true focused=false
+  cargo test --test integration            test=true focused=true
+  npm test                                 test=true focused=false
+  pnpm run test                            test=true focused=false
+  yarn test                                test=true focused=false
+  npx jest -t foo                          test=true focused=true
+  vitest run                               test=true focused=false
+  pytest -q                                test=true focused=false
+  python3 -m pytest tests -k foo           test=true focused=true
+  vendor/bin/phpunit --filter Foo          test=true focused=true
+  pest                                     test=true focused=false
+  make test                                test=true focused=false
+  ctest                                    test=true focused=false
+  rspec spec/models                        test=true focused=false
+  dotnet test                              test=true focused=false
+  ls -la                                   test=false focused=false
+  go build ./...                           test=false focused=false

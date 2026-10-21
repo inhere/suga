@@ -1,0 +1,10 @@
+php/Store.php:3 type Sample namespace Sample;
+php/Store.php:6 class Store class Store
+php/Store.php:8 const MAX_ITEMS private const MAX_ITEMS = 10;
+php/Store.php:11 method reload public function reload(): void
+php/Store.php:17 method find public function find(string $name): string
+php/Store.php:23 trait Reloadable trait Reloadable
+php/Store.php:25 method reload public function reload(): void
+php/Store.php:30 interface Finder interface Finder
+php/Store.php:32 method find public function find(string $name): string;
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

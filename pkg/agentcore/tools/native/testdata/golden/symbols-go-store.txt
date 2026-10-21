@@ -1,0 +1,9 @@
+go/store.go:6 type Store type Store struct {
+go/store.go:11 type Item type Item struct {
+go/store.go:17 const maxItems maxItems = 10
+go/store.go:18 const version version  = "v1"
+go/store.go:22 var ErrEmpty var ErrEmpty = errors.New("store is empty")
+go/store.go:25 type Finder type Finder interface {
+go/store.go:30 func New func New() *Store {
+go/store.go:35 method Reload func (s *Store) Reload() error {
+go/store.go:47 method Load func (s *Store) Load() error {

@@ -1,0 +1,17 @@
+# config.yaml: a reload of the service reads these keys
+server:
+  host: localhost
+  http:
+    port: 8080
+    timeout: 30s
+services:
+  - name: api
+    port: 8081
+  - name: web
+    port: 8082
+features:
+  reload: true
+  flags:
+    - fast
+    - slow
+"quoted.key": kept

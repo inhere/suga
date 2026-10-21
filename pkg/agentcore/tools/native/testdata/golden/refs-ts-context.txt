@@ -1,0 +1,20 @@
+ts/loader.ts-1- // Loader reloads the configuration; a reload keeps the keys.
+ts/loader.ts-2- export interface LoaderOptions {
+ts/loader.ts:3 ref reload: boolean;
+ts/loader.ts-4- retries?: number;
+ts/loader.ts-5- }
+--
+ts/loader.ts-11- 
+ts/loader.ts-12- /** reload the configuration */
+ts/loader.ts:13 ref reload(): void {
+ts/loader.ts-14- const note = "reload kept the keys";
+ts/loader.ts-15- this.count++;
+--
+ts/loader.ts-27- }
+ts/loader.ts-28- 
+ts/loader.ts:29 ref export function reload(): void {
+ts/loader.ts:30 ref const loader = new Loader({ reload: true });
+ts/loader.ts:31 ref loader.reload();
+ts/loader.ts-32- }
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
+[approx: JavaScript/TypeScript, Python, Java, PHP, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]

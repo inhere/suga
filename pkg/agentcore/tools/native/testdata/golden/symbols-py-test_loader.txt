@@ -1,0 +1,2 @@
+py/test_loader.py:4 func test_reload def test_reload():
+[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

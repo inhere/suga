@@ -1,0 +1,1 @@
+ERROR: file_symbols: file type ".md" has no declaration extractor; use file_grep with pattern: "\\bname\\b"; file_read outline=true is unavailable
