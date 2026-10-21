@@ -90,6 +90,8 @@ func TestToolCallSummaryLines(t *testing.T) {
 		{name: "web_fetch urls", tool: "web_fetch",
 			args: `{"urls":["https://example.com/a","https://example.com/b","https://example.com/c"]}`,
 			want: "⏺ web_fetch 3 个 URL：https://example.com/a, …"},
+		{name: "web_fetch one url in urls", tool: "web_fetch", args: `{"urls":["https://example.com/a"]}`,
+			want: "⏺ web_fetch 1 个 URL：https://example.com/a"},
 		{name: "web_search query", tool: "web_search", args: `{"query":"go worktree"}`,
 			want: "⏺ web_search go worktree"},
 		{name: "agent type and task", tool: "agent", args: `{"type":"research","description":"find Foo","prompt":"x"}`,
