@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- Windows Terminal 下 `Ctrl+Enter` 换行（issue suga-tcgw）：chat 在 `WT_SESSION` 里进入行编辑前请求 win32-input-mode（`ESC[?9001h`），终端此后把每个按键按 `CSI Vk;Sc;Uc;Kd;Cs;Rc _` 记录送达，行编辑器把记录映射回原有按键（字符、方向键、Home/End、Backspace/Delete、Enter、Tab、Esc、Ctrl+字母、Alt 组合、粘贴），其中 `Ctrl+Enter`/`Shift+Enter`/`Alt+Enter` 插入换行而不提交；抬键记录（Kd=0）被忽略，按住键的重复次数（Rc）按次数展开，中文与 emoji（代理对两个记录）照常输入。退出行编辑、Ctrl-C、退出 chat（含 panic）与 `!` 本地命令运行前后都恢复 `ESC[?9001l`。**配置**：`chat.win32_input_mode: auto|on|off`（默认 `auto`，只在 Windows Terminal 开启；`off` 关闭后仍是 `Ctrl+J`/`Alt+Enter` 换行）。终端不支持该序列时（非 Windows Terminal、旧版终端）按键仍按原字节解析，行为不变。
+
 ## [0.41.0] - 2026-10-21
 
 会话协作与可观察性：新增 `session_message` 工具，同机 chat 会话之间互发消息（不依赖 gofer，连续自动回复上限 3 跳，可在配置关闭）；`suga inspect trace --transcript` 把轨迹渲染成模型可读的文本；`suga inspect manifest` 报告常驻上下文各部分体积并提示规则截断与 skill 跳过/遮蔽；常驻提示词说明外部内容是数据不是指令；gofer 记忆后端接入 title 字段。不兼容：移除 v0.39.0 标记的一次性迁移命令与旧别名（`data tool-bodies`、`dedupe-tool-results`、`shrink-fts`、`bodies --slim`/`--rename-files`），旧配置键 `store.tool_body_inline_bytes` 仅警告并忽略；迁移旧库请用 v0.40。

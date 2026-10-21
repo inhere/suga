@@ -90,8 +90,9 @@
 | `chat.code_highlight` | `true` | 代码块按围栏语言逐行着色（注译、字符串、数字、关键字四类，16 色 ANSI）；`false`、未知语言、非终端或 `NO_COLOR` 时按原文显示 |
 | `chat.code_max_lines` | `40` | 单个代码块最多显示的行数，超出部分折叠并提示 `… 还有 N 行（:code 查看全部）`；`0` 不折叠 |
 | `chat.ask_outside_dirs` | `true` | 文件工具越出工作区、只读根与附加目录时询问 `[r] 只读 [w] 读写 [n] 拒绝`，答应后把目录写进会话；关闭时越界调用直接拒绝 |
+| `chat.win32_input_mode` | `auto` | Windows Terminal 下原生的 `Ctrl+Enter` 换行：`auto` 只在 `WT_SESSION` 存在时请求 win32-input-mode（`ESC[?9001h`），`on` 总是请求，`off` 关闭（仍可用 `Ctrl+J`/`Alt+Enter` 换行）。退出行编辑、Ctrl-C、退出 chat 与 `!` 本地命令前后都恢复 `ESC[?9001l`；终端不认识该序列时按键仍按原字节解析 |
 
-上表中的开关键（`chat.markdown`、`chat.spinner`、`chat.steering`、`chat.highlight_input`、`chat.terminal_title`、`chat.history`、`chat.diff`、`chat.ask_outside_dirs`、`chat.code_highlight`）都接受布尔或字符串（`"off"` / `"false"` 关闭）。`chat.agent_progress` 不是开关，只接受 `summary`、`full`、`off`。`chat.markdown`、`chat.spinner`、`chat.highlight_input`、`chat.terminal_title`、`chat.code_highlight` 只在彩色终端生效：非终端、重定向输出或 `NO_COLOR` 时按原文显示，不加任何转义。`chat.steering` 只要求输入是终端。
+上表中的开关键（`chat.markdown`、`chat.spinner`、`chat.steering`、`chat.highlight_input`、`chat.terminal_title`、`chat.history`、`chat.diff`、`chat.ask_outside_dirs`、`chat.code_highlight`）都接受布尔或字符串（`"off"` / `"false"` 关闭）。`chat.agent_progress` 不是开关，只接受 `summary`、`full`、`off`；`chat.notify` 接受 `auto`、`bell`、`osc9`、`off`，`chat.win32_input_mode` 接受 `auto`、`on`、`off`。`chat.markdown`、`chat.spinner`、`chat.highlight_input`、`chat.terminal_title`、`chat.code_highlight` 只在彩色终端生效：非终端、重定向输出或 `NO_COLOR` 时按原文显示，不加任何转义。`chat.steering` 只要求输入是终端。
 
 ## `tools.*`
 
