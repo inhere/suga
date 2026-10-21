@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -44,11 +45,11 @@ func run() error {
 	if o.src == "" || o.out == "" {
 		return errors.New("need -src and -out")
 	}
-	names, err := convertAll(o.src, o.out, o.only, o.visibleTests)
+	names, skips, err := convertAll(o.src, o.out, o.only, o.visibleTests)
 	if err != nil {
 		return err
 	}
-	if len(names) == 0 {
+	if len(names) == 0 && len(skips) == 0 {
 		return fmt.Errorf("no exercise matches %q", o.only)
 	}
 	// The output usually lies inside the suga module (tmp/eval-tasks/...): an
@@ -62,35 +63,61 @@ func run() error {
 	for _, n := range names {
 		fmt.Println(" ", n)
 	}
+	if len(skips) > 0 {
+		// The skip list is part of the conversion log on purpose: a run's
+		// exercise count is only comparable when its exclusions are known.
+		fmt.Printf("skipped %d exercises:\n", len(skips))
+		for _, s := range skips {
+			fmt.Printf("  %s: %s\n", s.exercise, s.reason)
+		}
+	}
 	return nil
 }
 
+// skippedExercise is one exercise the converter left out and why.
+type skippedExercise struct {
+	exercise, reason string
+}
+
+// skipError is the sentinel reason convertExercise returns for an exercise the
+// converter deliberately leaves out (not an error of the conversion itself).
+type skipError struct{ reason string }
+
+func (e *skipError) Error() string { return e.reason }
+
 // convertAll converts every exercise directory under src that matches the
-// name glob and returns the generated task names.
-func convertAll(src, out, only string, visibleTests bool) ([]string, error) {
+// name glob and returns the generated task names plus the exercises it skipped
+// (with the reason for each).
+func convertAll(src, out, only string, visibleTests bool) ([]string, []skippedExercise, error) {
 	entries, err := os.ReadDir(src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var names []string
+	var skips []skippedExercise
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		ok, err := filepath.Match(only, e.Name())
 		if err != nil {
-			return nil, fmt.Errorf("-only %q: %w", only, err)
+			return nil, nil, fmt.Errorf("-only %q: %w", only, err)
 		}
 		if !ok {
 			continue
 		}
 		task, err := convertExercise(src, e.Name(), out, visibleTests)
+		var skipped *skipError
+		if errors.As(err, &skipped) {
+			skips = append(skips, skippedExercise{exercise: e.Name(), reason: skipped.reason})
+			continue
+		}
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", e.Name(), err)
+			return nil, nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
 		names = append(names, task)
 	}
-	return names, nil
+	return names, skips, nil
 }
 
 // convertExercise writes the task directory of one exercise and returns its
@@ -106,6 +133,11 @@ func convertExercise(srcRoot, exercise, out string, visibleTests bool) (string, 
 	}
 	if len(fx.tests) == 0 {
 		return "", errors.New("no *_test.go file at the exercise root")
+	}
+	if reason, err := skipReason(src, fx.tests); err != nil {
+		return "", err
+	} else if reason != "" {
+		return "", &skipError{reason: reason}
 	}
 	stubs, err := copyFixture(src, exercise, out, &fx, visibleTests)
 	if err != nil {
@@ -183,6 +215,32 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// testFuncPattern matches a Go test/example/fuzz/benchmark function the judging
+// `go test` would run. A test file without one only proves that the package
+// compiles, so such an exercise does not measure the implementation.
+var testFuncPattern = regexp.MustCompile(`(?m)^func\s+(?:Test|Example|Fuzz|Benchmark)[A-Za-z0-9_]*\s*\(`)
+
+// skipReason reports why an exercise cannot measure an implementation, and ""
+// when it can: either Exercism marks it as having no tests
+// (.meta/.skip_tests, e.g. counter), or its test files declare no test function.
+func skipReason(src string, tests []string) (string, error) {
+	if _, err := os.Stat(filepath.Join(src, ".meta", ".skip_tests")); err == nil {
+		return ".meta/.skip_tests：原题标记跳过测试", nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	for _, name := range tests {
+		raw, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			return "", err
+		}
+		if testFuncPattern.Match(raw) {
+			return "", nil
+		}
+	}
+	return "测试文件里没有任何测试函数，只能检验代码能否编译", nil
 }
 
 // copyFixture writes the fixture: stub code, go.mod, .docs, and in visible

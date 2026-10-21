@@ -628,6 +628,10 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// visibility -> approval -> base registry. Unloaded deferred tools are
 	// answered by visibility and never reach the approver.
 	// Dangerous deletes are stopped before any approver (guardDangerous).
+	// The second pass of tools.disabled: the tools registered above (task, agent,
+	// update_plan, memory, session_search, recall, skill, suga_manifest) must be
+	// removable too.
+	removeDisabledTools(capabilities.Registry)
 	approvalLayer := tools.NewApproval(capabilities.Registry, guardDangerous(opts.Approver))
 	approvalLayer.SetDisabled(disabledToolHints(capabilities.Registry, opts))
 	vis, err := newToolVisibility(capabilities.Registry, approvalLayer, contextWindow,
@@ -969,6 +973,9 @@ func buildPersonalCapabilitiesWithServersAndSnapshot(ctx context.Context, worksp
 	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter), false) {
 		registry.Register(tool)
 	}
+	if err := applyDisabledTools(registry); err != nil {
+		return defaultCapabilities{}, err
+	}
 	return defaultCapabilities{Registry: registry}, nil
 }
 
@@ -999,6 +1006,9 @@ func buildPersonalCLICapabilitiesWithSnapshot(ctx context.Context, workspace str
 		built.recordConflicts(provider)
 		built.closers = append(built.closers, provider)
 	}
+	// The read-only builder already applied tools.disabled; the MCP tools were
+	// registered after that, so drop the disabled ones among them here.
+	removeDisabledTools(built.Registry)
 	return built, nil
 }
 

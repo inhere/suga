@@ -191,6 +191,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.read_roots", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.auto_allow", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.read_only_allow", Type: ConfigTypeStringList, Writable: true},
+	// tools.disabled: tool names the runtime must not offer to the model at all
+	// (not registered, so absent from the tool list, tool_search and manifest).
+	{Pattern: "tools.disabled", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "memory.write", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "memory.write_tainted", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "memory.taint_tools", Type: ConfigTypeStringList, Writable: true},

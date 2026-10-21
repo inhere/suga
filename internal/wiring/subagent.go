@@ -143,13 +143,9 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	registry := tools.NewRegistry()
-	for _, tool := range native.BuildTools(nativeEnv(s.workspace, s.addDirs), false) {
-		for _, name := range subAgentTools[kind] {
-			if tool.Name() == name {
-				registry.Register(tool)
-			}
-		}
+	registry, err := s.toolRegistry(kind)
+	if err != nil {
+		return nil, nil, err
 	}
 	// Every tool here only reads; anything else is not there to call. The
 	// parent policy still applies explicit deny/ask rules, while an ask has no
@@ -200,6 +196,26 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 		return nil, nil, err
 	}
 	return runner, func() { _ = repo.Close() }, nil
+}
+
+// toolRegistry builds a sub-agent's registry: the read-only tools of its kind's
+// whitelist, with tools.disabled applied so a disabled tool is missing from the
+// child as well.
+func (s *subAgents) toolRegistry(kind string) (*tools.Registry, error) {
+	wanted := make(map[string]bool, len(subAgentTools[kind]))
+	for _, name := range subAgentTools[kind] {
+		wanted[name] = true
+	}
+	registry := tools.NewRegistry()
+	for _, tool := range native.BuildTools(nativeEnv(s.workspace, s.addDirs), false) {
+		if wanted[tool.Name()] {
+			registry.Register(tool)
+		}
+	}
+	if err := applyDisabledTools(registry); err != nil {
+		return nil, err
+	}
+	return registry, nil
 }
 
 // cloneApprovalPolicy makes the rule and protected-path slices independent of

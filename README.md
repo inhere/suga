@@ -69,7 +69,7 @@ Details: [references/config.md](skills/suga-guide/references/config.md) (every k
 - `suga models [--json]` is an offline view of local providers and model references. It does not replace `suga inspect manifest` or chat's session-local `:model` switch.
 - `model` is `<provider>/<model>`, precedence `--model` > `SUGA_MODEL` > config; `fallback_models` are tried in order, `compact_model` writes summaries.
 - `providers.<id>`: `type` (`openai`, `openai-responses`, `anthropic`), `base_url`, `api_key`, `headers`, plus per-model `context_window`, `max_output_tokens`, `model_id`, `price`, `thinking`.
-- Common switches: `tools.allow_write`, `tools.approval`, `tools.loop_guard`, `tools.session_message.enabled` / `tools.session_message.max_hops`, `mcp.servers`, `memory.*`, `hooks.*`, `chat.*`, `skills.*`, `workspace`.
+- Common switches: `tools.allow_write`, `tools.approval`, `tools.disabled`, `tools.loop_guard`, `tools.session_message.enabled` / `tools.session_message.max_hops`, `mcp.servers`, `memory.*`, `hooks.*`, `chat.*`, `skills.*`, `workspace`.
 - Time awareness: `run.deadline_env` names the env var that carries this run's deadline (RFC3339; gofer injects `GOFER_JOB_DEADLINE`). When set, each model request ends with a transient hint of the current time, the deadline and the remaining minutes; under 10% of the window (or 5 minutes) it asks for an immediate wrap-up, past the deadline it reports the overrun. Empty = off.
 - All data lives in `$SUGA_HOME/db/sessions.db`.
 
@@ -89,6 +89,7 @@ Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 - **Background and watch tasks**: `shell_exec` with `background: true` runs in the background; `every` / `watch_paths` turn it into a watcher that notifies the model on changes.
 - **Large output**: results over `tools.max_output_bytes` are offloaded to a ref; shell test/build output is first trimmed by output rules (customizable in `output-rules.yaml`).
 - **MCP**: `--mcp-config` or `mcp.servers`; all calls are denied until allowed in `tools.auto_allow` / `tools.read_only_allow`.
+- **Disabled tools**: `tools.disabled: [web_fetch, web_search]` (default empty) removes those tools from the runtime, so the model never sees them (not in the tool list, not loadable by `tool_search`, not listed by `suga inspect manifest`) instead of being refused on every call. Sub-agents lose them too. A name that is neither a native tool nor a `server/tool` MCP tool fails the startup with the list of available tools, so a typo cannot quietly leave a tool on. Typical use: keep the model offline by disabling the two web tools.
 - **Preferred tools**: `tools.preferred` declares commands (`rg`, `xerj`) and MCP servers this machine already has; the available ones are listed in the environment section (a `kind: command` entry only in a session that registered `shell_exec`, so a read-only session leaves it out) and `suga inspect manifest` shows `present` plus a reason for every declaration, including the missing ones, with command reasons naming that read-only limit. Preference only ranks tools: it never allows an MCP call or skips the `shell_exec` approval, and a missing tool just stays out of the prompt.
 
 ## Sub-agents

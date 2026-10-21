@@ -37,6 +37,7 @@ type options struct {
 	sugaSet                           setFlags // --suga-set key=value config overrides
 	variants                          variantFlags
 	repeat                            int
+	allowWeb                          bool // keep web_fetch/web_search on for every task
 }
 
 // setFlags collects repeated key=value flags.
@@ -76,6 +77,15 @@ type Result struct {
 	Spilled       int            `json:"tool_spilled"`
 	Answer        string         `json:"answer"`
 	Checks        []CheckResult  `json:"checks"`
+	// RemovedTests are the test files the agent wrote itself and the runner
+	// deleted before the checks ran (judging sees the task's own and the
+	// injected acceptance tests).
+	RemovedTests []string `json:"removed_tests,omitempty"`
+	// Web is the network-tool policy of the run: "off" (web_fetch/web_search
+	// denied), "on" (allowed by --allow-web or the task's allow_web) or
+	// "unsupported" (the agent has no switch the eval can set, so it was not
+	// restricted).
+	Web string `json:"web"`
 	// Variant names the --variant dir this run belongs to ("" = no --variant).
 	Variant string `json:"variant,omitempty"`
 }
@@ -110,6 +120,7 @@ func run() error {
 	flag.StringVar(&o.ompArgs, "omp-args", "", "extra `omp -p` arguments placed before the prompt (split on whitespace)")
 	flag.Var(&o.variants, "variant", "a variant directory (config.yaml overlay + env + workspace files); repeatable (suga only)")
 	flag.IntVar(&o.repeat, "repeat", 1, "rounds per task (outputs go to <out>/<task>-r<i>/ when > 1)")
+	flag.BoolVar(&o.allowWeb, "allow-web", false, "keep the agent's web_fetch/web_search on (default: denied for suga and claude)")
 	flag.Parse()
 	if o.repeat < 1 {
 		return errors.New("--repeat must be >= 1")
@@ -217,6 +228,7 @@ func runTaskSet(o *options, bin, runID string, tasks []*Task, variants []*Varian
 		}
 	}
 	printTable(os.Stdout, results, o.repeat > 1)
+	printWebNote(os.Stdout, results)
 	if len(variants) > 0 {
 		if err := writeCompare(o.out, variants, results); err != nil {
 			return err
@@ -239,6 +251,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	}
 	sid := "eval-" + runID + suffix + "-" + name
 	r := Result{Task: t.Name, Round: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake, Variant: variantName(v)}
+	r.Web = webPolicy(o, t)
 	switch o.agent {
 	case "omp":
 		r.AgentArgs = strings.Join(splitArgs(o.ompArgs), " ")
@@ -267,11 +280,16 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		runClaude(ctx, o, t, timeout, ws, filepath.Join(root, "claude-home"), &r)
 		return r, nil
 	}
-	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, v)
+	// The web policy goes into the temp SUGA_HOME config suga actually reads (its
+	// general tools.disabled setting), so no change to suga itself is needed to
+	// keep scoring tasks off the network.
+	sets := append(append([]string{}, o.sugaSet...), webSets(r.Web)...)
+	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, v, sets)
 	if err != nil {
 		return r, err
 	}
 	defer stop()
+	before := snapshotWorkspace(ws)
 
 	env := withVariantEnv(isolatedEnv(home), v)
 	// A multi-turn task sends its prompts in order to the same session; the
@@ -290,7 +308,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		r.Error = runErr.Error()
 	}
 	r.Answer = finalAnswer(stdout)
-	t.finish(ws, r.Answer, &r)
+	t.finish(ws, before, r.Answer, &r)
 	r.Passed = runErr == nil && allPassed(r.Checks)
 
 	sout, err := runCmd(context.Background(), bin, []string{"inspect", "stats", "--session", sid, "--json"}, ws, env)
@@ -327,20 +345,20 @@ func sugaRunArgs(sid, prompt, model string, allowWrite bool, extra []string) []s
 // setupSugaHome creates home with an isolated config (fake provider with a
 // fresh fakellm, or a copy of --config-from, then the variant overlay) and
 // returns the model to pass (empty = config default) and a stop func for the
-// fake server.
-func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Variant) (string, func(), error) {
+// fake server. sets are the dotted.key=value overrides applied to that config.
+func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Variant, sets []string) (string, func(), error) {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return "", nil, err
 	}
 	if !o.fake {
-		model, stop, err := o.model, func() {}, writeConfig(home, o.configFrom, 0, o.sugaSet)
+		model, stop, err := o.model, func() {}, writeConfig(home, o.configFrom, 0, sets)
 		return model, stop, firstErr(err, applyVariantConfig(home, v))
 	}
 	stop, port, err := startFake(ctx, fakeMode)
 	if err != nil {
 		return "", nil, err
 	}
-	if err := writeConfig(home, "", port, o.sugaSet); err != nil {
+	if err := writeConfig(home, "", port, sets); err != nil {
 		stop()
 		return "", nil, err
 	}
@@ -609,7 +627,7 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 	// PROMPT is every prompt token sent (uncached + cache read/write), the
 	// fair basis across agents; TOKENS(in/out) keeps uncached input / output.
 	// FIRST is the uncached input of the first main-loop call ("-" if unknown).
-	fmt.Fprintln(tw, "TASK\tAGENT\tRESULT\tCALLS\tTOOLS\tSPILL\tFIRST\tPROMPT\tTOKENS(in/out)\tHIT%\tCOST\tTIME\tARGS")
+	fmt.Fprintln(tw, "TASK\tAGENT\tRESULT\tCALLS\tTOOLS\tSPILL\tFIRST\tPROMPT\tTOKENS(in/out)\tHIT%\tCOST\tTIME\tWEB\tARGS")
 	for i, r := range rs {
 		status := "FAIL"
 		if r.Passed {
@@ -624,16 +642,16 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 		if repeated {
 			label = fmt.Sprintf("%s-r%d", r.Task, r.Round)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\n", label, r.Agent, status, r.Calls, r.ToolCalls, r.Spilled,
-			first, prompt, r.InputTokens, r.OutputToks, r.CacheHit*100, r.CostUSD, float64(r.DurationMs)/1000, truncArgs(r.AgentArgs, 24))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\t%s\n", label, r.Agent, status, r.Calls, r.ToolCalls, r.Spilled,
+			first, prompt, r.InputTokens, r.OutputToks, r.CacheHit*100, r.CostUSD, float64(r.DurationMs)/1000, r.Web, truncArgs(r.AgentArgs, 24))
 		if repeated && (i == len(rs)-1 || rs[i+1].Task != r.Task) {
 			j := i
 			for j > 0 && rs[j-1].Task == r.Task {
 				j--
 			}
 			a := averageRounds(rs[j : i+1])
-			fmt.Fprintf(tw, "%s\t%s\t%d/%d\t%.1f\t%.1f\t-\t-\t%.0f\t%.0f/%.0f\t-\t-\t%.1fs\t%s\n", r.Task+" (avg)", r.Agent, a.Passed, a.Rounds,
-				a.Calls, a.ToolCalls, a.Prompt, a.Uncached, a.Out, a.Seconds, truncArgs(r.AgentArgs, 24))
+			fmt.Fprintf(tw, "%s\t%s\t%d/%d\t%.1f\t%.1f\t-\t-\t%.0f\t%.0f/%.0f\t-\t-\t%.1fs\t%s\t%s\n", r.Task+" (avg)", r.Agent, a.Passed, a.Rounds,
+				a.Calls, a.ToolCalls, a.Prompt, a.Uncached, a.Out, a.Seconds, r.Web, truncArgs(r.AgentArgs, 24))
 		}
 	}
 	_ = tw.Flush()

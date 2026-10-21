@@ -25,6 +25,7 @@ func runOmp(ctx context.Context, o *options, t *Task, timeout time.Duration, ws,
 		r.Error = err.Error()
 		return
 	}
+	before := snapshotWorkspace(ws)
 	var allOut []byte
 	start := time.Now()
 	var err error
@@ -52,7 +53,7 @@ func runOmp(ctx context.Context, o *options, t *Task, timeout time.Duration, ws,
 	// Usage is summed over all turns; the answer is the last assistant text
 	// (parseOmpEvents keeps overwriting it), i.e. the last turn's.
 	parseOmpEvents(allOut, r)
-	t.finish(ws, r.Answer, r)
+	t.finish(ws, before, r.Answer, r)
 	r.Passed = err == nil && allPassed(r.Checks)
 }
 
