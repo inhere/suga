@@ -56,12 +56,12 @@ type EndKeywordRule struct {
 // the mask spec, the ctags map) are filled by compile, the same way an
 // OutputRule and a NudgeRule are.
 type LangRule struct {
-	Name          string   `yaml:"name"`
-	Enabled       *bool    `yaml:"enabled"` // nil = on
-	Exts          []string `yaml:"exts"`
-	Markers       []string `yaml:"markers"`
-	TestCommands  string   `yaml:"test_commands"`
-	FocusedFlags  []string `yaml:"focused_flags"`
+	Name         string   `yaml:"name"`
+	Enabled      *bool    `yaml:"enabled"` // nil = on
+	Exts         []string `yaml:"exts"`
+	Markers      []string `yaml:"markers"`
+	TestCommands string   `yaml:"test_commands"`
+	FocusedFlags []string `yaml:"focused_flags"`
 	// Ctags is the universal-ctags language: one name for every extension
 	// (ctags: Ruby) or one per extension (ctags: {.h: C++}).
 	Ctags any `yaml:"ctags"`
@@ -74,7 +74,7 @@ type LangRule struct {
 	EndKeyword EndKeywordRule `yaml:"end_keyword"`
 	// BodyBraceNextLine accepts the opening brace of a type body on the line
 	// after its declaration (the Allman style of C#).
-	BodyBraceNextLine bool `yaml:"body_brace_next_line"`
+	BodyBraceNextLine bool       `yaml:"body_brace_next_line"`
 	Decls             []DeclRule `yaml:"decls"`
 
 	// Source is where the rule came from (builtin, or the loaded file's path);
