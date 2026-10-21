@@ -115,6 +115,12 @@
 - 工作区内的路径显示为相对路径（工作区外、只读依赖根下的保持原样）；没有登记摘要的工具（如 `update_plan`、MCP 工具）、参数无法解析或摘要为空时仍显示原来的参数 JSON。
 - 摘要与 JSON 用同一宽度截断（`callArgsLimit`），敏感值同样经 `redact` 处理；子 agent 的进度行（`chat.agent_progress: full`）用同一套摘要。只是显示：`run`、stream-json、ACP、trace 与转录里仍是完整的参数 JSON。
 
+## 收工提示（`agents.nudge`）
+
+- 回合正常结束后，suga 按两条规则看这个回合留下的证据：N1 改了文件但之后没跑过 `shell_exec`，或会话计划还有未完成项；N2 答复末尾在说“接下来我去…/让我先跑…/I'll check…”却没有工具调用（以问句结尾不算）。
+- chat **只提示不推回**：命中时在答复下面显示一行灰色提示（`⚠ 最后修改 a.txt 之后没有运行 shell_exec；结尾说接下来我去跑测试`），不会自动开新回合，要不要继续由你决定；同一提示也写进 trace 的 `nudge` 事件（`action=hinted`）。
+- `run` 会注入一回合把模型推回（N2 最多 2 次、N1 最多 1 次，`--verify` 时跳过 N1），`agents.nudge off` 全部关闭。
+
 ## 通知与终端显示
 
 长回合结束或审批等待时的通知（`chat.notify`、`chat.notify_after`）、markdown 渲染、spinner、输入高亮与终端标题等显示开关见 `references/config.md` 的 `chat.*` 一节。
