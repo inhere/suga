@@ -38,6 +38,7 @@ type Manifest struct {
 	Context       ManifestContext       `json:"context"`
 	Memory        []ManifestMemory      `json:"memory"`
 	Output        ManifestOutput        `json:"output"`
+	ReadRoots     []ManifestReadRoot    `json:"read_roots"`
 	Taint         ManifestTaint         `json:"taint"`
 	WritePolicy   ManifestWritePolicy   `json:"write_policy"`
 	ApprovalRules ManifestApprovalRules `json:"approval_rules"`
@@ -189,6 +190,14 @@ type ManifestApprovalDefaults struct {
 	ToolsApproval string `json:"tools_approval"`
 }
 
+// ManifestReadRoot is one read-only root directory outside the workspace the
+// read-only file tools may read (dependency sources, idev-std sources, skill
+// directories, tools.read_roots). It carries no secrets.
+type ManifestReadRoot struct {
+	Label string `json:"label"`
+	Path  string `json:"path"`
+}
+
 // ManifestToolConflict is one same-name tool collision seen while registering
 // the runtime tools (design D8): Tool keeps its first owner (KeptBy) and the
 // dropped Server is listed here. It carries no endpoint, argument, environment
@@ -228,15 +237,19 @@ type ManifestInput struct {
 	InlineBytes, SpillBytes  int
 	SessionsDir              string
 	TaintTools, TaintOnSpill []string
+	// ReadRoots are the read-only root directories the read-only file tools may
+	// read (labels included, so a manifest shows their source).
+	ReadRoots []native.ReadRoot
 }
 
 // BuildManifest summarizes in. It only reads the given structures: no
 // network, no process, no gofer command.
 func BuildManifest(in ManifestInput) Manifest {
 	m := Manifest{
-		Version: in.Version,
-		Models:  ManifestModels{Main: manifestModel(in.Settings.Main)},
-		Output:  ManifestOutput{InlineBytes: in.InlineBytes, SpillBytes: in.SpillBytes, SessionsDir: in.SessionsDir},
+		Version:   in.Version,
+		Models:    ManifestModels{Main: manifestModel(in.Settings.Main)},
+		Output:    ManifestOutput{InlineBytes: in.InlineBytes, SpillBytes: in.SpillBytes, SessionsDir: in.SessionsDir},
+		ReadRoots: []ManifestReadRoot{},
 		Taint: ManifestTaint{
 			TaintTools:   nonNil(in.TaintTools),
 			TaintOnSpill: nonNil(in.TaintOnSpill),
@@ -282,6 +295,9 @@ func BuildManifest(in ManifestInput) Manifest {
 	}
 	for _, conflict := range in.ToolConflicts {
 		m.ToolConflicts = append(m.ToolConflicts, ManifestToolConflict(conflict))
+	}
+	for _, r := range in.ReadRoots {
+		m.ReadRoots = append(m.ReadRoots, ManifestReadRoot{Label: r.Label, Path: r.Path})
 	}
 	// Declaration order: the resolver keeps the configured order, so a manifest
 	// renders the same list the prompt shows. The conversion copies exactly the
@@ -481,9 +497,11 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 	if err != nil {
 		return Manifest{}, manifestParts{}, err
 	}
+	rootList, _ := readRoots(workspace)
 	m := BuildManifest(ManifestInput{
 		Version: buildVersion, Settings: st.models, Registry: reg,
 		MCPServers: mcpServers, Preferred: preferred,
+		ReadRoots:  rootList,
 		SkillRoots: skillRoots(workspace), Skills: skillReg,
 		Context: BuildManifestContext(loadResidentContext(workspace, preferred, skillReg, mem)),
 		Memory:  st.memSetup, Policy: st.memPolicy, Approval: approval,

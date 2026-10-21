@@ -116,6 +116,16 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 		fmt.Fprintf(&b, "  shadowed %s: %s overrides %s\n", s.Name, s.Winner, s.Loser)
 	}
 
+	// Read-only roots: lower-case, so the section reads as a directory list.
+	// The labels name the source (skills, Go modules, configured, ...).
+	b.WriteString("\nRead-only roots outside the workspace\n")
+	if len(m.ReadRoots) == 0 {
+		b.WriteString("  none\n")
+	}
+	for _, r := range m.ReadRoots {
+		fmt.Fprintf(&b, "  %s: %s\n", r.Label, r.Path)
+	}
+
 	writeManifestContext(&b, m.Context)
 
 	b.WriteString("\nMemory\n")
