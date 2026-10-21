@@ -59,18 +59,18 @@ func completedTurn(answer string) personal.RunResult {
 }
 
 // checkVerify runs the check loop once with the given command.
-func checkVerify(t *testing.T, f *fakeVerifyRunner, workspace string, rounds int, command string) (personal.RunResult, *verifyReport, error, string) {
+func checkVerify(t *testing.T, f *fakeVerifyRunner, workspace string, rounds int, command string) (personal.RunResult, *verifyReport, string, error) {
 	t.Helper()
 	var diag bytes.Buffer
 	set := verifySettings{Command: command, Rounds: rounds, Timeout: 10 * time.Second, Workspace: workspace}
 	result, report, err := verifyAfterTurn(context.Background(), f, set, "s1", completedTurn("done"), nil, nil, nil, &diag)
-	return result, report, err, diag.String()
+	return result, report, diag.String(), err
 }
 
 func TestVerifyAfterTurn(t *testing.T) {
 	t.Run("a passing check injects no turn", func(t *testing.T) {
 		f := &fakeVerifyRunner{}
-		_, report, err, diag := checkVerify(t, f, t.TempDir(), 2, "echo ok")
+		_, report, diag, err := checkVerify(t, f, t.TempDir(), 2, "echo ok")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, true, report.Passed)
 		assert.Eq(t, 1, report.Rounds)
@@ -90,7 +90,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 				assert.NoErr(t, os.WriteFile(filepath.Join(workspace, "fixed.txt"), []byte("ok"), 0o644))
 			}
 		}
-		_, report, err, diag := checkVerify(t, f, workspace, 2, "cat fixed.txt")
+		_, report, diag, err := checkVerify(t, f, workspace, 2, "cat fixed.txt")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, true, report.Passed)
 		assert.Eq(t, 2, report.Rounds)
@@ -109,7 +109,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 	})
 	t.Run("rounds run out with the check still failing", func(t *testing.T) {
 		f := &fakeVerifyRunner{after: func(int) {}}
-		_, report, err, _ := checkVerify(t, f, t.TempDir(), 2, "exit 3")
+		_, report, _, err := checkVerify(t, f, t.TempDir(), 2, "exit 3")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, false, report.Passed)
 		assert.Eq(t, 3, report.Rounds)
@@ -130,7 +130,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 		f := &fakeVerifyRunner{turns: []personal.RunResult{{
 			State: personal.RunCompleted, Status: agentcore.RunYielded,
 		}}}
-		_, report, err, _ := checkVerify(t, f, t.TempDir(), 3, "exit 1")
+		_, report, _, err := checkVerify(t, f, t.TempDir(), 3, "exit 1")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, false, report.Passed)
 		assert.Eq(t, 1, report.Rounds)
@@ -139,7 +139,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 	t.Run("a fix round that fails ends the loop with its error", func(t *testing.T) {
 		boom := fmt.Errorf("provider down")
 		f := &fakeVerifyRunner{errs: []error{boom}}
-		_, _, err, _ := checkVerify(t, f, t.TempDir(), 2, "exit 1")
+		_, _, _, err := checkVerify(t, f, t.TempDir(), 2, "exit 1")
 		assert.Require(t, assert.Err(t, err))
 		assert.StrContains(t, err.Error(), "provider down")
 	})
