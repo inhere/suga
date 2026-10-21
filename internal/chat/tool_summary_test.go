@@ -2,6 +2,7 @@ package chat
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -169,5 +170,25 @@ func TestToolCallSummaryLimits(t *testing.T) {
 		got := toolLine(t, "", "shell_exec", `{"command":"deploy --api_key=abc123 rest"}`)
 		assert.Eq(t, "⏺ shell_exec deploy --api_key=[REDACTED] rest", got)
 		assert.StrNotContains(t, got, "abc123")
+	})
+}
+
+// TestToolCallArgsUseTheWholeArguments: Text carries the arguments as JSON cut
+// at 200 runes, too short to decode a long command or a file_write; the event's
+// whole arguments (personal.Event ToolArgs) still give the tool's own summary.
+func TestToolCallArgsUseTheWholeArguments(t *testing.T) {
+	long := "go test ./internal/chat/ -run '" + strings.Repeat("TestSomething|", 30) + "'"
+	full := map[string]any{"command": long}
+	data, _ := json.Marshal(full)
+	cut := string([]rune(string(data))[:200]) // what the event's Text holds
+
+	t.Run("whole arguments give the summary", func(t *testing.T) {
+		got := toolCallArgs("shell_exec", cut, full, "")
+		assert.True(t, strings.HasPrefix(got, "go test ./internal/chat/"), got)
+		assert.NotContains(t, got, `{"command"`)
+	})
+	t.Run("without them a cut call falls back to JSON", func(t *testing.T) {
+		got := toolCallArgs("shell_exec", cut, nil, "")
+		assert.StrContains(t, got, `{"command"`)
 	})
 }

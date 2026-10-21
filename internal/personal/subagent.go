@@ -135,7 +135,7 @@ func childProgress(req ChildRequest) EmitFunc {
 		if e.Kind != "tool_call" {
 			return nil
 		}
-		return req.Emit(ctx, Event{Kind: "agent_progress", ToolName: e.ToolName, Text: e.Text, Agent: req.Description})
+		return req.Emit(ctx, Event{Kind: "agent_progress", ToolName: e.ToolName, Text: e.Text, ToolArgs: e.ToolArgs, Agent: req.Description})
 	}
 }
 

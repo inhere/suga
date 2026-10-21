@@ -358,8 +358,8 @@ func (r *Renderer) toolRunning(name string) {
 
 // toolCallArgs is the package's toolCallArgs (tool_summary.go) with the path
 // handling of this chat: paths inside the workspace are shown relative to it.
-func (r *Renderer) toolCallArgs(name, text string) string {
-	return toolCallArgs(name, text, r.opts.Workspace)
+func (r *Renderer) toolCallArgs(name, text string, full map[string]any) string {
+	return toolCallArgs(name, text, full, r.opts.Workspace)
 }
 
 // stopThinking clears the renderer's own waiting line before a write of this
@@ -407,7 +407,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		r.live.Finish() // never start a tool line in the middle of streamed text
 		r.beginAgent(event)
 		line := "⏺ " + event.ToolName
-		if args := r.toolCallArgs(event.ToolName, event.Text); args != "" {
+		if args := r.toolCallArgs(event.ToolName, event.Text, event.ToolArgs); args != "" {
 			line += " " + args
 		}
 		fmt.Fprintln(r.opts.Out, r.paint(color.Gray, line))
@@ -441,7 +441,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		if r.agentProgressMode() == "full" {
 			r.live.Finish()
 			line := "  · " + event.ToolName
-			if args := r.toolCallArgs(event.ToolName, event.Text); args != "" {
+			if args := r.toolCallArgs(event.ToolName, event.Text, event.ToolArgs); args != "" {
 				line += " " + args
 			}
 			fmt.Fprintln(r.opts.Out, r.paint(color.Gray, line))

@@ -46,9 +46,15 @@ var toolSummaries = map[string]toolSummaryFunc{
 // summary when there is one, the compact JSON of the call arguments otherwise.
 // The workspace makes the paths inside it relative, and secrets are redacted
 // like everywhere else in chat.
-func toolCallArgs(name, text, workspace string) string {
+func toolCallArgs(name, text string, full map[string]any, workspace string) string {
 	if summary, ok := toolSummaries[name]; ok {
-		if args, ok := toolCallArgMap(text); ok {
+		// The event's whole arguments when it carries them (personal.Event
+		// ToolArgs); the cut JSON of Text is only decodable for short calls.
+		args, ok := full, full != nil
+		if !ok {
+			args, ok = toolCallArgMap(text)
+		}
+		if ok {
 			if line := truncateLine(redact.Secrets(summary(args, workspace)), callArgsLimit); line != "" {
 				return line
 			}

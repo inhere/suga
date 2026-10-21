@@ -213,6 +213,12 @@ type Event struct {
 	RunID     string
 	Text      string
 	ToolName  string
+	// ToolArgs is set on "tool_call" and "agent_progress" events: the call's
+	// whole arguments, for chat's one-line summary of the call (Text carries
+	// them as JSON cut at toolArgSummaryLimit, too short to decode a long shell
+	// command or a file_write). It is never serialized: run, stream-json, ACP
+	// and the trace keep using Text.
+	ToolArgs map[string]any `json:"-"`
 	// IsError is set on "tool_result" events whose tool call failed or was refused.
 	IsError bool
 	// Plan is set on "plan" events (the full replaced task list).
@@ -969,7 +975,7 @@ func (h toolEventHook) BeforeTool(ctx context.Context, event *agentcore.ToolEven
 	if event == nil || event.Call == nil {
 		return nil
 	}
-	call := Event{Kind: "tool_call", ToolName: event.Call.Name, Text: toolArgSummary(event.Call.Arguments)}
+	call := Event{Kind: "tool_call", ToolName: event.Call.Name, Text: toolArgSummary(event.Call.Arguments), ToolArgs: event.Call.Arguments}
 	if h.diffPreview {
 		if change, ok := diffview.Call(h.workspace, event.Call.Name, event.Call.Arguments); ok {
 			call.Change = change
