@@ -35,8 +35,8 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 	fmt.Fprintf(&b, "## 逐任务对比\n\n")
 
 	b.WriteString("| task |")
-	for range variants {
-		b.WriteString(" 结果 (variant) |")
+	for _, v := range variants {
+		fmt.Fprintf(&b, " %s |", v.Name)
 	}
 	b.WriteString(" 结果不一致 |\n|---|")
 	for range variants {
