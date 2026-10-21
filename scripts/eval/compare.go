@@ -33,14 +33,8 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 
 	// One line per task, variants side by side.
 	fmt.Fprintf(&b, "## 逐任务对比\n\n")
-	names := make([]string, 0, len(variants))
-	for _, v := range variants {
-		names = append(names, v.Name)
-	}
-	for _, name := range names {
-		fmt.Fprintf(&b, "  %s |", name)
-	}
-	b.WriteString("\n\n| task |")
+
+	b.WriteString("| task |")
 	for range variants {
 		b.WriteString(" 结果 (variant) |")
 	}
