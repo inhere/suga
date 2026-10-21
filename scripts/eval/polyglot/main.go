@@ -51,6 +51,13 @@ func run() error {
 	if len(names) == 0 {
 		return fmt.Errorf("no exercise matches %q", o.only)
 	}
+	// The output usually lies inside the suga module (tmp/eval-tasks/...): an
+	// empty go.mod makes it a module of its own, so the generated fixtures and
+	// acceptance tests are not packages of suga's `go vet ./...` and
+	// `go test ./...` (their stubs do not compile on their own).
+	if err := writeOutGoMod(o.out); err != nil {
+		return err
+	}
 	fmt.Printf("converted %d exercises into %s:\n", len(names), o.out)
 	for _, n := range names {
 		fmt.Println(" ", n)
@@ -264,6 +271,15 @@ func promptFor(stubs []string, visibleTests bool) string {
 
 // taskName maps an exercise name to its eval task name.
 func taskName(exercise string) string { return "polyglot-go-" + exercise }
+
+// writeOutGoMod writes <out>/go.mod (module polyglotout) unless one exists.
+func writeOutGoMod(out string) error {
+	path := filepath.Join(out, "go.mod")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	return os.WriteFile(path, []byte("module polyglotout\n"), 0o644)
+}
 
 // copyFile copies one file, creating parent directories.
 func copyFile(src, dst string) error {

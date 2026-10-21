@@ -100,6 +100,8 @@ go run ./scripts/eval/polyglot -src <同上> -out <目录> -only 'bowling'   # �
 - `task.yaml`：`mode: allow-write`、`timeout: 5m`、`acceptance: acceptance`，
   check 为 `[{type: command, args: [go, test, ./...]}]`；prompt 要求按 `.docs/instructions.md` 实现桩文件、只改桩文件、不改测试。
 - 任务名即目录名 `polyglot-go-<题名>`（`--task 'polyglot-go-bowling'` 可单跑）。
+- 输出目录里会写一个空 `go.mod`（`module polyglotout`），使生成的 fixture 与 acceptance 不进入 suga 主模块的 `./...`
+  （桩代码本身不完整，单独 `go vet ./...` 会报未定义类型）。
 
 ```bash
 go run ./scripts/eval --tasks-dir tmp/eval-tasks/polyglot-go --model <model> --config-from ~/.suga --timeout 5m

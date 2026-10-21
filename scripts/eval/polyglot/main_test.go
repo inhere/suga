@@ -110,6 +110,24 @@ func TestConvertOnlyGlob(t *testing.T) {
 	assert.Err(t, err)
 }
 
+func TestWriteOutGoMod(t *testing.T) {
+	t.Run("creates", func(t *testing.T) {
+		out := t.TempDir()
+		assert.NoErr(t, writeOutGoMod(out))
+		raw, err := os.ReadFile(filepath.Join(out, "go.mod"))
+		assert.NoErr(t, err)
+		assert.Eq(t, "module polyglotout\n", string(raw))
+	})
+	t.Run("keeps existing", func(t *testing.T) {
+		out := t.TempDir()
+		assert.NoErr(t, os.WriteFile(filepath.Join(out, "go.mod"), []byte("module mine\n"), 0o644))
+		assert.NoErr(t, writeOutGoMod(out))
+		raw, err := os.ReadFile(filepath.Join(out, "go.mod"))
+		assert.NoErr(t, err)
+		assert.Eq(t, "module mine\n", string(raw))
+	})
+}
+
 func TestConvertRejectsIncompleteExercise(t *testing.T) {
 	src, out := t.TempDir(), t.TempDir()
 	assert.NoErr(t, os.MkdirAll(filepath.Join(src, "empty"), 0o755))
