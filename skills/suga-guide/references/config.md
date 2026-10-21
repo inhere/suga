@@ -361,6 +361,7 @@ suga run --prompt "..."   # 单轮；[--allow-write] [--read-only] [--model] [--
                           # [--output-format text|stream-json] [--mcp-config <file>]
                           # [--append-system-prompt <text>] [--clear-append-system-prompt]
                           # [--no-project-rules] [--injected] [--max-steps <N>]
+                          # [--verify <命令>] [--verify-rounds <N, 1-5>] [--verify-timeout <10m>]
                           # [--add-dir <绝对目录>[:ro|:rw]]（可重复；也可用 SUGA_ADD_DIRS）
                           # [--allow-cwd-change]（会话原目录与当前目录不一致时在当前目录继续）
 suga acp                                      # 以 ACP stdio 服务（供 gofer 等客户端接入）

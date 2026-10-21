@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 	"github.com/inhere/suga/internal/personal"
@@ -49,6 +50,26 @@ func TestEventLineToolEvents(t *testing.T) {
 		assert.StrNotContains(t, got, "\n")
 		assert.Eq(t, toolSummaryLimit, len([]rune(got)))
 		assert.True(t, strings.HasSuffix(got, "…"))
+	})
+}
+
+// TestVerifyLines covers the stream-json shape of the --verify delivery check:
+// one "verify" line per run of the command, and the outcome on the closing
+// result line (a run without --verify keeps that line as it was).
+func TestVerifyLines(t *testing.T) {
+	t.Run("a check line names the round, the command and the exit code", func(t *testing.T) {
+		line := VerifyLine(1, "go test ./...", 1, false, 12300*time.Millisecond)
+		assert.Eq(t, map[string]any{
+			"type": "verify", "round": 1, "command": "go test ./...", "exit_code": 1,
+			"passed": false, "duration_ms": int64(12300),
+		}, line)
+	})
+	t.Run("the result line carries the outcome", func(t *testing.T) {
+		line := ResultLine("s", personal.RunResult{RunID: "r", State: personal.RunCompleted, Output: "ok"})
+		_, has := line["verify"]
+		assert.False(t, has)
+		line = WithVerify(line, true, 2)
+		assert.Eq(t, map[string]any{"passed": true, "rounds": 2}, line["verify"])
 	})
 }
 
