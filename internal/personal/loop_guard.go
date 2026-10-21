@@ -72,8 +72,8 @@ type loopGuardHook struct {
 	// best-effort like every event; nil disables tracing.
 	record func(context.Context, store.Event)
 	// counts counts every call of one key this turn (tool, canonical arguments
-	// and the result summary, see loopGuardKey); hints counts the reminders
-	// already appended for one group (tool and arguments).
+	// and the result summary, see loopGuardResultKey); hints counts the
+	// reminders already appended for one group (tool and arguments).
 	counts map[string]int
 	hints  map[string]int
 	// last and streak track the current run of consecutive identical keys.
@@ -84,7 +84,7 @@ type loopGuardHook struct {
 	fails map[string]int
 }
 
-// AfterTool counts the call and, on R1 or R2, appends the reminder to the
+// AfterTool counts the call and, on R1, R2 or R3, appends the reminder to the
 // result the runtime is about to persist. The hook never fails the turn: a
 // reminder that cannot be recorded or shown is no reason to stop.
 func (h *loopGuardHook) AfterTool(ctx context.Context, event *agentcore.ToolEvent, _ *agentcore.Control) error {
