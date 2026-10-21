@@ -75,7 +75,7 @@ func goldenCases() []goldenCase {
 		{"yaml", "yaml/config.yaml", "port"},
 		{"toml", "toml/config.toml", "port"},
 		{"rs", "rs/lib.rs", "store"},
-		{"csharp", "csharp/Store.cs", "reload"},
+		{"csharp", "csharp/Store.cs", "Reload"},
 		{"kotlin", "kotlin/Store.kt", "reload"},
 		{"ruby", "ruby/store.rb", "reload"},
 		{"cpp", "cpp/store.cpp", "reload"},

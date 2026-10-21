@@ -10,19 +10,19 @@ namespace Sample.Store
 
         public Store(int capacity)
         {
-            // "reload" in a comment is no reference.
-            items.Capacity = capacity;
+            // "Reload" in a comment is no reference.
+            items.Capacity = capacity; Reload();
         }
 
         public void Reload()
         {
-            string label = "reload in a string is no reference";
+            string label = "Reload in a string is no reference";
             Console.WriteLine(label);
         }
 
         public string Describe(int width)
         {
-            return $"reload {width}";
+            return $"Reload {width}";
         }
 
         private bool ready { get; set; }
