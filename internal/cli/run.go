@@ -381,6 +381,13 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	if err == nil && result.State == personal.RunCompleted && opts.tasks != nil {
 		result, err = finishBackgroundTasks(ctx, runner, opts.tasks, sessionID, result, emit, live, stderr)
 	}
+	// A turn that looks finished too early is pushed back with an injected turn
+	// (personal.CheckNudge), before --verify: the check then covers what the pushed
+	// turns changed. A --verify command checks the delivery itself, so N1 is skipped
+	// there.
+	if err == nil && result.State == personal.RunCompleted {
+		result, err = nudgeAfterTurn(ctx, runner, sessionID, result, strings.TrimSpace(opts.Verify) != "", emit, live, encoder, stderr)
+	}
 	// The caller's --verify check runs after a turn finished normally (background
 	// tasks settled first): a failing command comes back as an injected turn, so
 	// the model gets a chance to fix it before the run ends. A turn that failed,
@@ -397,12 +404,6 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		// Text mode: the check that never passed is summarised on stderr, with the
 		// tail of its last output; stdout stays the answer only.
 		fmt.Fprintln(stderr, verifySummary(opts.Verify, verifyRep))
-	}
-	// A turn that looks finished too early is pushed back with an injected turn
-	// (personal.CheckNudge). A --verify command already checked the delivery, so
-	// N1 is skipped there.
-	if err == nil && result.State == personal.RunCompleted {
-		result, err = nudgeAfterTurn(ctx, runner, sessionID, result, strings.TrimSpace(opts.Verify) != "", emit, live, encoder, stderr)
 	}
 	streamed := live.Finish() // end the streamed line before any error or status output
 	_, _, window, _ := runner.ModelSettings()

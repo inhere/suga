@@ -40,6 +40,11 @@ type nudgeRunner interface {
 // push could not run or the context ended.
 func nudgeAfterTurn(ctx context.Context, nr nudgeRunner, sessionID string, result personal.RunResult,
 	skipUnverified bool, emit personal.EmitFunc, live *output.LiveText, encoder *json.Encoder, stderr io.Writer) (personal.RunResult, error) {
+	if result.Status == agentcore.RunYielded || result.WrapUp != "" || result.Truncated {
+		// A yielded, wrapped-up or cut-off answer did not choose to stop: its end
+		// says nothing about the model giving up early.
+		return result, nil
+	}
 	pushed := map[string]int{}
 	for {
 		hits := nudgePushes(nr.NudgeFindings(ctx, sessionID, result), pushed, skipUnverified)
@@ -65,7 +70,7 @@ func nudgeAfterTurn(ctx context.Context, nr nudgeRunner, sessionID string, resul
 		}
 		// Only a normally finished turn is checked again (a failed, yielded,
 		// cancelled or wrapped-up one is not): the loop ends here.
-		if result.State != personal.RunCompleted || result.Status == agentcore.RunYielded || result.WrapUp != "" {
+		if result.State != personal.RunCompleted || result.Status == agentcore.RunYielded || result.WrapUp != "" || result.Truncated {
 			return result, nil
 		}
 	}
