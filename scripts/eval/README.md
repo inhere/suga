@@ -72,6 +72,45 @@ checks 为 `go vet ./...` 与 `go test -count=1 ./schedule/...`（agent 自己�
 `--fake` 下假模型不会写代码，checks 失败属预期，只用来确认注入与 command 执行的管线。
 验收测试对 `pkg/agentcore/schedule` 参考实现应全部通过（把 `schedule.go` 复制到临时工作区的 `schedule/` 下验证）。
 
+## Aider polyglot（Exercism Go 题）
+
+[Aider polyglot benchmark](https://github.com/Aider-AI/polyglot-benchmark) 的 Go 39 题取自 Exercism Go track 的练习题，
+适合做纯测试判定的 Go 题：题目只有标准库、无网络与外部依赖，Windows 主机可直接跑。
+原仓库与 Exercism 的习题内容按 MIT 许可使用（见原仓库的 `LICENSE`）。
+
+**分数只适合内部对比**：这些题目已大量进入训练语料，绝对分数偏高，不要与外部榜单比较；
+用于 suga 版本间、配置间、模型间的相对对比。
+
+转换器把题源转成任务目录（题源与生成的任务都不进仓库，生成到 `tmp/` 下）：
+
+```bash
+# 题源：浅克隆 https://github.com/Aider-AI/polyglot-benchmark 后的 go/exercises/practice 目录
+go run ./scripts/eval/polyglot -src ../../tmp/refer-src/polyglot-benchmark/go/exercises/practice \
+  -out tmp/eval-tasks/polyglot-go              # hidden：测试只在 agent 结束后注入
+
+go run ./scripts/eval/polyglot -src <同上> -out tmp/eval-tasks/polyglot-go-visible -visible-tests
+go run ./scripts/eval/polyglot -src <同上> -out <目录> -only 'bowling'   # 只转一题（glob）
+```
+
+每题生成 `<out>/polyglot-go-<题名>/`：
+
+- `fixture/`：该题的桩代码（顶层非测试 `.go`）、`go.mod`、`.docs/instructions.md`（以及 `instructions.append.md`）；
+  `.meta/`（参考答案）、`.approaches/`、`.articles/` 与测试文件默认不放进 fixture（`-visible-tests` 时测试文件也放进 fixture）。
+- `acceptance/`：该题全部 `*_test.go`（含 `cases_test.go`），运行结束后注入工作区并覆盖同名文件，
+  所以 visible 模式下 agent 改测试也不影响判定。
+- `task.yaml`：`mode: allow-write`、`timeout: 5m`、`acceptance: acceptance`，
+  check 为 `[{type: command, args: [go, test, ./...]}]`；prompt 要求按 `.docs/instructions.md` 实现桩文件、只改桩文件、不改测试。
+- 任务名即目录名 `polyglot-go-<题名>`（`--task 'polyglot-go-bowling'` 可单跑）。
+- 输出目录里会写一个空 `go.mod`（`module polyglotout`），使生成的 fixture 与 acceptance 不进入 suga 主模块的 `./...`
+  （桩代码本身不完整，单独 `go vet ./...` 会报未定义类型）。
+
+```bash
+go run ./scripts/eval --tasks-dir tmp/eval-tasks/polyglot-go --model <model> --config-from ~/.suga --timeout 5m
+```
+
+注意：`counter` 原题在 Exercism 侧标记为跳过测试（`.meta/.skip_tests`），它的测试文件没有用例，
+该题只检验代码能编译，通过不代表实现正确。
+
 ## 仓库模式
 
 task.yaml 写 `repo: {ref: <git ref>}`（不要同时有 `fixture/`）时，工作区不是 fixture 副本，而是 eval 启动目录所在 git 仓库的 `<ref>` 快照：
