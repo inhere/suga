@@ -46,6 +46,10 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 	if err != nil {
 		return err
 	}
+	win32InputMode, err := appconfig.ChatWin32InputMode()
+	if err != nil {
+		return err
+	}
 	modelOptions := make([]chat.ModelOption, 0, len(runtime.ModelOptions()))
 	for _, option := range runtime.ModelOptions() {
 		modelOptions = append(modelOptions, chat.ModelOption{Provider: option.Provider, Model: option.Model,
@@ -77,6 +81,9 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		AgentProgress:  agentProgress,
 		HighlightInput: appconfig.ChatHighlightInputEnabled(),
 		Steering:       appconfig.ChatSteeringEnabled(),
+		// Ctrl+Enter as a newline inside the input line (chat.win32_input_mode): auto
+		// asks for win32-input-mode in Windows Terminal only.
+		Win32InputMode: win32InputMode,
 		TerminalTitle:  appconfig.ChatTerminalTitleEnabled(),
 		// What a file tool changed (chat.diff / chat.diff_lines): the diff under the
 		// tool result, before an approval question and with :diff. The change itself

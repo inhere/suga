@@ -180,6 +180,24 @@ func ChatNotifyMode() (string, error) {
 	return "", fmt.Errorf("chat.notify must be auto, bell, osc9 or off, got %q", value)
 }
 
+// ChatWin32InputMode selects win32-input-mode (DECSET 9001) for the chat input:
+// auto (the default) asks for it in Windows Terminal only, on always asks for it
+// and off leaves the keys as plain bytes. With the mode on the terminal reports
+// every key press as a record, which is what lets Ctrl+Enter put a newline into
+// the input line instead of submitting it (WT binds Alt+Enter to fullscreen and
+// sends Ctrl+Enter as Ctrl+J's byte otherwise).
+func ChatWin32InputMode() (string, error) {
+	value := strings.ToLower(strings.TrimSpace(gkconfig.String("chat.win32_input_mode")))
+	if value == "" {
+		value = "auto"
+	}
+	switch value {
+	case "auto", "on", "off":
+		return value, nil
+	}
+	return "", fmt.Errorf("chat.win32_input_mode must be auto, on or off, got %q", value)
+}
+
 // ChatNotifyAfter reads the minimum turn duration before a completion notice.
 func ChatNotifyAfter() (time.Duration, error) {
 	if gkconfig.Get("chat.notify_after") == nil {

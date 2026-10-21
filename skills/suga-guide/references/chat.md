@@ -53,7 +53,8 @@
 
 ## 多行输入
 
-- Windows 上 `Ctrl+Enter` 与 `Ctrl+J` 在输入里插入换行（Windows Terminal 1.24 把两者都发成裸 LF，用 `tmp/keyprobe` 实测确认）；Unix 等终端上用 `Alt+Enter`（ESC+Enter），因为那里裸 LF 就是 Enter。
+- Windows Terminal（1.25 及以上）下 chat 进入行编辑前请求 win32-input-mode（`ESC[?9001h`，配置 `chat.win32_input_mode: auto|on|off`，`auto` 只在 `WT_SESSION` 存在时开启）：此后终端把每个按键作为记录送达，`Ctrl+Enter`、`Shift+Enter`、`Alt+Enter` 都在输入里插入换行，不依赖 `settings.json`；退出行编辑、Ctrl-C、退出 chat 与 `!` 本地命令前后都恢复（`ESC[?9001l`）。终端不认识该序列时按键仍按原字节解析，行为与下面相同。
+- 其它情况（非 Windows Terminal、旧版终端、`chat.win32_input_mode: off`）：Windows 上 `Ctrl+J` 在输入里插入换行（Windows Terminal 1.24 把 `Ctrl+Enter` 也发成裸 LF，用 `tmp/keyprobe` 实测确认）；Unix 等终端上用 `Alt+Enter`（ESC+Enter），因为那里裸 LF 就是 Enter。
 - 哪个键能到程序由终端决定：Windows Terminal 把 `Alt+Enter` 留给全屏（要用就在 `settings.json` 里重绑或 `unbound`），`Shift+Enter` 通常与 Enter 同码——在 Windows Terminal 里加一行 `{"keys":"shift+enter","command":{"action":"sendInput","input":"\u001b\r"}}` 也能用。
 - `Enter` 把整段作为一条消息提交。
 - 输入里含换行时，`Up`/`Down` 在行内移动光标（保持行内文本列、目标行较短则落在行尾）；在第一行再按 `Up`（或最后一行再按 `Down`）照常切历史，`Down` 回来时整段输入恢复。

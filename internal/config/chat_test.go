@@ -267,6 +267,44 @@ func TestChatCodeSettings(t *testing.T) {
 	}
 }
 
+// TestChatWin32InputMode: chat.win32_input_mode is auto unless set, takes the three
+// documented values in any case and rejects anything else.
+func TestChatWin32InputMode(t *testing.T) {
+	load := chatConfigLoader(t)
+	t.Run("default auto", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		mode, err := ChatWin32InputMode()
+		assert.NoErr(t, err)
+		assert.Eq(t, "auto", mode)
+	})
+	t.Run("on", func(t *testing.T) {
+		load(t, "chat:\n  win32_input_mode: ON\n")
+		mode, err := ChatWin32InputMode()
+		assert.NoErr(t, err)
+		assert.Eq(t, "on", mode)
+	})
+	t.Run("off", func(t *testing.T) {
+		load(t, "chat:\n  win32_input_mode: \" off \"\n")
+		mode, err := ChatWin32InputMode()
+		assert.NoErr(t, err)
+		assert.Eq(t, "off", mode)
+	})
+	t.Run("invalid", func(t *testing.T) {
+		load(t, "chat:\n  win32_input_mode: yes-please\n")
+		_, err := ChatWin32InputMode()
+		assert.Err(t, err)
+	})
+	t.Run("read through the settings registry", func(t *testing.T) {
+		load(t, "chat:\n  win32_input_mode: off\n")
+		settings, err := ReadChatSettings()
+		assert.NoErr(t, err)
+		assert.Eq(t, "off", settings.Win32InputMode)
+		value, err := ReadConfigValue("chat.win32_input_mode")
+		assert.NoErr(t, err)
+		assert.Eq(t, "off", value.Value)
+	})
+}
+
 // chatConfigLoader returns a helper writing body to a fresh SUGA_HOME's
 // config.yaml and loading it.
 func chatConfigLoader(t *testing.T) func(t *testing.T, body string) {

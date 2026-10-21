@@ -136,6 +136,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "chat.undo_confirm", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.notify", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
 	{Pattern: "chat.notify_after", Type: ConfigTypeDuration, Writable: true, Reader: "chat"},
+	{Pattern: "chat.win32_input_mode", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
 	{Pattern: "rules.file", Type: ConfigTypeString, Writable: true, Reader: "rules"},
 	{Pattern: "transcripts", Type: ConfigTypeSwitch, Writable: true},
 	{Pattern: "tasks.max_running", Type: ConfigTypeInt, Writable: true, Reader: "tasks"},
@@ -430,6 +431,8 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = []string{ChatAgentProgressSummary, ChatAgentProgressFull, ChatAgentProgressOff}
 	case key == "chat.notify":
 		allowed = []string{"auto", "bell", "osc9", "off"}
+	case key == "chat.win32_input_mode":
+		allowed = []string{"auto", "on", "off"}
 	case key == "tools.deferred":
 		allowed = []string{string(tools.DeferredAuto), string(tools.DeferredAlways), string(tools.DeferredNever)}
 	case key == "tools.approval":
@@ -620,6 +623,7 @@ type ChatSettings struct {
 	CodeMaxLines                               int
 	Notify                                     string
 	NotifyAfter                                time.Duration
+	Win32InputMode                             string
 }
 
 func ReadChatSettings() (ChatSettings, error) {
@@ -647,6 +651,10 @@ func ReadChatSettings() (ChatSettings, error) {
 	if err != nil {
 		return ChatSettings{}, err
 	}
+	win32InputMode, err := ChatWin32InputMode()
+	if err != nil {
+		return ChatSettings{}, err
+	}
 	return ChatSettings{
 		History: ChatHistoryEnabled(), Markdown: ChatMarkdownEnabled(), Spinner: ChatSpinnerEnabled(),
 		HighlightInput: ChatHighlightInputEnabled(), Steering: ChatSteeringEnabled(),
@@ -655,6 +663,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		AgentProgress: agentProgress,
 		HistorySize:   historySize, DiffLines: diffLines, Notify: notify, NotifyAfter: notifyAfter,
 		CodeHighlight: ChatCodeHighlightEnabled(), CodeMaxLines: codeMaxLines,
+		Win32InputMode: win32InputMode,
 	}, nil
 }
 
@@ -796,7 +805,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.Every, true, nil
 		}
 		return settings.Keep, true, nil
-	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines":
+	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -975,6 +984,8 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.CodeMaxLines
 	case "chat.notify":
 		return settings.Notify
+	case "chat.win32_input_mode":
+		return settings.Win32InputMode
 	default:
 		return settings.NotifyAfter
 	}

@@ -4,14 +4,15 @@
 
 ## [未发布]
 
+### 新增
+
+- Windows Terminal 下 `Ctrl+Enter` 换行（issue suga-tcgw）：chat 在 `WT_SESSION` 里进入行编辑前请求 win32-input-mode（`ESC[?9001h`），终端此后把每个按键按 `CSI Vk;Sc;Uc;Kd;Cs;Rc _` 记录送达，行编辑器把记录映射回原有按键（字符、方向键、Home/End、Backspace/Delete、Enter、Tab、Esc、Ctrl+字母、Alt 组合、粘贴），其中 `Ctrl+Enter`/`Shift+Enter`/`Alt+Enter` 插入换行而不提交；抬键记录（Kd=0）被忽略，按住键的重复次数（Rc）按次数展开，中文与 emoji（代理对两个记录）照常输入。退出行编辑、Ctrl-C、退出 chat（含 panic）与 `!` 本地命令运行前后都恢复 `ESC[?9001l`。**配置**：`chat.win32_input_mode: auto|on|off`（默认 `auto`，只在 Windows Terminal 开启；`off` 关闭后仍是 `Ctrl+J`/`Alt+Enter` 换行）。终端不支持该序列时（非 Windows Terminal、旧版终端）按键仍按原字节解析，行为不变。
+- 回合中按 `Tab` 把输入行排到本轮结束后（issue suga-8pug）：这一行不插进正在运行的回合，回合结束后作为下一条用户消息自动发送（与 `suga send` 不带 `--steer` 的排队语义一致），显示 `[排队] <内容>（本轮结束后发送）`，发送时显示“（已发送）”；可连续排多条、按顺序发送，`Ctrl-C` 中止本轮时保留。新增 `:queue` 列出排队内容、`:queue clear` 清空。以 `:` 开头的行 Tab 仍是命令补全，空行与没有回合在跑时行为不变。
+
 ### 修复
 
 - `suga inspect manifest`（含别名 `info`）变为纯只读：不再在空的 SUGA_HOME 下触发配置 bootstrap（不再写出 `.env`/`config.yaml`）、不再释放内置 skills 到磁盘（从内嵌资源直接枚举，已释放的仍从盘上读取）、不再创建日志文件；缺 `.env` 时照常读取并视为空。其它命令与 inspect 其余子命令的行为不变。
 - `session_message` 工具被配置关闭时（`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off`），模型调用它现在得到“该工具已在配置中关闭（tools.session_message.enabled / SUGA_SESSION_MESSAGE）”的提示，而不是一个简单的工具不存在错误。
-
-### 新增
-
-- 回合中按 `Tab` 把输入行排到本轮结束后（issue suga-8pug）：这一行不插进正在运行的回合，回合结束后作为下一条用户消息自动发送（与 `suga send` 不带 `--steer` 的排队语义一致），显示 `[排队] <内容>（本轮结束后发送）`，发送时显示“（已发送）”；可连续排多条、按顺序发送，`Ctrl-C` 中止本轮时保留。新增 `:queue` 列出排队内容、`:queue clear` 清空。以 `:` 开头的行 Tab 仍是命令补全，空行与没有回合在跑时行为不变。
 
 ## [0.41.0] - 2026-10-21
 
