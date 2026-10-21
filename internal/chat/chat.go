@@ -344,12 +344,19 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	if steering {
 		status = inputSource
 	}
+	// The tool lines show a path inside the workspace relative to it (only when
+	// the session knows its workspace: --add-dir may be off).
+	workspace := ""
+	if opts.Dirs != nil {
+		workspace = opts.Dirs.Workspace()
+	}
 	render = newRenderer(rendererOptions{
 		Out: inputSource, Err: errOut,
 		Color: color, ErrColor: colorEnabledFor(stderr),
 		Provider: runner.ProviderName(), Model: runner.Model(),
 		Thinking: opts.Thinking, ContextWindow: opts.ContextWindow,
 		WriteTools: opts.WriteTools, Markdown: opts.Markdown, Spinner: opts.Spinner,
+		Workspace:     workspace,
 		AgentProgress: opts.AgentProgress,
 		Diff:          opts.Diff, DiffLines: opts.DiffLines,
 		CodeHighlight: opts.CodeHighlight, CodeMaxLines: opts.CodeMaxLines,

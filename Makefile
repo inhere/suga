@@ -169,6 +169,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_budget.py --bin tmp/smoke/suga --work tmp/smoke-budget
 	python3 -I scripts/ptysmoke/chat_empty_final.py --bin tmp/smoke/suga --work tmp/smoke-empty-final
 	python3 -I scripts/ptysmoke/chat_refs.py --bin tmp/smoke/suga --work tmp/smoke-refs
+	python3 -I scripts/ptysmoke/chat_tool_lines.py --bin tmp/smoke/suga --work tmp/smoke-toollines
 	python3 -I scripts/ptysmoke/chat_session_message.py --bin tmp/smoke/suga --work tmp/smoke-session-message
 	python3 -I scripts/ptysmoke/preferred_tools.py --bin tmp/smoke/suga --work tmp/smoke-preferred-tools
 

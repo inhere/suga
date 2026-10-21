@@ -67,6 +67,9 @@ type rendererOptions struct {
 	SessionName string
 	// WriteTools selects the banner's tool line (write and shell on or off).
 	WriteTools bool
+	// Workspace is the root the file tools work in: the tool lines show a path
+	// inside it relative to it (empty: every path as the call wrote it).
+	Workspace string
 	// Markdown renders the model's text as terminal markdown (config
 	// chat.markdown); it only applies to a colored terminal.
 	Markdown bool
@@ -353,6 +356,12 @@ func (r *Renderer) toolRunning(name string) {
 	r.spin.SetLabel(toolLabel(name))
 }
 
+// toolCallArgs is the package's toolCallArgs (tool_summary.go) with the path
+// handling of this chat: paths inside the workspace are shown relative to it.
+func (r *Renderer) toolCallArgs(name, text string, full map[string]any) string {
+	return toolCallArgs(name, text, full, r.opts.Workspace)
+}
+
 // stopThinking clears the renderer's own waiting line before a write of this
 // renderer, so a frame can never mix into a tool line, a line of the turn's
 // status, an answer or a prompt. With the status line above the input line there
@@ -398,7 +407,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		r.live.Finish() // never start a tool line in the middle of streamed text
 		r.beginAgent(event)
 		line := "⏺ " + event.ToolName
-		if args := truncateLine(toolArgsText(event.Text), callArgsLimit); args != "" {
+		if args := r.toolCallArgs(event.ToolName, event.Text, event.ToolArgs); args != "" {
 			line += " " + args
 		}
 		fmt.Fprintln(r.opts.Out, r.paint(color.Gray, line))
@@ -432,7 +441,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		if r.agentProgressMode() == "full" {
 			r.live.Finish()
 			line := "  · " + event.ToolName
-			if args := truncateLine(toolArgsText(event.Text), callArgsLimit); args != "" {
+			if args := r.toolCallArgs(event.ToolName, event.Text, event.ToolArgs); args != "" {
 				line += " " + args
 			}
 			fmt.Fprintln(r.opts.Out, r.paint(color.Gray, line))

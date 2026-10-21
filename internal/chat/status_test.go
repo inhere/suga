@@ -121,7 +121,7 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 		r.Handle(personal.Event{Kind: "tool_call", ToolName: "shell_exec", Text: `{"command":"echo hi"}`})
 		// The tool line first, then what the status line says: the output of the turn
 		// goes ahead of the row the line editor draws it around.
-		assert.Eq(t, `out: ⏺ shell_exec {"command":"echo hi"}`+"\n", log.all()[before])
+		assert.Eq(t, `out: ⏺ shell_exec echo hi`+"\n", log.all()[before])
 		assert.StrContains(t, log.last(), toolLabel("shell_exec"))
 
 		// The elapsed seconds of the tool count from the tool call.

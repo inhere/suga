@@ -90,7 +90,7 @@ def chat_env(home, extra=None):
 def ask_scenario(s, outside_real, shared, write_path):
     """The question, the commands and what they change (first chat)."""
     m = s.mark()
-    s.check("banner names the directory commands", s.until(r":add-dir/:dirs/:rm-dir 管理附加目录", m))
+    s.check("banner omits the rare directory commands", not s.contains(":add-dir/:dirs/:rm-dir", m))
     s.check("❯ prompt", s.until(r"❯ ", m))
 
     # Send only once the next prompt is up: a line typed ahead of the line
