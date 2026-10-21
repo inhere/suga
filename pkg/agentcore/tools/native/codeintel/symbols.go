@@ -100,6 +100,13 @@ type symbolLanguage struct {
 	// classifies (Go's go/parser): file_refs uses its word-bounded line matcher
 	// for every other file, whatever that file's declaration extractor is.
 	referenceParser bool
+	// mask is the syntax a rule language declares (its `syntax:` block): file_refs
+	// masks the comments and strings with it. nil for the code languages, whose
+	// style comes from refMaskStyle.
+	mask *maskSpec
+	// rule marks a language described by a rule file (built-in or loaded), as
+	// opposed to the four whose extractor stays in Go code.
+	rule bool
 	// extract returns the declarations of one file, in line order.
 	extract func(file string, src []byte) ([]Symbol, error)
 	// extractSet, when set, replaces extract for a language whose recogniser
@@ -111,14 +118,16 @@ type symbolLanguage struct {
 }
 
 // symbolLanguages is the registry, in the order the refusal message and the
-// tool description list the languages. A new language is appended: the order of
-// the existing ones is what the tests and the reminders expect.
-var symbolLanguages = []symbolLanguage{goSymbolLanguage, jsSymbolLanguage, pythonSymbolLanguage, javaSymbolLanguage, phpSymbolLanguage, yamlSymbolLanguage, tomlSymbolLanguage}
+// tool description list the languages: the code languages (Go, PHP, YAML,
+// TOML) and the rule languages, composed by ActiveLangRules. A new language is
+// appended: the order of the existing ones is what the tests and the reminders
+// expect.
+func symbolLanguages() []symbolLanguage { return ActiveLangRules().symbols }
 
 // symbolLanguageFor returns the extractor that owns file's extension.
 func symbolLanguageFor(file string) (symbolLanguage, bool) {
 	ext := strings.ToLower(filepath.Ext(file))
-	for _, lang := range symbolLanguages {
+	for _, lang := range symbolLanguages() {
 		if slices.Contains(lang.exts, ext) {
 			return lang, true
 		}
@@ -137,8 +146,9 @@ func SupportsSymbols(file string) bool {
 // SupportedSymbolLanguages names every language of the extractor with its
 // extensions: what a refusal and the tool description tell the model.
 func SupportedSymbolLanguages() string {
-	parts := make([]string, 0, len(symbolLanguages))
-	for _, lang := range symbolLanguages {
+	languages := symbolLanguages()
+	parts := make([]string, 0, len(languages))
+	for _, lang := range languages {
 		parts = append(parts, fmt.Sprintf("%s (%s)", lang.name, strings.Join(lang.exts, ", ")))
 	}
 	return strings.Join(parts, ", ")

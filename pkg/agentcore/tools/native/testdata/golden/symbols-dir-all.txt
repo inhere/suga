@@ -1,3 +1,17 @@
+cpp/store.cpp:4 type sample namespace sample {
+cpp/store.cpp:6 struct Item struct Item {
+cpp/store.cpp:10 class Store class Store {
+cpp/store.cpp:18 func reload void Store::reload() {
+cpp/store.cpp:23 func load int load(const char *path) {
+csharp/Store.cs:5 type Sample.Store namespace Sample.Store
+csharp/Store.cs:7 class Store public class Store
+csharp/Store.cs:11 method Store public Store(int capacity)
+csharp/Store.cs:17 method Reload public void Reload()
+csharp/Store.cs:23 method Describe public string Describe(int width)
+csharp/Store.cs:28 var ready private bool ready { get; set; }
+csharp/Store.cs:31 interface ILoader public interface ILoader
+csharp/Store.cs:33 method Load void Load(string path);
+csharp/Store.cs:36 enum Mode public enum Mode
 go/store.go:6 type Store type Store struct {
 go/store.go:11 type Item type Item struct {
 go/store.go:17 const maxItems maxItems = 10
@@ -15,6 +29,15 @@ java/Store.java:21 method reload void reload() {
 java/Store.java:25 interface Finder public interface Finder {
 java/Store.java:26 method find String find(String name);
 java/Store.java:29 enum Mode public enum Mode {
+kotlin/Store.kt:4 class Item data class Item(val name: String)
+kotlin/Store.kt:6 class Store class Store(private val loader: Loader) {
+kotlin/Store.kt:7 var items private val items = mutableListOf<Item>()
+kotlin/Store.kt:9 method reload fun reload(): Int {
+kotlin/Store.kt:15 method name fun name(item: Item): String {
+kotlin/Store.kt:24 interface Loader interface Loader {
+kotlin/Store.kt:25 method load fun load(path: String): Int
+kotlin/Store.kt:28 class Registry object Registry {
+kotlin/Store.kt:29 var store val store: Store = Store(Loader())
 php/Store.php:3 type Sample namespace Sample;
 php/Store.php:6 class Store class Store
 php/Store.php:8 const MAX_ITEMS private const MAX_ITEMS = 10;
@@ -30,6 +53,14 @@ py/loader.py:15 method reload def reload(self):
 py/loader.py:20 class Nested class Nested:
 py/loader.py:21 method reload def reload(self):
 py/loader.py:25 func reload def reload(path):
+ruby/store.rb:2 type Sample module Sample
+ruby/store.rb:3 class Store class Store
+ruby/store.rb:6 method initialize def initialize(name)
+ruby/store.rb:11 method reload def reload
+ruby/store.rb:16 method build def self.build(name)
+ruby/store.rb:20 class Nested class Nested
+ruby/store.rb:21 method reload_nested def reload_nested
+ruby/store.rb:27 method helper def self.helper
 toml/config.toml:2 key title "sample"
 toml/config.toml:4 section server {…}
 toml/config.toml:5 key server.host "localhost"
@@ -61,7 +92,7 @@ yaml/config.yaml:12 section features {…}
 yaml/config.yaml:13 key features.reload true
 yaml/config.yaml:14 key features.flags […]
 yaml/config.yaml:17 key quoted.key kept
-[approx: JavaScript/TypeScript, Python, Java, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
 [toml: 3 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
 [yaml: 2 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
 [skipped 5 test file(s); pass include_tests: true to include them]

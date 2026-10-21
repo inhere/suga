@@ -5,14 +5,18 @@ import (
 	"strings"
 )
 
-// The lightweight recognisers: JavaScript/TypeScript, Python, Java and PHP get
-// a declaration-line recogniser instead of a parser (design 0.2), so their
-// results are marked approx. They never fail on a broken file - they read what
-// a declaration line looks like - which is enough to answer "which
-// declarations are in this file, on which line" while file_grep stays the way
-// to confirm an exact name.
+// The lightweight recognisers: JavaScript/TypeScript, Python, Java, PHP and the
+// rule-file languages get a declaration-line recogniser instead of a parser
+// (design 0.2), so their results are marked approx. They never fail on a broken
+// file - they read what a declaration line looks like - which is enough to
+// answer "which declarations are in this file, on which line" while file_grep
+// stays the way to confirm an exact name. JavaScript/TypeScript, Python and
+// Java describe their declarations in the embedded rule files
+// (langrules/*.yaml); PHP keeps its own table here (heredoc masking, #[.
 
-// braceDecl is one declaration pattern of a brace-delimited language.
+// braceDecl is one declaration pattern of a brace-delimited language. The rule
+// languages compile their `decls` entries into it, so one matcher serves them,
+// the built-in PHP and every block style (brace, indent, end_keyword).
 type braceDecl struct {
 	re *regexp.Regexp
 	// kind is the kind the rule reports, or "" when kindGroup names it.
@@ -25,78 +29,65 @@ type braceDecl struct {
 	// type, never a statement of a function body.
 	member bool
 	// body tells that the rule opens a type body (class/interface/enum/record),
-	// whose brace depth member rules are limited to.
+	// whose nesting member rules are limited to.
 	body bool
-}
-
-// jsSymbolLanguage is JavaScript and TypeScript: two languages, one
-// recogniser, one entry per ctags language.
-var jsSymbolLanguage = symbolLanguage{
-	name:   "JavaScript/TypeScript",
-	exts:   []string{".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"},
-	approx: true, source: sourceDeclLines,
-	ctagsLanguage: map[string]string{
-		".ts": "TypeScript", ".tsx": "TypeScript", ".mts": "TypeScript", ".cts": "TypeScript",
-		".js": "JavaScript", ".jsx": "JavaScript", ".mjs": "JavaScript", ".cjs": "JavaScript",
-	},
-	extract: func(file string, src []byte) ([]Symbol, error) {
-		return braceSymbols(file, src, jsDecls, braceStyle{mask: maskBraces})
-	},
-}
-
-// jsDecls are the JavaScript/TypeScript declaration lines: classes,
-// interfaces, type aliases, enums, functions and const/let/var bindings, plus
-// the members of a class body.
-var jsDecls = []braceDecl{
-	{re: regexp.MustCompile(`^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)`),
-		kind: SymbolClass, nameGroup: 1, body: true},
-	{re: regexp.MustCompile(`^(?:export\s+)?(?:declare\s+)?interface\s+([A-Za-z_$][\w$]*)`),
-		kind: SymbolInterface, nameGroup: 1, body: true},
-	{re: regexp.MustCompile(`^(?:export\s+)?(?:declare\s+)?type\s+([A-Za-z_$][\w$]*)\s*[=<]`),
-		kind: SymbolType, nameGroup: 1},
-	{re: regexp.MustCompile(`^(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+([A-Za-z_$][\w$]*)`),
-		kind: SymbolEnum, nameGroup: 1, body: true},
-	{re: regexp.MustCompile(`^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)`),
-		kind: SymbolFunc, nameGroup: 1},
-	{re: regexp.MustCompile(`^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)`), kind: SymbolConst, nameGroup: 1},
-	{re: regexp.MustCompile(`^(?:export\s+)?(?:let|var)\s+([A-Za-z_$][\w$]*)`), kind: SymbolVar, nameGroup: 1},
-	// A class member: modifiers, then the name, then its parameter list.
-	{re: regexp.MustCompile(`^(?:(?:public|private|protected|static|async|readonly|override|declare|abstract|get|set)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*\(`),
-		kind: SymbolMethod, nameGroup: 1, member: true},
-}
-
-// javaSymbolLanguage is Java: types and their members.
-var javaSymbolLanguage = symbolLanguage{
-	name: "Java", exts: []string{".java"}, approx: true, source: sourceDeclLines,
-	ctagsLanguage: map[string]string{".java": "Java"},
-	extract: func(file string, src []byte) ([]Symbol, error) {
-		return braceSymbols(file, src, javaDecls, braceStyle{mask: maskBraces})
-	},
-}
-
-// javaDecls are the Java declaration lines: classes, interfaces, enums and
-// records (also nested ones) and the methods of a type body. Field declarations
-// are left out on purpose: a field is not what a "where is this used" question
-// looks for, and keeping them would bury the methods.
-var javaDecls = []braceDecl{
-	{re: regexp.MustCompile(`^(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed|strictfp)\s+)*(class|interface|enum|record)\s+([A-Za-z_$][\w$]*)`),
-		kindGroup: 1, nameGroup: 2, body: true},
-	// A method: modifiers, an optional return type, the name, then parameters.
-	// The return type excludes "." and "=" on purpose: a qualified type or a
-	// field initializer then does not look like a method.
-	{re: regexp.MustCompile(`^\s*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\s+)*(?:[\w$<>\[\],\s?]+\s+)?([A-Za-z_$][\w$]*)\s*\(`),
-		kind: SymbolMethod, nameGroup: 1, member: true},
 }
 
 // javaNonDeclNames are the words that can sit where a method's name sits in a
 // statement of a method body ("return foo(", "if (x)"): they are not
-// declarations, so the member rules skip them.
+// declarations, so the member rules skip them. The list is shared by every
+// brace and end_keyword language (Java, JavaScript, C#, Kotlin, Ruby, C/C++).
 var javaNonDeclNames = map[string]bool{
 	"if": true, "for": true, "while": true, "switch": true, "catch": true, "return": true,
 	"new": true, "do": true, "else": true, "case": true, "throw": true, "assert": true,
 	"super": true, "this": true, "try": true, "finally": true, "break": true, "continue": true,
 	"instanceof": true, "typeof": true, "delete": true, "void": true, "await": true, "yield": true,
-	"print": true, "synchronized": true,
+	"print": true, "synchronized": true, "sizeof": true, "defined": true, "unless": true,
+	"until": true, "puts": true, "raise": true, "when": true, "end": true,
+}
+
+// matchDeclLine finds the declaration of one line: the first rule that matches
+// wins, member rules only inside a type body, and a "name = value" line is a
+// field or a variable rather than a method.
+func matchDeclLine(line string, decls []braceDecl, inBody bool) (d braceDecl, kind, name string, ok bool) {
+	for _, d := range decls {
+		if d.member && !inBody {
+			continue
+		}
+		m := d.re.FindStringSubmatchIndex(line)
+		if m == nil {
+			continue
+		}
+		start, end := m[2*d.nameGroup], m[2*d.nameGroup+1]
+		name := line[start:end]
+		if javaNonDeclNames[name] {
+			continue
+		}
+		// "name = value" is a field or a variable, not a method.
+		if d.member {
+			if eq := strings.IndexByte(line, '='); eq >= 0 && eq < start {
+				continue
+			}
+		}
+		kind := d.kind
+		if d.kindGroup > 0 {
+			kind = line[m[2*d.kindGroup]:m[2*d.kindGroup+1]]
+		}
+		return d, kind, name, true
+	}
+	return braceDecl{}, "", "", false
+}
+
+// startsComment reports whether the first non-space byte of a raw line opens a
+// line comment of the language.
+func startsComment(spec maskSpec, raw string) bool {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == ' ' || raw[i] == '\t' {
+			continue
+		}
+		return spec.lineCommentAt([]byte(raw), i)
+	}
+	return false
 }
 
 // braceSymbols recognises the declarations of a brace-delimited language line
@@ -107,14 +98,14 @@ var javaNonDeclNames = map[string]bool{
 // template strings and """ text blocks are blanked first (maskSpans, with the
 // style of the language).
 func braceSymbols(file string, src []byte, decls []braceDecl, style braceStyle) ([]Symbol, error) {
-	lines := NewSourceLines(maskSpans(src, style.mask))
+	lines := NewSourceLines(style.masked(src))
 	var out []Symbol
 	// braces is the brace depth, bodyStack the brace depths of the type bodies
 	// currently open: a member rule matches only directly inside one of them, so
 	// a statement of a method body is never taken for a declaration.
 	braces, bodyStack := 0, []int(nil)
 	// pendingBody is a type body whose opening brace has not been read yet (the
-	// PSR-12 style of PHP writes it on the next line).
+	// PSR-12 style of PHP and the Allman style of C# write it on the next line).
 	pendingBody := false
 	for i, raw := range lines.Lines {
 		line := strings.TrimSpace(raw)
@@ -127,32 +118,9 @@ func braceSymbols(file string, src []byte, decls []braceDecl, style braceStyle) 
 		inBody := len(bodyStack) > 0 && braces == bodyStack[len(bodyStack)-1]
 		opened := false
 		if braces == 0 || inBody { // a function body is neither
-			for _, d := range decls {
-				if d.member && !inBody {
-					continue
-				}
-				m := d.re.FindStringSubmatchIndex(line)
-				if m == nil {
-					continue
-				}
-				start, end := m[2*d.nameGroup], m[2*d.nameGroup+1]
-				name := line[start:end]
-				if javaNonDeclNames[name] {
-					continue
-				}
-				// "name = value" is a field or a variable, not a method.
-				if d.member {
-					if eq := strings.IndexByte(line, '='); eq >= 0 && eq < start {
-						continue
-					}
-				}
-				kind := d.kind
-				if d.kindGroup > 0 {
-					kind = line[m[2*d.kindGroup]:m[2*d.kindGroup+1]]
-				}
+			if d, kind, name, ok := matchDeclLine(line, decls, inBody); ok {
 				out = append(out, Symbol{File: file, Line: i + 1, Kind: kind, Name: name, Signature: line})
 				opened = d.body
-				break
 			}
 		}
 		delta := braceDelta(raw)
@@ -179,12 +147,106 @@ func braceSymbols(file string, src []byte, decls []braceDecl, style braceStyle) 
 // brace of a type body may sit.
 type braceStyle struct {
 	mask maskStyle
+	// spec is the masking of a rule language (its `syntax:` block); it replaces
+	// mask when set.
+	spec *maskSpec
 	// bodyBraceNextLine accepts that brace on a follow-up line (PHP's PSR-12
-	// writes "class Foo" and then "{"): the body is pushed at the next line that
-	// opens a brace. It is off for JavaScript/TypeScript and Java, whose style
-	// puts the brace on the declaration line, so their results are exactly what
-	// they were.
+	// and C#'s Allman style write "class Foo" and then "{"): the body is pushed
+	// at the next line that opens a brace. It is off for JavaScript/TypeScript
+	// and Java, whose style puts the brace on the declaration line, so their
+	// results are exactly what they were.
 	bodyBraceNextLine bool
+}
+
+// masked returns the source with the comments and multi-line strings blanked.
+func (s braceStyle) masked(src []byte) []byte {
+	if s.spec != nil {
+		return maskSpansSpec(src, *s.spec)
+	}
+	return maskSpans(src, s.mask)
+}
+
+// indentSymbols recognises the declarations of an indentation-delimited
+// language (Python): a declaration's block ends where a line is no deeper than
+// its first line, Python's own rule, so only the class and def lines themselves
+// are looked at and a call inside a function body is never mistaken for a
+// declaration.
+func indentSymbols(file string, src []byte, decls []braceDecl, spec maskSpec) ([]Symbol, error) {
+	// Docstrings are blanked first: an example "def x():" in one is no def.
+	lines := NewSourceLines(maskSpansSpec(src, spec))
+	// frames are the open blocks: a declaration with a type body (a class) and
+	// one without (a def), by their indentation.
+	type frame struct {
+		indent int
+		body   bool
+	}
+	var frames []frame
+	var out []Symbol
+	for i, raw := range lines.Lines {
+		line := strings.TrimSpace(raw)
+		if line == "" || startsComment(spec, raw) {
+			continue
+		}
+		indent := indentWidth(raw)
+		for len(frames) > 0 && indent <= frames[len(frames)-1].indent {
+			frames = frames[:len(frames)-1]
+		}
+		inBody := len(frames) > 0 && frames[len(frames)-1].body
+		d, kind, name, ok := matchDeclLine(line, decls, inBody)
+		if !ok {
+			continue
+		}
+		out = append(out, Symbol{File: file, Line: i + 1, Kind: kind, Name: name, Signature: line})
+		frames = append(frames, frame{indent: indent, body: d.body})
+	}
+	return out, nil
+}
+
+// endKeywordSymbols recognises the declarations of a language whose blocks are
+// closed by a keyword instead of a brace (Ruby): a block opener line deepens
+// the stack, the closing keyword (end) pops it, and a member rule matches only
+// directly inside the body of a type (class, module) - the same semantics as
+// braceSymbols' member/body rules.
+func endKeywordSymbols(file string, src []byte, decls []braceDecl, spec maskSpec, open, close *regexp.Regexp) ([]Symbol, error) {
+	lines := NewSourceLines(maskSpansSpec(src, spec))
+	var out []Symbol
+	depth := 0
+	var bodyStack []int
+	for i, raw := range lines.Lines {
+		line := strings.TrimSpace(raw)
+		if line == "" || startsComment(spec, raw) {
+			continue
+		}
+		for len(bodyStack) > 0 && depth < bodyStack[len(bodyStack)-1] {
+			bodyStack = bodyStack[:len(bodyStack)-1]
+		}
+		inBody := len(bodyStack) > 0 && depth == bodyStack[len(bodyStack)-1]
+		opened := false
+		if depth == 0 || inBody {
+			if d, kind, name, ok := matchDeclLine(line, decls, inBody); ok {
+				out = append(out, Symbol{File: file, Line: i + 1, Kind: kind, Name: name, Signature: line})
+				opened = d.body
+			}
+		}
+		// Every "end" closes a block and every opener line ("class Foo", "def
+		// x", "if ...") opens one; the approximation is that a line holding both
+		// (a one-line "def x; end") only closes.
+		closed := close != nil && close.MatchString(line)
+		if closed {
+			depth--
+			if depth < 0 {
+				depth = 0
+			}
+			continue
+		}
+		if open != nil && open.MatchString(line) {
+			depth++
+			if opened {
+				bodyStack = append(bodyStack, depth) // the type body just opened
+			}
+		}
+	}
+	return out, nil
 }
 
 // braceDelta is the change in brace depth of one line, ignoring braces inside
@@ -219,63 +281,6 @@ func braceDelta(line string) int {
 		}
 	}
 	return delta
-}
-
-// pythonSymbolLanguage is Python: class and def lines, with the indentation
-// deciding whether a def is a method.
-var pythonSymbolLanguage = symbolLanguage{
-	name: "Python", exts: []string{".py", ".pyi"}, approx: true, source: sourceDeclLines,
-	ctagsLanguage: map[string]string{".py": "Python", ".pyi": "Python"},
-	extract:       pythonSymbols,
-}
-
-var (
-	pyClassRe = regexp.MustCompile(`^class\s+([A-Za-z_]\w*)`)
-	pyDefRe   = regexp.MustCompile(`^(?:async\s+)?def\s+([A-Za-z_]\w*)`)
-)
-
-// pythonSymbols recognises Python's class and def lines. A def is a method when
-// an enclosing class is open, which the indentation decides: a block ends where
-// a line is no deeper than its first line, Python's own rule. Only the class
-// and def lines themselves are looked at, so a call inside a function body is
-// never mistaken for a declaration.
-func pythonSymbols(file string, src []byte) ([]Symbol, error) {
-	// Docstrings are blanked first: an example "def x():" in one is no def.
-	lines := NewSourceLines(maskSpans(src, maskPython))
-	// frames are the open blocks: a def or a class, by their indentation.
-	type frame struct {
-		indent int
-		class  bool
-	}
-	var frames []frame
-	var out []Symbol
-	add := func(i int, kind, name, signature string) {
-		out = append(out, Symbol{File: file, Line: i + 1, Kind: kind, Name: name, Signature: signature})
-	}
-	for i, raw := range lines.Lines {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		indent := indentWidth(raw)
-		for len(frames) > 0 && indent <= frames[len(frames)-1].indent {
-			frames = frames[:len(frames)-1]
-		}
-		inClass := len(frames) > 0 && frames[len(frames)-1].class
-		switch {
-		case pyClassRe.MatchString(line):
-			add(i, SymbolClass, pyClassRe.FindStringSubmatch(line)[1], line)
-			frames = append(frames, frame{indent: indent, class: true})
-		case pyDefRe.MatchString(line):
-			kind := SymbolFunc
-			if inClass {
-				kind = SymbolMethod
-			}
-			add(i, kind, pyDefRe.FindStringSubmatch(line)[1], line)
-			frames = append(frames, frame{indent: indent})
-		}
-	}
-	return out, nil
 }
 
 // indentWidth counts a line's leading whitespace in characters (a tab counts as

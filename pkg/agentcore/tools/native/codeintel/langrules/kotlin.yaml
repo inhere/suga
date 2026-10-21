@@ -1,0 +1,27 @@
+# Kotlin (design section 4.3): brace-delimited, class/object/interface,
+# fun/val/var. Gradle's test task is the Kotlin test command; the Java rule
+# matches the same commands, and the two patterns are alternatives of one
+# aggregate, so the recognition of a Gradle run does not change.
+languages:
+  - name: Kotlin
+    exts: [.kt, .kts]
+    markers: [build.gradle.kts, settings.gradle.kts]
+    test_commands: '\bgradlew?(\.bat)?( \S+)* test\b'
+    focused_flags: ['--tests']
+    ctags: Kotlin
+    syntax:
+      line_comment: ['//']
+      block_comment: [['/*', '*/']]
+      strings: ['"', "'"]
+      multiline_strings: ['"""']
+    blocks: brace
+    decls:
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|open|abstract|sealed|data|inner|value|annotation|enum|expect|actual)\s+)*class\s+([A-Za-z_]\w*)', kind: class, name: 1, body: true}
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|sealed|fun|annotation)\s+)*interface\s+([A-Za-z_]\w*)', kind: interface, name: 1, body: true}
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|data|open|companion)\s+)*object\s+([A-Za-z_]\w*)', kind: class, name: 1, body: true}
+      - {pattern: '^\s*typealias\s+([A-Za-z_]\w*)', kind: type, name: 1}
+      # A function: modifiers, fun, an optional generic list and receiver, the
+      # name, then parameters. Inside a class body it is a method.
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|open|override|abstract|final|suspend|inline|operator|infix|tailrec|external|expect|actual|const)\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)\s*\(', kind: method, name: 1, member: true}
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|open|override|abstract|final|suspend|inline|operator|infix|tailrec|external|expect|actual|const)\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)\s*\(', kind: func, name: 1}
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|lateinit|const|override)\s+)*(?:val|var)\s+([A-Za-z_]\w*)', kind: var, name: 1}

@@ -1,0 +1,29 @@
+# Ruby (design section 4.3): end_keyword blocks. `=begin`/`=end` is a block
+# comment only at a line start; `rspec` and `rake test` moved here from the Go
+# code's otherTestCommands, so the trace analysis recognises them as before.
+languages:
+  - name: Ruby
+    exts: [.rb, .rake]
+    markers: [Gemfile, Rakefile, config.ru]
+    test_commands: '\b(rspec|rake test|bundle exec rspec|bundle exec rake test)\b'
+    focused_flags: ['-e', '--example']
+    ctags: Ruby
+    syntax:
+      line_comment: ['#']
+      block_comment: [['=begin', '=end']]
+      line_start: ['=begin']
+      strings: ['"', "'"]
+    blocks: end_keyword
+    end_keyword:
+      # The lines that open a block: a keyword at the start of the line, or a
+      # `do` at its end (a block passed to a method).
+      open: '^\s*(class|module|def|if|unless|while|until|case|begin|for)\b|\bdo\s*(\|[^|]*\|)?\s*$'
+      close: '^\s*end\b'
+    decls:
+      - {pattern: '^\s*class\s+((?:::)?[A-Z]\w*(?:::[A-Z]\w*)*)', kind: class, name: 1, body: true}
+      # A module names a scope, which the shared vocabulary calls a type.
+      - {pattern: '^\s*module\s+((?:::)?[A-Z]\w*(?:::[A-Z]\w*)*)', kind: type, name: 1, body: true}
+      # A method: def name, def self.name, def obj.name - the optional receiver
+      # and the trailing ?/!/= of a Ruby name belong to it (group 2).
+      - {pattern: '^\s*def\s+(?:(?:self|[A-Za-z_]\w*[.])[.:])?([a-z_]\w*[?!=]?)', kind: method, name: 1, member: true}
+      - {pattern: '^\s*def\s+(?:(?:self|[A-Za-z_]\w*[.])[.:])?([a-z_]\w*[?!=]?)', kind: func, name: 1}

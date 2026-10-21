@@ -1,0 +1,26 @@
+# C and C++ (design section 4.3): brace-delimited types, namespaces and function
+# definition lines, with the control statements of a function body excluded by
+# the shared non-declaration word list. `ctest` and `make test` moved here from
+# the Go code's otherTestCommands. A .h header is C++ for universal-ctags, so a
+# header's classes are found (design: the per-extension map).
+languages:
+  - name: C/C++
+    exts: [.c, .h, .cc, .cpp, .cxx, .hpp, .hh]
+    markers: [CMakeLists.txt, Makefile]
+    test_commands: '\b(ctest|make test)\b'
+    ctags: {.c: C, .h: C++, .cc: C++, .cpp: C++, .cxx: C++, .hpp: C++, .hh: C++}
+    syntax:
+      line_comment: ['//']
+      block_comment: [['/*', '*/']]
+      strings: ['"', "'"]
+    blocks: brace
+    decls:
+      - {pattern: '^\s*(?:typedef\s+)?(struct|class|union|enum)\s+([A-Za-z_]\w*)', kind_group: 1, name: 2, body: true}
+      - {pattern: '^\s*namespace\s+([A-Za-z_]\w*)', kind: type, name: 1, body: true}
+      # A type alias is a declaration of the file: typedef struct {...} Name.
+      - {pattern: '^\s*typedef\b.*\b([A-Za-z_]\w*)\s*;', kind: type, name: 1}
+      # A function definition line: modifiers, a return type, the name (a
+      # qualified definition writes Store::reload), then a parameter list that
+      # ends on the same line (a multi-line list is a known gap). A declaration
+      # ending in ";" is no definition.
+      - {pattern: '^\s*(?:(?:static|inline|constexpr|virtual|extern|explicit|const|unsigned|signed|struct|class|enum|typename)\s+)*[A-Za-z_][\w:<>,*&\s]*?[\s*&:]([A-Za-z_]\w*)\s*\([^;]*$', kind: func, name: 1}

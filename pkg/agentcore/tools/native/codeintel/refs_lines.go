@@ -24,7 +24,9 @@ func RefWordRe(name string) *regexp.Regexp {
 
 // refMaskStyle is the mask style of a language, from its file extension: the
 // same split as the declaration recognisers (symbols_lines.go), plus the two
-// configuration formats, whose comments are "#" (maskHash).
+// configuration formats, whose comments are "#" (maskHash). A rule language
+// brings its own syntax instead (refMaskSpec), so a new language's comments and
+// strings are masked the way its rule declares.
 func refMaskStyle(file string) maskStyle {
 	switch strings.ToLower(filepath.Ext(file)) {
 	case ".py", ".pyi":
@@ -36,6 +38,15 @@ func refMaskStyle(file string) maskStyle {
 	default:
 		return maskBraces
 	}
+}
+
+// refMaskSpec returns the syntax a rule language declares for its files; nil
+// for a language whose masking is a built-in style.
+func refMaskSpec(file string) *maskSpec {
+	if lang, ok := symbolLanguageFor(file); ok {
+		return lang.mask
+	}
+	return nil
 }
 
 // ScanLineRefs returns the approx references to name in one file: one Ref per
@@ -54,7 +65,16 @@ func ScanLineRefs(file string, src []byte, name string) []Ref {
 // kept and dropped counts the lines that only held other qualifiers.
 func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *RefDrops) {
 	style := refMaskStyle(file)
-	masked := NewSourceLines(maskInline(maskSpans(src, style), style))
+	// A rule language masks with the syntax it declares; the code languages keep
+	// the built-in style of their extension.
+	spec := refMaskSpec(file)
+	blanked := maskSpans(src, style)
+	if spec != nil {
+		blanked = maskInlineSpec(maskSpansSpec(src, *spec), *spec)
+	} else {
+		blanked = maskInline(blanked, style)
+	}
+	masked := NewSourceLines(blanked)
 	original := NewSourceLines(src)
 	re := RefWordRe(name)
 	var out []Ref

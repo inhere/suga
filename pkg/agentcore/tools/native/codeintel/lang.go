@@ -51,18 +51,20 @@ type Language struct {
 // byte-identical; a new language is appended at the end and the existing ones
 // stay where they are (the prompt itself does not change: PHP declares no
 // DependencyAPI clause, so the sentence reads as before).
-var languages = []Language{goLanguage, rustLanguage, javaLanguage, jsLanguage, pythonLanguage, phpLanguage}
-
-// Languages returns the language registry in its fixed order.
-func Languages() []Language { return languages }
+//
+// It is composed from the code languages (Go, Rust, PHP) and the rule languages
+// (Java, JavaScript/TypeScript, Python and the languages a rule file adds), so a
+// lang-rules.yaml can tune a language's test commands without a code change.
+func Languages() []Language { return ActiveLangRules().langs }
 
 // otherTestCommands are the test commands of tools that are no language of
-// their own here: GNU make's test target, CMake's ctest, RSpec and dotnet
-// test. They are recognised exactly as before the split, kept together instead
-// of inventing a language entry for each. PHPUnit left the list when PHP became
-// a language (lang_php.go); the aggregate pattern matches the same commands as
-// before.
-const otherTestCommands = `\b(make test|rspec|ctest|dotnet test)\b`
+// their own here: GNU make's test target and CMake's ctest (declared by the
+// C/C++ rule, see langrules/cpp.yaml, whose language also covers dotnet test and
+// rspec for C# and Ruby). They are recognised exactly as before the split,
+// kept together instead of inventing a language entry for each. PHPUnit left
+// the list when PHP became a language (lang_php.go); the aggregate pattern
+// matches the same commands as before.
+const otherTestCommands = `\b(make test|ctest)\b`
 
 // testCommandExpr joins the languages' test command regexes into the pattern
 // that recognises a test run (trace --analyze). Every language declares a
@@ -88,17 +90,31 @@ func focusedTestExpr() string {
 	return `(^|\s)(` + strings.Join(flags, "|") + `)(\s|=)`
 }
 
-var (
-	testCommandRegexp = sync.OnceValue(func() *regexp.Regexp { return regexp.MustCompile(testCommandExpr()) })
-	focusedTestRegexp = sync.OnceValue(func() *regexp.Regexp { return regexp.MustCompile(focusedTestExpr()) })
-)
+// cachedRegexp compiles expr once per distinct expression: the language
+// registry is only complete after the rule files are loaded, so a pattern must
+// not be frozen at the first call (a test builds tools without wiring).
+func cachedRegexp(expr string) *regexp.Regexp {
+	if re, ok := langRegexpCache.Load(expr); ok {
+		return re.(*regexp.Regexp)
+	}
+	re, err := regexp.Compile(expr)
+	if err != nil {
+		// A rule file's regexps are compiled when it loads; a broken aggregate
+		// is a defect here, so make it match nothing instead of crashing a turn.
+		re = regexp.MustCompile(`(?:^\b$)`)
+	}
+	langRegexpCache.Store(expr, re)
+	return re
+}
+
+var langRegexpCache sync.Map // expression -> *regexp.Regexp
 
 // TestCommandPattern matches the shell commands that run tests, from the
 // language registry; the trace analysis counts and rates them.
-func TestCommandPattern() *regexp.Regexp { return testCommandRegexp() }
+func TestCommandPattern() *regexp.Regexp { return cachedRegexp(testCommandExpr()) }
 
 // FocusedTestPattern matches the shell commands of a test run limited to some
 // tests (go test -run, pytest -k, maven -Dtest, gradle --tests, ...); such a
 // run is no proof that the suite passes, so the trace analysis does not take
 // one for the first green run.
-func FocusedTestPattern() *regexp.Regexp { return focusedTestRegexp() }
+func FocusedTestPattern() *regexp.Regexp { return cachedRegexp(focusedTestExpr()) }

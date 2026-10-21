@@ -1,0 +1,27 @@
+# C# (design section 4.3): brace-delimited, Allman style (the opening brace of a
+# type body sits on the next line, body_brace_next_line). `dotnet test` moved
+# here from the Go code's otherTestCommands, so the trace analysis recognises it
+# exactly as before.
+languages:
+  - name: C#
+    exts: [.cs]
+    markers: ['*.csproj', '*.sln']
+    test_commands: '\bdotnet test\b'
+    ctags: C#
+    syntax:
+      line_comment: ['//']
+      block_comment: [['/*', '*/']]
+      strings: ['"', "'"]
+      # """...""" raw string literals, @"..." verbatim strings (their "" escape
+      # keeps them single-line here, an approximation the design accepts).
+      multiline_strings: ['"""']
+    blocks: brace
+    body_brace_next_line: true
+    decls:
+      - {pattern: '^\s*(?:\[[^\]]*\]\s*)*namespace\s+([A-Za-z_][\w.]*)', kind: type, name: 1, body: true}
+      - {pattern: '^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|static|sealed|abstract|partial|readonly|unsafe|new|file)\s+)*(class|interface|enum|record)\s+([A-Za-z_]\w*)', kind_group: 1, name: 2, body: true}
+      - {pattern: '^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|static|readonly|unsafe|new|partial)\s+)*struct\s+([A-Za-z_]\w*)', kind: type, name: 1, body: true}
+      # A member: modifiers, an optional return type, the name, then parameters.
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|static|virtual|override|abstract|async|sealed|extern|unsafe|new|partial|const)\s+)*(?:[\w<>\[\],.?]+\s+)?([A-Za-z_]\w*)\s*\(', kind: method, name: 1, member: true}
+      # A property: modifiers, a type, the name, then its accessor block.
+      - {pattern: '^\s*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|required|new)\s+)+(?:[\w<>\[\],.?]+\s+)([A-Za-z_]\w*)\s*\{', kind: var, name: 1, member: true}

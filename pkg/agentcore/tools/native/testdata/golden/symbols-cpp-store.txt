@@ -1,0 +1,6 @@
+cpp/store.cpp:4 type sample namespace sample {
+cpp/store.cpp:6 struct Item struct Item {
+cpp/store.cpp:10 class Store class Store {
+cpp/store.cpp:18 func reload void Store::reload() {
+cpp/store.cpp:23 func load int load(const char *path) {
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

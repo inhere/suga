@@ -1,0 +1,10 @@
+csharp/Store.cs:5 type Sample.Store namespace Sample.Store
+csharp/Store.cs:7 class Store public class Store
+csharp/Store.cs:11 method Store public Store(int capacity)
+csharp/Store.cs:17 method Reload public void Reload()
+csharp/Store.cs:23 method Describe public string Describe(int width)
+csharp/Store.cs:28 var ready private bool ready { get; set; }
+csharp/Store.cs:31 interface ILoader public interface ILoader
+csharp/Store.cs:33 method Load void Load(string path);
+csharp/Store.cs:36 enum Mode public enum Mode
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
