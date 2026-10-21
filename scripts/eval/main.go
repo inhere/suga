@@ -35,6 +35,7 @@ type options struct {
 	probeGap                          time.Duration
 	sugaArgs, ompArgs                 string
 	sugaSet                           setFlags // --suga-set key=value config overrides
+	variants                          variantFlags
 	repeat                            int
 }
 
@@ -75,6 +76,8 @@ type Result struct {
 	Spilled       int            `json:"tool_spilled"`
 	Answer        string         `json:"answer"`
 	Checks        []CheckResult  `json:"checks"`
+	// Variant names the --variant dir this run belongs to ("" = no --variant).
+	Variant string `json:"variant,omitempty"`
 }
 
 func main() {
@@ -105,6 +108,7 @@ func run() error {
 	flag.Var(&o.sugaSet, "suga-set", "set a key in the temp suga config.yaml, as dotted.key=value (YAML scalar); repeatable")
 	flag.StringVar(&o.sugaArgs, "suga-args", "", "extra `suga run` arguments appended after the built-in ones (split on whitespace)")
 	flag.StringVar(&o.ompArgs, "omp-args", "", "extra `omp -p` arguments placed before the prompt (split on whitespace)")
+	flag.Var(&o.variants, "variant", "a variant directory (config.yaml overlay + env + workspace files); repeatable (suga only)")
 	flag.IntVar(&o.repeat, "repeat", 1, "rounds per task (outputs go to <out>/<task>-r<i>/ when > 1)")
 	flag.Parse()
 	if o.repeat < 1 {
@@ -117,6 +121,9 @@ func run() error {
 	}
 	if o.probe && o.probeRepeat < 1 {
 		return errors.New("--probe-repeat must be >= 1")
+	}
+	if len(o.variants) > 0 && (o.probe || o.agent != "suga") {
+		return errors.New("--variant works only with --agent suga (and is exclusive with --probe-prefix)")
 	}
 
 	if runtime.GOOS == "windows" && !strings.HasSuffix(o.bin, ".exe") {
@@ -158,6 +165,17 @@ func run() error {
 	if len(tasks) == 0 {
 		return fmt.Errorf("no task matches %q", o.task)
 	}
+	variants, err := loadVariants(o.variants)
+	if err != nil {
+		return err
+	}
+	for _, v := range variants { // fail fast on duplicate variant names: their output dirs would collide
+		for _, w := range variants {
+			if w != v && w.Name == v.Name {
+				return fmt.Errorf("duplicate --variant name %q", v.Name)
+			}
+		}
+	}
 	if err := os.MkdirAll(o.out, 0o755); err != nil {
 		return err
 	}
@@ -173,33 +191,54 @@ func run() error {
 		return err
 	}
 	defer jf.Close()
+
+	return runTaskSet(&o, bin, runID, tasks, variants, jf)
+}
+
+// runTaskSet runs every task once per variant (a run without --variant has a
+// single nil "variant" and behaves exactly as before), appending one
+// results.jsonl line per run; with variants it also writes <out>/compare.md.
+func runTaskSet(o *options, bin, runID string, tasks []*Task, variants []*Variant, jf io.Writer) error {
 	enc := json.NewEncoder(jf)
 
 	var results []Result
 	for _, t := range tasks {
-		for round := 1; round <= o.repeat; round++ {
-			r, err := runTask(&o, bin, runID, t, round)
-			if err != nil { // runner-side failure of this task: record and go on
-				r.Error = err.Error()
-			}
-			results = append(results, r)
-			if err := enc.Encode(r); err != nil {
-				return err
+		for _, v := range variantSet(variants) {
+			for round := 1; round <= o.repeat; round++ {
+				r, err := runTask(o, bin, runID, t, round, v)
+				if err != nil { // runner-side failure of this task: record and go on
+					r.Error = err.Error()
+				}
+				results = append(results, r)
+				if err := enc.Encode(r); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	printTable(os.Stdout, results, o.repeat > 1)
+	if len(variants) > 0 {
+		if err := writeCompare(o.out, variants, results); err != nil {
+			return err
+		}
+	}
 	fmt.Printf("\nresults: %s\n", filepath.Join(o.out, "results.jsonl"))
 	return nil
 }
 
-func runTask(o *options, bin, runID string, t *Task, round int) (Result, error) {
+func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Result, error) {
 	name := t.Name
 	if o.repeat > 1 {
 		name = fmt.Sprintf("%s-r%d", t.Name, round)
 	}
-	sid := "eval-" + runID + "-" + name
-	r := Result{Task: t.Name, Round: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake}
+	root := filepath.Join(o.out, name)
+	suffix := ""
+	if v != nil { // a variant run lives under <out>/<variant>/ and gets its own session id prefix
+		root = filepath.Join(o.out, v.Name, name)
+		suffix = "-" + v.Name
+	}
+	sid := "eval-" + runID + suffix + "-" + name
+	r := Result{Task: t.Name, Round: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake, Variant: variantName(v)}
 	switch o.agent {
 	case "omp":
 		r.AgentArgs = strings.Join(splitArgs(o.ompArgs), " ")
@@ -208,12 +247,14 @@ func runTask(o *options, bin, runID string, t *Task, round int) (Result, error) 
 	default:
 		r.AgentArgs = strings.Join(append(splitArgs(o.sugaArgs), o.sugaSet...), " ")
 	}
-	root := filepath.Join(o.out, name)
 	ws, home := filepath.Join(root, "ws"), filepath.Join(root, "home")
 	timeout := t.effectiveTimeout(o.timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := t.prepareWorkspace(ctx, ws); err != nil {
+		return r, err
+	}
+	if err := applyVariantWorkspace(ws, v); err != nil {
 		return r, err
 	}
 	if o.agent == "omp" {
@@ -226,13 +267,13 @@ func runTask(o *options, bin, runID string, t *Task, round int) (Result, error) 
 		runClaude(ctx, o, t, timeout, ws, filepath.Join(root, "claude-home"), &r)
 		return r, nil
 	}
-	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode)
+	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, v)
 	if err != nil {
 		return r, err
 	}
 	defer stop()
 
-	env := isolatedEnv(home)
+	env := withVariantEnv(isolatedEnv(home), v)
 	// A multi-turn task sends its prompts in order to the same session; the
 	// run stops at the first failing turn and checks judge the last answer.
 	start := time.Now()
@@ -284,14 +325,16 @@ func sugaRunArgs(sid, prompt, model string, allowWrite bool, extra []string) []s
 }
 
 // setupSugaHome creates home with an isolated config (fake provider with a
-// fresh fakellm, or a copy of --config-from) and returns the model to pass
-// (empty = config default) and a stop func for the fake server.
-func setupSugaHome(ctx context.Context, o *options, home, fakeMode string) (string, func(), error) {
+// fresh fakellm, or a copy of --config-from, then the variant overlay) and
+// returns the model to pass (empty = config default) and a stop func for the
+// fake server.
+func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Variant) (string, func(), error) {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return "", nil, err
 	}
 	if !o.fake {
-		return o.model, func() {}, writeConfig(home, o.configFrom, 0, o.sugaSet)
+		model, stop, err := o.model, func() {}, writeConfig(home, o.configFrom, 0, o.sugaSet)
+		return model, stop, firstErr(err, applyVariantConfig(home, v))
 	}
 	stop, port, err := startFake(ctx, fakeMode)
 	if err != nil {
@@ -301,11 +344,25 @@ func setupSugaHome(ctx context.Context, o *options, home, fakeMode string) (stri
 		stop()
 		return "", nil, err
 	}
+	if err := applyVariantConfig(home, v); err != nil {
+		stop()
+		return "", nil, err
+	}
 	model := o.model
 	if model == "" {
 		model = "fake/m1"
 	}
 	return model, stop, nil
+}
+
+// firstErr returns the first non-nil error in errs (nil when all pass).
+func firstErr(errs ...error) error {
+	for _, e := range errs {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 // runCmd runs bin in dir with env and returns its stdout. A non-zero exit
