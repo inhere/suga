@@ -127,7 +127,7 @@
 | `tools.read_page_bytes` | `32768` | `file_read` 每页字节数（它自己分页，不受 `max_output_bytes` 限制） |
 | `tools.minimize_output` | `true` | shell 结果进上下文前整理（去色、折叠重复行、按输出规则裁剪测试/构建/git/grep 输出），原文留 ref |
 | `tools.loop_guard` | `true` | 循环调用检测：键是“工具 + 规范化参数 + 结果摘要（是否出错与结果正文的哈希）”，结果变了不算重复。一个回合内连续 3 次（R1）或累计 4 次（R2）同一个键，或同一条 `shell_exec` 命令失败 3 次（R3；中间有编辑也计数，而成功的 `file_edit`/`file_write`/`file_remove` 会把 R1/R2 计数清零，所以改完重跑不会误报）时，在该次结果末尾追加提醒（换方法或停下说明原因），trace 记 `loop_guard` 事件（`rule` 为 `R1`/`R2`/`R3`）、chat 显示一行灰色提示；同一组每回合最多提醒 2 次（`update_plan`/`session_message`/`agent` 不计入） |
-| `agents.nudge` | `on` | 收工检查（作用于主 agent 的回合）：`on`/`off`。回合正常结束后按两条规则判断是否提前收工——N1 改动后没有验证（本回合最后一次成功的 `file_edit`/`file_write`/`file_remove` 之后没有 `shell_exec`，或会话计划还有 pending/in_progress 项）、N2 结尾承诺继续却停下（最后一条消息无工具调用，末尾约 300 字符命中承诺句式，以问句结尾不算）。`run` 注入 `[收工检查]` 回合推回（N2 最多 2 次、N1 最多 1 次，`--verify` 时跳过 N1），`chat` 只显示一行灰色提示，ACP 只写 trace（`nudge` 事件）。回合出错/yield/取消/收尾时不检查 |
+| `agents.nudge` | `on` | 收工检查（作用于主 agent 的回合）：`on`/`off`。回合正常结束后按规则的种类判断是否提前收工——`unverified_write`：改动后没有验证（本回合最后一次成功的 `file_edit`/`file_write`/`file_remove` 之后，没有 check 工具的命令命中规则 `check_command` 的调用）；`plan_open`：会话计划还有 pending/in_progress 项；`promise`：结尾承诺继续却停下（最后一条消息无工具调用，末尾约 300 字符命中承诺句式，以问句结尾不算）。规则能用 `nudge-rules.yaml` 调整（见下方「收工检查规则」）。`run` 注入 `[收工检查]` 回合推回（按种类限额：promise 最多 2 次，`unverified_write` 与 `plan_open` 合计最多 1 次，`--verify` 时这两种跳过），`chat` 只显示一行灰色提示，ACP 只写 trace（`nudge` 事件带规则名与 kind）。回合出错/yield/取消/收尾时不检查 |
 | `tools.shell` | `""`（Windows：pwsh 优先，否则 powershell；其它：sh） | `shell_exec` 使用的 shell（命令名或路径） |
 | `tools.interpreters` | 自动探测 | 启动时探测 PATH 上的脚本解释器（默认候选 `python3`、`python`、`node`）：每进程探测一次并缓存（`--version`，2 秒超时），命中的写进环境段（可写模式）并提示优先写脚本执行。`false`（或 `off`）关闭；也可给名称或绝对路径列表，如 `[python, C:\Python312\python.exe]`（绝对路径按你的选择只校验 `--version`）。Windows 上自动探测会跳过 `%LOCALAPPDATA%\Microsoft\WindowsApps` 下的应用商店别名（运行只会跳商店或不出输出版本），商店包自身的安装目录（`C:\Program Files\WindowsApps\...`）不受影响 |
 | `tools.shell_timeout_max` | `600` | `shell_exec` 单次 `timeout` 的上限秒数（单次默认 120） |
@@ -150,6 +150,23 @@ allow 命令按实际 sh/bash、PowerShell 或 cmd 做 ASCII 字符、配对引�
 chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区分的会话规则；`persist_ask` 开启时，随后用 `u` 写用户级，`p` 只写项目级 deny，回车保留本会话。ACP 的 `allow_always`/`reject_always` 只保存在当前进程会话状态，不写规则文件。`suga inspect manifest --json` 显示路径、生效条数、hash/信任与忽略原因；`suga inspect trace <session> --json` 显示 `approval_rule`、`approval_scope` 与 `approval_rule_persist`。`enabled: false` 可回退旧路径。
 
 输出规则：内置规则按语言/工具分文件（`go`、`rust`、`js`、`python`、`java`、`git`、`grep`）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。一条规则可按命令（可加 `match_output` 再按输出）匹配，然后丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），并用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果永远不短于原文时不交给模型。字段与执行顺序见 `pkg/agentcore/tools/native/rules/README.md`。
+
+收工检查规则：内置规则（`promise-zh`、`promise-en`：回答末尾承诺继续的句式；`unverified-write`：改动后没有验证；`plan-open`：会话计划还有未完成项）→ `$SUGA_HOME/nudge-rules.yaml` → `<workspace>/.suga/nudge-rules.yaml`（同名整条替换、新名追加、`enabled: false` 关闭；配置不写 kind 时沿用同名内置规则的种类）。种类固定三种，配置只能调参数、加句式、开关，不能写任意逻辑：`promise`（必填 `patterns`，命中回答末尾段落）；`unverified_write`（`write_tools`、`check_tools`、可选 `check_command`：check 工具的命令要匹配它才算验证；整条替换时空工具列表沿用种类默认 `file_edit/file_write/file_remove` 与 `shell_exec`）；`plan_open`（无字段）。坏正则、未知 kind、新规则缺 kind、解析失败会带文件路径与规则名报错，整个文件被跳过。格式示例：
+
+   ```yaml
+   rules:
+     - name: promise-zh
+       enabled: false
+     - name: promise-later
+       kind: promise
+       patterns: ['我稍后(会|再)', '待会(儿)?(我)?(会|再)']
+     - name: unverified-write
+       check_command: '(go (test|vet)|make check)'
+     - name: plan-open
+       enabled: false
+   ```
+
+生效的规则按名字、种类、来源层（`builtin` 或文件路径）列在 `suga inspect manifest`。
 
 ## `store.*`
 
@@ -349,6 +366,7 @@ suga models --json
 | `logs/suga-<YYYYMMDD>.log` | 进程日志（0600、追加）：文件名带日期，按 `log.max_size` 切分，切分文件按 `log.keep` 保留；默认只写文件，debug（`SUGA_DEBUG` 或 `log.level: debug`）时同时写 stderr，`log.file: off` 关闭 |
 | `AGENTS.md` | 用户级项目规则（每级规则文件之外额外读取） |
 | `output-rules.yaml` | 用户级输出整理规则 |
+| `nudge-rules.yaml` | 用户级收工检查规则 |
 
 ## 命令与常用 flag
 

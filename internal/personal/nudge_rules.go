@@ -87,10 +87,10 @@ type NudgeRule struct {
 	Source string `yaml:"-"`
 
 	// Compiled forms of the fields above.
-	patterns    []*regexp.Regexp
-	checkCmd    *regexp.Regexp
-	writeTools  map[string]bool
-	checkTools  map[string]bool
+	patterns   []*regexp.Regexp
+	checkCmd   *regexp.Regexp
+	writeTools map[string]bool
+	checkTools map[string]bool
 }
 
 type nudgeRuleFile struct {
