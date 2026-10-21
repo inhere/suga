@@ -72,7 +72,13 @@ def session_info(s, timeout=30):
     """(session id, short name) as chat printed them, waiting for the line."""
     m = s.mark()
     s.until(r"session id: ", m, timeout=timeout)
-    found = SESSION_LINE.search(s.text())
+    # The start-up line has the id only; :session adds the short name once the
+    # session socket is registered (chat/session_name.go sessionLine).
+    s.until(r"❯ ", m, timeout=timeout)
+    m = s.mark()
+    s.line(":session")
+    s.until(r"· 会话 \S+", m, timeout=timeout)
+    found = SESSION_LINE.search(s.text(m))
     if not found:
         return "", ""
     return found.group(1), found.group(2) or ""
