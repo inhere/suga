@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"strings"
@@ -110,7 +110,7 @@ func TestLineRefs(t *testing.T) {
 		src := "foo() // " + strings.Repeat("x", 400) + "\n"
 		refs := ScanLineRefs("f.ts", []byte(src), "foo")
 		assert.Require(t, assert.Eq(t, 1, len(refs)))
-		assert.True(t, len(refs[0].Text) <= maxGrepLineBytes+len("…"), refs[0].Text)
+		assert.True(t, len(refs[0].Text) <= MaxGrepLineBytes+len("…"), refs[0].Text)
 	})
 }
 
@@ -162,21 +162,21 @@ func TestLineRefsQualified(t *testing.T) {
 			"    return cfg.ReadOnly\n" // 4
 		refs, dropped := scanLineRefs("fixture.py", []byte(src), "ReadOnly", "opts")
 		assert.Eq(t, []int{2}, refLines(refs))
-		assert.Eq(t, 1, dropped.total())
+		assert.Eq(t, 1, dropped.Total())
 	})
 
 	t.Run("Q::name is the other shape the filter accepts", func(t *testing.T) {
 		src := "Config::ReadOnly\nother.ReadOnly\n"
 		refs, dropped := scanLineRefs("fixture.ts", []byte(src), "ReadOnly", "Config")
 		assert.Eq(t, []int{1}, refLines(refs))
-		assert.Eq(t, 1, dropped.total())
+		assert.Eq(t, 1, dropped.Total())
 	})
 
 	t.Run("a comment keeps no qualified use either", func(t *testing.T) {
 		src := "// opts.ReadOnly is a flag\nreturn 1\n"
 		refs, dropped := scanLineRefs("fixture.ts", []byte(src), "ReadOnly", "opts")
 		assert.Eq(t, 0, len(refs))
-		assert.Eq(t, 0, dropped.total())
+		assert.Eq(t, 0, dropped.Total())
 	})
 }
 
@@ -206,7 +206,7 @@ func TestApproxQualifierMatches(t *testing.T) {
 // TestRefWordRe covers the matcher itself, whose boundaries decide what the
 // approximate languages report.
 func TestRefWordRe(t *testing.T) {
-	re := refWordRe("foo")
+	re := RefWordRe("foo")
 	cases := map[string]bool{
 		"foo":            true,
 		"foo()":          true,
@@ -226,7 +226,7 @@ func TestRefWordRe(t *testing.T) {
 	}
 
 	t.Run("a name with regexp metacharacters is quoted", func(t *testing.T) {
-		quoted := refWordRe("a.b")
+		quoted := RefWordRe("a.b")
 		assert.True(t, quoted.MatchString("a.b()"))
 		assert.False(t, quoted.MatchString("axb()"))
 	})

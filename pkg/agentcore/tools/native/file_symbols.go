@@ -13,6 +13,7 @@ import (
 
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 const (
@@ -46,7 +47,7 @@ func (t *FileSymbolsTool) Description() string {
 		"(server.http.port, services[].name), a mapping/table as kind section and a leaf as kind key, with the " +
 		"value preview in the signature; YAML is parsed with go-yaml (a file the parser rejects falls back to " +
 		"indentation lines, marked approx), TOML from its lines. A config file lists at most " +
-		fmt.Sprintf("%d key levels and %d keys - file_grep finds a deeper or later one", maxConfigDepth, maxConfigKeys) +
+		fmt.Sprintf("%d key levels and %d keys - file_grep finds a deeper or later one", codeintel.ConfigMaxDepth, codeintel.ConfigMaxKeys) +
 		"; universal-ctags is used first when it is installed and covers more " +
 		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
 		"Unsupported file types are refused with a file_grep pattern to use instead; file_read outline is unavailable for them. Paths under a read-only dependency " +
@@ -78,7 +79,7 @@ func (t *FileSymbolsTool) Schema() api.ToolSchema {
 				},
 				"kind": map[string]any{
 					"type":        "string",
-					"description": "Only these kinds: " + strings.Join(SymbolKinds, ", ") + " (comma-separated; empty = all)",
+					"description": "Only these kinds: " + strings.Join(codeintel.SymbolKinds, ", ") + " (comma-separated; empty = all)",
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
@@ -122,7 +123,7 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 	// A file argument is parsed as that file: a type no extractor covers is
 	// refused with the supported list, not answered with an empty result.
 	if info, statErr := os.Lstat(target.abs); statErr == nil && info.Mode().IsRegular() {
-		if !SupportsSymbols(target.abs) {
+		if !codeintel.SupportsSymbols(target.abs) {
 			return nil, fmt.Errorf("file_symbols: file type %q has no declaration extractor; use file_grep with pattern: %s; file_read outline=true is unavailable", filepath.Ext(target.abs), symbolFallbackPattern(filepath.Ext(pathArg), filter.name))
 		}
 		set, err := t.oneFile(target)
@@ -150,14 +151,14 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 }
 
 // oneFile reads one file through os.Root and extracts its declarations.
-func (t *FileSymbolsTool) oneFile(target readTarget) (SymbolSet, error) {
+func (t *FileSymbolsTool) oneFile(target readTarget) (codeintel.SymbolSet, error) {
 	file, err := withRoot(target.base, target.abs, func(root *os.Root, rel string) (symbolFile, error) {
 		return readSymbolFile(root, target, rel)
 	})
 	if err != nil {
-		return SymbolSet{}, err
+		return codeintel.SymbolSet{}, err
 	}
-	return ExtractSymbolsAt(file.name, file.onDisk, file.data)
+	return codeintel.ExtractSymbolsAt(file.name, file.onDisk, file.data)
 }
 
 // walkDir collects the declarations of every supported source file under the
@@ -171,7 +172,7 @@ func (t *FileSymbolsTool) walkDir(ctx context.Context, target readTarget, filter
 			out.tests++
 			return nil
 		}
-		if !SupportsSymbols(d.Name()) {
+		if !codeintel.SupportsSymbols(d.Name()) {
 			out.unsupported++
 			return nil
 		}
@@ -184,7 +185,7 @@ func (t *FileSymbolsTool) walkDir(ctx context.Context, target readTarget, filter
 			out.tooLarge++
 			return nil
 		}
-		set, err := ExtractSymbolsAt(file.name, file.onDisk, file.data)
+		set, err := codeintel.ExtractSymbolsAt(file.name, file.onDisk, file.data)
 		if err != nil {
 			// A parser error names the file and the line itself.
 			out.noteError(err.Error())
@@ -235,7 +236,7 @@ func readSymbolFile(root *os.Root, target readTarget, rel string) (symbolFile, e
 // symbolOut collects one run: the matching declarations and everything the
 // model should know about what was left out.
 type symbolOut struct {
-	syms            []Symbol
+	syms            []codeintel.Symbol
 	files           int // source files that were parsed
 	tests           int // test files left out
 	unsupported     int // files of a type no extractor covers
@@ -355,13 +356,13 @@ type symbolFilter struct {
 }
 
 // kindAliases are the spellings a model may pass for a kind; the vocabulary
-// itself is SymbolKinds.
+// itself is codeintel.SymbolKinds.
 var kindAliases = map[string]string{
-	"fn": SymbolFunc, "funcs": SymbolFunc, "function": SymbolFunc, "functions": SymbolFunc, "def": SymbolFunc,
-	"methods": SymbolMethod, "types": SymbolType, "typedef": SymbolType, "struct": SymbolType,
-	"constants": SymbolConst, "vars": SymbolVar, "variables": SymbolVar,
-	"classes": SymbolClass, "interfaces": SymbolInterface, "enums": SymbolEnum, "records": SymbolRecord,
-	"keys": SymbolKey, "sections": SymbolSection, "tables": SymbolSection, "table": SymbolSection,
+	"fn": codeintel.SymbolFunc, "funcs": codeintel.SymbolFunc, "function": codeintel.SymbolFunc, "functions": codeintel.SymbolFunc, "def": codeintel.SymbolFunc,
+	"methods": codeintel.SymbolMethod, "types": codeintel.SymbolType, "typedef": codeintel.SymbolType, "struct": codeintel.SymbolType,
+	"constants": codeintel.SymbolConst, "vars": codeintel.SymbolVar, "variables": codeintel.SymbolVar,
+	"classes": codeintel.SymbolClass, "interfaces": codeintel.SymbolInterface, "enums": codeintel.SymbolEnum, "records": codeintel.SymbolRecord,
+	"keys": codeintel.SymbolKey, "sections": codeintel.SymbolSection, "tables": codeintel.SymbolSection, "table": codeintel.SymbolSection,
 }
 
 // newSymbolFilter reads the name and kind arguments. An unknown kind is an
@@ -376,8 +377,8 @@ func newSymbolFilter(args map[string]any) (symbolFilter, error) {
 		if alias, ok := kindAliases[kind]; ok {
 			kind = alias
 		}
-		if !slices.Contains(SymbolKinds, kind) {
-			return symbolFilter{}, fmt.Errorf("unknown kind %q; kinds: %s", part, strings.Join(SymbolKinds, ", "))
+		if !slices.Contains(codeintel.SymbolKinds, kind) {
+			return symbolFilter{}, fmt.Errorf("unknown kind %q; kinds: %s", part, strings.Join(codeintel.SymbolKinds, ", "))
 		}
 		if filter.kinds == nil {
 			filter.kinds = map[string]bool{}
@@ -388,12 +389,12 @@ func newSymbolFilter(args map[string]any) (symbolFilter, error) {
 }
 
 // apply returns the symbols that pass the filter.
-func (f symbolFilter) apply(syms []Symbol) []Symbol {
+func (f symbolFilter) apply(syms []codeintel.Symbol) []codeintel.Symbol {
 	if f.name == "" && len(f.kinds) == 0 {
 		return syms
 	}
 	needle := strings.ToLower(f.name)
-	out := make([]Symbol, 0, len(syms))
+	out := make([]codeintel.Symbol, 0, len(syms))
 	for _, s := range syms {
 		if len(f.kinds) > 0 && !f.kinds[s.Kind] {
 			continue

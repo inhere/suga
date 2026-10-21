@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -182,20 +182,20 @@ func ExtractSymbolsAt(file, onDisk string, src []byte) (SymbolSet, error) {
 	return SymbolSet{Symbols: syms, Approx: lang.approx, Source: lang.source}, nil
 }
 
-// sourceLines is one file's lines, split once so a signature lookup per symbol
+// SourceLines is one file's lines, split once so a signature lookup per symbol
 // is an index. Line numbers are 1-based; "\r\n" ends are trimmed like the file
 // tools do.
-type sourceLines struct{ lines []string }
+type SourceLines struct{ Lines []string }
 
-func newSourceLines(src []byte) sourceLines {
+func NewSourceLines(src []byte) SourceLines {
 	text := strings.ReplaceAll(string(src), "\r\n", "\n")
-	return sourceLines{lines: strings.Split(text, "\n")}
+	return SourceLines{Lines: strings.Split(text, "\n")}
 }
 
-// at returns the trimmed line n, "" when the number is out of range.
-func (s sourceLines) at(n int) string {
-	if n < 1 || n > len(s.lines) {
+// At returns the trimmed line n, "" when the number is out of range.
+func (s SourceLines) At(n int) string {
+	if n < 1 || n > len(s.Lines) {
 		return ""
 	}
-	return strings.TrimSpace(s.lines[n-1])
+	return strings.TrimSpace(s.Lines[n-1])
 }

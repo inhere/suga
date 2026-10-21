@@ -1,6 +1,7 @@
 package native
 
 import (
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,7 +16,7 @@ import (
 // the historical order: it decides the order of the dependency roots in the
 // environment prompt and of the prompt clauses (suga-xt0o keeps both unchanged).
 func TestLanguagesRegistry(t *testing.T) {
-	langs := Languages()
+	langs := codeintel.Languages()
 	assert.Require(t, assert.NotEmpty(t, langs))
 
 	var names, clauses []string
@@ -52,28 +53,27 @@ func TestLanguagesRegistry(t *testing.T) {
 // repository and the Gradle cache. Removing a language from the registry drops
 // its roots (reverse verification of suga-xt0o).
 func TestRegistryDependencyRoots(t *testing.T) {
-	byName := map[string]Language{}
-	for _, lang := range Languages() {
-		byName[lang.Name] = lang
+	byName := map[string]bool{}
+	for _, lang := range codeintel.Languages() {
+		byName[lang.Name] = true
 	}
 	for _, name := range []string{"Go", "Rust", "Java"} {
-		lang, ok := byName[name]
-		assert.Require(t, assert.True(t, ok, "registered: "+name))
-		assert.NotNil(t, lang.dependencyRoots, name)
+		assert.Require(t, assert.True(t, byName[name], "registered: "+name))
+		assert.NotNil(t, dependencyRootProbes[name], name)
 	}
 	// JS, Python and PHP have no cache outside the workspace: their packages live
 	// in node_modules, site-packages and vendor/, which the file tools read where
 	// they are.
 	for _, name := range []string{"JavaScript/TypeScript", "Python", "PHP"} {
-		assert.Nil(t, byName[name].dependencyRoots, name)
+		assert.Nil(t, dependencyRootProbes[name], name)
 	}
 
 	t.Run("the java probe adds the maven repository and the gradle cache", func(t *testing.T) {
 		home := setHome(t) // no GRADLE_USER_HOME: the home directory counts
-		java := byName["Java"]
+		java := dependencyRootProbes["Java"]
 		labels := func() []string {
 			collector := &rootCollector{}
-			java.dependencyRoots(langEnv{home: home}, collector)
+			java(langEnv{home: home}, collector)
 			var out []string
 			for _, root := range collector.out {
 				out = append(out, root.Label)
@@ -97,7 +97,7 @@ func TestRegistryDependencyRoots(t *testing.T) {
 // PHPUnit/Pest ones PHP moved out of otherTestCommands (phpunit alone is
 // recognised as before).
 func TestLanguageTestCommandPattern(t *testing.T) {
-	pattern := TestCommandPattern()
+	pattern := codeintel.TestCommandPattern()
 	matching := []string{
 		"go test ./...",
 		"go test -count=1 -run TestX ./internal/...",
@@ -179,7 +179,7 @@ func TestLanguageTestCommandPattern(t *testing.T) {
 // PHP entry. Such a run checks one test or one class, so it is no proof that
 // the suite passes and the analysis must recognise it.
 func TestLanguageFocusedTestPattern(t *testing.T) {
-	pattern := FocusedTestPattern()
+	pattern := codeintel.FocusedTestPattern()
 	focused := []string{
 		"go test -count=1 -run TestScratch -v ./",
 		"go test -run=TestScratch ./...",

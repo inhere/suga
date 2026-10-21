@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"errors"
@@ -9,6 +9,13 @@ import (
 
 	"github.com/gookit/goutil/x/assert"
 )
+
+// pinBuiltinExtractors keeps universal-ctags out of the extractor tests of this
+// package: the expectations are the built-in recognisers' output.
+func pinBuiltinExtractors(t *testing.T) {
+	t.Helper()
+	t.Cleanup(PinBuiltinExtractors())
+}
 
 // writeSourceFixture writes one fixture file into dir and returns its path: the
 // extractors run on real files, not only on in-memory strings.

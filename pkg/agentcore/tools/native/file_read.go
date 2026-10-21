@@ -15,6 +15,7 @@ import (
 
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 const (
@@ -335,9 +336,9 @@ func (t *FileReadTool) readOutline(arg string, offset, limit int) (string, error
 			return window("") // a directory: the window reader names the tool that lists one
 		}
 		name := filepath.Base(rel)
-		if !SupportsSymbols(name) {
+		if !codeintel.SupportsSymbols(name) {
 			return window(fmt.Sprintf("[no outline: no declaration extractor for %q; supported: %s]",
-				filepath.Ext(name), SupportedSymbolLanguages()))
+				filepath.Ext(name), codeintel.SupportedSymbolLanguages()))
 		}
 		if info.Size() > maxOutlineBytes {
 			return window(fmt.Sprintf("[no outline: %d bytes is over the %d byte outline cap]",
@@ -357,7 +358,7 @@ func (t *FileReadTool) readOutline(arg string, offset, limit int) (string, error
 		if bytes.IndexByte(head, 0) >= 0 {
 			return window("") // a binary file: the window reader reports it as one
 		}
-		lines := newSourceLines(data)
+		lines := codeintel.NewSourceLines(data)
 		lineCount := fileLineCount(lines)
 		if lineCount <= outlineLines {
 			return window(fmt.Sprintf("[no outline: %d lines is under the %d line outline threshold]",
@@ -365,7 +366,7 @@ func (t *FileReadTool) readOutline(arg string, offset, limit int) (string, error
 		}
 		// The outline names the file as the model named it and gives ctags a path
 		// it can read again, exactly like file_symbols does.
-		set, err := ExtractSymbolsAt(target.show(rel), filepath.Join(target.base, filepath.FromSlash(rel)), data)
+		set, err := codeintel.ExtractSymbolsAt(target.show(rel), filepath.Join(target.base, filepath.FromSlash(rel)), data)
 		if err != nil {
 			return window(fmt.Sprintf("[no outline: %s]", err))
 		}
@@ -385,7 +386,7 @@ func (t *FileReadTool) readOutline(arg string, offset, limit int) (string, error
 // and a marker for every line span between two of them, so the model knows the
 // exact ranges it has not read yet and can ask for one. The outline is capped at
 // maxBytes like a window is.
-func renderOutline(name string, lines sourceLines, lineCount int, set SymbolSet, maxBytes int) string {
+func renderOutline(name string, lines codeintel.SourceLines, lineCount int, set codeintel.SymbolSet, maxBytes int) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[outline of %s: %d lines, %d declarations; this is a declaration outline, not the whole "+
 		"file - read a span as %s:start-end for the text]\n", name, lineCount, len(set.Symbols), name)
@@ -394,7 +395,7 @@ func renderOutline(name string, lines sourceLines, lineCount int, set SymbolSet,
 		if s.Line > prevEnd+1 {
 			sb.WriteString(omittedSpan(prevEnd+1, s.Line-1))
 		}
-		signature := lines.at(s.Line) // the line as written, not the masked one
+		signature := lines.At(s.Line) // the line as written, not the masked one
 		if signature == "" {
 			signature = s.Signature
 		}
@@ -434,11 +435,11 @@ func omittedSpan(start, end int) string {
 
 // fileLineCount counts the lines the window reader numbers: a trailing newline
 // does not open an empty last line.
-func fileLineCount(lines sourceLines) int {
-	if n := len(lines.lines); n > 0 && lines.lines[n-1] == "" {
+func fileLineCount(lines codeintel.SourceLines) int {
+	if n := len(lines.Lines); n > 0 && lines.Lines[n-1] == "" {
 		return n - 1
 	}
-	return len(lines.lines)
+	return len(lines.Lines)
 }
 
 // readRange is one line span a paths entry asks for: 1-based, both ends
@@ -727,7 +728,7 @@ func truncationDetail(f *os.File, hint *readHint) string {
 	if err != nil || len(data) > maxOutlineBytes {
 		return ""
 	}
-	lines := fileLineCount(newSourceLines(data))
+	lines := fileLineCount(codeintel.NewSourceLines(data))
 	switch count, hasCount := declarationCount(hint, data); {
 	// The outline is worth naming only when the file would really get one:
 	// outline=true answers a file under the outline threshold with the window
@@ -748,10 +749,10 @@ func truncationDetail(f *os.File, hint *readHint) string {
 // extractor covers and an extraction that failed both leave ok false: the count
 // is a convenience, never an error (suag-nxwg).
 func declarationCount(hint *readHint, data []byte) (count int, ok bool) {
-	if !SupportsSymbols(hint.name) {
+	if !codeintel.SupportsSymbols(hint.name) {
 		return 0, false
 	}
-	set, err := ExtractSymbolsAt(hint.name, hint.onDisk, data)
+	set, err := codeintel.ExtractSymbolsAt(hint.name, hint.onDisk, data)
 	if err != nil {
 		return 0, false
 	}

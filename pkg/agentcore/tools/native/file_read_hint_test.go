@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // hintPad returns n comment lines: the padding that grows a fixture past the
@@ -41,7 +42,7 @@ func TestFileReadTruncationHint(t *testing.T) {
 		sb.WriteString("// padding line\n")
 	}
 	big := write("big.go", sb.String())
-	total := fileLineCount(newSourceLines([]byte(big)))
+	total := fileLineCount(codeintel.NewSourceLines([]byte(big)))
 	tool := &FileReadTool{workspace: ws, maxOut: 2000}
 
 	t.Run("a truncated source file names the outline and a span", func(t *testing.T) {

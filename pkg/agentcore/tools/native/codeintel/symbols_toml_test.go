@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -120,17 +120,17 @@ func TestExtractSymbolsTOMLCaps(t *testing.T) {
 		syms, set := extractFixture(t, t.TempDir(), "deep.toml", "[a.b.c.d.e]\nx = 1\n[one.two.three]\ny = 2\n")
 		assert.Eq(t, []string{"deep.toml:3 section one.two.three", "deep.toml:4 key one.two.three.y"}, symbolsAsText(syms))
 		assert.StrContains(t, strings.Join(set.Notes, "\n"),
-			fmt.Sprintf("[toml: only the first %d key levels are listed", maxConfigDepth))
+			fmt.Sprintf("[toml: only the first %d key levels are listed", ConfigMaxDepth))
 	})
 
 	t.Run("a file with more keys than the cap is cut and says how to read on", func(t *testing.T) {
 		var sb strings.Builder
-		for i := 0; i < maxConfigKeys+5; i++ {
+		for i := 0; i < ConfigMaxKeys+5; i++ {
 			fmt.Fprintf(&sb, "key%03d = %d\n", i, i)
 		}
 		syms, set := extractFixture(t, t.TempDir(), "big.toml", sb.String())
-		assert.Eq(t, maxConfigKeys, len(syms))
+		assert.Eq(t, ConfigMaxKeys, len(syms))
 		assert.StrContains(t, strings.Join(set.Notes, "\n"),
-			fmt.Sprintf("[toml: showing the first %d keys; for the rest use file_grep]", maxConfigKeys))
+			fmt.Sprintf("[toml: showing the first %d keys; for the rest use file_grep]", ConfigMaxKeys))
 	})
 }

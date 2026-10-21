@@ -6,31 +6,32 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // TestBareRefClass pins the text guess of the fallback classes: a declaration
 // keyword before the name is a def, the name before "(" a call, else a ref.
 func TestBareRefClass(t *testing.T) {
 	cases := []struct{ line, want string }{
-		{"    pub fn file_type(&self) -> fs::FileType {", RefDef},
-		{"pub struct WalkDir {", RefDef},
-		{"{% macro file_type(x) %}", RefDef},
-		{"        if dent.file_type().is_symlink() {", RefCall},
-		{"    let v = parse::<u8>(s);", RefRef},
-		{"    let t = Vec::file_type::<u8>(s);", RefCall},
-		{"name = \"file_type\"", RefRef},
-		{"    my_file_type()", RefRef},
+		{"    pub fn file_type(&self) -> fs::FileType {", codeintel.RefDef},
+		{"pub struct WalkDir {", codeintel.RefDef},
+		{"{% macro file_type(x) %}", codeintel.RefDef},
+		{"        if dent.file_type().is_symlink() {", codeintel.RefCall},
+		{"    let v = parse::<u8>(s);", codeintel.RefRef},
+		{"    let t = Vec::file_type::<u8>(s);", codeintel.RefCall},
+		{"name = \"file_type\"", codeintel.RefRef},
+		{"    my_file_type()", codeintel.RefRef},
 	}
 	for _, c := range cases {
 		t.Run(c.line, func(t *testing.T) {
 			name := "file_type"
-			if c.want == RefDef && c.line == "pub struct WalkDir {" {
+			if c.want == codeintel.RefDef && c.line == "pub struct WalkDir {" {
 				name = "WalkDir"
 			}
 			if c.line == "    let v = parse::<u8>(s);" {
 				name = "v"
 			}
-			assert.Eq(t, c.want, bareRefClass(c.line, name))
+			assert.Eq(t, c.want, codeintel.BareRefClass(c.line, name))
 		})
 	}
 }

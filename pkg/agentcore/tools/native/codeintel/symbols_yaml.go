@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -79,7 +79,7 @@ func (w *yamlWalker) walk(node ast.Node, path string, level int) {
 // "path[]"). level is the level the keys of this mapping sit at: a deeper
 // mapping is left out and counted, so one k8s manifest does not bury the rest.
 func (w *yamlWalker) walkMapping(m *ast.MappingNode, path string, level int) {
-	if level > maxConfigDepth {
+	if level > ConfigMaxDepth {
 		w.collector.caps.deep = true
 		return
 	}
@@ -198,12 +198,12 @@ type yamlLineFrame struct {
 // a block scalar's text or a flow mapping is not told apart from a real one, and
 // a sequence entry is marked from the "- " it starts with.
 func yamlLineSymbols(file string, src []byte) ([]Symbol, configCaps) {
-	lines := newSourceLines(src)
+	lines := NewSourceLines(src)
 	collector := newConfigCollector(file)
 	multiDoc := yamlHasDocumentMarker(lines)
 	var frames []yamlLineFrame
 	docNumber, started := 1, false
-	for i, raw := range lines.lines {
+	for i, raw := range lines.Lines {
 		line := strings.TrimRight(raw, " \t")
 		text := strings.TrimSpace(line)
 		if text == "" || strings.HasPrefix(text, "#") {
@@ -300,8 +300,8 @@ func yamlLineKeyEnd(line string) int {
 // yamlHasDocumentMarker reports whether a file has a document marker line, which
 // is how the fallback knows to number its documents like the parser does (only a
 // file with more than one document is prefixed).
-func yamlHasDocumentMarker(lines sourceLines) bool {
-	for _, raw := range lines.lines {
+func yamlHasDocumentMarker(lines SourceLines) bool {
+	for _, raw := range lines.Lines {
 		if strings.TrimSpace(raw) == "---" {
 			return true
 		}

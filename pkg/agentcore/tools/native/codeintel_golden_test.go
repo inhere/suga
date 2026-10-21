@@ -12,6 +12,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // The characterization tests of the symbol and reference analysis (design
@@ -100,7 +101,7 @@ func TestCharacterization(t *testing.T) {
 // read these, so their bytes must survive the move too.
 func TestCharacterizationLanguageRegistry(t *testing.T) {
 	var b strings.Builder
-	for _, lang := range Languages() {
+	for _, lang := range codeintel.Languages() {
 		fmt.Fprintf(&b, "%s markers=%q api=%q tests=%q focused=%q\n",
 			lang.Name, lang.Markers, lang.DependencyAPI, lang.TestCommands, lang.FocusedFlags)
 	}
@@ -112,7 +113,7 @@ func TestCharacterizationLanguageRegistry(t *testing.T) {
 		"pytest -q", "python3 -m pytest tests -k foo", "vendor/bin/phpunit --filter Foo", "pest",
 		"make test", "ctest", "rspec spec/models", "dotnet test", "ls -la", "go build ./...",
 	} {
-		fmt.Fprintf(&b, "  %-40s test=%v focused=%v\n", cmd, TestCommandPattern().MatchString(cmd), FocusedTestPattern().MatchString(cmd))
+		fmt.Fprintf(&b, "  %-40s test=%v focused=%v\n", cmd, codeintel.TestCommandPattern().MatchString(cmd), codeintel.FocusedTestPattern().MatchString(cmd))
 	}
 	assertGolden(t, "language-registry", b.String())
 }
@@ -130,10 +131,7 @@ func sampleWorkspace(t *testing.T) string {
 // not depend on whether the machine running the tests has ctags installed.
 func quietCtags(t *testing.T) {
 	t.Helper()
-	command, run := ctagsCommand, ctagsRun
-	t.Cleanup(func() { ctagsCommand, ctagsRun = command, run })
-	ctagsCommand = func() string { return "" }
-	ctagsRun = func(string, string, string) ([]byte, error) { return nil, nil }
+	t.Cleanup(codeintel.PinBuiltinExtractors())
 }
 
 // runGolden executes one recorded call and returns the tool's content; a failing

@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -148,7 +148,7 @@ func TestGoRefsLimitsAndErrors(t *testing.T) {
 		src := "package p\n\nvar long = 1 // " + strings.Repeat("x", 400) + "\n"
 		refs := goRefs(t, src, "long")
 		assert.Require(t, assert.Eq(t, 1, len(refs)))
-		assert.True(t, len(refs[0].Text) <= maxGrepLineBytes+len("…"), refs[0].Text)
+		assert.True(t, len(refs[0].Text) <= MaxGrepLineBytes+len("…"), refs[0].Text)
 	})
 }
 
@@ -215,7 +215,7 @@ func (a *App) Start() {
 func refLineClasses(refs []Ref) []string {
 	out := make([]string, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, fmt.Sprintf("%d %s", r.Line, refClass(r)))
+		out = append(out, fmt.Sprintf("%d %s", r.Line, RefClass(r)))
 	}
 	return out
 }
@@ -249,7 +249,7 @@ func TestGoRefsQualified(t *testing.T) {
 			refs, dropped, err := scanGoRefs("fixture.go", []byte(goRefsQualifiedFixture), "Run", c.qual)
 			assert.Require(t, assert.NoErr(t, err))
 			assert.Eq(t, c.want, refLineClasses(refs))
-			assert.Eq(t, c.dropped, dropped.total())
+			assert.Eq(t, c.dropped, dropped.Total())
 		})
 	}
 
@@ -257,7 +257,7 @@ func TestGoRefsQualified(t *testing.T) {
 		refs, dropped, err := scanGoRefs("fixture.go", []byte(goRefsQualifiedFixture), "Run", "")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, 8, len(refs))
-		assert.Eq(t, 0, dropped.total())
+		assert.Eq(t, 0, dropped.Total())
 	})
 }
 
@@ -306,7 +306,7 @@ func TestSplitRefName(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.raw, func(t *testing.T) {
-			name, qual := splitRefName(c.raw)
+			name, qual := SplitRefName(c.raw)
 			assert.Eq(t, c.name, name)
 			assert.Eq(t, c.qual, qual)
 		})
@@ -317,8 +317,8 @@ func TestSplitRefName(t *testing.T) {
 // lines are shown: variables sorted with their counts, packages and bare uses
 // only summed, and the lines of rarely used variables kept.
 func TestRefDropsDescribe(t *testing.T) {
-	drops := func(counts map[string]int) *refDrops {
-		d := newRefDrops()
+	drops := func(counts map[string]int) *RefDrops {
+		d := NewRefDrops()
 		for k, n := range counts {
 			for i := 0; i < n; i++ {
 				switch {
@@ -336,20 +336,20 @@ func TestRefDropsDescribe(t *testing.T) {
 
 	t.Run("variables are named, packages and bare uses counted", func(t *testing.T) {
 		d := drops(map[string]int{"t": 40, "cmd": 3, "child": 1, "pkg:exec": 2, "": 1})
-		assert.Eq(t, 47, d.total())
-		assert.Eq(t, " (variables: child 1, cmd 3, t 40; 2 through imported packages; 1 unqualified or text matches)", d.describe())
+		assert.Eq(t, 47, d.Total())
+		assert.Eq(t, " (variables: child 1, cmd 3, t 40; 2 through imported packages; 1 unqualified or text matches)", d.Describe())
 	})
 
 	t.Run("only rarely used variables keep their lines", func(t *testing.T) {
 		d := drops(map[string]int{"t": 40, "cmd": 3, "child": 1, "x": 2, "pkg:exec": 1})
-		rare, more := d.rare()
+		rare, more := d.Rare()
 		assert.Eq(t, 0, more)
 		assert.Eq(t, []string{"child.go:1", "x.go:1", "x.go:2"}, refFileLines(rare))
 	})
 
 	t.Run("nothing dropped describes nothing", func(t *testing.T) {
-		assert.Eq(t, "", newRefDrops().describe())
-		rare, _ := newRefDrops().rare()
+		assert.Eq(t, "", NewRefDrops().Describe())
+		rare, _ := NewRefDrops().Rare()
 		assert.Empty(t, rare)
 	})
 
@@ -359,8 +359,8 @@ func TestRefDropsDescribe(t *testing.T) {
 			counts[fmt.Sprintf("v%02d", i)] = 1
 		}
 		d := drops(counts)
-		assert.StrContains(t, d.describe(), "and 3 more)")
-		rare, more := d.rare()
+		assert.StrContains(t, d.Describe(), "and 3 more)")
+		rare, more := d.Rare()
 		assert.Len(t, rare, maxRareDropLines)
 		assert.Eq(t, maxDropNames+3-maxRareDropLines, more)
 	})

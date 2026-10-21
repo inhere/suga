@@ -17,6 +17,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // Event statuses written to the events table.
@@ -433,7 +434,7 @@ func addCallAttrs(attrs map[string]any, call agentcore.ToolCall, res *agentcore.
 			if strings.HasPrefix(res.Content, "[stderr]\n") || strings.Contains(res.Content, "\n[stderr]\n") {
 				attrs["stderr"] = true
 			}
-			if command, _ := call.Arguments["command"].(string); native.TestCommandPattern().MatchString(command) {
+			if command, _ := call.Arguments["command"].(string); codeintel.TestCommandPattern().MatchString(command) {
 				attrs["test_failed"] = testFailurePattern.MatchString(res.Content)
 			}
 		}

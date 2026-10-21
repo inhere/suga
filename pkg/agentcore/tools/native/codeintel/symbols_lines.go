@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"regexp"
@@ -107,7 +107,7 @@ var javaNonDeclNames = map[string]bool{
 // template strings and """ text blocks are blanked first (maskSpans, with the
 // style of the language).
 func braceSymbols(file string, src []byte, decls []braceDecl, style braceStyle) ([]Symbol, error) {
-	lines := newSourceLines(maskSpans(src, style.mask))
+	lines := NewSourceLines(maskSpans(src, style.mask))
 	var out []Symbol
 	// braces is the brace depth, bodyStack the brace depths of the type bodies
 	// currently open: a member rule matches only directly inside one of them, so
@@ -116,7 +116,7 @@ func braceSymbols(file string, src []byte, decls []braceDecl, style braceStyle) 
 	// pendingBody is a type body whose opening brace has not been read yet (the
 	// PSR-12 style of PHP writes it on the next line).
 	pendingBody := false
-	for i, raw := range lines.lines {
+	for i, raw := range lines.Lines {
 		line := strings.TrimSpace(raw)
 		if line == "" {
 			continue
@@ -241,7 +241,7 @@ var (
 // never mistaken for a declaration.
 func pythonSymbols(file string, src []byte) ([]Symbol, error) {
 	// Docstrings are blanked first: an example "def x():" in one is no def.
-	lines := newSourceLines(maskSpans(src, maskPython))
+	lines := NewSourceLines(maskSpans(src, maskPython))
 	// frames are the open blocks: a def or a class, by their indentation.
 	type frame struct {
 		indent int
@@ -252,7 +252,7 @@ func pythonSymbols(file string, src []byte) ([]Symbol, error) {
 	add := func(i int, kind, name, signature string) {
 		out = append(out, Symbol{File: file, Line: i + 1, Kind: kind, Name: name, Signature: signature})
 	}
-	for i, raw := range lines.lines {
+	for i, raw := range lines.Lines {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import "strings"
 
@@ -26,10 +26,10 @@ func tomlSymbolSet(file string, src []byte) (SymbolSet, error) {
 // either is not listed. The table a key belongs to is remembered and prefixes
 // its path.
 func tomlSymbols(file string, src []byte) ([]Symbol, configCaps) {
-	lines := newSourceLines(maskSpans(src, maskToml))
+	lines := NewSourceLines(maskSpans(src, maskToml))
 	collector := newConfigCollector(file)
 	table := "" // the current [table] path, as the keys below it are named
-	for i, raw := range lines.lines {
+	for i, raw := range lines.Lines {
 		text := strings.TrimSpace(raw)
 		if text == "" || strings.HasPrefix(text, "#") {
 			continue
@@ -84,7 +84,7 @@ func tomlSymbols(file string, src []byte) ([]Symbol, configCaps) {
 // tomlDepthOK reports whether a key path is inside the depth cap; a deeper one
 // is counted, so the note can say so (a TOML path's segments are its levels).
 func tomlDepthOK(collector *configCollector, path string) bool {
-	if strings.Count(path, ".")+1 > maxConfigDepth {
+	if strings.Count(path, ".")+1 > ConfigMaxDepth {
 		collector.caps.deep = true
 		return false
 	}

@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"go/ast"
@@ -37,7 +37,7 @@ type Ref struct {
 	// Pkg marks a qualifier that the same file imports as a package name, so
 	// runtime.ReadOnly (a package symbol) is told from cfg.ReadOnly (a field).
 	Pkg bool
-	// Text is the trimmed source line, at most maxGrepLineBytes like file_grep.
+	// Text is the trimmed source line, at most MaxGrepLineBytes like file_grep.
 	Text string
 }
 
@@ -55,13 +55,13 @@ func ScanGoRefs(file string, src []byte, name string) ([]Ref, error) {
 // qual is the Q of a "Q.Name" argument (empty = no filter) and dropped counts
 // the occurrences of name that qualify another object (another package, another
 // type, a receiver variable). The filter is textual, see qualifierMatches.
-func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops, error) {
+func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, *RefDrops, error) {
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, file, src, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, nil, err
 	}
-	lines := newSourceLines(src)
+	lines := NewSourceLines(src)
 	imports := goImportNames(parsed)
 	// nodeText is the source text of one node: how the qualifier of X.Name is
 	// shown, without any type information.
@@ -73,7 +73,7 @@ func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops, e
 		return string(src[from:to])
 	}
 	var out []Ref
-	dropped := newRefDrops()
+	dropped := NewRefDrops()
 	// stack is the path to the node being visited: the parent decides how an
 	// identifier is used, which is all the classification needs.
 	var stack []ast.Node
@@ -176,11 +176,11 @@ func scanGoRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops, e
 			// A use of the same name on another object: counted by its
 			// qualifier; a use through a variable keeps its line, since the
 			// variable may still hold the type (child.Run on a *Runner).
-			ref.Text = refLineText(lines.at(ref.Line))
+			ref.Text = RefLineText(lines.At(ref.Line))
 			dropped.add(ref)
 			return true
 		}
-		ref.Text = refLineText(lines.at(ref.Line))
+		ref.Text = RefLineText(lines.At(ref.Line))
 		out = append(out, ref)
 		return true
 	})
@@ -258,11 +258,11 @@ func fieldOwnerType(stack []ast.Node) string {
 // scanRefs-style helpers shared by the Go extractor and the approximate
 // matcher of refs_lines.go live here: both report the trimmed line of a match.
 
-// refLineText trims a matching line and cuts it at maxGrepLineBytes, the limit
+// RefLineText trims a matching line and cuts it at MaxGrepLineBytes, the limit
 // file_grep applies to the lines it shows.
-func refLineText(line string) string {
-	if len(line) > maxGrepLineBytes {
-		return line[:utf8Cut(line, maxGrepLineBytes)] + "…"
+func RefLineText(line string) string {
+	if len(line) > MaxGrepLineBytes {
+		return line[:utf8Cut(line, MaxGrepLineBytes)] + "…"
 	}
 	return line
 }

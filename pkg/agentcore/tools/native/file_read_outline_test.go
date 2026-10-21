@@ -11,6 +11,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // pinBuiltinExtractors keeps universal-ctags out of the outline tests: which
@@ -18,9 +19,7 @@ import (
 // the tests has ctags installed.
 func pinBuiltinExtractors(t *testing.T) {
 	t.Helper()
-	command := ctagsCommand
-	t.Cleanup(func() { ctagsCommand = command })
-	ctagsCommand = func() string { return "" }
+	t.Cleanup(codeintel.PinBuiltinExtractors())
 }
 
 // outlineFixture builds a source file line by line: add returns the line number
@@ -221,7 +220,7 @@ func TestFileReadOutlineConfig(t *testing.T) {
 	pinBuiltinExtractors(t)
 	ws := t.TempDir()
 	var sb strings.Builder
-	for i := 0; i < maxConfigKeys+20; i++ {
+	for i := 0; i < codeintel.ConfigMaxKeys+20; i++ {
 		fmt.Fprintf(&sb, "key%03d: %d\n", i, i)
 	}
 	assert.NoErr(t, os.WriteFile(filepath.Join(ws, "big.yaml"), []byte(sb.String()), 0o644))
@@ -229,12 +228,12 @@ func TestFileReadOutlineConfig(t *testing.T) {
 
 	out := execTool(t, tool, map[string]any{"path": "big.yaml", "outline": true})
 	assert.StrContains(t, out, fmt.Sprintf("[outline of big.yaml: %d lines, %d declarations",
-		maxConfigKeys+20, maxConfigKeys))
+		codeintel.ConfigMaxKeys+20, codeintel.ConfigMaxKeys))
 	assert.StrContains(t, out, "1: key000: 0")
-	assert.StrContains(t, out, fmt.Sprintf("%d: key%03d: %d", maxConfigKeys, maxConfigKeys-1, maxConfigKeys-1))
+	assert.StrContains(t, out, fmt.Sprintf("%d: key%03d: %d", codeintel.ConfigMaxKeys, codeintel.ConfigMaxKeys-1, codeintel.ConfigMaxKeys-1))
 	// The keys past the cap are the omitted span, and the note says where to look.
-	assert.StrContains(t, out, fmt.Sprintf("[omitted %d-%d: 20 lines]", maxConfigKeys+1, maxConfigKeys+20))
-	assert.StrContains(t, out, fmt.Sprintf("[yaml: showing the first %d keys; for the rest use file_grep]", maxConfigKeys))
+	assert.StrContains(t, out, fmt.Sprintf("[omitted %d-%d: 20 lines]", codeintel.ConfigMaxKeys+1, codeintel.ConfigMaxKeys+20))
+	assert.StrContains(t, out, fmt.Sprintf("[yaml: showing the first %d keys; for the rest use file_grep]", codeintel.ConfigMaxKeys))
 	assert.NotContains(t, out, "[approx") // the parser read the file
 }
 

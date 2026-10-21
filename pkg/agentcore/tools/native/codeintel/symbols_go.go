@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"go/ast"
@@ -30,11 +30,11 @@ func goSymbols(file string, src []byte) ([]Symbol, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := newSourceLines(src)
+	lines := NewSourceLines(src)
 	var out []Symbol
 	add := func(pos token.Pos, kind, name string) {
 		line := fset.Position(pos).Line
-		out = append(out, Symbol{File: file, Line: line, Kind: kind, Name: name, Signature: lines.at(line)})
+		out = append(out, Symbol{File: file, Line: line, Kind: kind, Name: name, Signature: lines.At(line)})
 	}
 	for _, decl := range parsed.Decls {
 		switch d := decl.(type) {

@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 // pythonLanguage is the Python declaration: pytest, run directly or as a
 // module of the interpreter (`-k` runs the tests matching an expression).

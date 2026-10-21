@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -151,19 +151,19 @@ func TestExtractSymbolsYAMLCaps(t *testing.T) {
 			"deep.yaml:4 section a.b.c.d",
 		}, symbolsAsText(syms))
 		assert.StrContains(t, strings.Join(set.Notes, "\n"),
-			fmt.Sprintf("[yaml: only the first %d key levels are listed", maxConfigDepth))
+			fmt.Sprintf("[yaml: only the first %d key levels are listed", ConfigMaxDepth))
 	})
 
 	t.Run("a file with more keys than the cap is cut and says how to read on", func(t *testing.T) {
 		var sb strings.Builder
-		for i := 0; i < maxConfigKeys+5; i++ {
+		for i := 0; i < ConfigMaxKeys+5; i++ {
 			fmt.Fprintf(&sb, "key%03d: %d\n", i, i)
 		}
 		syms, set := extractFixture(t, t.TempDir(), "big.yaml", sb.String())
-		assert.Eq(t, maxConfigKeys, len(syms))
-		assert.Eq(t, fmt.Sprintf("key%03d", maxConfigKeys-1), syms[len(syms)-1].Name)
+		assert.Eq(t, ConfigMaxKeys, len(syms))
+		assert.Eq(t, fmt.Sprintf("key%03d", ConfigMaxKeys-1), syms[len(syms)-1].Name)
 		assert.StrContains(t, strings.Join(set.Notes, "\n"),
-			fmt.Sprintf("[yaml: showing the first %d keys; for the rest use file_grep]", maxConfigKeys))
+			fmt.Sprintf("[yaml: showing the first %d keys; for the rest use file_grep]", ConfigMaxKeys))
 	})
 
 	t.Run("a multi-line value is one line in the signature", func(t *testing.T) {

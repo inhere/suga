@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/inhere/suga/internal/personal/store"
-	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // TraceAnalysis summarizes a session's events for loop analysis (suga inspect trace
@@ -307,8 +307,8 @@ func AnalyzeTrace(events []store.Event) TraceAnalysis {
 				// checks one test, often a scratch one written to probe a bug: it
 				// is no "green". The patterns come from the language registry
 				// (native, one file per language).
-				focused := native.FocusedTestPattern().MatchString(arg)
-				if reported || native.TestCommandPattern().MatchString(arg) {
+				focused := codeintel.FocusedTestPattern().MatchString(arg)
+				if reported || codeintel.TestCommandPattern().MatchString(arg) {
 					a.TestRuns++
 					// After the first pass that followed a change: a test run
 					// before any write (a baseline check) does not count.

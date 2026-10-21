@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -10,20 +10,20 @@ const (
 	// maxDropNames caps how many dropped qualifiers a qualified file_refs
 	// result names; the rest are only counted.
 	maxDropNames = 20
-	// rareDropUses is how often a variable qualifier may occur and still have
+	// RareDropUses is how often a variable qualifier may occur and still have
 	// its lines shown: a name used once or twice (child.Run) is likely a
 	// specific value, while t.Run or cmd.Run in bulk is another object.
-	rareDropUses = 2
+	RareDropUses = 2
 	// maxRareDropLines caps the lines shown for rare variable qualifiers.
 	maxRareDropLines = 10
 )
 
-// refDrops is what a qualified file_refs search left out: the count of
+// RefDrops is what a qualified file_refs search left out: the count of
 // occurrences by the qualifier text they had ("child" for child.Run,
 // "pkg:exec" for exec.Run through an import, "" for a bare use or an
 // approximate text match), and the occurrences through variables, whose type
 // the textual filter cannot tell.
-type refDrops struct {
+type RefDrops struct {
 	counts map[string]int
 	vars   []Ref
 	// bare are the dropped Go uses without a qualifier. Inside the package
@@ -33,7 +33,7 @@ type refDrops struct {
 	bare []Ref
 }
 
-func newRefDrops() *refDrops { return &refDrops{counts: map[string]int{}} }
+func NewRefDrops() *RefDrops { return &RefDrops{counts: map[string]int{}} }
 
 // key is the counting key of one dropped Go occurrence.
 func dropKey(ref Ref) string {
@@ -45,7 +45,7 @@ func dropKey(ref Ref) string {
 
 // add counts one dropped Go occurrence and keeps it when a variable
 // qualified it.
-func (d *refDrops) add(ref Ref) {
+func (d *RefDrops) add(ref Ref) {
 	key := dropKey(ref)
 	d.counts[key]++
 	switch {
@@ -60,10 +60,10 @@ func (d *refDrops) add(ref Ref) {
 }
 
 // addText counts one dropped approximate (text) match.
-func (d *refDrops) addText() { d.counts[""]++ }
+func (d *RefDrops) addText() { d.counts[""]++ }
 
-// merge adds the drops of one file to the totals of a search.
-func (d *refDrops) merge(other *refDrops) {
+// Merge adds the drops of one file to the totals of a search.
+func (d *RefDrops) Merge(other *RefDrops) {
 	if other == nil {
 		return
 	}
@@ -74,8 +74,8 @@ func (d *refDrops) merge(other *refDrops) {
 	d.bare = append(d.bare, other.bare...)
 }
 
-// total is how many occurrences were dropped.
-func (d *refDrops) total() int {
+// Total is how many occurrences were dropped.
+func (d *RefDrops) Total() int {
 	if d == nil {
 		return 0
 	}
@@ -86,20 +86,20 @@ func (d *refDrops) total() int {
 	return n
 }
 
-// rare returns the dropped occurrences worth a line of their own, in path and
+// Rare returns the dropped occurrences worth a line of their own, in path and
 // line order and capped, plus how many were left out by the cap: the Go uses
 // without a qualifier (a call inside the defining package needs none) and the
-// uses through a variable qualifier that occurs at most rareDropUses times in
+// uses through a variable qualifier that occurs at most RareDropUses times in
 // the search. The model reads result lines, not trailing notes: a *Runner held
 // in a variable called child, or config's own ReadModelSettings("") under
 // name appconfig.ReadModelSettings, has to appear as a line to be noticed.
-func (d *refDrops) rare() ([]Ref, int) {
+func (d *RefDrops) Rare() ([]Ref, int) {
 	if d == nil {
 		return nil, 0
 	}
 	out := append([]Ref(nil), d.bare...)
 	for _, r := range d.vars {
-		if d.counts[dropKey(r)] <= rareDropUses {
+		if d.counts[dropKey(r)] <= RareDropUses {
 			out = append(out, r)
 		}
 	}
@@ -119,8 +119,8 @@ func (d *refDrops) rare() ([]Ref, int) {
 // sums up the imported packages and the unqualified uses:
 // ` (variables: child 1, cmd 3, t 40; 5 through imported packages; 2
 // unqualified or text matches)`. Empty when nothing was dropped.
-func (d *refDrops) describe() string {
-	if d.total() == 0 {
+func (d *RefDrops) Describe() string {
+	if d.Total() == 0 {
 		return ""
 	}
 	var vars []string

@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"bytes"
@@ -35,6 +35,17 @@ var detectCtags = sync.OnceValue(func() string {
 	}
 	return path
 })
+
+// PinBuiltinExtractors turns universal-ctags off for the rest of the process
+// and returns the function that restores the previous lookup. The tests of the
+// tool layer use it: which declarations a listing shows must not depend on
+// whether the machine running the tests happens to have ctags installed, and
+// the lookup lives here.
+func PinBuiltinExtractors() (restore func()) {
+	command := ctagsCommand
+	ctagsCommand = func() string { return "" }
+	return func() { ctagsCommand = command }
+}
 
 // ctagsRun runs ctags over one file. A variable so the tests can replace the
 // process: -f - writes the JSON tags to stdout, --language-force picks the
@@ -77,7 +88,7 @@ type ctagsTag struct {
 // line fails the whole parse, which makes ctagsSymbols fall back: a ctags whose
 // output this is not would otherwise produce half a result.
 func parseCtagsTags(out []byte, file string, src []byte) ([]Symbol, error) {
-	lines := newSourceLines(src)
+	lines := NewSourceLines(src)
 	var syms []Symbol
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
@@ -92,7 +103,7 @@ func parseCtagsTags(out []byte, file string, src []byte) ([]Symbol, error) {
 			continue
 		}
 		syms = append(syms, Symbol{
-			File: file, Line: tag.Line, Kind: ctagsKind(tag.Kind), Name: tag.Name, Signature: lines.at(tag.Line),
+			File: file, Line: tag.Line, Kind: ctagsKind(tag.Kind), Name: tag.Name, Signature: lines.At(tag.Line),
 		})
 	}
 	return syms, nil

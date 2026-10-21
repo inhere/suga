@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 const (
@@ -109,7 +109,7 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	// A "Q.Name" argument searches Name and keeps its Q uses only; the display
 	// name stays as it was written, so a zero-match result echoes the query.
 	displayName := name
-	name, qual := splitRefName(name)
+	name, qual := codeintel.SplitRefName(name)
 	pathArg, _ := call.Arguments["path"].(string)
 	if pathArg == "" {
 		pathArg = "."
@@ -130,9 +130,9 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	if err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
 	}
-	re := refWordRe(name)
+	re := codeintel.RefWordRe(name)
 
-	out := &refOut{name: name, qual: qual, dropped: newRefDrops()}
+	out := &refOut{name: name, qual: qual, dropped: codeintel.NewRefDrops()}
 	// A file argument is searched as that file. Text files without an extractor
 	// use the bare word-boundary fallback; documentation and binary files are
 	// deliberately left out instead of being treated as source.
@@ -169,12 +169,12 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 // with no extractor: it is intentionally less precise than the registered
 // language match and leaves comments and strings visible.
 type refScan struct {
-	refs       []Ref
+	refs       []codeintel.Ref
 	approx     bool
 	bare       bool
 	searchable bool
 	tooLarge   bool
-	dropped    *refDrops
+	dropped    *codeintel.RefDrops
 }
 
 // oneFile searches one file through os.Root, the way file_symbols reads one.
@@ -195,14 +195,14 @@ func (t *FileRefsTool) oneFile(target readTarget, name, qual string, re *regexp.
 // scanRefFile chooses a parser-backed language, a masked approximate matcher,
 // or the bare text fallback. Documentation and binary files are not sources.
 func scanRefFile(file symbolFile, name, qual string, re *regexp.Regexp) (refScan, error) {
-	if isRefDocumentation(file.name) || isBinaryHead(file.data[:min(len(file.data), binarySniffBytes)]) {
+	if codeintel.IsRefDocumentation(file.name) || isBinaryHead(file.data[:min(len(file.data), binarySniffBytes)]) {
 		return refScan{}, nil
 	}
-	if _, ok := symbolLanguageFor(file.name); !ok {
-		refs, dropped := scanBareLineRefs(file.name, file.data, name, qual, re)
+	if !codeintel.SupportsSymbols(file.name) {
+		refs, dropped := codeintel.ScanBareLineRefs(file.name, file.data, name, qual, re)
 		return refScan{refs: refs, bare: true, searchable: true, dropped: dropped}, nil
 	}
-	refs, approx, dropped, err := scanRefs(file.name, file.data, name, qual, re)
+	refs, approx, dropped, err := codeintel.ScanRefs(file.name, file.data, name, qual, re)
 	if err != nil {
 		return refScan{}, err
 	}
@@ -213,7 +213,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
-		if !includeTests && (isTestFileName(d.Name()) || (!SupportsSymbols(d.Name()) && inTestDir(rel))) {
+		if !includeTests && (isTestFileName(d.Name()) || (!codeintel.SupportsSymbols(d.Name()) && codeintel.InTestDir(rel))) {
 			out.tests++
 			return nil
 		}
@@ -229,7 +229,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 			out.noteError(fmt.Sprintf("%s: %v", target.show(rel), err))
 			return nil
 		}
-		if isRefDocumentation(file.name) {
+		if codeintel.IsRefDocumentation(file.name) {
 			out.docs++
 			return nil
 		}
@@ -238,7 +238,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 			return nil
 		}
 		out.files++
-		if !SupportsSymbols(d.Name()) {
+		if !codeintel.SupportsSymbols(d.Name()) {
 			out.bareApprox = true
 		}
 		// Byte prefilter: a file whose text has no word-bounded occurrence of
@@ -257,7 +257,7 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 		out.bareApprox = out.bareApprox || scan.bare
 		out.approx = out.approx || approx
 		out.goRefs = out.goRefs || (!approx && len(refs) > 0)
-		out.dropped.merge(dropped)
+		out.dropped.Merge(dropped)
 		out.refs = append(out.refs, refs...)
 		if len(out.refs) > limit {
 			out.more = true
@@ -272,159 +272,17 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 	return nil
 }
 
-// scanBareLineRefs is the fallback for readable text with no extractor. Unlike
-// the registered approximate languages, it deliberately does not mask anything.
-func scanBareLineRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, *refDrops) {
-	original := newSourceLines(src)
-	dropped := newRefDrops()
-	var refs []Ref
-	for i, line := range original.lines {
-		if !re.MatchString(line) {
-			continue
-		}
-		if !bareQualifierMatches(line, qual, name) {
-			dropped.addText()
-			continue
-		}
-		refs = append(refs, Ref{File: file, Line: i + 1, Class: bareRefClass(line, name), Text: refLineText(line)})
-	}
-	return refs, dropped
-}
-
-// bareDeclKeywords are the words that introduce a declaration in the common
-// languages without an extractor (Rust fn/struct/trait/mod, Ruby/Python def,
-// Kotlin/Swift/C# class, Tera macro, ...): "<keyword> name" marks the line as
-// the definition. A guess from text, like the rest of the fallback.
-var bareDeclKeywords = `fn|def|func|function|fun|class|struct|enum|trait|interface|type|mod|module|macro|component|object|record`
-
-// bareRefClass labels a fallback line from its text: def after a declaration
-// keyword, call when the name is followed by "(", else ref. The classes keep
-// the result readable (a Rust "pub fn file_type" is not one of its callers);
-// they are not a parse.
-func bareRefClass(line, name string) string {
-	quoted := regexp.QuoteMeta(name)
-	if regexp.MustCompile(`\b(?:` + bareDeclKeywords + `)\s+` + quoted + `\b`).MatchString(line) {
-		return RefDef
-	}
-	if regexp.MustCompile(`(?:^|[^0-9A-Za-z_$])` + quoted + `\s*(?:::<[^>]*>)?\(`).MatchString(line) {
-		return RefCall
-	}
-	return RefRef
-}
-
-// inTestDir reports whether a fallback file sits under a test directory
-// (tests/, test/, __tests__/, spec/): languages without an extractor have no
-// test file naming the tool knows, and Rust keeps its tests in such folders.
-func inTestDir(rel string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		switch part {
-		case "tests", "test", "__tests__", "spec":
-			return true
-		}
-	}
-	return false
-}
-
-// bareQualifierMatches follows the fallback contract: a qualified query must
-// appear as Q.name, Q::name, or Q->name in the unmasked source line.
-func bareQualifierMatches(line, qual, name string) bool {
-	if qual == "" {
-		return true
-	}
-	for _, sep := range []string{".", "::", "->"} {
-		token := qual + sep + name
-		for start := 0; start < len(line); {
-			i := strings.Index(line[start:], token)
-			if i < 0 {
-				break
-			}
-			i += start
-			end := i + len(token)
-			beforeOK := i == 0 || !isBareIdentByte(line[i-1])
-			afterOK := end == len(line) || !isBareIdentByte(line[end])
-			if beforeOK && afterOK {
-				return true
-			}
-			start = i + 1
-		}
-	}
-	return false
-}
-
-func isBareIdentByte(b byte) bool {
-	return b == '_' || b == '$' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
-}
-
-// isRefDocumentation keeps prose files out of reference results.
-func isRefDocumentation(file string) bool {
-	switch strings.ToLower(filepath.Ext(file)) {
-	case ".md", ".txt", ".rst":
-		return true
-	default:
-		return false
-	}
-}
-
-// scanRefs extracts the references of one file: Go by parser (exact), the other
-// languages of the registry by word-bounded text match (approx). A file type
-// the registry does not know is an error; a file without the name yields
-// nothing, which is why the caller filters on the same word-bounded pattern
-// first. qual narrows the result to the Q of a qualified name and dropped is how
-// many occurrences of the name qualified something else.
-func scanRefs(file string, src []byte, name, qual string, re *regexp.Regexp) ([]Ref, bool, *refDrops, error) {
-	lang, ok := symbolLanguageFor(file)
-	if !ok {
-		return nil, false, nil, fmt.Errorf("unsupported file type %q; supported: %s",
-			filepath.Ext(file), SupportedSymbolLanguages())
-	}
-	if lang.referenceParser { // Go is the only language with a parsed reference search
-		if !re.Match(src) {
-			return nil, false, nil, nil
-		}
-		refs, dropped, err := scanGoRefs(file, src, name, qual)
-		return refs, false, dropped, err
-	}
-	refs, dropped := scanLineRefs(file, src, name, qual)
-	return refs, true, dropped, nil
-}
-
-// splitRefName splits a possibly qualified name argument: the last dot segment
-// is the name to search and the segment before it the qualifier Q that narrows
-// the result, so "a.b.Run" searches Run with Q=b and "Run" searches it
-// unqualified. A trailing or doubled dot falls back to the text as it is.
-func splitRefName(raw string) (name, qual string) {
-	separator, i := ".", strings.LastIndexByte(raw, '.')
-	for _, candidate := range []string{"::", "->"} {
-		if j := strings.LastIndex(raw, candidate); j > i {
-			separator, i = candidate, j
-		}
-	}
-	if i <= 0 || i == len(raw)-len(separator) {
-		return raw, ""
-	}
-	name, qual = raw[i+len(separator):], raw[:i]
-	if separator == "." {
-		if j := strings.LastIndexByte(qual, '.'); j >= 0 {
-			qual = qual[j+1:]
-		}
-	}
-	if qual == "" {
-		return name, ""
-	}
-	return name, qual
-}
-
 // refOut collects one run: the matches and everything the model should know
 // about what was left out.
 type refOut struct {
-	refs    []Ref
-	files   int       // searchable source files that were read
-	name    string    // the searched identifier, without its qualifier
-	qual    string    // the Q of a qualified query; empty when the name had no dot
-	dropped *refDrops // occurrences of the name that qualify another object, by qualifier
-	tests   int       // test files left out
-	docs    int       // documentation files deliberately left out
-	binary  int       // binary files deliberately left out
+	refs    []codeintel.Ref
+	files   int                 // searchable source files that were read
+	name    string              // the searched identifier, without its qualifier
+	qual    string              // the Q of a qualified query; empty when the name had no dot
+	dropped *codeintel.RefDrops // occurrences of the name that qualify another object, by qualifier
+	tests   int                 // test files left out
+	docs    int                 // documentation files deliberately left out
+	binary  int                 // binary files deliberately left out
 
 	tooLarge   int // files over maxSearchFileBytes
 	approx     bool
@@ -470,10 +328,10 @@ func (o *refOut) render(name, pathArg string, limit, contextLines int, target re
 	if o.qual != "" {
 		// Rare variable qualifiers are shown as lines of their own group: the
 		// filter cannot tell their type, and one of them may hold a o.qual.
-		if rare, more := o.dropped.rare(); len(rare) > 0 {
+		if rare, more := o.dropped.Rare(); len(rare) > 0 {
 			lines = append(lines, fmt.Sprintf("[maybe also %s: unqualified uses (a call inside the defining package "+
 				"needs no qualifier) and uses through variables whose type the filter cannot tell (names used at "+
-				"most %d times) - check each line]", o.qual, rareDropUses))
+				"most %d times) - check each line]", o.qual, codeintel.RareDropUses))
 			lines = append(lines, refGroupLines(rare, contextLines, src)...)
 			if more > 0 {
 				lines = append(lines, fmt.Sprintf("[and %d more such line(s)]", more))
@@ -481,20 +339,6 @@ func (o *refOut) render(name, pathArg string, limit, contextLines int, target re
 		}
 	}
 	return strings.Join(append(lines, o.notes(limit)...), "\n")
-}
-
-// refClass is how one match is labelled: the class, plus the qualifier of a
-// selector or call, with the pkg: prefix when the qualifier is an imported
-// package name.
-func refClass(r Ref) string {
-	switch {
-	case r.Qualifier == "":
-		return r.Class
-	case r.Pkg:
-		return r.Class + "(pkg:" + r.Qualifier + ")"
-	default:
-		return r.Class + "(" + r.Qualifier + ")"
-	}
 }
 
 // notes are what the result says besides the matches themselves.
@@ -515,7 +359,7 @@ func (o *refOut) notes(limit int) []string {
 		// A name defined here but used elsewhere is the common false empty: the
 		// search only looks inside path. A qualified search that only dropped other
 		// qualifiers is told apart by the note below, not by this hint.
-		if o.dropped.total() == 0 {
+		if o.dropped.Total() == 0 {
 			notes = append(notes, "[no references in this path; the name may be used from another package/directory - "+
 				"try the workspace root (path=.) or the defining package's parent]")
 		}
@@ -529,7 +373,7 @@ func (o *refOut) notes(limit int) []string {
 			"sel/call uses whose qualifier text is %s or ends with %s (case-insensitive); dropped %d use(s) of "+
 			"%q with another qualifier%s - a variable among them may still refer to %s, so check the names you "+
 			"do not recognise, or search without the qualifier for all of them]",
-			o.qual, o.qual, o.qual, o.qual, o.dropped.total(), o.name, o.dropped.describe(), o.qual))
+			o.qual, o.qual, o.qual, o.qual, o.dropped.Total(), o.name, o.dropped.Describe(), o.qual))
 	}
 	if o.goRefs {
 		// The conclusion the model needs to stop re-checking with file_grep: a Go

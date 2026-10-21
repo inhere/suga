@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"path/filepath"
@@ -13,12 +13,12 @@ import (
 // are trustworthy, "it is the same object" is not, so the tool marks the
 // result approx.
 
-// refWordRe compiles the matcher for one name: the name surrounded by
+// RefWordRe compiles the matcher for one name: the name surrounded by
 // characters that cannot be part of an identifier in the supported languages
 // (letters, digits, _ and $; PHP's variables write the name with a leading $,
 // which makes "foo" not match "$foo"). Go's \b is not used because it counts $
 // and - as boundaries, so $name and foo-name would match.
-func refWordRe(name string) *regexp.Regexp {
+func RefWordRe(name string) *regexp.Regexp {
 	return regexp.MustCompile(`(^|[^0-9A-Za-z_$])` + regexp.QuoteMeta(name) + `([^0-9A-Za-z_$]|$)`)
 }
 
@@ -52,14 +52,14 @@ func ScanLineRefs(file string, src []byte, name string) []Ref {
 // scanLineRefs is ScanLineRefs with the qualified-name filter of one file_refs
 // call: with qual set (the Q of "Q.Name"), only the lines holding Q.name are
 // kept and dropped counts the lines that only held other qualifiers.
-func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops) {
+func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *RefDrops) {
 	style := refMaskStyle(file)
-	masked := newSourceLines(maskInline(maskSpans(src, style), style))
-	original := newSourceLines(src)
-	re := refWordRe(name)
+	masked := NewSourceLines(maskInline(maskSpans(src, style), style))
+	original := NewSourceLines(src)
+	re := RefWordRe(name)
 	var out []Ref
-	dropped := newRefDrops()
-	for i, line := range masked.lines {
+	dropped := NewRefDrops()
+	for i, line := range masked.Lines {
 		if !re.MatchString(line) {
 			continue
 		}
@@ -74,7 +74,7 @@ func scanLineRefs(file string, src []byte, name, qual string) ([]Ref, *refDrops)
 			// fallback does it for the declaration keywords of other languages.
 			class = configRefClass(line, name)
 		}
-		out = append(out, Ref{File: file, Line: i + 1, Class: class, Text: refLineText(original.at(i + 1))})
+		out = append(out, Ref{File: file, Line: i + 1, Class: class, Text: RefLineText(original.At(i + 1))})
 	}
 	return out, dropped
 }

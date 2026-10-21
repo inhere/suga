@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 // phpLanguage is the PHP declaration: PHPUnit and Pest, and the flag that
 // limits a run to some tests (`--filter`).

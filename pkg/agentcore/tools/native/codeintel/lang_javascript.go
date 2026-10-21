@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 // jsLanguage is the JavaScript/TypeScript declaration: the test runners of the
 // package managers and the two test tools (`-t` runs one matching test).

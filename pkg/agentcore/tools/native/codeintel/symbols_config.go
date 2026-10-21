@@ -1,4 +1,4 @@
-package native
+package codeintel
 
 import (
 	"fmt"
@@ -14,14 +14,14 @@ import (
 // of them buries the key the model asked about.
 
 const (
-	// maxConfigKeys caps the keys one configuration file lists. A file with more
+	// ConfigMaxKeys caps the keys one configuration file lists. A file with more
 	// is answered with its first keys and a note naming file_grep: the model
 	// narrows the key instead of reading a k8s manifest whole.
-	maxConfigKeys = 300
-	// maxConfigDepth caps the key depth one configuration file lists (a YAML
+	ConfigMaxKeys = 300
+	// ConfigMaxDepth caps the key depth one configuration file lists (a YAML
 	// mapping level, or a TOML path segment). Deeper keys are counted and the
 	// note says so.
-	maxConfigDepth = 4
+	ConfigMaxDepth = 4
 	// configPreviewBytes caps the value preview of one key's signature.
 	configPreviewBytes = 60
 )
@@ -84,8 +84,8 @@ func configKeyName(raw string) string {
 // configCaps is how far one config file's listing was cut short, and how many of
 // its key paths repeat.
 type configCaps struct {
-	deep      bool // a key deeper than maxConfigDepth was left out
-	truncated bool // a key past maxConfigKeys was left out
+	deep      bool // a key deeper than ConfigMaxDepth was left out
+	truncated bool // a key past ConfigMaxKeys was left out
 	repeats   int  // key paths that a sequence entry or an array of tables declares again
 }
 
@@ -102,11 +102,11 @@ func configNotes(format string, caps configCaps) []string {
 	}
 	if caps.deep {
 		notes = append(notes, fmt.Sprintf("[%s: only the first %d key levels are listed; for deeper keys use file_grep]",
-			format, maxConfigDepth))
+			format, ConfigMaxDepth))
 	}
 	if caps.truncated {
 		notes = append(notes, fmt.Sprintf("[%s: showing the first %d keys; for the rest use file_grep]",
-			format, maxConfigKeys))
+			format, ConfigMaxKeys))
 	}
 	return notes
 }
@@ -143,7 +143,7 @@ func (c *configCollector) add(path string, line int, kind, signature string) {
 		e.count++
 		return
 	}
-	if len(c.order) >= maxConfigKeys {
+	if len(c.order) >= ConfigMaxKeys {
 		c.caps.truncated = true
 		return
 	}

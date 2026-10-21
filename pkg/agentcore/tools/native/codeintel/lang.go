@@ -1,8 +1,6 @@
-package native
+package codeintel
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -44,10 +42,6 @@ type Language struct {
 	// "(^|\s)(<flags>)(\s|=)" pattern). The trace analysis uses both.
 	TestCommands string
 	FocusedFlags []string
-
-	// dependencyRoots adds this language's local dependency caches; nil when
-	// the language has none outside the workspace.
-	dependencyRoots func(env langEnv, add *rootCollector)
 }
 
 // languages is the registry, in the order the dependency roots appear in the
@@ -69,63 +63,6 @@ func Languages() []Language { return languages }
 // a language (lang_php.go); the aggregate pattern matches the same commands as
 // before.
 const otherTestCommands = `\b(make test|rspec|ctest|dotnet test)\b`
-
-// langEnv is what the dependency root probes read: the user home directory and
-// the Go environment (the process environment over the go env file).
-type langEnv struct {
-	home  string
-	goVar func(key string) string
-}
-
-// newLangEnv gathers the environment once for all the probes.
-func newLangEnv() langEnv {
-	home, _ := os.UserHomeDir()
-	goEnv := readGoEnvFile()
-	return langEnv{home: home, goVar: func(key string) string {
-		if v := os.Getenv(key); v != "" {
-			return v
-		}
-		return goEnv[key]
-	}}
-}
-
-// rootCollector gathers the dependency roots of the languages of one detection
-// run. A directory that is empty, relative or missing is left out, exactly as
-// the per-language detection did before the split.
-type rootCollector struct{ out []ReadRoot }
-
-// add appends label: dir when dir is an absolute path of an existing directory.
-func (c *rootCollector) add(label, dir string) {
-	if dir == "" || !filepath.IsAbs(dir) {
-		return
-	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return
-	}
-	c.out = append(c.out, ReadRoot{Label: label, Path: filepath.Clean(dir)})
-}
-
-// DependencyRoots detects the local dependency caches and repositories of every
-// declared language, in Languages() order: the Go module cache, the Go standard
-// library sources, the Rust crate sources, the Maven local repository and the
-// Gradle module cache. Only directories holding dependency files are returned,
-// never a whole tool home (~/.cargo, ~/.gradle and ~/.m2 hold credentials or
-// build state too). Directories that do not exist are left out. It runs no
-// external command: the go env file, environment variables and the go binary
-// location in PATH are enough.
-//
-// A pathless file_grep / file_find only searches the workspace, so these large
-// roots are walked only when the model passes one of them as the search path
-// (such a walk stops at searchTimeout and at the tool's result limit).
-func DependencyRoots() []ReadRoot {
-	env, collector := newLangEnv(), &rootCollector{}
-	for _, lang := range Languages() {
-		if lang.dependencyRoots != nil {
-			lang.dependencyRoots(env, collector)
-		}
-	}
-	return collector.out
-}
 
 // testCommandExpr joins the languages' test command regexes into the pattern
 // that recognises a test run (trace --analyze). Every language declares a
