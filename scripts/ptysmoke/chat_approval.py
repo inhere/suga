@@ -247,7 +247,7 @@ def scenario(s):
 
     m = s.mark(); time.sleep(0.3); s.send(CTRL_C)
     s.check("exit: usage summary", s.until(r"本次 \d+ 轮 · in \d+ / out \d+ tokens", m))
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m))
 
 
 def non_tty(binary, env, cwd):

@@ -23,7 +23,7 @@ from ptydrive import CTRL_C, PtySession  # noqa: E402
 
 
 def session_from(text):
-    found = re.search(r"续接：suga chat --resume ((?:sess_|s_)\S+)", text)
+    found = re.search(r"续接：suga chat --resume ((?:sess_|sg_|s_)\S+)", text)
     return found.group(1) if found else ""
 
 
@@ -64,7 +64,7 @@ def main():
         exit_mark = s.mark()
         s.send(CTRL_C)
         s.send(CTRL_C)
-        s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", exit_mark))
+        s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", exit_mark))
         session = session_from(s.text())
         s.close()
         s.check("session id", bool(session))

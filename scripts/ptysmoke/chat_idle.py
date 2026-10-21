@@ -58,7 +58,7 @@ def scenario(s):
     # Wait for the prompt: input typed before it stays in the line unsubmitted.
     time.sleep(0.5)
     m = s.mark(); s.line(":quit")
-    s.check("quit", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+    s.check("quit", s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m))
 
 
 def main():
@@ -90,7 +90,7 @@ def main():
         wait_port(fake)
         s = PtySession([binary, "chat"], env=env, cwd=ws)
         scenario(s)
-        sid = re.search(r"session id: ((?:sess_|s_)\S+)", s.text())
+        sid = re.search(r"session id: ((?:sess_|sg_|s_)\S+)", s.text())
         s.close()
         trace = ""
         if sid:

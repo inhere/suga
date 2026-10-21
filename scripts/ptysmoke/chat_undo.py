@@ -176,8 +176,8 @@ def scenario(s, ws, shared):
     s.send(CTRL_C)
     s.until(r"再按一次 Ctrl\+C 退出", m)
     s.send(CTRL_C)
-    s.until(r"--resume (?:sess_|s_)\S+", m, timeout=5)
-    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
+    s.until(r"--resume (?:sess_|sg_|s_)\S+", m, timeout=5)
+    found = re.search(r"--resume ((?:sess_|sg_|s_)\S+)", s.text(m))
     s.check("exit reports session", bool(found))
     return found.group(1) if found else ""
 

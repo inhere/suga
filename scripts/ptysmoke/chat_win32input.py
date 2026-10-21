@@ -205,7 +205,7 @@ def scenario(s, log):
     m = s.mark()
     time.sleep(0.3)
     s.send(press(68, 4, cs=8))  # Ctrl-D
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m))
     s.check("exit: win32-input-mode is switched off again", s.until_raw(MODE_OFF, m))
 
 

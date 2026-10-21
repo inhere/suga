@@ -191,8 +191,8 @@ def ask_scenario(s, outside_real, shared, write_path):
     s.send(CTRL_C)
     time.sleep(0.3)
     s.send(CTRL_C)
-    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|s_)", m))
-    found = re.search(r"--resume ((?:sess_|s_)\S+)", s.text(m))
+    s.check("exit: resume command", s.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m))
+    found = re.search(r"--resume ((?:sess_|sg_|s_)\S+)", s.text(m))
     return found.group(1) if found else ""
 
 
@@ -299,7 +299,7 @@ def main():
         s2.check("second chat: ❯ prompt", s2.until(r"❯ ", m))
         s2.line("你好")
         s2.check("second chat: the model answers", s2.until(REPLY_TEXT, m) and s2.until(r"tokens · ", m))
-        sid = re.search(r"session id: ((?:sess_|s_)\S+)", s2.text(0))
+        sid = re.search(r"session id: ((?:sess_|sg_|s_)\S+)", s2.text(0))
         s2.check("second chat: session id", bool(sid))
         if sid:
             s2.until(r"\n❯ ", m)
@@ -320,7 +320,7 @@ def main():
         s2.send(CTRL_C)
         time.sleep(0.3)
         s2.send(CTRL_C)
-        s2.check("second chat: exit", s2.until(r"续接：suga chat --resume (?:sess_|s_)", m))
+        s2.check("second chat: exit", s2.until(r"续接：suga chat --resume (?:sess_|sg_|s_)", m))
     finally:
         for session_pty in (s, s2):
             if session_pty is not None:
