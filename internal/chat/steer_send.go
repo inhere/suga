@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
@@ -42,6 +43,13 @@ func (s *chatState) deliverMessage(mode, text, from, fromName string, hops int, 
 		s.holdSessionMessage(deliveryLineFor(text, from, fromName))
 		s.render.Hint(sessionQueuedHint(fromName, hops))
 		return personalprocess.Delivery{Queued: true, Warning: warning}, nil, nil
+	}
+	// A session message is never inserted into the running turn: that turn keeps
+	// its own hop depth, so a steered reply would let two sessions answer each
+	// other inside one long turn without the limit above ever seeing it. It waits
+	// for a turn of its own instead, which carries the message's hops.
+	if mode == personalprocess.ModeSteer && strings.HasPrefix(from, personalprocess.SessionFromPrefix) {
+		mode = personalprocess.ModeFollowUp
 	}
 	if mode == personalprocess.ModeSteer {
 		settled := make(chan error, 1)

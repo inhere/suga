@@ -94,7 +94,6 @@ func TestSessionMessageArgumentErrors(t *testing.T) {
 		{"action missing", map[string]any{}, "action 必须是 list 或 send"},
 		{"to missing", map[string]any{"action": "send", "text": "hi"}, "需要 to"},
 		{"text missing", map[string]any{"action": "send", "to": "suga-k7"}, "需要 text"},
-		{"mode invalid", map[string]any{"action": "send", "to": "suga-k7", "text": "hi", "mode": "shout"}, "mode 只能是"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -119,8 +118,6 @@ func TestSessionMessageSendOutcomes(t *testing.T) {
 	}{
 		{"idle peer starts a turn", "", SessionSendResult{}, []string{"对方空闲，已开始处理"}},
 		{"busy peer queues", "follow_up", SessionSendResult{Queued: true}, []string{"对方正忙"}},
-		{"steer inserted", "steer", SessionSendResult{Steered: true}, []string{"已插入"}},
-		{"steer queued", "steer", SessionSendResult{Queued: true}, []string{"没有可插入的回合"}},
 		{"warning shown", "", SessionSendResult{Warning: "图片已转为文字"}, []string{"图片已转为文字"}},
 		{"legacy peer", "", SessionSendResult{Legacy: true}, []string{"旧版本", "不支持连续回复上限"}},
 	}

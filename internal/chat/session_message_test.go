@@ -155,3 +155,30 @@ func TestTurnHopsStartAtZeroForThePersonsOwnTurn(t *testing.T) {
 	state.turnHops = 2
 	assert.Eq(t, 2, state.turnHops)
 }
+
+// TestSteeredSessionMessageWaitsForItsOwnTurn: a session message asking to steer
+// is not inserted into the running turn - that turn keeps its own hop depth, so
+// replies inserted into it would escape the limit - it waits for a turn of its
+// own like a follow-up, carrying its hops.
+func TestSteeredSessionMessageWaitsForItsOwnTurn(t *testing.T) {
+	gkcResetForSessionMessage(t)
+	prov := newToolGateProv()
+	h := newSendSteerHarness(t, prov)
+	done := h.startTurn()
+	<-prov.started() // a turn is running: a plain steer would go into it
+
+	delivery, _, err := h.state.deliverMessage(process.ModeSteer, "回信", process.SessionFromPrefix+"ab12", "suga-k7", 1, nil)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.False(t, delivery.Steered)
+	assert.True(t, delivery.Queued)
+	assert.Require(t, assert.Eq(t, 1, len(h.source.deliveries)))
+	event := <-h.source.deliveries
+	assert.Eq(t, 1, event.hops)
+
+	prov.letGo()
+	assert.NoErr(t, <-done)
+	// The running turn's requests never carried it.
+	for _, p := range prov.prompts() {
+		assert.NotContains(t, p, "回信")
+	}
+}

@@ -6,7 +6,7 @@
 
 ### 新增
 
-- `session_message` 工具（`action: list|send`）：模型可以列出同一台机器、同一 `SUGA_HOME` 下正在运行的其它 chat 会话（短名称、会话 ID、idle/busy、工作目录），并给其中一个发消息（`to` 用短名称或会话 ID，`mode` 为 `follow_up`/`steer`），不需要 gofer；只读模式可用、不需要审批。默认开启，`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off` 关闭后工具不在工具表里。
+- `session_message` 工具（`action: list|send`）：模型可以列出同一台机器、同一 `SUGA_HOME` 下正在运行的其它 chat 会话（短名称、会话 ID、idle/busy、工作目录），并给其中一个发消息（`to` 用短名称或会话 ID；消息总在对方自己的回合里处理，不插入对方正在运行的回合，这样每次回复都受连续回复上限约束），不需要 gofer；只读模式可用、不需要审批。默认开启，`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off` 关闭后工具不在工具表里。
 - 会话之间互发消息的来源标记与自动回复上限：收到的消息作为用户消息带 `[来自会话 <短名称>（<会话 ID>）的消息] ` 标记；用户输入与 `suga send` 投递的跳数为 0，由会话消息启动的回合发消息为 h+1，收到第 `tools.session_message.max_hops`（默认 3）跳的消息不再自动开始回合，只在 chat 里提示“已排队”并在用户下次输入时一起处理；单个回合最多发 5 条会话消息。旧版本接收端在 `list` 结果里标出“不支持连续回复上限”，`send` 仍投递并在结果里提示。
 
 ## [0.40.0] - 2026-10-20

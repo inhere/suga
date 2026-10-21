@@ -102,8 +102,6 @@ func (t *SessionMessageTool) Schema() api.ToolSchema {
 					"description": "list: the running chat sessions; send: deliver text to one of them"},
 				"to":   map[string]any{"type": "string", "description": "send: the short name (e.g. suga-k7) or the session ID/ID prefix of the target"},
 				"text": map[string]any{"type": "string", "description": "send: the message text the other session's model reads"},
-				"mode": map[string]any{"type": "string", "enum": []any{"follow_up", "steer"},
-					"description": "send: follow_up (default) waits for that session's next turn; steer inserts the text into the turn it runs right now"},
 			},
 			"required": []any{"action"},
 		},
@@ -163,13 +161,10 @@ func (t *SessionMessageTool) send(ctx context.Context, args map[string]any) (str
 	if text == "" {
 		return "", fmt.Errorf("send 需要 text：要发给对方的消息内容")
 	}
-	switch mode {
-	case "":
-		mode = "follow_up"
-	case "follow_up", "steer":
-	default:
-		return "", fmt.Errorf("mode 只能是 follow_up 或 steer，收到 %q", mode)
-	}
+	// A session message always waits for a turn of its own (the receiver queues a
+	// steered one as well): only then does the hop limit see every reply. The
+	// tool therefore has no mode; a stray value from a model is ignored.
+	mode = "follow_up"
 	if err := t.reserveSend(ctx); err != nil {
 		return "", err
 	}
