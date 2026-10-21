@@ -1,6 +1,6 @@
 # 语言规则文件 `lang-rules.yaml`（file_symbols / file_refs / 测试命令识别） 设计
 
-> 状态：草案 0.1（2026-10-22），待用户批准后实施（第三十批）。
+> 状态：0.2 已批准（2026-10-22，用户：待定点按建议；同时把实现抽到子包）。第三十批实施。
 > 来源：用户 2026-10-22——“refs/symbols 语言探测和优化也是内嵌的，想支持新语言也要改代码，是否也可以用规则文件来实现”。首批新语言按建议：C#、Kotlin、Ruby、C/C++。
 
 ## 1. 现状
@@ -114,8 +114,18 @@ languages:
 - 伪终端冒烟不需要（不涉及 chat 交互）。
 - 真实模型：用一个 C# 或 Ruby 小项目跑一轮带 `file_symbols`/`file_refs` 的 run，确认描述里的语言列表与结果可用（结果记入实施汇报）。
 
-## 7. 待定
+## 7. 包结构（0.2 新增，用户 2026-10-22）
 
-1. 用户层/项目层规则文件出错时：跳过该文件、写日志并在 manifest 显示（建议；output rules 目前只写日志），还是启动失败？
-2. 项目层 `.suga/lang-rules.yaml` 是否需要 `project_trust`：规则只含正则，不执行任何东西，建议不需要（与 output rules 一致）。
-3. 迁移范围：本批只迁 JS/TS、Java、Python；PHP 保留代码实现（heredoc），不迁。
+先把语言相关实现从 `pkg/agentcore/tools/native` 抽到子包 **`pkg/agentcore/tools/native/codeintel`**，再在子包里做规则文件。试拆核实（临时副本把 `lang*`/`symbols*`/`refs*` 移入子包编译）：38 处未定义，集中在工具外壳（`refs.go` 的 `FileRefsTool` 27 处：路径解析、读根、遍历、上限）、依赖根探测（`lang.go` 3 处：`ReadRoot`/`AddDirs`）和少量小工具函数；`native` 包外只有 4 处引用（`internal/wiring` 的 `Languages`/`DependencyRoots`，`internal/personal` 的 `TestCommandPattern`）。
+
+- **codeintel**（纯分析，输入是“路径 + 内容”，不碰文件系统策略）：语言注册表（声明部分）、遮蔽、各语言符号提取器、引用行匹配与分类、ctags 调用、规则加载。
+- **native 保留**：`FileSymbolsTool`、`FileRefsTool` 的工具外壳（参数、路径、遍历、大小上限、输出），依赖根探测（按语言名挂探测函数，因为绑定 `ReadRoot`）。
+- 小工具函数（`utf8Cut` 等）在 codeintel 里各自实现或从更底层的包取，不反向依赖 native。
+- 加分层测试：`codeintel` 不得 import `native`。
+- **两步提交**：①纯移动 + characterization 测试（行为不变，审核看 diff 是否只有移动）；②规则文件与新语言。
+
+## 8. 已定（2026-10-22 用户批准）
+
+1. 用户层/项目层规则文件出错：跳过该文件、写日志，并在 `suga inspect manifest` 显示跳过的文件与原因。
+2. 项目层 `.suga/lang-rules.yaml` 不需要 `project_trust`（只含正则，与 output rules 一致）。
+3. 本批迁移 JS/TS、Java、Python；PHP 保留代码实现。
