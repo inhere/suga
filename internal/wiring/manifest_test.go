@@ -15,6 +15,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	toolsmcp "github.com/inhere/suga/pkg/agentcore/tools/mcp"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 // manifestConfig sets a fake provider and a workspace with its own Git boundary
@@ -212,6 +213,36 @@ func TestManifestToolInReadOnlySet(t *testing.T) {
 	t.Cleanup(func() { _ = rt.Close() })
 	assert.Contains(t, rt.Registry.List(), "suga_manifest")
 	assert.NotContains(t, rt.Registry.List(), "shell_exec")
+}
+
+// TestBuildManifestLangRules: the manifest lists the effective declaration
+// languages of file_symbols/file_refs and the rule files a load skipped, so a
+// lang-rules.yaml with a typo is visible without reading the log (design
+// docs/design/2026-10-22-lang-rules-design.md, section 8.1).
+func TestBuildManifestLangRules(t *testing.T) {
+	m := BuildManifest(ManifestInput{LangRules: codeintel.DefaultLangRules()})
+	names := make([]string, 0, len(m.LangRules))
+	for _, lang := range m.LangRules {
+		names = append(names, lang.Name)
+	}
+	assert.True(t, slices.Contains(names, "Ruby"), "a rule language is listed: %v", names)
+	assert.True(t, slices.Contains(names, "Go"), "a code language is listed: %v", names)
+	assert.Eq(t, 0, len(m.LangRuleSkips))
+	encoded, err := json.Marshal(m)
+	assert.NoErr(t, err)
+	assert.StrContains(t, string(encoded), `"lang_rule_skips":[]`)
+
+	// A broken rule file is skipped by the loader and reported by the manifest.
+	path := filepath.Join(t.TempDir(), "lang-rules.yaml")
+	assert.Require(t, assert.NoErr(t, os.WriteFile(path, []byte(`languages:
+  - {name: Foo, exts: [.foo], blocks: braceless, decls: [{pattern: '(x)', kind: func, name: 1}]}
+`), 0o644)))
+	reg, errs := codeintel.LoadLangRules(path)
+	assert.Eq(t, 1, len(errs))
+	m = BuildManifest(ManifestInput{LangRules: reg})
+	assert.Eq(t, 1, len(m.LangRuleSkips))
+	assert.Eq(t, path, m.LangRuleSkips[0].File)
+	assert.StrContains(t, m.LangRuleSkips[0].Err, "braceless")
 }
 
 // TestBuildManifestToolConflicts: the manifest reports the same-name tool
