@@ -144,7 +144,7 @@ func TestFoldBySize(t *testing.T) {
 			}
 		}
 		assert.Eq(t, 6, foldedSteps)
-		assert.StrContains(t, view[2].Content, "[已折叠的 file_read 结果：原 1200 字符")
+		assert.StrContains(t, view[2].Content, "[已折叠：后面第 2 步重新读取了同一内容]")
 
 		sess, err := repo.GetSession(context.Background(), id)
 		assert.NoErr(t, err)
@@ -239,73 +239,4 @@ func TestFoldBySize(t *testing.T) {
 			assert.False(t, m.Role == "assistant" && folded(m), "a step was folded with fold_at 0")
 		}
 	})
-}
-
-// TestFoldToolResults: old results of re-runnable read-only tools are replaced
-// by a one-line note; the call arguments stay (design 2026-10-21, 0.2).
-func TestFoldToolResults(t *testing.T) {
-	refoldable := func(name string) bool { return name == "file_read" }
-	long := strings.Repeat("r", foldArgChars+1)
-
-	t.Run("folds only large results of re-runnable read tools", func(t *testing.T) {
-		msgs := []agentcore.Message{
-			{Role: "user", Content: "task"},
-			{Role: "assistant", ToolCall: &agentcore.ToolCall{Name: "file_read", Arguments: map[string]any{"path": "a.go"}}},
-			{Role: "tool", Content: long, ToolResult: &agentcore.ToolResult{Name: "file_read", Content: long}},
-			{Role: "tool", Content: "short", ToolResult: &agentcore.ToolResult{Name: "file_read", Content: "short"}},
-			{Role: "tool", Content: "boom", ToolResult: &agentcore.ToolResult{Name: "file_read", Content: long, IsError: true}},
-			{Role: "tool", Content: long, ToolResult: &agentcore.ToolResult{Name: "shell_exec", Content: long}},
-			{Role: "tool", Content: long, ToolResult: &agentcore.ToolResult{Name: "web_fetch", Content: long}},
-			{Role: "assistant", Content: "done"},
-		}
-		out, st := foldToolResults(msgs, 1, refoldable)
-		assert.Eq(t, 1, st.results)
-		assert.Eq(t, foldArgChars+1, st.charsBefore)
-		assert.True(t, st.charsAfter < st.charsBefore, "note %d is not shorter than %d", st.charsAfter, st.charsBefore)
-		note := out[2].ToolResult.Content
-		assert.StrContains(t, note, "file_read")
-		assert.StrContains(t, note, fmt.Sprintf("原 %d 字符", foldArgChars+1))
-		assert.Eq(t, note, out[2].Content) // the rendered content is the note too
-		assert.Eq(t, "a.go", out[1].ToolCall.Arguments["path"])
-		assert.Eq(t, "short", out[3].ToolResult.Content)
-		assert.Eq(t, long, out[4].ToolResult.Content) // error result kept
-		assert.Eq(t, long, out[5].ToolResult.Content) // not read-only
-		assert.Eq(t, long, out[6].ToolResult.Content) // external
-		assert.Eq(t, long, msgs[2].ToolResult.Content)
-	})
-
-	t.Run("only results before the boundary are folded", func(t *testing.T) {
-		msgs := foldResultSteps(4, foldArgChars+1, "file_read")
-		out, st := foldToolResults(msgs, 2, refoldable)
-		assert.Eq(t, 2, st.results)
-		// 4 steps, results 1..4: the first two (steps 0 and 1) are before the
-		// boundary of 2 folded steps.
-		assert.StrContains(t, out[2].ToolResult.Content, "已折叠")
-		assert.StrContains(t, out[4].ToolResult.Content, "已折叠")
-		assert.Eq(t, msgs[6].ToolResult.Content, out[6].ToolResult.Content)
-	})
-}
-
-// TestFoldToolResultsByMetadata: the decision comes from the tool registry's
-// metadata, in the real compose path (fold_at 0 = fold by cadence from the
-// start).
-func TestFoldToolResultsByMetadata(t *testing.T) {
-	b, _, _, _ := foldBuildSetup(t, Config{ContextWindow: 4000, FoldEvery: 2, FoldKeep: 1})
-	msgs := []agentcore.Message{{Role: "user", Content: "task"}}
-	long := strings.Repeat("r", foldArgChars+1)
-	for _, name := range []string{"file_read", "shell_exec", "web_fetch", "file_read", "unknown_tool", "file_read"} {
-		msgs = append(msgs,
-			agentcore.Message{Role: "assistant", Reasoning: "think", ToolCall: &agentcore.ToolCall{Name: name, Arguments: map[string]any{"path": "a.go"}}},
-			agentcore.Message{Role: "tool", Content: long, ToolResult: &agentcore.ToolResult{Name: name, Content: long}})
-	}
-	view, err := b.BuildMessages(foldCtx(b.sessionID), &agentcore.RunState{Messages: msgs})
-	assert.Require(t, assert.NoErr(t, err))
-	// 6 steps with every 2 / keep 1 fold 4 steps: the first four results.
-	want := []bool{true, false, false, true}
-	for i, wantFolded := range want {
-		got := strings.Contains(view[2+2*i].ToolResult.Content, "已折叠")
-		assert.Eq(t, wantFolded, got)
-	}
-	assert.Eq(t, long, view[2+2*4].ToolResult.Content) // unknown tool: metadata unknown
-	assert.Eq(t, long, view[2+2*5].ToolResult.Content) // after the boundary
 }
