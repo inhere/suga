@@ -115,7 +115,7 @@ func (d *RefDrops) Rare() ([]Ref, int) {
 	return out, 0
 }
 
-// describe names the dropped variable qualifiers (sorted, with counts) and
+// Describe names the dropped variable qualifiers (sorted, with counts) and
 // sums up the imported packages and the unqualified uses:
 // ` (variables: child 1, cmd 3, t 40; 5 through imported packages; 2
 // unqualified or text matches)`. Empty when nothing was dropped.
