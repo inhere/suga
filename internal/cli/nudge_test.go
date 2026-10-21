@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/gookit/goutil/x/assert"
@@ -187,6 +189,78 @@ func TestRunNudgeEndToEnd(t *testing.T) {
 			}
 		}
 		assert.Eq(t, maxNudgePromisePushes, nudges)
+	})
+	t.Run("a write without a following command is pushed once", func(t *testing.T) {
+		workspace := verifyRunDir(t)
+		assert.NoErr(t, gkconfig.Set("tools.allow_write", true))
+		path := filepath.Join(workspace, "a.txt")
+		var calls int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Content-Type", "application/json")
+			if calls == 1 {
+				args, err := json.Marshal(map[string]string{"path": path, "content": "alpha\n"})
+				assert.NoErr(t, err)
+				quoted, err := json.Marshal(string(args))
+				assert.NoErr(t, err)
+				_, _ = io.WriteString(w, `{"choices":[{"message":{"tool_calls":[{"id":"c1","function":{"name":"file_write","arguments":`+
+					string(quoted)+`}}]},"finish_reason":"tool_calls"}],`+`"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}`)
+				return
+			}
+			_, _ = io.WriteString(w, jsonBody("文件已经写好。"))
+		}))
+		t.Cleanup(server.Close)
+		setTestProvider(t, server.URL)
+
+		var out, diag bytes.Buffer
+		err := RunPersonalCLI(context.Background(), "run", []string{
+			"--prompt", "write the file", "--allow-write", "--output-format", "stream-json", "--session-id", "nudge-n1",
+		}, strings.NewReader(""), &out, &diag)
+		assert.Require(t, assert.NoErr(t, err))
+		// The first turn's write and answer, then the pushed turn's answer.
+		assert.Eq(t, 3, calls)
+		var nudges []map[string]any
+		for _, line := range streamLines(t, out.Bytes()) {
+			if line["type"] == "nudge" {
+				nudges = append(nudges, line)
+			}
+		}
+		assert.Require(t, assert.Len(t, nudges, 1))
+		assert.Eq(t, "N1", nudges[0]["rule"])
+		assert.StrContains(t, nudges[0]["evidence"].(string), "没有运行 shell_exec")
+	})
+	t.Run("--verify skips N1", func(t *testing.T) {
+		workspace := verifyRunDir(t)
+		assert.NoErr(t, gkconfig.Set("tools.allow_write", true))
+		path := filepath.Join(workspace, "a.txt")
+		var calls int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Content-Type", "application/json")
+			if calls > 1 {
+				_, _ = io.WriteString(w, jsonBody("文件已经写好。"))
+				return
+			}
+			args, err := json.Marshal(map[string]string{"path": path, "content": "alpha\n"})
+			assert.NoErr(t, err)
+			quoted, err := json.Marshal(string(args))
+			assert.NoErr(t, err)
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"tool_calls":[{"id":"c1","function":{"name":"file_write","arguments":`+
+				string(quoted)+`}}]},"finish_reason":"tool_calls"}],`+`"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}`)
+		}))
+		t.Cleanup(server.Close)
+		setTestProvider(t, server.URL)
+
+		var out, diag bytes.Buffer
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		_ = RunPersonalCLI(ctx, "run", []string{
+			"--prompt", "write the file", "--allow-write", "--output-format", "stream-json", "--session-id", "nudge-verify",
+			"--verify", "exit 0", "--verify-rounds", "1",
+		}, strings.NewReader(""), &out, &diag)
+		for _, line := range streamLines(t, out.Bytes()) {
+			assert.NotEq(t, "nudge", line["type"])
+		}
 	})
 	t.Run("agents.nudge off pushes nothing", func(t *testing.T) {
 		verifyRunDir(t)
