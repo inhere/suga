@@ -106,6 +106,10 @@ func unverifiedEvidence(calls []NudgeToolCall, plan *native.Plan) string {
 	return strings.Join(parts, "；")
 }
 
+// nudgeOneLine collapses text to one line, so a plan step name or the quoted
+// answer cannot break the one-line evidence a hint or a stderr line prints.
+func nudgeOneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
 // uncheckedWrite reports the target of the last successful write tool when no
 // shell_exec call followed it.
 func uncheckedWrite(calls []NudgeToolCall) (string, bool) {
@@ -139,7 +143,7 @@ func openPlanSteps(plan *native.Plan) []string {
 	for _, step := range plan.Steps {
 		switch step.Status {
 		case native.PlanPending, native.PlanInProgress:
-			open = append(open, strings.TrimSpace(step.Step))
+			open = append(open, nudgeOneLine(step.Step))
 		}
 	}
 	return open
@@ -157,7 +161,7 @@ func promiseEvidence(finalText string) string {
 		if loc == nil {
 			continue
 		}
-		return "结尾说" + truncateRunes(strings.TrimSpace(tail[loc[0]:]), 120)
+		return "结尾说" + truncateRunes(nudgeOneLine(tail[loc[0]:]), 120)
 	}
 	return ""
 }

@@ -262,6 +262,43 @@ func TestRunNudgeEndToEnd(t *testing.T) {
 			assert.NotEq(t, "nudge", line["type"])
 		}
 	})
+	t.Run("an open plan step is pushed once", func(t *testing.T) {
+		verifyRunDir(t)
+		var calls int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Content-Type", "application/json")
+			if calls > 1 {
+				_, _ = io.WriteString(w, jsonBody("已经做完了。"))
+				return
+			}
+			args, err := json.Marshal(map[string]any{"plan": []map[string]string{
+				{"step": "run the tests", "status": "pending"},
+			}})
+			assert.NoErr(t, err)
+			quoted, err := json.Marshal(string(args))
+			assert.NoErr(t, err)
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"tool_calls":[{"id":"c1","function":{"name":"update_plan","arguments":`+
+				string(quoted)+`}}]},"finish_reason":"tool_calls"}],`+`"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}`)
+		}))
+		t.Cleanup(server.Close)
+		setTestProvider(t, server.URL)
+
+		var out, diag bytes.Buffer
+		err := RunPersonalCLI(context.Background(), "run", []string{
+			"--prompt", "plan it", "--output-format", "stream-json", "--session-id", "nudge-plan",
+		}, strings.NewReader(""), &out, &diag)
+		assert.Require(t, assert.NoErr(t, err))
+		var nudges []map[string]any
+		for _, line := range streamLines(t, out.Bytes()) {
+			if line["type"] == "nudge" {
+				nudges = append(nudges, line)
+			}
+		}
+		assert.Require(t, assert.Len(t, nudges, 1))
+		assert.Eq(t, "N1", nudges[0]["rule"])
+		assert.StrContains(t, nudges[0]["evidence"].(string), "计划还有 1 项未完成：run the tests")
+	})
 	t.Run("agents.nudge off pushes nothing", func(t *testing.T) {
 		verifyRunDir(t)
 		assert.NoErr(t, gkconfig.Set("agents.nudge", "off"))

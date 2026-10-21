@@ -1,6 +1,7 @@
 package personal
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
@@ -125,6 +126,15 @@ func TestCheckNudgePromise(t *testing.T) {
 		// The promise sits far above the last ~300 characters: it is history.
 		text := "接下来我去跑测试。\n" + longText(400)
 		assert.Len(t, CheckNudge(nil, nil, text, true), 0)
+	})
+	t.Run("the evidence stays on one line", func(t *testing.T) {
+		plan := &native.Plan{Steps: []native.PlanStep{{Step: "run\nthe   tests", Status: native.PlanPending}}}
+		findings := CheckNudge([]NudgeToolCall{call("file_edit", true, "a.go")}, plan, "接下来我会跑测试\n并修复", true)
+		assert.Require(t, assert.Len(t, findings, 2))
+		for _, finding := range findings {
+			assert.False(t, strings.Contains(finding.Evidence, "\n"))
+			assert.False(t, strings.Contains(finding.Evidence, "  "))
+		}
 	})
 }
 
