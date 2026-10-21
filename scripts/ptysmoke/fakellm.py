@@ -34,6 +34,10 @@ Modes (--mode):
         shell_exec of a two-line command (the first line and an ellipsis), and
         update_plan (no summary of its own: the JSON stays): the smoke of the
         per-tool tool lines (chat_tool_lines.py).
+  loop  one turn with four identical file_read calls of loop_target.txt, then
+        the text --reply: the smoke of the loop guard (chat_loop_guard.py).
+        Each request logs an extra line {"loop": true, "step", "hint_seen"}
+        saying whether it carried the guard's reminder.
 
 --delay seconds are slept before each response, so a test can type while a
 turn is running. --chunk splits a streamed text reply into pieces of that many
@@ -454,7 +458,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")
