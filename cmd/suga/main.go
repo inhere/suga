@@ -29,8 +29,17 @@ func main() {
 	// argument (bootstrapExempt does). An old top-level command name is no
 	// longer rewritten: it fails as unknown and the error names the new form.
 	args = cli.NormalizeArgs(args)
+	readOnlyInspect := readOnlyInspectCommand(args)
 	// Version and help are pure queries: neither may create the user's home.
-	if !bootstrapExempt(args) && !isInitCommand(args) {
+	if readOnlyInspect {
+		// A read-only inspect command (manifest) reads the configuration in place
+		// instead of bootstrapping the home: a missing .env reads as empty and
+		// nothing is written under SUGA_HOME (no config bootstrap, no log file).
+		if err := appconfig.Load(); err != nil {
+			fmt.Fprintln(os.Stderr, "load config:", err)
+			os.Exit(1)
+		}
+	} else if !bootstrapExempt(args) && !isInitCommand(args) {
 		result, err := appconfig.EnsureHome(appconfig.BootstrapOptions{})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "initialize suga home:", err)
@@ -49,7 +58,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, notice)
 		}
 	}
-	if !bootstrapExempt(args) && !isInitCommand(args) {
+	if !readOnlyInspect && !bootstrapExempt(args) && !isInitCommand(args) {
 		if err := wiring.SetupLogging(); err != nil {
 			fmt.Fprintln(os.Stderr, "load log config:", err)
 			os.Exit(1)
@@ -65,6 +74,9 @@ func main() {
 	}
 }
 
+// bootstrapExempt reports the pure-query invocations that must not create the
+// user's home: help and version commands, plus a command group without a
+// subcommand, which only prints its help (suga config, suga inspect).
 func bootstrapExempt(args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -77,11 +89,21 @@ func bootstrapExempt(args []string) bool {
 			return true
 		}
 	}
-	// A command group without a subcommand only prints its help (suga config).
-	if len(args) == 1 && args[0] == "config" {
+	// A command group without a subcommand only prints its help (suga config,
+	// suga inspect).
+	if len(args) == 1 && (args[0] == "config" || args[0] == "inspect") {
 		return true
 	}
 	return args[0] == "help" || args[0] == "version" || args[0] == "--version" || args[0] == "-V"
+}
+
+// readOnlyInspectCommand reports `suga inspect manifest` (alias "info"): a
+// pure query that must not write anything under SUGA_HOME, so it skips the
+// config bootstrap and the log file and reads the configuration in place
+// (a missing .env reads as empty; the built-in skills are enumerated from the
+// embedded resources, see buildReadOnlySkillRegistry).
+func readOnlyInspectCommand(args []string) bool {
+	return len(args) > 1 && args[0] == "inspect" && (args[1] == "manifest" || args[1] == "info")
 }
 
 func isInitCommand(args []string) bool {

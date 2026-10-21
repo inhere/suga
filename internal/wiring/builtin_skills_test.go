@@ -3,6 +3,7 @@ package wiring
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/inhere/suga/internal/personal"
 	capskills "github.com/inhere/suga/pkg/agentcore/skills"
+	builtinskills "github.com/inhere/suga/skills"
 )
 
 // guideFS is the embedded layout the release tests use in place of the real
@@ -154,6 +156,46 @@ func TestReleaseBuiltinSkillsFailureIsNotFatal(t *testing.T) {
 
 	t.Setenv("SUGA_HOME", home)
 	assert.Eq(t, 0, buildDefaultSkillRegistry(t.TempDir()).Len())
+}
+
+// dirEntries names the direct entries of dir, sorted; an unreadable or missing
+// directory is an error.
+func dirEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	assert.Require(t, assert.NoErr(t, err))
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	slices.Sort(names)
+	return names
+}
+
+// TestBuildReadOnlySkillRegistryWritesNothing: the manifest path enumerates the
+// built-in skills from the embedded resources without releasing them into
+// SUGA_HOME, so the directory stays exactly as it was.
+func TestBuildReadOnlySkillRegistryWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("SUGA_HOME", home)
+	before, err := os.ReadDir(home)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Empty(t, before, "the test needs an empty SUGA_HOME")
+
+	reg := buildReadOnlySkillRegistry(t.TempDir())
+	assert.True(t, reg.Len() > 0, "the embedded skills are enumerated")
+	builtin, ok := reg.Get("suga-guide")
+	assert.Require(t, assert.True(t, ok))
+	assert.Eq(t, "", builtin.Path)
+	// Nothing was written: not the skills root, not even the home directory.
+	assert.Eq(t, []string{}, dirEntries(t, home))
+
+	t.Run("an already released skill keeps the disk entry", func(t *testing.T) {
+		assert.NoErr(t, releaseBuiltinSkills(home, "1.0.0", builtinskills.FS))
+		released, ok := buildReadOnlySkillRegistry(t.TempDir()).Get("suga-guide")
+		assert.Require(t, assert.True(t, ok))
+		assert.StrContains(t, released.Path, filepath.Join(home, builtinSkillsRoot))
+	})
 }
 
 // TestReleaseBuiltinSkillsSurvivesConcurrentReleases stands in for two
