@@ -237,6 +237,10 @@ func win32KeyOf(rec win32Record, high *rune) (rune, bool) {
 		*high = 0
 		return 0x10000 + (paired-0xd800)<<10 + (uc - 0xdc00), true
 	}
+	// A character that is not a low surrogate ends a dangling pair: the terminal
+	// never reported the second half (a dropped record), so it must not pair with a
+	// low surrogate that arrives later.
+	*high = 0
 	return uc, true
 }
 

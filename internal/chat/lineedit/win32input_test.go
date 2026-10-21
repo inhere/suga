@@ -126,6 +126,18 @@ func TestWin32SurrogatePair(t *testing.T) {
 	key, ok = win32KeyOf(win32Record{vk: 0, uc: 0xde00, kd: 1, rc: 1}, &high)
 	assert.True(t, ok)
 	assert.Eq(t, rune(keyIgnored), key)
+	// A dangling first half must not pair with a low half that arrives much later.
+	high = 0
+	key, ok = win32KeyOf(win32Record{vk: 0, uc: 0xd83d, kd: 1, rc: 1}, &high)
+	assert.True(t, ok)
+	assert.Eq(t, rune(keyIgnored), key)
+	key, ok = win32KeyOf(win32Record{vk: 0, uc: 'a', kd: 1, rc: 1}, &high)
+	assert.True(t, ok)
+	assert.Eq(t, 'a', key)
+	assert.Eq(t, rune(0), high)
+	key, ok = win32KeyOf(win32Record{vk: 0, uc: 0xde00, kd: 1, rc: 1}, &high)
+	assert.True(t, ok)
+	assert.Eq(t, rune(keyIgnored), key)
 }
 
 // TestWin32TypedText types CJK text, an emoji (two records) and ASCII through the
