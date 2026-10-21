@@ -144,6 +144,14 @@ func TestLoadLangRulesExtConflict(t *testing.T) {
 	assert.Eq(t, "Foo", lang.name)
 	// Ruby lost the extension and the built-in language keeps its other one.
 	assert.True(t, supportsIn(reg.symbols, ".rake"), "Ruby keeps its other extension")
+	// The merge copies the rules, so the built-in registry is not rewritten.
+	for _, rule := range BuiltinLangRegistry().Languages {
+		if rule.Name != "Ruby" {
+			continue
+		}
+		assert.True(t, slices.Contains(rule.Exts, ".rb"), "the built-in Ruby keeps .rb: %v", rule.Exts)
+		assert.True(t, slices.Contains(rule.Exts, ".rake"), "the built-in Ruby keeps .rake: %v", rule.Exts)
+	}
 }
 
 // TestLangRulesBuiltinLanguages checks the migrated and the new built-in

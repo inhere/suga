@@ -185,8 +185,7 @@ func parseLangRules(data []byte, source string) ([]LangRule, error) {
 // reasons; Warnings holds the non-fatal extension conflicts.
 func LoadLangRules(paths ...string) (LangRegistry, []error) {
 	base := BuiltinLangRegistry()
-	base.Languages = slices.Clone(base.Languages)
-	reg := LangRegistry{Languages: base.Languages}
+	reg := LangRegistry{Languages: cloneLangRules(base.Languages)}
 	var errs []error
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
@@ -214,6 +213,21 @@ func LoadLangRules(paths ...string) (LangRegistry, []error) {
 		}
 	}
 	return finishLangRegistry(reg), errs
+}
+
+// cloneLangRules copies the rules and their slices: a merge takes an extension
+// away from an earlier rule, and that must not rewrite the built-in registry the
+// process keeps for the next load.
+func cloneLangRules(rules []LangRule) []LangRule {
+	out := make([]LangRule, len(rules))
+	for i, rule := range rules {
+		rule.Exts = slices.Clone(rule.Exts)
+		rule.Markers = slices.Clone(rule.Markers)
+		rule.FocusedFlags = slices.Clone(rule.FocusedFlags)
+		rule.Decls = slices.Clone(rule.Decls)
+		out[i] = rule
+	}
+	return out
 }
 
 // mergeLangRules merges a file's rules into the loaded ones. A same-name rule
