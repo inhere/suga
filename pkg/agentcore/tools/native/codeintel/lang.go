@@ -57,18 +57,13 @@ type Language struct {
 // lang-rules.yaml can tune a language's test commands without a code change.
 func Languages() []Language { return ActiveLangRules().langs }
 
-// otherTestCommands are the test commands of tools that are no language of
-// their own here: GNU make's test target and CMake's ctest (declared by the
-// C/C++ rule, see langrules/cpp.yaml, whose language also covers dotnet test and
-// rspec for C# and Ruby). They are recognised exactly as before the split,
-// kept together instead of inventing a language entry for each. PHPUnit left
-// the list when PHP became a language (lang_php.go); the aggregate pattern
-// matches the same commands as before.
-const otherTestCommands = `\b(make test|ctest)\b`
-
 // testCommandExpr joins the languages' test command regexes into the pattern
 // that recognises a test run (trace --analyze). Every language declares a
-// complete regex, so the aggregate matches what the languages matched before.
+// complete regex, so the aggregate matches what the languages matched before;
+// a tool that is no language of its own here (PHPUnit before PHP became a
+// language, dotnet test for C#, rspec for Ruby, ctest/make test for C/C++) was
+// moved into the rule of the language it belongs to, which keeps the recognition
+// unchanged and puts it under the same enabled: false switch.
 func testCommandExpr() string {
 	var parts []string
 	for _, lang := range Languages() {
@@ -76,7 +71,7 @@ func testCommandExpr() string {
 			parts = append(parts, lang.TestCommands)
 		}
 	}
-	return strings.Join(append(parts, otherTestCommands), "|")
+	return strings.Join(parts, "|")
 }
 
 // focusedTestExpr combines the languages' focused-run flags into the pattern
