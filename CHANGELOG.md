@@ -12,6 +12,7 @@
 
 ### 修复
 
+- 模型用 `file_read` 读 skill 的 `references/` 等文件（如 `~/.agents/skills/<skill>/references/*.md`）不再触发目录授权：新增 `tools.skill_roots`（缺省 `true`），开启时把工作区外的 skill 根（`SUGA_HOME/skills`、`~/.agents/skills`，目录存在才收录）与依赖源码、idev-std 规范一起加入只读可读目录，`file_read`、`file_list`、`file_grep`、`file_find` 可直接读；写工具与 shell 的审批不变。`suga inspect manifest` 的 `read_roots` 列表按来源（`skills`、`Go modules` 等）列出这些目录。设 `tools.skill_roots: false` 恢复旧的逐目录授权行为。
 - `suga inspect manifest`（含别名 `info`）变为纯只读：不再在空的 SUGA_HOME 下触发配置 bootstrap（不再写出 `.env`/`config.yaml`）、不再释放内置 skills 到磁盘（从内嵌资源直接枚举，已释放的仍从盘上读取）、不再创建日志文件；缺 `.env` 时照常读取并视为空。其它命令与 inspect 其余子命令的行为不变。
 - `session_message` 工具被配置关闭时（`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off`），模型调用它现在得到“该工具已在配置中关闭（tools.session_message.enabled / SUGA_SESSION_MESSAGE）”的提示，而不是一个简单的工具不存在错误。
 
