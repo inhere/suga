@@ -19,6 +19,9 @@ func resetStandardsConfig(t *testing.T) {
 	t.Helper()
 	resetConfig(t)
 	assert.NoErr(t, gkconfig.Set("tools.dependency_roots", false))
+	// The skill roots are first-party too: the assertions below pin the
+	// standards roots alone, so the automatic skill roots stay off here.
+	assert.NoErr(t, gkconfig.Set("tools.skill_roots", false))
 }
 
 // isolatedStandardsWorkspace pins the test workspace at its own directory. This

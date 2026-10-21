@@ -22,6 +22,7 @@ func addDirsSessionConfig(t *testing.T, ws string) {
 	assert.NoErr(t, gkconfig.Set("workspace", ws))
 	assert.NoErr(t, gkconfig.Set("tools.dependency_roots", false))
 	assert.NoErr(t, gkconfig.Set("tools.standards_roots", false))
+	assert.NoErr(t, gkconfig.Set("tools.skill_roots", false))
 }
 
 // openAddDirsRuntime opens a runtime with the given added directories.
