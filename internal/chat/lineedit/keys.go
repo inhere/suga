@@ -64,6 +64,14 @@ const (
 	keyClearScreen
 	keyPasteStart
 	keyPasteEnd
+	// keyNewline inserts a line break into the line being edited instead of
+	// submitting it: Ctrl+Enter, Alt+Enter and Shift+Enter in win32-input-mode
+	// (win32input.go), and Ctrl+J where the caller declared a newline as text.
+	keyNewline
+	// keyIgnored stands for a key press with no key behind it: the key-up record of
+	// win32-input-mode, or half of a surrogate pair (win32input.go). handleKey does
+	// nothing for it.
+	keyIgnored
 )
 
 var (
@@ -80,27 +88,8 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 	}
 
 	if !pasteActive {
-		switch b[0] {
-		case 1: // ^A
-			return keyHome, b[1:]
-		case 2: // ^B
-			return keyLeft, b[1:]
-		case 5: // ^E
-			return keyEnd, b[1:]
-		case 6: // ^F
-			return keyRight, b[1:]
-		case 8: // ^H
-			return keyBackspace, b[1:]
-		case 11: // ^K
-			return keyDeleteLine, b[1:]
-		case 12: // ^L
-			return keyClearScreen, b[1:]
-		case 23: // ^W
-			return keyDeleteWord, b[1:]
-		case 14: // ^N
-			return keyDown, b[1:]
-		case 16: // ^P
-			return keyUp, b[1:]
+		if key, ok := ctrlByteToKey(b[0]); ok {
+			return key, b[1:]
 		}
 	}
 
@@ -165,6 +154,37 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 	return utf8.RuneError, b
 }
 
+// ctrlByteToKey maps the ASCII control byte a terminal sends for a Ctrl combination
+// to the key with a meaning of its own (^A is Home, ^W deletes a word). ok=false
+// leaves the byte as a plain control rune, which is what ^C, ^D, ^U, ^R and ^G are
+// handled as (handleKey). The byte path (bytesToKey) and the win32-input-mode
+// records (win32KeyOf) share it, so a combination means the same either way.
+func ctrlByteToKey(b byte) (rune, bool) {
+	switch b {
+	case 1: // ^A
+		return keyHome, true
+	case 2: // ^B
+		return keyLeft, true
+	case 5: // ^E
+		return keyEnd, true
+	case 6: // ^F
+		return keyRight, true
+	case 8: // ^H
+		return keyBackspace, true
+	case 11: // ^K
+		return keyDeleteLine, true
+	case 12: // ^L
+		return keyClearScreen, true
+	case 23: // ^W
+		return keyDeleteWord, true
+	case 14: // ^N
+		return keyDown, true
+	case 16: // ^P
+		return keyUp, true
+	}
+	return 0, false
+}
+
 func isPrintable(key rune) bool {
 	isInSurrogateArea := key >= 0xd800 && key <= 0xdbff
 	return key >= 32 && !isInSurrogateArea
@@ -173,6 +193,11 @@ func isPrintable(key rune) bool {
 // handleKey processes the given key and, optionally, returns a line of text
 // that the user has entered.
 func (t *Terminal) handleKey(key rune) (line string, ok bool) {
+	if key == keyIgnored {
+		// No key press behind it: a key-up record or half of a surrogate pair
+		// (win32input.go).
+		return
+	}
 	// A newline the caller declared as pasted text (paste.go) is handled like one
 	// inside a paste; the declaration is for this key only, so it goes away even
 	// when another key follows it.
@@ -315,6 +340,9 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		t.cursorX = 0
 		t.cursorY = 0
 		t.maxLine = 0
+	case keyNewline:
+		// A line break inside the line being edited: Enter is what submits it.
+		t.addKeyToLine('\n')
 	case keyDeleteWord:
 		// Delete zero or more spaces and then one or more characters.
 		t.eraseNPreviousChars(t.countToLeftWord())

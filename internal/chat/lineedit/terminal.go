@@ -138,6 +138,14 @@ type Terminal struct {
 	// escAlone is set by SetEscAlone: the next Esc byte is the Esc key on its own
 	// rather than the start of a sequence (esc.go).
 	escAlone bool
+	// win32Input is set by SetWin32InputMode: the terminal reports key presses as
+	// win32-input-mode records and readLine parses them (win32input.go).
+	win32Input bool
+	// win32Repeat holds the presses still owed by a record with a repeat count
+	// (a held key) and win32High the first half of a UTF-16 surrogate pair the
+	// terminal reported as one record per code unit.
+	win32Repeat []rune
+	win32High   rune
 	// EscCallback, when non-nil, is called for a lone Esc press the caller declared
 	// with SetEscAlone. It is called from inside ReadLine with the terminal lock
 	// released (like AutoCompleteCallback), so it must not use the terminal; a
@@ -257,7 +265,27 @@ func (t *Terminal) readLine() (line string, err error) {
 		lineOk := false
 		for !lineOk {
 			var key rune
-			key, rest = bytesToKey(rest, t.pasteActive)
+			switch {
+			case len(t.win32Repeat) > 0:
+				// The rest of a held key (win32-input-mode Rc>1): one press per loop turn,
+				// like the bytes of that many presses.
+				key, t.win32Repeat = t.win32Repeat[0], t.win32Repeat[1:]
+			case t.win32Input:
+				key = t.win32Key(&rest)
+			default:
+				key, rest = bytesToKey(rest, t.pasteActive)
+			}
+			if key == keyEscape && t.win32Input && !t.pasteActive {
+				// win32-input-mode: an Esc is a record of its own, so it is the Esc key
+				// with nothing to wait for - SetEscAlone's declaration is not needed
+				// (esc.go).
+				if escCallback := t.EscCallback; escCallback != nil {
+					t.lock.Unlock()
+					escCallback()
+					t.lock.Lock()
+				}
+				continue
+			}
 			if key == utf8.RuneError {
 				if t.reverseActive && len(rest) > 0 && rest[len(rest)-1] == keyEscape {
 					rest = rest[:len(rest)-1]
