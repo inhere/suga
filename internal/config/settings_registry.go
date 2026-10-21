@@ -183,6 +183,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.shell_background_after", Type: ConfigTypeDuration, Writable: true},
 	{Pattern: "tools.web_fetch.allow_private", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.web_fetch.proxy", Type: ConfigTypeString, Sensitive: true},
+	// tools.web_fetch.user_agent is the User-Agent the tool sends; empty keeps the
+	// built-in suga-web-fetch/1.0.
+	{Pattern: "tools.web_fetch.user_agent", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.interpreters", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.read_roots", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.auto_allow", Type: ConfigTypeStringList, Writable: true},

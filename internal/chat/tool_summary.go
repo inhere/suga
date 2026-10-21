@@ -317,8 +317,14 @@ func summaryPathOnly(args map[string]any, workspace string) string {
 	return displayToolPath(workspace, argText(args, "path"))
 }
 
-// summaryURL: the URL of a fetch.
+// summaryURL: the URL of a fetch, or the URL count of a urls fetch plus the
+// first one (the whole list would not fit on the line).
 func summaryURL(args map[string]any, _ string) string {
+	if urls := argList(args, "urls"); len(urls) == 1 {
+		return "1 个 URL：" + urls[0]
+	} else if len(urls) > 1 {
+		return fmt.Sprintf("%d 个 URL：%s, …", len(urls), urls[0])
+	}
 	return argText(args, "url")
 }
 

@@ -327,6 +327,8 @@ tools:
   # web_fetch:
   #   allow_private: false   # true lets web_fetch reach private/local addresses
   #   proxy: ""             # http://, https:// or socks5:// proxy for web_fetch, e.g. http://127.0.0.1:7890
+  #   # user_agent: ""       # User-Agent sent by web_fetch; empty keeps suga-web-fetch/1.0,
+  #   #                      # e.g. "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
   # No MCP tool is allowed by default: with both lists empty every MCP call is
   # refused. Entries are "server/toolglob" (a bare "toolglob" in auto_allow
   # matches that tool from any server; prefer the qualified form).
