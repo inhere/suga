@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 变更
+
+- 历史折叠改为按上下文体积触发（issue suag-ldi7，设计 `docs/design/2026-10-21-fold-by-size-design.md`）：新配置 `context.fold_at`（默认 `0.5`）表示折叠前的估算体积超过压缩阈值的这个比例时，本段开始折叠；短任务不再折叠，长会话超过压缩阈值一半后在压缩前先减负。开启后本段保持，按 `context.fold_every`/`fold_keep` 折叠（未设置时每 10 步、保留最近 6 步），分段时重新判断；`context.fold_at: 0` 时与之前完全一致，Anthropic 主模型照旧不折叠。同时折叠边界之前、元数据为本地可重读只读工具（`file_read`、`file_grep`、`file_find`、`file_list`、`file_symbols`、`file_refs`）的旧结果：文本超过 1000 字符时换成一行说明（错误结果、外部工具与非只读工具的结果保持原样，调用参数保留），`suga inspect trace` 的 `fold` 事件新增 `tool_results_folded` 与 `tool_chars_before/after`。
+
 ### 修复
 
 - `suga inspect manifest`（含别名 `info`）变为纯只读：不再在空的 SUGA_HOME 下触发配置 bootstrap（不再写出 `.env`/`config.yaml`）、不再释放内置 skills 到磁盘（从内嵌资源直接枚举，已释放的仍从盘上读取）、不再创建日志文件；缺 `.env` 时照常读取并视为空。其它命令与 inspect 其余子命令的行为不变。
