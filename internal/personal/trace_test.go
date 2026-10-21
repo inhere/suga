@@ -84,6 +84,22 @@ func TestTraceVerifyLine(t *testing.T) {
 	})
 }
 
+func TestTraceNudgeLine(t *testing.T) {
+	line := func(attrs map[string]any) string {
+		return traceLine(store.Event{Kind: store.EventNudge, Name: "turn", Status: eventOK, Attrs: attrs})
+	}
+
+	t.Run("a pushed finding names the rule, the action and the evidence", func(t *testing.T) {
+		assert.StrContains(t, line(map[string]any{"rule": "N2", "action": "pushed", "evidence": "结尾说接下来我去跑测试"}),
+			"nudge turn ok 0ms rule=N2 action=pushed evidence=结尾说接下来我去跑测试")
+	})
+
+	t.Run("a hinted finding says hinted", func(t *testing.T) {
+		assert.StrContains(t, line(map[string]any{"rule": "N1", "action": "hinted", "evidence": "改后没跑"}),
+			"rule=N1 action=hinted evidence=改后没跑")
+	})
+}
+
 // TestTraceTaskLines: a task end event line shows the task's kind — a watch
 // with its runs and changes (or its last state when no counters arrived) and a
 // background Stop hook by its summary — while a shell task and events of

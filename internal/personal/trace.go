@@ -200,6 +200,9 @@ func traceLine(e store.Event) string {
 	if e.Kind == store.EventVerify {
 		parts = append(parts, verifyTraceParts(e)...)
 	}
+	if e.Kind == store.EventNudge {
+		parts = append(parts, nudgeTraceParts(e)...)
+	}
 	if e.Kind == store.EventSession {
 		parts = append(parts, sessionTraceParts(e)...)
 	}
@@ -543,6 +546,22 @@ func verifyTraceParts(e store.Event) []string {
 	}
 	if timedOut, _ := e.Attrs["timeout"].(bool); timedOut {
 		parts = append(parts, "timeout")
+	}
+	return parts
+}
+
+// nudgeTraceParts renders a hit of the "stopped too early" check: the rule, what
+// the host did about it (pushed/hinted/recorded) and the evidence.
+func nudgeTraceParts(e store.Event) []string {
+	var parts []string
+	if rule, _ := e.Attrs["rule"].(string); rule != "" {
+		parts = append(parts, "rule="+rule)
+	}
+	if action, _ := e.Attrs["action"].(string); action != "" {
+		parts = append(parts, "action="+action)
+	}
+	if evidence, _ := e.Attrs["evidence"].(string); evidence != "" {
+		parts = append(parts, "evidence="+evidence)
 	}
 	return parts
 }
