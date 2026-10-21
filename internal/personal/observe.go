@@ -386,6 +386,12 @@ func addCallAttrs(attrs map[string]any, call agentcore.ToolCall, res *agentcore.
 		attrs["lines_added"], attrs["lines_removed"] = added, removed
 	case "file_write":
 		attrs["lines_added"] = lineCount(call.Arguments["content"])
+	case "shell_exec":
+		if command, ok := call.Arguments["command"].(string); ok && command != "" {
+			// The command the check can match against (personal/nudge.go's
+			// write rules name it check_command); capped at a sane length.
+			attrs["command"] = truncateRunes(command, 500)
+		}
 	case "task":
 		// The action and task id as attrs, so --analyze and the web page need
 		// not parse them out of the argument summary.
