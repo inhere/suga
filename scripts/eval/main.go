@@ -290,6 +290,11 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	if err := writeWebDenyRules(home, r.Web == webOff); err != nil {
 		return r, err
 	}
+	if r.Web == webOff {
+		if err := forceApprovalRules(home); err != nil {
+			return r, err
+		}
+	}
 	before := snapshotWorkspace(ws)
 
 	env := withVariantEnv(isolatedEnv(home), v)

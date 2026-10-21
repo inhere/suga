@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/goccy/go-yaml"
 )
 
 // The network-tool policy of a run (Result.Web).
@@ -46,6 +48,29 @@ func writeWebDenyRules(home string, deny bool) error {
 		return nil
 	}
 	return os.WriteFile(filepath.Join(home, "approval-rules.yaml"), []byte(denyRuleText), 0o600)
+}
+
+// forceApprovalRules turns tools.approval_rules on in the temp config: the deny
+// rules only take effect while the rule layer is enabled, and a --config-from
+// copy may have switched it off.
+func forceApprovalRules(home string) error {
+	path := filepath.Join(home, "config.yaml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	cfg := map[string]any{}
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return fmt.Errorf("approval rules: %w", err)
+	}
+	if err := setConfigKey(cfg, "tools.approval_rules.enabled=true"); err != nil {
+		return err
+	}
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o600)
 }
 
 // printWebNote sums up the network policy of a run below the results table, so

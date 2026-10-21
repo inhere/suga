@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/gookit/goutil/x/assert"
 )
 
@@ -50,6 +51,24 @@ func TestWriteWebDenyRules(t *testing.T) {
 		_, err := os.Stat(filepath.Join(home, "approval-rules.yaml"))
 		assert.True(t, os.IsNotExist(err))
 	})
+}
+
+// TestForceApprovalRules: a --config-from copy that switched the rule layer off
+// would make the deny rules a no-op, so the temp config is turned back on and
+// the user's other keys survive.
+func TestForceApprovalRules(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, "config.yaml"), "model: fake/m1\ntools:\n  approval_rules:\n    enabled: false\n  allow_write: true\n")
+	assert.NoErr(t, forceApprovalRules(home))
+	raw, err := os.ReadFile(filepath.Join(home, "config.yaml"))
+	assert.NoErr(t, err)
+	var cfg map[string]any
+	assert.NoErr(t, yaml.Unmarshal(raw, &cfg))
+	tools, _ := cfg["tools"].(map[string]any)
+	rules, _ := tools["approval_rules"].(map[string]any)
+	assert.Eq(t, true, rules["enabled"])
+	assert.Eq(t, true, tools["allow_write"])
+	assert.Eq(t, "fake/m1", cfg["model"])
 }
 
 // TestPrintWebNote: the summary below the table says whether the run had web
