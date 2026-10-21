@@ -36,7 +36,7 @@ def session_from(text):
     return found.group(1) if found else ""
 
 
-def chat_turn(session_env, ws, binary, expect_promise):
+def chat_turn(session_env, ws, binary, expect_promise, written):
     """Runs one chat session in ws/env and returns (session, text-on-exit);
     expect_promise decides whether the hint must quote the promise check."""
     s = PtySession([binary, "chat"], env=session_env, cwd=ws)
@@ -45,7 +45,7 @@ def chat_turn(session_env, ws, binary, expect_promise):
     s.line("写个文件")
     s.check("turn completes", s.until(r"tokens · ", mark))
     s.check("hint line is shown", s.contains(r"⚠ ", mark))
-    s.check("hint names the unchecked change", s.contains(r"最后修改 a.txt 之后没有运行 shell_exec", mark))
+    s.check("hint names the unchecked change", s.contains(r"最后修改 " + re.escape(written) + r" 之后没有运行 shell_exec", mark))
     if expect_promise:
         s.check("hint quotes the promised continuation", s.contains(r"结尾说接下来我去跑测试", mark))
     else:
@@ -57,7 +57,7 @@ def chat_turn(session_env, ws, binary, expect_promise):
     session = session_from(s.text())
     s.close()
     s.check("session id", bool(session))
-    return session
+    return session, s.results
 
 
 def main():
@@ -72,6 +72,9 @@ def main():
     home = os.path.abspath(os.path.join(args.work, "home"))
     ws = os.path.abspath(os.path.join(args.work, "ws"))
     shutil.rmtree(home, ignore_errors=True)
+    # A previous run leaves the second part's .suga/nudge-rules.yaml in ws, which
+    # would switch the first part's promise rules off: start from an empty ws.
+    shutil.rmtree(ws, ignore_errors=True)
     os.makedirs(ws, exist_ok=True)
     isolate_ws(ws)
     write_home(home, args.port, tools_extra="  approval: auto\n")
@@ -143,7 +146,9 @@ def main():
         write_home(home2, args.port + 4, tools_extra="  approval: auto\n")
         env2 = dict(os.environ, SUGA_HOME=home2, TERM="xterm", NO_COLOR="1")
         env2.pop("SUGA_CONFIG", None)
-        session2 = chat_turn(env2, ws, binary, expect_promise=False)
+        session2, results2 = chat_turn(env2, ws, binary, expect_promise=False, written="b.txt")
+        # The second part's checks count with the first part's.
+        s.results += [("rules file: " + name, ok) for name, ok in results2]
         if session2:
             events = trace_events(binary, env2, session2)
             nudges = [e for e in events if e.get("kind") == "nudge"]
