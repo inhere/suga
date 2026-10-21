@@ -47,3 +47,32 @@ func TestReadAgentSettings(t *testing.T) {
 		}
 	})
 }
+
+func TestReadNudgeSetting(t *testing.T) {
+	reset := func(t *testing.T) {
+		t.Helper()
+		gkconfig.Reset()
+		t.Cleanup(gkconfig.Reset)
+	}
+	t.Run("default on", func(t *testing.T) {
+		reset(t)
+		on, err := ReadNudgeSetting()
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, on)
+	})
+	t.Run("values", func(t *testing.T) {
+		for raw, want := range map[string]bool{"on": true, "true": true, "off": false, "false": false, " OFF ": false} {
+			reset(t)
+			assert.NoErr(t, gkconfig.Set("agents.nudge", raw))
+			on, err := ReadNudgeSetting()
+			assert.Require(t, assert.NoErr(t, err))
+			assert.Eq(t, want, on)
+		}
+	})
+	t.Run("invalid value", func(t *testing.T) {
+		reset(t)
+		assert.NoErr(t, gkconfig.Set("agents.nudge", "sometimes"))
+		_, err := ReadNudgeSetting()
+		assert.ErrMsgContains(t, err, "agents.nudge must be on or off")
+	})
+}

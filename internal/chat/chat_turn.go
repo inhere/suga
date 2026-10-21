@@ -344,6 +344,9 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 		if len(result.DeniedTools) > 0 {
 			s.render.Notice("本轮被拒绝的工具：" + strings.Join(result.DeniedTools, ", "))
 		}
+		// A turn that looks finished too early only gets a gray line: chat never
+		// starts a turn on its own (personal.CheckNudge).
+		s.nudgeHint(result)
 		s.render.Status(result, time.Since(turnStart), turnEnd.deliveredCount())
 		stopMessage = result.Output
 	}

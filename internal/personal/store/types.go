@@ -107,6 +107,11 @@ const (
 	// --verify): name "run", attrs round (0 = the first check), exit, duration_ms,
 	// output_len (everything the command wrote) and passed.
 	EventVerify = "verify"
+	// EventNudge records a hit of the "stopped too early" rules
+	// (personal.CheckNudge): name "turn", attrs rule (N1/N2), action (pushed: an
+	// injected turn follows; hinted: chat only showed a line; recorded: ACP only
+	// wrote the trace) and evidence (what the rule found).
+	EventNudge = "nudge"
 	// EventLoopGuard records one reminder the loop guard appended to a repeated
 	// tool call's result: name = tool, attrs rule (R1 consecutive / R2 total
 	// repeats within a turn) and count (which call of the group it was).

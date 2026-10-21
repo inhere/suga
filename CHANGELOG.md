@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 收工检查（`agents.nudge`，默认 `on`）：回合正常结束后按两条规则判断“模型是不是提前收工”——N1 改动后没有验证（本回合最后一次成功的 `file_edit`/`file_write`/`file_remove` 之后没有任何 `shell_exec` 调用，或会话计划里还有 pending/in_progress 的项）、N2 说了要继续却停下（最后一条助手消息无工具调用，且其末尾约 300 字符命中“接下来我…”“让我先运行…”“I'll now run…”“Let me check…”等承诺句式；以问句结尾、征求同意的不算）。`run` 命中时注入一条 `[收工检查]` 回合，如实列出命中的规则与证据（改了哪些文件、未完成的计划项、结尾那句话），要求继续完成或说明为什么不需要；N2 每次 `run` 最多推回 2 次、N1 最多 1 次，用了 `--verify` 时跳过 N1；文本模式在 stderr 打一行 `nudge: N2 结尾说…`，stream-json 新增 `{"type":"nudge",…}` 行，trace 记 `nudge` 事件（`rule`、`action`、`evidence`）。`chat` 只提示不推回：回合结束后显示一行灰色提示（`⚠ 最后修改 a.txt 之后没有运行 shell_exec；结尾说接下来我去跑测试`），不自动开回合；ACP 只写 trace（`action=recorded`）。回合出错、yield、取消、收尾（WrapUp）时不检查。
+
 ### 修复
 
 - chat：Ctrl-C 结束本地命令时，输入行上已输入的内容（半行）随中断事件归还，不再依赖编辑器缓冲的时序，任何时序下都能回到下一次提示（suga-l7u2）

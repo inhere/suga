@@ -238,12 +238,18 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		default:
 			return settings.WakeOnExit, true, nil
 		}
-	case "agents.enabled", "agents.model", "agents.max_steps", "agents.max_tokens", "agents.timeout":
+	case "agents.enabled", "agents.model", "agents.max_steps", "agents.max_tokens", "agents.timeout", "agents.nudge":
 		settings, err := ReadAgentSettings()
 		if err != nil {
 			return nil, false, err
 		}
 		switch key {
+		case "agents.nudge":
+			on, err := ReadNudgeSetting()
+			if err != nil {
+				return nil, false, err
+			}
+			return on, true, nil
 		case "agents.enabled":
 			return settings.Enabled, true, nil
 		case "agents.model":

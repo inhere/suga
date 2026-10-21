@@ -127,6 +127,7 @@
 | `tools.read_page_bytes` | `32768` | `file_read` 每页字节数（它自己分页，不受 `max_output_bytes` 限制） |
 | `tools.minimize_output` | `true` | shell 结果进上下文前整理（去色、折叠重复行、按输出规则裁剪测试/构建/git/grep 输出），原文留 ref |
 | `tools.loop_guard` | `true` | 循环调用检测：键是“工具 + 规范化参数 + 结果摘要（是否出错与结果正文的哈希）”，结果变了不算重复。一个回合内连续 3 次（R1）或累计 4 次（R2）同一个键，或同一条 `shell_exec` 命令失败 3 次（R3；中间有编辑也计数，而成功的 `file_edit`/`file_write`/`file_remove` 会把 R1/R2 计数清零，所以改完重跑不会误报）时，在该次结果末尾追加提醒（换方法或停下说明原因），trace 记 `loop_guard` 事件（`rule` 为 `R1`/`R2`/`R3`）、chat 显示一行灰色提示；同一组每回合最多提醒 2 次（`update_plan`/`session_message`/`agent` 不计入） |
+| `agents.nudge` | `on` | 收工检查（作用于主 agent 的回合）：`on`/`off`。回合正常结束后按两条规则判断是否提前收工——N1 改动后没有验证（本回合最后一次成功的 `file_edit`/`file_write`/`file_remove` 之后没有 `shell_exec`，或会话计划还有 pending/in_progress 项）、N2 结尾承诺继续却停下（最后一条消息无工具调用，末尾约 300 字符命中承诺句式，以问句结尾不算）。`run` 注入 `[收工检查]` 回合推回（N2 最多 2 次、N1 最多 1 次，`--verify` 时跳过 N1），`chat` 只显示一行灰色提示，ACP 只写 trace（`nudge` 事件）。回合出错/yield/取消/收尾时不检查 |
 | `tools.shell` | `""`（Windows：pwsh 优先，否则 powershell；其它：sh） | `shell_exec` 使用的 shell（命令名或路径） |
 | `tools.interpreters` | 自动探测 | 启动时探测 PATH 上的脚本解释器（默认候选 `python3`、`python`、`node`）：每进程探测一次并缓存（`--version`，2 秒超时），命中的写进环境段（可写模式）并提示优先写脚本执行。`false`（或 `off`）关闭；也可给名称或绝对路径列表，如 `[python, C:\Python312\python.exe]`（绝对路径按你的选择只校验 `--version`）。Windows 上自动探测会跳过 `%LOCALAPPDATA%\Microsoft\WindowsApps` 下的应用商店别名（运行只会跳商店或不出输出版本），商店包自身的安装目录（`C:\Program Files\WindowsApps\...`）不受影响 |
 | `tools.shell_timeout_max` | `600` | `shell_exec` 单次 `timeout` 的上限秒数（单次默认 120） |

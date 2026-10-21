@@ -101,6 +101,13 @@ func VerifyLine(round int, command string, exitCode int, passed bool, duration t
 	}
 }
 
+// NudgeLine is the stream-json line of one hit rule of the "stopped too early"
+// check: rule is N1/N2, action says what happened (pushed, hinted, recorded) and
+// evidence is the one-line reason.
+func NudgeLine(rule, action, evidence string) map[string]any {
+	return map[string]any{"type": "nudge", "rule": rule, "action": action, "evidence": evidence}
+}
+
 // WithVerify adds the run's --verify outcome to the closing result line: how
 // many checks ran and whether the last one passed. A run without --verify
 // leaves the line exactly as it was.

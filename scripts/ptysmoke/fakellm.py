@@ -43,6 +43,10 @@ Modes (--mode):
         quiet because the workspace changed between two runs.
   loop-fail  the same failing shell_exec (--loop-fail-command) three times: the
         guard's R3 reminder for a command that keeps failing.
+  nudge one turn that writes --write-path and then answers --reply (a closing
+        sentence that promises to continue), without running any command: the
+        turn hits both "stopped too early" rules, so chat shows its gray hint
+        (chat_nudge.py). Chat never pushes the model back, so the turn ends here.
 
 --delay seconds are slept before each response, so a test can type while a
 turn is running. --chunk splits a streamed text reply into pieces of that many
@@ -351,6 +355,13 @@ def make_handler(args):
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "nudge" and not tool_done:
+                # nudge mode: a change that is never checked, then an answer that
+                # promises to continue (both rules of personal.CheckNudge hit).
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": "file_write",
+                                     "arguments": json.dumps({"path": args.write_path, "content": args.write_body})}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "tool" and args.agent and not tool_done and "[background task" not in str(user_text):
                 agent_args = {"description": "smoke survey", "prompt": "Where is SMOKE? Report file:line."}
                 if args.background:
@@ -488,7 +499,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")
