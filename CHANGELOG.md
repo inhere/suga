@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+### 修复
+
+- `suga inspect manifest`（含别名 `info`）变为纯只读：不再在空的 SUGA_HOME 下触发配置 bootstrap（不再写出 `.env`/`config.yaml`）、不再释放内置 skills 到磁盘（从内嵌资源直接枚举，已释放的仍从盘上读取）、不再创建日志文件；缺 `.env` 时照常读取并视为空。其它命令与 inspect 其余子命令的行为不变。
+- `session_message` 工具被配置关闭时（`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off`），模型调用它现在得到“该工具已在配置中关闭（tools.session_message.enabled / SUGA_SESSION_MESSAGE）”的提示，而不是一个简单的工具不存在错误。
+
 ## [0.41.0] - 2026-10-21
 
 会话协作与可观察性：新增 `session_message` 工具，同机 chat 会话之间互发消息（不依赖 gofer，连续自动回复上限 3 跳，可在配置关闭）；`suga inspect trace --transcript` 把轨迹渲染成模型可读的文本；`suga inspect manifest` 报告常驻上下文各部分体积并提示规则截断与 skill 跳过/遮蔽；常驻提示词说明外部内容是数据不是指令；gofer 记忆后端接入 title 字段。不兼容：移除 v0.39.0 标记的一次性迁移命令与旧别名（`data tool-bodies`、`dedupe-tool-results`、`shrink-fts`、`bodies --slim`/`--rename-files`），旧配置键 `store.tool_body_inline_bytes` 仅警告并忽略；迁移旧库请用 v0.40。

@@ -87,7 +87,7 @@ suga chat                                         # 在当前目录开启交互�
 
 ## 子 agent
 
-详细说明：[references/tools.md#子-agent](skills/suga-guide/references/tools.md#子-agent)
+详细说明：[references/tools.md#子agent](skills/suga-guide/references/tools.md#子agent)
 
 - `agent` 工具把独立任务交给只读子 agent，只把最终报告带回父上下文。
 - `explore`（默认，工作区只读工具）与 `research`（再加 `web_fetch`、`web_search`）两种类型。
