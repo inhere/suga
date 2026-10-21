@@ -466,6 +466,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			InlineBytes:   rs.inlineBytes, SpillBytes: rs.spillBytes, SessionsDir: sessionsDir,
 			TaintTools: taintTools, TaintOnSpill: taintOnSpill,
 			NudgeRules: loadNudgeRuleFiles(workspace),
+			LangRules:  loadLangRuleFiles(workspace),
 		}), nil
 	}))
 	// Tool registry stack, outer to inner: observe (added in personal.New) ->

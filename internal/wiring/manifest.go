@@ -12,6 +12,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/mcp"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 	approvalrules "github.com/inhere/suga/pkg/agentcore/tools/rules"
 )
 
@@ -44,6 +45,12 @@ type Manifest struct {
 	ApprovalRules ManifestApprovalRules `json:"approval_rules"`
 	// NudgeRules lists the effective nudge rules (name, kind, source layer).
 	NudgeRules []ManifestNudgeRule `json:"nudge_rules"`
+	// LangRules lists the effective declaration languages of file_symbols and
+	// file_refs (name, extensions, source layer), and LangRuleSkips the language
+	// rule files that did not load with their reason: a rule file with a typo
+	// would otherwise silently not apply.
+	LangRules     []codeintel.LangManifest `json:"lang_rules"`
+	LangRuleSkips []codeintel.LangRuleSkip `json:"lang_rule_skips"`
 	// ToolConflicts lists same-name tool collisions of the live registry; it is
 	// always present and stays empty when nothing collided.
 	ToolConflicts []ManifestToolConflict `json:"tool_conflicts"`
@@ -213,6 +220,26 @@ func manifestNudgeRules(rules []personal.NudgeRule) []ManifestNudgeRule {
 	return out
 }
 
+// manifestLangRules converts the effective language registry into the
+// manifest's summary (name, extensions, source layer, ctags).
+func manifestLangRules(reg codeintel.LangRegistry) []codeintel.LangManifest {
+	languages := reg.ManifestLanguages()
+	if languages == nil {
+		return []codeintel.LangManifest{}
+	}
+	return languages
+}
+
+// manifestLangRuleSkips lists the language rule files that were skipped, so a
+// typo in lang-rules.yaml is visible in `suga inspect manifest`, not just in the
+// log.
+func manifestLangRuleSkips(reg codeintel.LangRegistry) []codeintel.LangRuleSkip {
+	if reg.Skipped == nil {
+		return []codeintel.LangRuleSkip{}
+	}
+	return reg.Skipped
+}
+
 // ManifestReadRoot is one read-only root directory outside the workspace the
 // read-only file tools may read (dependency sources, idev-std sources, skill
 // directories, tools.read_roots). It carries no secrets.
@@ -265,6 +292,9 @@ type ManifestInput struct {
 	// ReadRoots are the read-only root directories the read-only file tools may
 	// read (labels included, so a manifest shows their source).
 	ReadRoots []native.ReadRoot
+	// LangRules is the effective language registry of file_symbols/file_refs and
+	// the test command recognition; its skipped files are shown too.
+	LangRules codeintel.LangRegistry
 }
 
 // BuildManifest summarizes in. It only reads the given structures: no
@@ -282,6 +312,8 @@ func BuildManifest(in ManifestInput) Manifest {
 		WritePolicy:   ManifestWritePolicy{MemoryWrite: in.Policy.Write, MemoryWriteTainted: in.Policy.Tainted},
 		ApprovalRules: manifestApprovalRules(in.Approval, in.ToolsApproval),
 		NudgeRules:    manifestNudgeRules(in.NudgeRules),
+		LangRules:     manifestLangRules(in.LangRules),
+		LangRuleSkips: manifestLangRuleSkips(in.LangRules),
 		Tools:         []ManifestTool{},
 		MCPServers:    []ManifestMCPServer{},
 		Preferred:     []ManifestPreferred{},
@@ -539,6 +571,7 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		InlineBytes:   st.inlineBytes, SpillBytes: st.spillBytes, SessionsDir: st.sessionsDir,
 		TaintTools: st.taintTools, TaintOnSpill: st.taintOnSpill,
 		NudgeRules: loadNudgeRuleFiles(workspace),
+		LangRules:  loadLangRuleFiles(workspace),
 	})
 	return m, manifestParts{workspace: workspace, registry: reg, skills: skillReg}, nil
 }

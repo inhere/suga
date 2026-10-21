@@ -20,6 +20,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	toolsmcp "github.com/inhere/suga/pkg/agentcore/tools/mcp"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
 
 type capabilityToolProvider interface {
@@ -84,6 +85,9 @@ func buildDefaultCapabilitiesWithServers(ctx context.Context, workspace string, 
 }
 
 func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, additional []toolsmcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
+	// The language rules shape the symbol and reference tools and the test
+	// command recognition, so they are loaded before the tools are built.
+	loadLangRuleFiles(workspace)
 	registry := tools.NewRegistry()
 	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter), true) {
 		registry.MustRegister(tool)
@@ -251,6 +255,35 @@ const outputRulesFile = "output-rules.yaml"
 
 // nudgeRulesFile names the user and project nudge rule files.
 const nudgeRulesFile = "nudge-rules.yaml"
+
+// langRulesFile names the user and project language rule files: the
+// declaration languages of file_symbols/file_refs and their test commands
+// (design docs/design/2026-10-22-lang-rules-design.md).
+const langRulesFile = "lang-rules.yaml"
+
+// loadLangRuleFiles returns the effective language registry: the built-in rules
+// overridden and extended by $SUGA_HOME/lang-rules.yaml and then
+// <workspace>/.suga/lang-rules.yaml, installed as the process's registry. A
+// file that does not parse or holds a broken rule is reported and skipped as a
+// whole, like an output-rules file, and the manifest lists it.
+func loadLangRuleFiles(workspace string) codeintel.LangRegistry {
+	var files []string
+	if home, err := axconfig.ResolveSugaHome(); err == nil && filepath.IsAbs(home) {
+		files = append(files, filepath.Join(home, langRulesFile))
+	}
+	if workspace != "" {
+		files = append(files, filepath.Join(workspace, ".suga", langRulesFile))
+	}
+	reg, errs := codeintel.LoadLangRules(files...)
+	codeintel.InstallLangRules(reg)
+	for _, err := range errs {
+		slog.Warn("skip lang rules file", "err", err)
+	}
+	for _, warning := range reg.Warnings {
+		slog.Warn("lang rules conflict", "warning", warning)
+	}
+	return reg
+}
 
 // loadNudgeRuleFiles returns the effective nudge rules (personal.LoadNudgeRules):
 // the built-in ones, overridden and extended by $SUGA_HOME/nudge-rules.yaml and
