@@ -272,6 +272,19 @@ func TestWin32BracketedPaste(t *testing.T) {
 	assert.Eq(t, "line1\nline2", lines[0])
 }
 
+// TestWin32PasteAsRecords reads a paste whose text a terminal turned into key
+// records as well: the characters and the pasted line break are still text, and
+// only the Enter after the paste submits.
+func TestWin32PasteAsRecords(t *testing.T) {
+	tm, mem := newMem("> ", 0)
+	tm.SetWin32InputMode(true)
+	input := string(pasteStart) + win32Text("x") + win32Enter + win32Text("y") +
+		string(pasteEnd) + win32Enter
+	lines := readAll(t, tm, mem, input)
+	assert.Eq(t, 1, len(lines))
+	assert.Eq(t, "x\ny", lines[0])
+}
+
 // TestWin32EscapeKey reports a lone Esc as the key press it is in this mode: the
 // record carries it, so nothing has to wait for a follow-up byte.
 func TestWin32EscapeKey(t *testing.T) {

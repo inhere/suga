@@ -104,13 +104,15 @@ func (t *Terminal) SetWin32InputMode(on bool) {
 // utf8.RuneError with *rest unchanged when the input holds no complete key yet
 // (the caller reads more), keyIgnored when a record carried no key (a key-up),
 // and otherwise the key with the bytes it was read from cut off *rest. Anything
-// that is not a record takes the byte parser, bracketed-paste markers included.
+// that is not a record takes the byte parser, bracketed-paste markers included;
+// a record inside a paste (a terminal that turns pasted text into key records as
+// well) is read like any other, and handleKey inserts its character as text
+// because the paste is active (paste.go).
 // t.lock must be held.
 func (t *Terminal) win32Key(rest *[]byte) rune {
 	b := *rest
-	if t.pasteActive || len(b) == 0 {
-		// Text of a paste is text, not key presses (its markers included), and an
-		// empty rest is a partial sequence like any other.
+	if len(b) == 0 {
+		// A partial sequence like any other.
 		key, after := bytesToKey(b, t.pasteActive)
 		*rest = after
 		return key
@@ -120,7 +122,9 @@ func (t *Terminal) win32Key(rest *[]byte) rune {
 	case win32Incomplete:
 		return utf8.RuneError
 	case win32NotRecord:
-		key, consumed := bytesToKey(b, false)
+		// Bytes, not a record: the byte parser reads them, text of a paste and the
+		// bracketed-paste markers included.
+		key, consumed := bytesToKey(b, t.pasteActive)
 		*rest = consumed
 		return key
 	}
