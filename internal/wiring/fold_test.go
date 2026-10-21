@@ -26,16 +26,16 @@ func TestRunnerFoldSettings(t *testing.T) {
 	every, keep, at := fold(t)
 	assert.Eq(t, 0, every)
 	assert.Eq(t, 5, keep)
-	assert.Eq(t, 0.5, at)
+	assert.Eq(t, 0.0, at) // the size trigger is off by default (design 0.4)
 
 	assert.NoErr(t, gkconfig.Set("context.fold_every", 10))
 	every, _, at = fold(t)
 	assert.Eq(t, 10, every)
-	assert.Eq(t, 0.5, at)
-
-	assert.NoErr(t, gkconfig.Set("context.fold_at", 0))
-	_, _, at = fold(t)
 	assert.Eq(t, 0.0, at)
+
+	assert.NoErr(t, gkconfig.Set("context.fold_at", 0.5))
+	_, _, at = fold(t)
+	assert.Eq(t, 0.5, at)
 }
 
 // TestRunnerFoldOffForAnthropic: folding rewrites earlier messages, which
