@@ -65,6 +65,25 @@ func TestTraceLocalCommandLine(t *testing.T) {
 	})
 }
 
+// TestTraceVerifyLine: a --verify check line shows its round, whether it passed,
+// the exit code and how much the command wrote (events read back from the store
+// hold the numbers as generic values).
+func TestTraceVerifyLine(t *testing.T) {
+	line := func(attrs map[string]any) string {
+		return traceLine(store.Event{Kind: store.EventVerify, Name: "run", Status: "error", DurationMs: 12300, Attrs: attrs})
+	}
+
+	t.Run("a failed check names the round and the exit code", func(t *testing.T) {
+		assert.StrContains(t, line(map[string]any{"round": float64(0), "exit": float64(1), "output_len": float64(512), "passed": false}),
+			"verify run error 12300ms round=0 failed exit=1 bytes=512")
+	})
+
+	t.Run("a passing check says passed", func(t *testing.T) {
+		assert.StrContains(t, line(map[string]any{"round": float64(1), "exit": float64(0), "passed": true}),
+			"round=1 passed exit=0")
+	})
+}
+
 // TestTraceTaskLines: a task end event line shows the task's kind — a watch
 // with its runs and changes (or its last state when no counters arrived) and a
 // background Stop hook by its summary — while a shell task and events of
