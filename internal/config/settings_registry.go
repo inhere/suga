@@ -175,6 +175,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.read_page_bytes", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.parallel_reads", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.minimize_output", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.loop_guard", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.dependency_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.standards_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true},
@@ -902,7 +903,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return value, true, nil
 		}
 		return "ask", false, nil
-	case "tools.parallel_reads", "tools.minimize_output", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots":
+	case "tools.parallel_reads", "tools.minimize_output", "tools.loop_guard", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots":
 		if value, present := lookupRawConfig(key); present {
 			return value, true, nil
 		}

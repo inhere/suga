@@ -103,6 +103,10 @@ const (
 	// EventUndo records a user rollback; its attrs include the file outcome
 	// counts and the seq of the deferred suga.undo entry when available.
 	EventUndo = "undo"
+	// EventLoopGuard records one reminder the loop guard appended to a repeated
+	// tool call's result: name = tool, attrs rule (R1 consecutive / R2 total
+	// repeats within a turn) and count (which call of the group it was).
+	EventLoopGuard = "loop_guard"
 )
 
 // Session is one conversation. Meta holds free-form keys (rules hash, append

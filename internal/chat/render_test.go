@@ -493,3 +493,16 @@ func TestRendererAgentProgressModes(t *testing.T) {
 		})
 	}
 }
+
+// TestRendererLoopGuardLine: the loop guard's reminder is one gray line of its
+// own (it never colors the tool_result line above it).
+func TestRendererLoopGuardLine(t *testing.T) {
+	var out bytes.Buffer
+	r := newRenderer(rendererOptions{Out: &out})
+	r.Handle(personal.Event{Kind: "tool_call", ToolName: "file_read", Text: `{"path":"a.go"}`})
+	r.Handle(personal.Event{Kind: "tool_result", ToolName: "file_read", Text: "package a"})
+	r.Handle(personal.Event{Kind: "loop_guard", ToolName: "file_read", Text: "↻ 重复调用 file_read ×3，已提醒模型"})
+	got := out.String()
+	assert.Eq(t, 1, strings.Count(got, "↻ 重复调用"), got)
+	assert.StrContains(t, got, "↻ 重复调用 file_read ×3，已提醒模型")
+}

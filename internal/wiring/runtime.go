@@ -748,13 +748,15 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Spiller:           personal.NewSessionSpiller(sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
 		MinimizeOutput:    minimizeOutput(workspace),
 		PrefetchTools:     prefetchTools(capabilities.Registry),
-		Repository:        repo,
-		Provider:          provider,
-		Model:             settings.Main.Model,
-		ProviderName:      settings.Main.Provider.ID,
-		Tools:             toolRegistry,
-		Vision:            visionGate,
-		PromptBuilder:     staticPrompt(basePrompt()),
+		// The loop guard is on unless tools.loop_guard says otherwise.
+		LoopGuard:     gkconfig.Bool("tools.loop_guard", true),
+		Repository:    repo,
+		Provider:      provider,
+		Model:         settings.Main.Model,
+		ProviderName:  settings.Main.Provider.ID,
+		Tools:         toolRegistry,
+		Vision:        visionGate,
+		PromptBuilder: staticPrompt(basePrompt()),
 		// Environment and skills go into the segment context (design D1).
 		// preferredEnvironment records the names it lists, so turn_context and
 		// the prompt agree on what the turn saw.
