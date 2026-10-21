@@ -97,7 +97,8 @@ def loop_turn(binary, work, port, mark_repeats):
             s.check("exactly two gray lines", s.text(m).count("↻ 重复调用 file_read") == 2)
         else:
             time.sleep(0.3)
-            assert GRAY_LINE not in s.text(m), "gray line shown while the guard is off"
+            s.check("no gray line while off", GRAY_LINE not in s.text(m))
+            s.check("no hint text on screen while off", HINT not in s.text(m))
         session = session_from(s.text())
         m = s.mark()
         for _ in range(3):
