@@ -100,14 +100,53 @@ func TestConvertVisibleTests(t *testing.T) {
 
 func TestConvertOnlyGlob(t *testing.T) {
 	out := t.TempDir()
-	names, err := convertAll(filepath.Join("testdata", "practice"), out, "wid*", false)
+	names, skips, err := convertAll(filepath.Join("testdata", "practice"), out, "wid*", false)
 	assert.NoErr(t, err)
 	assert.Eq(t, []string{"polyglot-go-widget"}, names)
+	assert.Eq(t, 0, len(skips))
 	_, err = os.Stat(filepath.Join(out, "polyglot-go-gizmo"))
 	assert.True(t, os.IsNotExist(err))
 
-	_, err = convertAll(filepath.Join("testdata", "practice"), out, "[", false)
+	_, _, err = convertAll(filepath.Join("testdata", "practice"), out, "[", false)
 	assert.Err(t, err)
+}
+
+// TestConvertSkipsUselessExercises: an exercise whose tests declare no test
+// function, and one Exercism marks as skip-tests, are left out with the reason
+// in the conversion log; the usable exercise is still converted.
+func TestConvertSkipsUselessExercises(t *testing.T) {
+	src, out := t.TempDir(), t.TempDir()
+	writeExercise := func(name, stub, test string, meta map[string]string) {
+		dir := filepath.Join(src, name)
+		for p, body := range map[string]string{
+			"go.mod":                        "module " + name + "\n\ngo 1.21\n",
+			name + ".go":                    stub,
+			name + "_test.go":               test,
+			filepath.Join(".meta", ".keep"): "",
+		} {
+			assert.NoErr(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, p)), 0o755))
+			assert.NoErr(t, os.WriteFile(filepath.Join(dir, p), []byte(body), 0o644))
+		}
+		for p, body := range meta {
+			assert.NoErr(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, p)), 0o755))
+			assert.NoErr(t, os.WriteFile(filepath.Join(dir, p), []byte(body), 0o644))
+		}
+	}
+	writeExercise("nose", "package nose\n", "package nose\n\n// no test function: Exercism kept the file only to keep the package compiling.\n", nil)
+	writeExercise("marked", "package marked\n", "package marked\n\nimport \"testing\"\n\nfunc TestMarked(t *testing.T) {}\n",
+		map[string]string{filepath.Join(".meta", ".skip_tests"): ""})
+	writeExercise("good", "package good\n", "package good\n\nimport \"testing\"\n\nfunc TestGood(t *testing.T) {}\n", nil)
+
+	names, skips, err := convertAll(src, out, "*", false)
+	assert.NoErr(t, err)
+	assert.Eq(t, []string{"polyglot-go-good"}, names)
+	assert.Eq(t, 2, len(skips))
+	assert.Eq(t, "marked", skips[0].exercise)
+	assert.StrContains(t, skips[0].reason, "skip_tests")
+	assert.Eq(t, "nose", skips[1].exercise)
+	assert.StrContains(t, skips[1].reason, "没有任何测试函数")
+	_, err = os.Stat(filepath.Join(out, "polyglot-go-nose"))
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestWriteOutGoMod(t *testing.T) {
