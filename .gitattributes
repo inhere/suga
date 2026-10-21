@@ -5,3 +5,4 @@
 *.ico binary
 *.woff2 binary
 .gofer/tracker/*.jsonl merge=gofer-tracker
+CHANGELOG.md merge=gofer-changelog
