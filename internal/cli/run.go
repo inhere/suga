@@ -296,14 +296,20 @@ func validatePersonalOptions(mode string, opts personalOptions) error {
 	if opts.MaxOutputTokens < 0 {
 		return fmt.Errorf("--max-output-tokens must be a whole number >= 1, got %d", opts.MaxOutputTokens)
 	}
-	if mode != "run" && (opts.Verify != "" || opts.VerifyRounds != 0) {
-		return fmt.Errorf("--verify is only supported in run mode")
-	}
-	if opts.VerifyRounds < 1 || opts.VerifyRounds > MaxVerifyRounds {
-		return fmt.Errorf("--verify-rounds must be a whole number between 1 and %d, got %d", MaxVerifyRounds, opts.VerifyRounds)
-	}
-	if opts.VerifyTimeout < 0 {
-		return fmt.Errorf("--verify-timeout must be a positive duration, got %s", opts.VerifyTimeout)
+	if mode != "run" {
+		// The --verify* flags exist for run only; chat never checks a command.
+		if opts.Verify != "" || opts.VerifyRounds != 0 || opts.VerifyTimeout != 0 {
+			return fmt.Errorf("--verify is only supported in run mode")
+		}
+	} else if opts.Verify != "" {
+		// The rounds and the timeout only matter once a command is given (an
+		// options struct built without the flags keeps the defaults).
+		if opts.VerifyRounds < 1 || opts.VerifyRounds > MaxVerifyRounds {
+			return fmt.Errorf("--verify-rounds must be a whole number between 1 and %d, got %d", MaxVerifyRounds, opts.VerifyRounds)
+		}
+		if opts.VerifyTimeout < 0 {
+			return fmt.Errorf("--verify-timeout must be a positive duration, got %s", opts.VerifyTimeout)
+		}
 	}
 	if opts.Budget.Tokens < 0 {
 		return fmt.Errorf("--budget-tokens must be a whole number >= 0, got %d", opts.Budget.Tokens)
