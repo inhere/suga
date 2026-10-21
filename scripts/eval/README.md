@@ -18,10 +18,12 @@ go run ./scripts/eval --model opencode-go/deepseek-v4.1-flash --config-from ~/.s
 参数：`--bin`（默认 `tmp/smoke/suga`，Windows 自动补 `.exe`）、`--task`（任务名 glob，默认全部）、
 `--model`、`--fake`、`--config-from <dir>`、`--out`（默认 `tmp/eval/<run-id>/`）、`--timeout`（每任务，默认 10m）、
 `--suga-args` / `--omp-args` / `--repeat`（见“附加参数、tool_counts 与重复运行”）、
+`--allow-web`（见“禁网”，默认关闭 web 工具）、
 `--variant <dir>`（可重复，见“variant 对比”，仅 suga）、
 `--probe-prefix` / `--probe-repeat` / `--probe-gap`（见“前缀缓存探针”）。
 终端输出汇总表；`<out>/results.jsonl` 每任务一行（成败、checks 明细、答案、调用/token/命中率/成本/工具调用数、
-`tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga inspect stats` 提供之前为 null）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
+`tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga inspect stats` 提供之前为 null；
+`web` 记录本次是否禁网、`removed_tests` 记录判分前移出模型自写的测试）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
 
 ## 任务格式
 
@@ -49,12 +51,40 @@ checks:
 timeout: 25m             # 可选：任务级超时，覆盖全局 --timeout（omp 的 --max-time 同步使用）
 repo: {ref: 202bfa0}     # 可选：仓库模式（与 fixture/ 二选一），见“仓库模式”
 acceptance: acceptance   # 可选：任务目录下的子目录名；agent 结束后、判定 checks 之前，其中文件按相对路径复制进工作区（覆盖同名）
+allow_web: true          # 可选：本题允许 web_fetch/web_search（默认关闭，见“禁网”）
+keep_tests: true         # 可选：保留模型自写的测试文件（默认判分前移出，见“判分只跑注入的验收测试”）
 ```
 
 `command` check 直接 exec `args`（不经 shell，Windows 可用），工作目录为工作区，`timeout` 默认 5m。
 结果里 `text` 为拼接后的命令行，另有 `exit_code`（未能启动或超时为 -1）与 `output`（合并输出的尾部，最多 4000 字节）；
 汇总表与其余指标不变。`acceptance` 用于注入 agent 看不到的验收测试：它在 agent 运行结束后才复制，因此 agent 自己的文件与验收文件会一起被 checks 执行；
 acceptance 目录不存在或复制失败时该任务判为失败。
+
+## 判分只跑注入的验收测试
+
+目的：模型留在工作区的自写测试（如 `zz_local_verify_test.go`）写错时会连带判失败，而那不是任务要求。
+做法：工作区准备好（fixture / 仓库快照 / `generate` / variant `workspace/`）后、agent 运行前记下文件清单；
+agent 结束后先注入 `acceptance/`，再删除清单之外、注入文件之外、名字看起来是测试的文件
+（Go `*_test.go`，Python `test_*.py`/`*_test.py`，Java/Kotlin/C#/Swift `*Test(s).ext`，PHP/Rust/Ruby/JS/TS/Dart/Elixir/C++ 的对应命名），
+`.git`、`node_modules`、`vendor`、`.venv` 不进入。被删的文件名写入 results.jsonl 的 `removed_tests`（升序，slash 分隔）。
+只删测试文件，模型的实现文件保留。
+
+例外：任务的 checks 就是检查模型自写的测试文件时（如 `config-two-step` 要求新增 `config_test.go` 并断言其内容），
+task.yaml 写 `keep_tests: true`，本题不做清理。
+
+## 禁网（默认关闭 web 工具）
+
+2026-10-21 的 polyglot Go 基线（hidden 35/39）中模型调用 `web_fetch` 79 次，可能查到 Exercism 题解，分数偏高。
+因此评测默认关网：suga 与 claude 默认禁用 `web_fetch`/`web_search`，`--allow-web` 或 task.yaml 的 `allow_web: true` 打开。
+
+- suga：临时 `SUGA_HOME/config.yaml` 写 `tools.disabled: [web_fetch, web_search]`（suga 的通用配置：列出的工具不注册），
+  所以模型根本看不到这两个工具（不在工具列表、`tool_search` 加载不到、`suga inspect manifest` 不列）；
+  不用按次拒绝（那样模型仍会看到它们，且一回合被拒几次就结束回合，结果失真）。
+  证明：拿该次运行的临时 SUGA_HOME 运行 `suga inspect manifest --json`，工具列表里没有这两个工具。
+- claude：每个 prompt 加 `--disallowedTools WebFetch,WebSearch`。
+- omp：评测没有可用的工具开关，**未禁网**；汇总表的 WEB 列记为 `unsupported`。
+- 记录：汇总表新增 WEB 列（`off`/`on`/`unsupported`），表格下方输出一行 `web: off=N on=N unsupported=N`，
+  results.jsonl 每行新增 `web` 字段；报告里引用这些值说明本次是否禁网。
 
 每个 fixture 根目录自带 `go.mod`（`module evalfixture/<name>`），复制出去后是独立模块；
 `testdata` 与 `tmp/` 都不会进入主模块的 `./...`。
@@ -68,7 +98,7 @@ acceptance 目录不存在或复制失败时该任务判为失败。
 `long-coding-schedule`：fixture 只有 `go.mod`（`module evalfixture/longcoding`）与说明 README，agent 需从零写出
 `schedule/` 包（进程内定时组件，接口与 `pkg/agentcore/schedule` 的公开 API 一致，说明改写自 T9）及其单元测试。
 `timeout: 25m`；`acceptance/schedule/zz_acceptance_test.go` 是黑盒验收测试（真实时钟、短时长，含观察者重入不死锁），运行结束后注入；
-checks 为 `go vet ./...` 与 `go test -count=1 ./schedule/...`（agent 自己的测试与验收测试一起跑）。
+checks 为 `go vet ./...` 与 `go test -count=1 ./schedule/...`（只跑验收测试：agent 自写的测试判分前已移出，见“判分只跑注入的验收测试”）。
 `--fake` 下假模型不会写代码，checks 失败属预期，只用来确认注入与 command 执行的管线。
 验收测试对 `pkg/agentcore/schedule` 参考实现应全部通过（把 `schedule.go` 复制到临时工作区的 `schedule/` 下验证）。
 
@@ -110,6 +140,25 @@ go run ./scripts/eval --tasks-dir tmp/eval-tasks/polyglot-go --model <model> --c
 
 注意：`counter` 原题在 Exercism 侧标记为跳过测试（`.meta/.skip_tests`），它的测试文件没有用例，
 该题只检验代码能编译，通过不代表实现正确。
+
+### 跳过无用例题
+
+转换器会跳过无法判定实现的题，并把清单与原因打印在转换日志里（格式：`skipped N exercises:` 后每题一行 `<题名>: <原因>`）：
+
+| 原因 | 判定方式 |
+|---|---|
+| `.meta/.skip_tests：原题标记跳过测试` | 题目录存在 `.meta/.skip_tests`（如 `counter`） |
+| `测试文件里没有任何测试函数，只能检验代码能否编译` | 全部 `*_test.go` 里没有 `func TestXxx/ExampleXxx/FuzzXxx/BenchmarkXxx` |
+
+两条规则在 `scripts/eval/polyglot/main.go` 的 `skipReason`；被跳过的题不会生成任务目录，也不计入分母。
+跳过后题数不再是 39，报告里要同时写跳过的题名与原因（清单以转换日志为准）。
+
+### 已知问题（不处理）
+
+- 13 题的原题桩代码不能单独编译（缺类型/方法或签名不完整），fixture 里的 `.go` 单独 `go vet` 会报错；
+  agent 要按说明补全。转换器仍照原样保留（与 Aider 基线一致），acceptance 一样是原题测试。
+- 3 题的桩代码用占位签名（如参数个数与测试调用不一致），与原题测试不匹配；agent 需根据测试报错推断真实签名。
+  这会影响这两类题的绝对通过率，不适合拿它们单独比较模型。
 
 ## 仓库模式
 
@@ -164,6 +213,7 @@ go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--n
 variant 的 `name` 默认取目录名；目录重复时（同名）启动即报错。有 `--variant` 时输出为 `<out>/<variant>/<task>[-r<i>]/`，
 session id 带 `<variant>-` 前缀，`results.jsonl` 每行多一个 `variant` 字段；结束时打印并写 `<out>/compare.md`：
 各 variant 的通过率、平均 CALLS、平均 prompt（未缓存+缓存读写）、平均未缓存输入、总 prompt、缓存命中率与平均耗时，
+WEB 列记录该 variant 本次是否禁网（`off`/`on`/`unsupported`，多个用 `+` 连接）：
 以及逐任务一行（PASS/FAIL/TIMEOUT、CALLS、prompt、耗时），variant 之间结果不同的任务在“结果不一致”列标为 **是**。
 不给 `--variant` 时输出结构与以前完全一致（无 variant 字段、无 compare.md）。任务必须用 `--agent suga`（且与
 `--probe-prefix` 互斥）。

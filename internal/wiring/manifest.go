@@ -483,6 +483,10 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		reg.Register(native.NewSkillTool(skillReg, st.spillBytes))
 	}
 	reg.Register(NewManifestTool(nil))
+	// tools.disabled: the manifest must not list a disabled tool either.
+	if err := applyDisabledTools(reg); err != nil {
+		return Manifest{}, manifestParts{}, err
+	}
 
 	// tools.preferred: command presence comes from PATH; a configured MCP
 	// server is reported as configured, because this command never starts one

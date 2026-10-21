@@ -107,6 +107,10 @@ const (
 	// --verify): name "run", attrs round (0 = the first check), exit, duration_ms,
 	// output_len (everything the command wrote) and passed.
 	EventVerify = "verify"
+	// EventLoopGuard records one reminder the loop guard appended to a repeated
+	// tool call's result: name = tool, attrs rule (R1 consecutive / R2 total
+	// repeats within a turn) and count (which call of the group it was).
+	EventLoopGuard = "loop_guard"
 )
 
 // Session is one conversation. Meta holds free-form keys (rules hash, append

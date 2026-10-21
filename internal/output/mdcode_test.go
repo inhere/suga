@@ -195,11 +195,11 @@ func TestMDCodeLang(t *testing.T) {
 // TestMDCodeHighlighter: the highlighter is only built for a known language, and
 // its colored line is the source plus styles.
 func TestMDCodeHighlighter(t *testing.T) {
-	assert.True(t, newMDCode("go") != nil)
-	assert.True(t, newMDCode("bash") != nil)
-	assert.True(t, newMDCode("not-a-language") == nil)
-	assert.True(t, newMDCode("") == nil)
-	colored := newMDCode("go").line("x := 1")
+	assert.True(t, newMDCode("go", mdThemes["dark"]) != nil)
+	assert.True(t, newMDCode("bash", mdThemes["dark"]) != nil)
+	assert.True(t, newMDCode("not-a-language", mdThemes["dark"]) == nil)
+	assert.True(t, newMDCode("", mdThemes["dark"]) == nil)
+	colored := newMDCode("go", mdThemes["dark"]).line("x := 1")
 	assert.Eq(t, "x := 1", stripMDANSI(colored))
 	assert.Eq(t, 0, strings.Count(stripMDANSI(colored), "\n"), "a colored line carries no newline of its own")
 }

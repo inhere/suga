@@ -89,10 +89,14 @@ func TestACPCloseDuringTurnEndsItCancelled(t *testing.T) {
 	}
 	_, closeErr := conn.CloseSession(ctx, acp.CloseSessionRequest{SessionId: created.SessionId})
 	assert.Require(t, assert.NoErr(t, closeErr))
-	// close waited for the turn: by the time it returned, the prompt had ended.
+	// close waited for the turn: by the time it returned, the prompt had ended
+	// on the agent's side. The prompt's response still travels to this client
+	// goroutine on its own, so it may land just after close's (seen under load
+	// on Windows): allow it a short delivery time. A turn close did not stop
+	// stays blocked in the provider and never answers.
 	select {
 	case <-turned:
-	default:
+	case <-time.After(2 * time.Second):
 		t.Fatal("session/close returned while the turn was still running")
 	}
 	outcome := <-turns

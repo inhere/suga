@@ -379,3 +379,21 @@ func TestMetaOfExtensions(t *testing.T) {
 		assert.False(t, MetaOf(plainTool{}).External)
 	})
 }
+
+// TestRegistry_Remove: Remove takes a tool out of the list and the schemas (the
+// host's tools.disabled policy) and ignores a name that was never registered.
+func TestRegistry_Remove(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&mockTool{name: "web_fetch"})
+	reg.Register(&mockTool{name: "file_read"})
+
+	reg.Remove("web_fetch")
+	_, err := reg.Get("web_fetch")
+	assert.Err(t, err)
+	assert.Eq(t, []string{"file_read"}, reg.List())
+	assert.Eq(t, 1, len(reg.Schemas()))
+	assert.Eq(t, "file_read", reg.Schemas()[0].Name)
+
+	reg.Remove("never_registered") // no panic, no change
+	assert.Eq(t, []string{"file_read"}, reg.List())
+}

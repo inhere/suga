@@ -72,6 +72,15 @@ func (l *LiveText) SetCode(highlight bool, maxLines, width int) {
 	l.md.SetWidth(width)
 }
 
+// SetMarkdownTheme picks the palette the markdown renderer paints with
+// (chat.theme: "dark" or "light"; anything else keeps the dark default). A
+// LiveText without markdown rendering ignores it.
+func (l *LiveText) SetMarkdownTheme(theme string) {
+	if l.md != nil {
+		l.md.SetTheme(theme)
+	}
+}
+
 // CodeBlocks returns the code blocks of the most recent rendered message, for
 // chat's :code command (nil without markdown rendering).
 func (l *LiveText) CodeBlocks() []CodeBlock {

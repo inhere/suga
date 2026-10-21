@@ -60,6 +60,9 @@ type Env struct {
 	// web_search; nil keeps their previous behavior (web_fetch ignores the
 	// environment proxies, web_search follows them).
 	NetworkProxy *netproxy.Selector
+	// FetchUserAgent is the User-Agent web_fetch sends
+	// (tools.web_fetch.user_agent); empty keeps the tool's default.
+	FetchUserAgent string
 	// ImagesDir is the session's images directory (view_image accepts a ref to
 	// one of its files); empty = only ordinary paths.
 	ImagesDir string
@@ -125,6 +128,7 @@ func Catalog() []Spec {
 				return nil // invalid proxy: rejected earlier by wiring
 			}
 			t.maxOut = env.RawBytes
+			t.userAgent = env.FetchUserAgent
 			return t
 		}},
 		{Name: "file_write", New: func(env Env) api.Tool {

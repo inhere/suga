@@ -139,6 +139,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_undo.py --bin tmp/smoke/suga --work tmp/smoke-undo
 	python3 -I scripts/ptysmoke/chat_diff.py --bin tmp/smoke/suga --work tmp/smoke-diff
 	python3 -I scripts/ptysmoke/chat_render.py --bin tmp/smoke/suga --work tmp/smoke-render
+	python3 -I scripts/ptysmoke/chat_theme.py --bin tmp/smoke/suga --work tmp/smoke-theme
 	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
 	python3 -I scripts/ptysmoke/chat_idle.py --bin tmp/smoke/suga --work tmp/smoke-idle
 	python3 -I scripts/ptysmoke/chat_observe.py --bin tmp/smoke/suga --work tmp/smoke-observe
@@ -167,6 +168,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_history.py --bin tmp/smoke/suga --work tmp/smoke-history
 	python3 -I scripts/ptysmoke/chat_sanitize.py --bin tmp/smoke/suga --work tmp/smoke-sanitize
 	python3 -I scripts/ptysmoke/chat_budget.py --bin tmp/smoke/suga --work tmp/smoke-budget
+	python3 -I scripts/ptysmoke/chat_loop_guard.py --bin tmp/smoke/suga --work tmp/smoke-loop-guard
 	python3 -I scripts/ptysmoke/chat_empty_final.py --bin tmp/smoke/suga --work tmp/smoke-empty-final
 	python3 -I scripts/ptysmoke/chat_refs.py --bin tmp/smoke/suga --work tmp/smoke-refs
 	python3 -I scripts/ptysmoke/chat_tool_lines.py --bin tmp/smoke/suga --work tmp/smoke-toollines

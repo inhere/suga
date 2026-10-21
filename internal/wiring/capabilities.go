@@ -107,6 +107,12 @@ func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspa
 		built.recordConflicts(provider)
 		built.closers = append(built.closers, provider)
 	}
+	// tools.disabled: a listed tool is not registered, so it is absent from the
+	// schemas (and from tool_search and the manifest) instead of failing on call.
+	if err := applyDisabledTools(registry); err != nil {
+		_ = built.Close()
+		return defaultCapabilities{}, err
+	}
 	return built, nil
 }
 
@@ -280,6 +286,7 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		Interpreters:      detectInterpreters(),
 		FetchAllowPrivate: gkconfig.Bool("tools.web_fetch.allow_private"),
 		FetchProxy:        gkconfig.String("tools.web_fetch.proxy"),
+		FetchUserAgent:    gkconfig.String("tools.web_fetch.user_agent"),
 		NetworkProxy:      configuredNetworkProxy(),
 		ShellTimeoutMax: time.Duration(gkconfig.Int("tools.shell_timeout_max",
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,

@@ -194,6 +194,10 @@ type Config struct {
 	// result; run, stream-json and ACP leave it off and carry no file text in
 	// their events.
 	DiffPreview bool
+	// LoopGuard turns the loop guard on (tools.loop_guard, default on at the
+	// wiring): a turn that repeats the same tool call with the same arguments
+	// gets a reminder appended to one of its repeated results (loop_guard.go).
+	LoopGuard bool
 }
 
 // AgentSummary is attached to an agent tool result so chat can report the
@@ -912,6 +916,14 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 	if sink != nil {
 		hooks = append(hooks, toolEventHook{sink: sink, sessionID: result.SessionID, turnID: result.TurnID,
 			runID: result.RunID, workspace: r.cfg.Workspace, diffPreview: r.cfg.DiffPreview})
+	}
+	// The loop guard goes last so its remark (appended to the repeated call's
+	// result event below) stays out of the tool_result line chat and the other
+	// callers show; AfterTool mutations persist into the stored message.
+	if r.cfg.LoopGuard {
+		hooks = append(hooks, &loopGuardHook{sink: sink, sessionID: result.SessionID, turnID: result.TurnID,
+			runID: result.RunID, record: r.rec.record,
+			counts: map[string]int{}, hints: map[string]int{}})
 	}
 	return hooks
 }

@@ -305,6 +305,99 @@ func TestChatWin32InputMode(t *testing.T) {
 	})
 }
 
+// TestChatTheme: chat.theme is auto unless set and resolves to the palette
+// (dark/light); SUGA_THEME overrides the config, and both an unknown value on
+// either is an error. The COLORFGBG cases live in TestChatThemeColorFgbg.
+func TestChatTheme(t *testing.T) {
+	load := chatConfigLoader(t)
+	t.Run("default auto resolves through COLORFGBG", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		t.Setenv("SUGA_THEME", "")
+		t.Setenv("COLORFGBG", "")
+		value, err := ChatTheme()
+		assert.NoErr(t, err)
+		assert.Eq(t, "dark", value) // an unset COLORFGBG stays dark
+	})
+	t.Run("dark and light stay dark and light", func(t *testing.T) {
+		load(t, "chat:\n  theme: dark\n")
+		value, err := ChatTheme()
+		assert.NoErr(t, err)
+		assert.Eq(t, "dark", value)
+		load(t, "chat:\n  theme: LIGHT\n")
+		value, err = ChatTheme()
+		assert.NoErr(t, err)
+		assert.Eq(t, "light", value)
+	})
+	t.Run("an unknown config value is an error", func(t *testing.T) {
+		load(t, "chat:\n  theme: sunset\n")
+		_, err := ChatTheme()
+		assert.Err(t, err)
+	})
+	t.Run("SUGA_THEME overrides the config", func(t *testing.T) {
+		load(t, "chat:\n  theme: dark\n")
+		t.Setenv("SUGA_THEME", "light")
+		value, err := ChatTheme()
+		assert.NoErr(t, err)
+		assert.Eq(t, "light", value)
+	})
+	t.Run("an unknown SUGA_THEME is an error", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		t.Setenv("SUGA_THEME", "sunset")
+		_, err := ChatTheme()
+		assert.Err(t, err)
+	})
+	t.Run("read through the settings registry", func(t *testing.T) {
+		load(t, "chat:\n  theme: light\n")
+		settings, err := ReadChatSettings()
+		assert.NoErr(t, err)
+		assert.Eq(t, "light", settings.Theme)
+		value, err := ReadConfigValue("chat.theme")
+		assert.NoErr(t, err)
+		assert.Eq(t, "light", value.Value)
+	})
+}
+
+// TestChatThemeColorFgbg: auto takes the background color from the last segment
+// of $COLORFGBG; a light background (7, 15) resolves to light, anything else and
+// an unset variable to dark.
+func TestChatThemeColorFgbg(t *testing.T) {
+	load := chatConfigLoader(t)
+	cases := map[string]string{
+		"0;15":      "light",
+		"15;0":      "dark",
+		"0;7":       "light",
+		"default":   "dark",  // the reported default fg; bg unset
+		"40;47":     "dark",  // a non-ANSI-code report takes the safe default
+		"38;5;0;15": "light", // some emulators add a third segment
+	}
+	for fgbg, want := range cases {
+		t.Run(fgbg, func(t *testing.T) {
+			load(t, "model: openai/m\n")
+			t.Setenv("SUGA_THEME", "")
+			t.Setenv("COLORFGBG", fgbg)
+			got, err := ChatTheme()
+			assert.NoErr(t, err)
+			assert.Eq(t, want, got)
+		})
+	}
+	t.Run("unset stays dark", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		t.Setenv("SUGA_THEME", "")
+		t.Setenv("COLORFGBG", "")
+		got, err := ChatTheme()
+		assert.NoErr(t, err)
+		assert.Eq(t, "dark", got)
+	})
+	t.Run("the config file wins over COLORFGBG", func(t *testing.T) {
+		load(t, "chat:\n  theme: dark\n")
+		t.Setenv("SUGA_THEME", "")
+		t.Setenv("COLORFGBG", "0;15")
+		got, err := ChatTheme()
+		assert.NoErr(t, err)
+		assert.Eq(t, "dark", got)
+	})
+}
+
 // chatConfigLoader returns a helper writing body to a fresh SUGA_HOME's
 // config.yaml and loading it.
 func chatConfigLoader(t *testing.T) func(t *testing.T, body string) {
