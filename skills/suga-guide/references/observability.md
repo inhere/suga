@@ -59,7 +59,7 @@ suga inspect manifest [--json] [--model <p/m>]            # 模型、工具、MC
 - 标签：`[user]`、`[assistant]`、`[assistant → tool_call <工具>]`（下一行是参数 JSON）、`[tool_result <工具> ok|error]`（工具结果没带名字时用对应调用的名字）、`[compaction summary]`（附 `first_kept_seq` 与 token 前后）、`[context update]`（只列变了的段上下文部分及其字节数，正文在后续消息里）、`[plan]`、`[handoff]`、`[image: <ref> 宽×高]`；助手的推理单独一个 `[reasoning]` 块，`--no-reasoning` 省略。
 - **截断只针对单条工具结果**：超过 `--max-observation` 字节（默认 10000，下限也是 10000，更小的值直接报错说明下限）时，在 UTF-8 字符边界截断，并追加 `…[transcript renderer: 截去 N 字节，完整内容见 suga inspect trace <会话> --json 或 ref entry:<会话>:<seq>]`。这个标记是**渲染器加的，不是工具输出的一部分**，不要据它诊断：截断太狠会让模型把缺口当成执行的缺陷。用户消息、助手正文、摘要一律不截。
 - 移出到会话文件（`sessions/<id>/bodies.jsonl`）的正文会先还原再渲染，只有上面的上限会截它；`ref entry:<会话>:<序号>` 指 `suga inspect export <会话>` 里 `seq` 相同的那一行。
-- `--transcript` 与 `--json`、`--analyze` 互斥；`-o <文件>` 写 0600 文件而不打到 stdout；新旧会话 id（`s_…`/`sess_…`）都可用。
+- `--transcript` 与 `--json`、`--analyze` 互斥；`-o <文件>` 写 0600 文件而不打到 stdout；新旧会话 id（`sg_…`/`s_…`/`sess_…`）都可用。
 - 典型用法：把一条或几条轨迹交给复盘 agent，让它按轨迹时刻提改动（见 `local/analysis/2026-10-20-harness2-exploration.md` 的 3.1、3.3）。
 
 ## `suga inspect stats`
