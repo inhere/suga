@@ -163,6 +163,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_adddir_cmds.py --bin tmp/smoke/suga --work tmp/smoke-adddir-cmds
 	python3 -I scripts/ptysmoke/chat_bang.py --bin tmp/smoke/suga --work tmp/smoke-bang
 	python3 -I scripts/ptysmoke/chat_paste.py --bin tmp/smoke/suga --work tmp/smoke-paste
+	python3 -I scripts/ptysmoke/chat_win32input.py --bin tmp/smoke/suga --work tmp/smoke-win32input
 	python3 -I scripts/ptysmoke/chat_history.py --bin tmp/smoke/suga --work tmp/smoke-history
 	python3 -I scripts/ptysmoke/chat_sanitize.py --bin tmp/smoke/suga --work tmp/smoke-sanitize
 	python3 -I scripts/ptysmoke/chat_budget.py --bin tmp/smoke/suga --work tmp/smoke-budget
