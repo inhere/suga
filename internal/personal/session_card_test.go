@@ -230,6 +230,32 @@ func TestSessionCard(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.Eq(t, eventsBefore, eventsAfter)
 	})
+
+	t.Run("a read-only store answers the same card", func(t *testing.T) {
+		// A store opened with OpenReadOnly fails on any write, so a card that
+		// builds from it proves the read path writes nothing at all.
+		path := newStorePath(t)
+		ctx := context.Background()
+		rw, err := store.Open(path)
+		assert.NoErr(t, err)
+		assert.NoErr(t, rw.CreateSession(ctx, store.Session{ID: "ro-store", Title: "只读库"}))
+		raw, err := json.Marshal(compactionRecord{Summary: "交接包", Reason: segmentReasonIdle})
+		assert.NoErr(t, err)
+		_, err = rw.AppendEntries(ctx, "ro-store", store.NewEntry{Type: store.EntryCompaction, JSON: raw})
+		assert.NoErr(t, err)
+		assert.NoErr(t, rw.Close())
+
+		ro, err := store.OpenReadOnly(path)
+		assert.NoErr(t, err)
+		t.Cleanup(func() { _ = ro.Close() })
+		runner, err := New(Config{Repository: ro, Provider: mock.NewProvider()})
+		assert.NoErr(t, err)
+		card, err := runner.SessionCard(context.Background(), "ro-store")
+		assert.NoErr(t, err)
+		assert.Eq(t, "只读库", card.Title)
+		assert.Eq(t, "交接包", card.LatestSummary)
+		assert.Eq(t, 1, card.SegmentCount)
+	})
 }
 
 // seedCardBenchSession fills one session with n entries (a summary record every
