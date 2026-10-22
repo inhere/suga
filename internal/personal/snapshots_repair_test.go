@@ -204,6 +204,28 @@ func TestCleanupPrunesStalePartialDirs(t *testing.T) {
 	assert.True(t, fileExists(live))
 }
 
+// TestCleanupRepairsPublishedRecordsWithoutMeta covers the leftover of the
+// 2026-10-22 tree: a published call directory whose meta.json never reached the
+// disk is useless for a restore, so cleanup removes it once it is old enough.
+func TestCleanupRepairsPublishedRecordsWithoutMeta(t *testing.T) {
+	store, turnDir := snapshotFixture(t, "sess_repair", "turn_repair")
+	stale := filepath.Join(turnDir, "002-empty")
+	fresh := filepath.Join(turnDir, "003-empty")
+	for _, dir := range []string{stale, fresh} {
+		assert.NoErr(t, os.MkdirAll(dir, 0o700))
+		assert.NoErr(t, os.WriteFile(filepath.Join(dir, "before"), []byte("x"), 0o600))
+	}
+	old := time.Now().Add(-2 * snapshotPartialStaleAfter)
+	assert.NoErr(t, os.Chtimes(stale, old, old))
+
+	report, err := store.CleanupSession("sess_repair")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, 2, report.SkippedRecords)
+	assert.Eq(t, 1, report.RepairedPartials)
+	assert.False(t, fileExists(stale))
+	assert.True(t, fileExists(fresh))
+}
+
 // snapshotPathGone reports whether err only says that a path a concurrent
 // cleanup removed is gone. A metadata error must still fail a test.
 func snapshotPathGone(err error) bool {

@@ -533,9 +533,11 @@ func (s *SessionSnapshots) collectSessionCheckpoints(sessionID string) ([]snapsh
 	return result, skipped, nil
 }
 
-// prunePartialDirs removes the half-written call directories of one turn that
-// are older than snapshotPartialStaleAfter. Younger ones belong to a writer that
-// is still running (possibly in another process), so they are left alone.
+// prunePartialDirs repairs the half-written call records of one turn: hidden
+// ".partial-" directories of a writer that died, and published records whose
+// meta.json never made it to disk. Both are removed only once they are older than
+// snapshotPartialStaleAfter, so a writer that is still running (possibly in
+// another process) is never disturbed.
 func (s *SessionSnapshots) prunePartialDirs(turnDir string) (int, error) {
 	removed := 0
 	cutoff := s.nowTime().Add(-snapshotPartialStaleAfter)
@@ -548,10 +550,14 @@ func (s *SessionSnapshots) prunePartialDirs(turnDir string) (int, error) {
 			return removed, err
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), snapshotPartialPrefix) {
+			if !entry.IsDir() || entry.Name() == snapshotPreUndoDir {
 				continue
 			}
 			path := filepath.Join(dir, entry.Name())
+			partial := strings.HasPrefix(entry.Name(), snapshotPartialPrefix)
+			if !partial && !snapshotRecordIncomplete(path) {
+				continue
+			}
 			info, err := entry.Info()
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -560,7 +566,7 @@ func (s *SessionSnapshots) prunePartialDirs(turnDir string) (int, error) {
 				return removed, err
 			}
 			if info.ModTime().After(cutoff) {
-				continue
+				continue // the writer is probably still running
 			}
 			if err := os.RemoveAll(path); err != nil {
 				return removed, err
@@ -570,6 +576,14 @@ func (s *SessionSnapshots) prunePartialDirs(turnDir string) (int, error) {
 		}
 	}
 	return removed, nil
+}
+
+// snapshotRecordIncomplete reports whether a published call directory has no
+// meta.json, the file that makes a record readable. A record without it cannot
+// be restored from, so cleanup treats it as the leftover of a crash.
+func snapshotRecordIncomplete(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "meta.json"))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func (s *SessionSnapshots) collectEligibleCheckpoints() ([]snapshotCheckpoint, error) {
