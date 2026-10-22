@@ -389,6 +389,6 @@ Suga 的 ACP 服务端支持图片内容块（第二期）：
 - job 的 `cwd` 是子仓、但需要读项目根、兄弟模块或 `../../docs` 时，给 agent 的 `args` 追加 `--add-dir <绝对目录>`（需要写时用 `--add-dir <绝对目录>:rw`），或在 job 环境里设 `SUGA_ADD_DIRS`（路径列表分隔符分隔）；不需要把目录内容复制进工作区，也不必依赖依赖根探测。目录会记入会话，resume 时继续生效。
 - job 环境设 `SUGA_HOOKS=off`，替代 suga 原先对 `GOFER_JOB_ID` 的判断：job 内的 suga 不应再启用 hooks。
 - job 环境设 `SUGA_APPEND_SYSTEM_PROMPT`，携带原“运行在 Gofer job 中，可用 `gofer work report` / `gofer issue` 汇报”的提示。chat、resume 与 ACP 路径不带 `--append-system-prompt`。
-- 经 `run` 续接投递 web 回复时加 `--injected`，suga 不再根据文本前缀 `[gofer web 回复] ` 推断注入。
-- socket 投递（`suga send`）若要保留“[gofer web 回复]”措辞，需由 Gofer 自己加在文本前；suga 不再特判，`--source gofer`（或来源为 gofer）时显示为 `[来自 gofer] `。
+- 经 `run` 续接投递 web 回复时加 `--injected`，suga 不再根据文本前缀（gofer v0.185 起为 `[来自 web 回复，<用户>]`，旧版为 `[gofer web 回复]`） 推断注入。
+- socket 投递（`suga send`）若要保留“[来自 web 回复，<用户>]”这类前缀，需由 Gofer 自己加在文本前；suga 不再特判，`--source gofer`（或来源为 gofer）时显示为 `[来自 gofer] `。
 - agent 配置中删除 `--provider` 用法（若有）；改用 `--model <provider>/<model>`。
