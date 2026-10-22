@@ -11,6 +11,23 @@ import (
 	"github.com/gookit/ini/v2/dotenv"
 )
 
+// loadedHome is the root the configuration was loaded from in this process
+// ("" = Load has not run). The suga settings are process global, so a host that
+// embeds the agent (pkg/sugasdk) reads it to keep one configuration at a time.
+var loadedHome string
+
+// LoadedHome returns the root Load loaded the configuration from, and whether
+// Load ran in this process at all.
+func LoadedHome() (string, bool) {
+	return loadedHome, loadedHome != ""
+}
+
+// ResetLoadedStateForTest forgets the loaded root, so a test can load another
+// SUGA_HOME. Tests call it from their cleanup; production code never does.
+func ResetLoadedStateForTest() {
+	loadedHome = ""
+}
+
 // Load initializes environment and YAML-backed configuration sources for the
 // current process. Call it once near process startup before reading settings.
 func Load() error {
@@ -18,6 +35,7 @@ func Load() error {
 	if err != nil {
 		return fmt.Errorf("resolve suga home for config: %w", err)
 	}
+	loadedHome = privateDir
 
 	// Only SUGA_HOME/.env is read. The working directory's .env belongs to the
 	// user's project (suga runs inside it) and must not rewrite suga's database
