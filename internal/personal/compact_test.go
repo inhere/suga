@@ -367,6 +367,98 @@ func TestCompactedTurnCancelledIsNotAdopted(t *testing.T) {
 	}
 }
 
+// Scenario-model routing of the summary calls: models.idle serves the idle
+// consolidation and models.handoff the --from package; unset scenarios keep
+// falling back to the compact model, then the turn's own provider.
+func TestScenarioModels(t *testing.T) {
+	newMain := func() *scriptProv {
+		return &scriptProv{name: "main", normal: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+			return finalText(strings.Repeat("a", 900))
+		}}
+	}
+
+	t.Run("idle consolidation uses the idle model", func(t *testing.T) {
+		repo := openObserveRepo(t)
+		main := newMain()
+		idle := &scriptProv{name: "idle", normal: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+			return nil, errors.New("idle provider must only summarize")
+		}}
+		runner := compactRunner(t, repo, main, nil, func(c *Config) {
+			c.IdleProvider, c.IdleModel = idle, "idle-model"
+		})
+		var sid string
+		for i := 0; i < 2; i++ {
+			res, err := runner.Run(context.Background(), RunRequest{SessionID: sid, Prompt: strings.Repeat("q", 900)})
+			assert.NoErr(t, err)
+			sid = res.SessionID
+		}
+		_, err := runner.ConsolidateIdle(context.Background(), sid)
+		assert.NoErr(t, err)
+		assert.Eq(t, 0, len(idle.reqs)) // ordinary calls stay on the turn provider
+		assert.Eq(t, 1, len(idle.sumReqs))
+		// The summary call is observed with the idle model, the compaction event
+		// reports it too.
+		foundModel := false
+		for _, e := range eventsOf(t, repo, sid, store.EventModel) {
+			foundModel = foundModel || e.Attrs["model"] == "idle-model"
+		}
+		assert.Eq(t, true, foundModel)
+		foundCompact := false
+		for _, e := range eventsOf(t, repo, sid, store.EventCompaction) {
+			if e.Attrs["model"] == "idle-model" {
+				foundCompact = compactTrigger(segmentReasonIdle) == e.Attrs["trigger"]
+			}
+		}
+		assert.Eq(t, true, foundCompact)
+	})
+
+	t.Run("handoff uses the handoff model", func(t *testing.T) {
+		repo := openObserveRepo(t)
+		main := newMain()
+		hand := &scriptProv{name: "handoff", normal: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+			return nil, errors.New("handoff provider must only summarize")
+		}}
+		runner := compactRunner(t, repo, main, nil, func(c *Config) {
+			c.HandoffProvider, c.HandoffModel = hand, "handoff-model"
+		})
+		res, err := runner.Run(context.Background(), RunRequest{Prompt: strings.Repeat("q", 900)})
+		assert.NoErr(t, err)
+		newSess, err := runner.Handoff(context.Background(), HandoffRequest{SourceID: res.SessionID})
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, len(hand.sumReqs))
+		found := false
+		for _, e := range eventsOf(t, repo, newSess.ID, store.EventModel) {
+			found = found || e.Attrs["model"] == "handoff-model"
+		}
+		assert.Eq(t, true, found)
+		es, err := repo.ListEntries(context.Background(), newSess.ID, store.EntryFilter{Types: []string{store.EntryHandoff}})
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, len(es))
+		assert.Eq(t, true, strings.Contains(string(es[0].JSON), "SUMMARY-handoff-")) // the package came from the handoff provider
+	})
+
+	t.Run("idle unset falls back to the compact model", func(t *testing.T) {
+		repo := openObserveRepo(t)
+		main := newMain()
+		comp := &scriptProv{name: "compactor", normal: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+			return nil, errors.New("compact provider must only summarize")
+		}}
+		runner := compactRunner(t, repo, main, nil, func(c *Config) {
+			c.CompactProvider, c.CompactModel = comp, "small-model"
+		})
+		var sid string
+		for i := 0; i < 2; i++ {
+			res, err := runner.Run(context.Background(), RunRequest{SessionID: sid, Prompt: strings.Repeat("q", 900)})
+			assert.NoErr(t, err)
+			sid = res.SessionID
+		}
+		_, err := runner.ConsolidateIdle(context.Background(), sid)
+		assert.NoErr(t, err)
+		assert.Eq(t, 0, len(main.sumReqs))
+		assert.Eq(t, 1, len(comp.sumReqs))
+	})
+}
+
 func TestCompactModelConfigured(t *testing.T) {
 	run := func(t *testing.T, withCompact bool) (main, comp *scriptProv, repo *store.Store, sid string) {
 		repo = openObserveRepo(t)

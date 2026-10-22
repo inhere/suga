@@ -585,6 +585,22 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		}
 		compactProvider, compactModel = built, settings.Compact.Model
 	}
+	// models.idle / models.handoff: per-scenario providers of the idle
+	// consolidation and the --from handoff package; unset scenarios leave nil
+	// and fall back to the compact model at runtime.
+	scenarioEstimate := estimateOptionsForBudget(budget.Tokens, budget.CostUSD, budget.Estimate, budget.EstimateFactor)
+	idleProvider, idleModel, err := buildScenarioProvider(settings.Idle, scenarioEstimate)
+	if err != nil {
+		_ = repo.Close()
+		_ = capabilities.Close()
+		return nil, fmt.Errorf("build idle model provider: %w", err)
+	}
+	handoffProvider, handoffModel, err := buildScenarioProvider(settings.Handoff, scenarioEstimate)
+	if err != nil {
+		_ = repo.Close()
+		_ = capabilities.Close()
+		return nil, fmt.Errorf("build handoff model provider: %w", err)
+	}
 	// A nil manager must stay a nil interface (no tasks).
 	var taskNotices personal.TaskNotices
 	if opts.Tasks != nil {
@@ -602,6 +618,10 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		ImageRequestBytes: images.MaxRequestBytes,
 		CompactProvider:   compactProvider,
 		CompactModel:      compactModel,
+		IdleProvider:      idleProvider,
+		IdleModel:         idleModel,
+		HandoffProvider:   handoffProvider,
+		HandoffModel:      handoffModel,
 		Plans:             plans,
 		Ledger:            ledger,
 		MemoryIndex:       mem.index,

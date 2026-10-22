@@ -309,6 +309,7 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 	}
 	started := time.Now()
 	trigger := compactTrigger(reason)
+	scenario := scenarioForReason(reason) // also reported on the compaction event
 	// fail records why no segment started. A cancellation (preempted idle
 	// consolidation, interrupted turn) is not an error: status cancelled.
 	fail := func(err error) (*compactOutcome, error) {
@@ -323,7 +324,7 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 		b.r.rec.record(ctx, e)
 		return nil, err
 	}
-	pkg, err := b.r.buildPackage(ctx, b.sessionID, b.turnID, b.summary, items, cut, b.threshold())
+	pkg, err := b.r.buildPackage(ctx, b.sessionID, b.turnID, b.summary, items, cut, b.threshold(), scenario)
 	if err != nil {
 		return fail(err)
 	}
@@ -390,7 +391,7 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 		Kind: store.EventCompaction, Name: "compact", Status: eventOK,
 		StartedAt: started, DurationMs: time.Since(started).Milliseconds(),
 		Attrs: map[string]any{"trigger": trigger, "reason": reason, "tokens_before": before, "tokens_after": after,
-			"first_kept_seq": firstKept, "dropped_messages": cut, "model": b.r.compactModelName(),
+			"first_kept_seq": firstKept, "dropped_messages": cut, "model": b.r.scenarioModelName(scenario),
 			"segment": segment, "requests": len(pkg.requests), "refs": len(pkg.refs)},
 	})
 	// The meta cache follows the record (best-effort). The system prompt is
@@ -423,6 +424,26 @@ func (r *Runner) segmentOrdinal(ctx context.Context, sessionID string, written [
 
 // compactProvider is the model used for summaries: llm.compact_model when
 // configured, otherwise the turn's own (already observed) provider.
+// Scenario keys pick the summary model of one background call by what served
+// it (models.compact / models.idle / models.handoff): a segment break uses the
+// compact model unless it was the idle consolidation, and a --from handoff
+// package uses the handoff model.
+const (
+	scenarioCompact = "compact"
+	scenarioIdle    = "idle"
+	scenarioHandoff = "handoff"
+)
+
+// scenarioForReason maps a segment break reason to its summary scenario: an
+// idle consolidation is its own scenario, every other break (threshold,
+// manual :compact) is the compact one.
+func scenarioForReason(reason string) string {
+	if reason == segmentReasonIdle {
+		return scenarioIdle
+	}
+	return scenarioCompact
+}
+
 // generateQuietly asks for a whole answer that nobody watches arrive (a
 // summary): through Stream when the provider streams, with the deltas
 // dropped, else through Generate. Some gateways (an OpenAI Responses proxy in
@@ -449,6 +470,39 @@ func (r *Runner) compactModelName() string {
 	return r.cfg.Model
 }
 
+// scenarioProvider picks the provider of one summary call: the scenario's own
+// provider (models.idle / models.handoff) when configured, else the compact
+// provider (models.compact / compact_model), else the turn's own provider.
+func (r *Runner) scenarioProvider(scenario string) agentcore.Provider {
+	switch scenario {
+	case scenarioIdle:
+		if r.cfg.IdleProvider != nil {
+			return r.cfg.IdleProvider
+		}
+	case scenarioHandoff:
+		if r.cfg.HandoffProvider != nil {
+			return r.cfg.HandoffProvider
+		}
+	}
+	return r.compactProvider()
+}
+
+// scenarioModelName is the model id reported for the scenario's summary
+// calls; the fallback chain mirrors scenarioProvider.
+func (r *Runner) scenarioModelName(scenario string) string {
+	switch scenario {
+	case scenarioIdle:
+		if r.cfg.IdleProvider != nil && r.cfg.IdleModel != "" {
+			return r.cfg.IdleModel
+		}
+	case scenarioHandoff:
+		if r.cfg.HandoffProvider != nil && r.cfg.HandoffModel != "" {
+			return r.cfg.HandoffModel
+		}
+	}
+	return r.compactModelName()
+}
+
 // packageInput is what a handoff package is summarized from.
 type packageInput struct {
 	previous   string         // the current segment's package ("" = none)
@@ -464,7 +518,7 @@ type packageInput struct {
 // transcript is size-capped so the request itself fits the window. Context
 // updates are skipped: the next segment re-reads rules and the rest into its
 // own snapshot.
-func (r *Runner) summarize(ctx context.Context, in packageInput, threshold int) (string, error) {
+func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput, threshold int) (string, error) {
 	dropped := withoutContextUpdates(in.dropped)
 	var sb strings.Builder
 	sb.WriteString(compactTemplate)
@@ -492,7 +546,7 @@ func (r *Runner) summarize(ctx context.Context, in packageInput, threshold int) 
 	// No MaxTokens on purpose: a summary is short by nature, so the protocol's
 	// own default is enough here; the output limit setting target the main
 	// loop's answers (Config.MaxOutputTokens).
-	res, err := generateQuietly(withPurpose(ctx, purposeCompact), r.compactProvider(), &agentcore.GenerateRequest{
+	res, err := generateQuietly(withPurpose(ctx, purposeCompact), r.scenarioProvider(scenario), &agentcore.GenerateRequest{
 		System:   compactSystemPrompt,
 		Messages: []agentcore.Message{{Role: "user", Content: sb.String()}},
 	})

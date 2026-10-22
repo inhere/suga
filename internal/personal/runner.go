@@ -149,6 +149,13 @@ type Config struct {
 	// set; nil means the turn's own provider is used.
 	CompactProvider agentcore.Provider
 	CompactModel    string
+	// IdleProvider/IdleModel serve the idle consolidation (models.idle); nil
+	// means the compact provider is used. HandoffProvider/HandoffModel serve
+	// the --from handoff package (models.handoff) the same way.
+	IdleProvider    agentcore.Provider
+	IdleModel       string
+	HandoffProvider agentcore.Provider
+	HandoffModel    string
 	// Plans is the update_plan sink handed to the tool at build time; New binds
 	// it to this runner's store.
 	Plans *PlanRecorder
@@ -410,6 +417,14 @@ func New(cfg Config) (*Runner, error) {
 	}
 	if cfg.CompactProvider != nil {
 		cfg.CompactProvider = rec.observeProvider(cfg.CompactProvider, cfg.CompactProvider.Name(), cfg.CompactModel)
+	}
+	// The scenario providers emit model events too (usage and pricing), like
+	// the compact one.
+	if cfg.IdleProvider != nil {
+		cfg.IdleProvider = rec.observeProvider(cfg.IdleProvider, cfg.IdleProvider.Name(), cfg.IdleModel)
+	}
+	if cfg.HandoffProvider != nil {
+		cfg.HandoffProvider = rec.observeProvider(cfg.HandoffProvider, cfg.HandoffProvider.Name(), cfg.HandoffModel)
 	}
 	// The admit ledger reads a tool's Meta after the approval layer resolved the
 	// tool (personal.AdmitApprovedCall), so it needs no lookup of its own here.

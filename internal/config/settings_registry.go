@@ -89,6 +89,12 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "compact_model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "fallback_models", Type: ConfigTypeStringList, Writable: true, Reader: "model"},
+	// models.<scenario> routes background work by scenario (models.compact
+	// supersedes the compact_model alias when both are set); unset scenarios
+	// fall back to the compact model, then the turn's own model.
+	{Pattern: "models.compact", Type: ConfigTypeString, Writable: true, Reader: "model"},
+	{Pattern: "models.idle", Type: ConfigTypeString, Writable: true, Reader: "model"},
+	{Pattern: "models.handoff", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "max_steps", Type: ConfigTypeInt, Writable: true, Reader: "max_steps"},
 	{Pattern: "budget.tokens", Type: ConfigTypeInt, Writable: true, Reader: "budget"},
 	{Pattern: "budget.cost_usd", Type: ConfigTypeFloat, Writable: true, Reader: "budget"},

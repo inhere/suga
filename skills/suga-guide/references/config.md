@@ -15,7 +15,9 @@
 | 键 | 默认 | 含义 |
 |---|---|---|
 | `model` | 无（必填，或用 SUGA_MODEL/--model） | 主模型，`<provider>/<model>` |
-| `compact_model` | 不设（用当前回合的模型） | 生成分段摘要（自动压缩、`:compact`、空闲整理）的模型，引用规则同 `model`，裸 id 用主模型的 provider |
+| `compact_model` | 不设（用当前回合的模型） | 生成分段摘要（自动压缩、`:compact`）的模型，引用规则同 `model`，裸 id 用主模型的 provider；`models.compact` 与它同义，两个键都写了时 `models.compact` 优先生效 |
+| `models.idle` | 不设（用 compact 模型） | 空闲整理（`context.idle_after` 触发的后台压缩）专用模型，引用规则同 `compact_model`，未配置时回落 compact 模型 |
+| `models.handoff` | 不设（用 compact 模型） | `--from` 交接摘要专用模型，引用规则同 `compact_model`，未配置时回落 compact 模型；各场景回落链：`models.<场景>` → compact 模型 → 当前回合模型，实际值见 `suga inspect manifest` 的 Models 一节 |
 | `fallback_models` | 不设 | 主模型失败后按顺序尝试的模型列表（会先重试 `retry` 次） |
 | `providers.<id>` | 内置预设 openai / anthropic / deepseek | provider 定义，逐字段覆盖同名预设；其它 id 必须写 `type` |
 | `providers.<id>.type` | 预设自带；其它 id 必填 | `openai`（`/chat/completions`）、`openai-responses`（Responses API `/responses`）、`anthropic`（`/v1/messages`） |

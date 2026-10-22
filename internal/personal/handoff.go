@@ -111,7 +111,7 @@ func (r *Runner) buildHandoff(ctx context.Context, src Session) (handoffRecord, 
 		if err != nil {
 			return handoffRecord{}, err
 		}
-		body, err := r.summarize(ctx, packageInput{previous: view.summary, dropped: view.items, plan: r.latestPlan(ctx, src.ID),
+		body, err := r.summarize(ctx, scenarioHandoff, packageInput{previous: view.summary, dropped: view.items, plan: r.latestPlan(ctx, src.ID),
 			requests: requests, candidates: refCandidates(src.ID, view.items, len(view.items))}, r.threshold())
 		if err != nil {
 			return handoffRecord{}, err
