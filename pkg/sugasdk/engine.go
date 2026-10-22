@@ -37,6 +37,15 @@ var (
 	ErrBusy = errors.New("sugasdk: a turn is already running in this session")
 	// ErrNoRunningTurn reports Steer while no turn of the session runs.
 	ErrNoRunningTurn = errors.New("sugasdk: no turn is running in this session")
+	// ErrRequestRunning reports Send with a RequestID whose turn is currently
+	// running in this session (the caller retries when it finishes).
+	ErrRequestRunning = errors.New("sugasdk: this request is already running in this session")
+	// ErrDeliveryUncertain reports Send with a RequestID whose record says
+	// running but whose turn is not running in any live place (the claiming
+	// process died mid-turn): whether the prompt was delivered is unknown.
+	// Send the prompt again under a NEW request id; the old one is never
+	// replayed on its own.
+	ErrDeliveryUncertain = errors.New("sugasdk: the delivery of this request is uncertain (it was interrupted while running); resend with a new request id")
 	// ErrSessionClosed reports a use of a session after Close.
 	ErrSessionClosed = errors.New("sugasdk: session is closed")
 )
