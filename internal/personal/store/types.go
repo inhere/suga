@@ -117,6 +117,12 @@ const (
 	// injected turn follows; hinted: chat only showed a line; recorded: ACP only
 	// wrote the trace) and evidence (what the rule found).
 	EventNudge = "nudge"
+	// EventOutputSchema records one check of the output contract (suga run
+	// --output-schema): name "check", attrs round (1 = the first answer, 2 = the
+	// correction round), action (ok/corrected/failed), passed, source
+	// (whole/fenced/substring/no_json), errors (at most 5 "path: message") and the
+	// schema's hash and size - never the schema itself.
+	EventOutputSchema = "output_schema"
 	// EventLoopGuard records one reminder the loop guard appended to a repeated
 	// tool call's result: name = tool, attrs rule (R1 consecutive / R2 total
 	// repeats within a turn) and count (which call of the group it was).
