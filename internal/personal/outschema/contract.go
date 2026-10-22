@@ -123,6 +123,8 @@ func Compile(raw []byte) (*Contract, error) {
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	// No RegisterFormat/AssertFormat: a format is an annotation here, so results
 	// do not drift with the library's format tables (design 3.1).
+	// The loader is the sandbox: only the inline resource added below may be
+	// loaded, so a schema can never read a file or reach the network (design 3.2).
 	compiler.UseLoader(denyLoader{})
 	if err := compiler.AddResource(schemaURL, doc); err != nil {
 		return nil, &CompileError{Kind: KindInvalidSchema, Message: "输出契约无效: " + oneLine(err.Error())}
@@ -139,9 +141,16 @@ func Compile(raw []byte) (*Contract, error) {
 // refused load is an external reference, anything else means the schema itself
 // does not satisfy its meta schema.
 func compileFailure(err error) (kind, message string) {
+	// The deny loader's own error already says what is wrong and why; keep it, so
+	// the caller is told the sandbox refused the reference instead of a "not
+	// valid against metaschema" wall of text.
+	var compileErr *CompileError
+	if errors.As(err, &compileErr) {
+		return compileErr.Kind, compileErr.Message
+	}
 	var loadErr *jsonschema.LoadURLError
 	if errors.As(err, &loadErr) {
-		return KindExternalRef, "输出契约引用了外部资源（不支持，请改用内联 $defs 引用）"
+		return KindExternalRef, "输出契约引用了外部资源（不支持）: " + oneLine(err.Error())
 	}
 	return KindInvalidSchema, "输出契约无效: " + oneLine(err.Error())
 }

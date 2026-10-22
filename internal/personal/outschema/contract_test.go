@@ -64,7 +64,9 @@ func TestCompile(t *testing.T) {
 		var ce *CompileError
 		assert.True(t, errorsAs(err, &ce))
 		assert.Eq(t, KindExternalRef, ce.Kind)
-		assert.StrContains(t, ce.Message, "外部资源")
+		// The sandbox's own sentence: without the deny loader the compiler would
+		// try to fetch the URL, and the message would not say this.
+		assert.StrContains(t, ce.Message, "请改用内联 $defs 引用")
 	})
 	t.Run("inline $defs reference compiles", func(t *testing.T) {
 		c := mustCompile(t, `{"type":"object","properties":{"item":{"$ref":"#/$defs/item"}},
