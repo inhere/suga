@@ -57,7 +57,15 @@ func (h *recordingHooks) StartStop(ctx context.Context, ev sugahooks.Event) suga
 }
 
 func (h *recordingHooks) record(ev sugahooks.Event, r sugahooks.Result, d time.Duration) {
-	if ev.SessionID == "" {
+	recordHookRun(h.runner, ev, r, d, nil)
+}
+
+// recordHookRun writes one hook run as a "hook" event of the session: the event
+// name, the duration and the outcome (decision, reason and context lengths, a
+// notice, a failure). The PreToolUse gate records through it too, so a refused
+// or failed call hook is visible in trace.
+func recordHookRun(recorder eventRecorder, ev sugahooks.Event, r sugahooks.Result, d time.Duration, extra map[string]any) {
+	if recorder == nil || ev.SessionID == "" {
 		return
 	}
 	attrs := map[string]any{}
@@ -73,11 +81,14 @@ func (h *recordingHooks) record(ev sugahooks.Event, r sugahooks.Result, d time.D
 	if r.Response.Notice != "" {
 		attrs["notice"] = true
 	}
+	for name, value := range extra {
+		attrs[name] = value
+	}
 	status, errText := "ok", ""
 	if r.Err != nil {
 		status, errText = "error", r.Err.Error()
 	}
-	h.runner.RecordEvent(context.Background(), ev.SessionID, personal.HostEvent{
+	recorder.RecordEvent(context.Background(), ev.SessionID, personal.HostEvent{
 		Kind: store.EventHook, Name: ev.Name, Status: status, Duration: d, Error: errText, Attrs: attrs})
 }
 

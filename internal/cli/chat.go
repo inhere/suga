@@ -116,6 +116,9 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		// The local commands of the prompt (!cmd / !!cmd): the same shell and
 		// workspace the shell tools use, and no turn of their own.
 		Local: runtime.LocalCommands(),
+		// The PreToolUse hook (hooks.pre_tool_use.tools) gates every tool call
+		// through the approval layer, which decides on the arguments it rewrote.
+		SetCallRewriter: runtime.SetCallRewriter,
 	}, stdin, stdout, stderr, hooks)
 }
 
