@@ -147,8 +147,10 @@ func (e *Engine) Model() string { return e.opts.Model }
 
 // Close releases the engine: the memory layer, the store behind it and every
 // session this engine opened. Sessions closed by the caller first are skipped.
-// The loaded suga configuration stays in the process (it cannot be unloaded);
-// after Close another Open is allowed, for the same root only.
+// Close it while no turn runs: a session's runtime is closed here, so a Send
+// still in flight fails. The loaded suga configuration stays in the process (it
+// cannot be unloaded); after Close another Open is allowed, for the same root
+// only.
 func (e *Engine) Close() error {
 	if e == nil {
 		return nil

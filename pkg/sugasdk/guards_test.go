@@ -19,7 +19,36 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/memory"
 )
+
+// TestMemoryConfirmAdapter covers the SDK confirmation the runtime sees: an
+// unapproved (or missing) confirmation refuses the write.
+func TestMemoryConfirmAdapter(t *testing.T) {
+	ctx := context.Background()
+	scope := memory.ProjectScope("proj")
+	op := memory.Op{Action: memory.ActionAdd, Title: "t", Body: "b", Kind: memory.KindProject}
+
+	t.Run("nil confirms nothing", func(t *testing.T) {
+		assert.True(t, memoryConfirmAdapter(nil) == nil)
+	})
+	t.Run("approval passes the request through", func(t *testing.T) {
+		var got MemoryConfirmRequest
+		confirm := memoryConfirmAdapter(func(_ context.Context, req MemoryConfirmRequest) bool {
+			got = req
+			return true
+		})
+		assert.NoErr(t, confirm(ctx, scope, op))
+		assert.Eq(t, "project:proj", got.Scope)
+		assert.Eq(t, "add", got.Action)
+		assert.Eq(t, "t", got.Title)
+		assert.Eq(t, "b", got.Body)
+	})
+	t.Run("a refusal is an error", func(t *testing.T) {
+		confirm := memoryConfirmAdapter(func(context.Context, MemoryConfirmRequest) bool { return false })
+		assert.Err(t, confirm(ctx, scope, op))
+	})
+}
 
 func TestSugaHomeGuard(t *testing.T) {
 	ctx := context.Background()

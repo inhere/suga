@@ -210,6 +210,15 @@ func TestEngineEndToEnd(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, other, 0)
 	})
+	t.Run("Sessions filters by directory", func(t *testing.T) {
+		here, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: workspace})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Len(t, here, 1)
+		assert.Eq(t, session.ID(), here[0].ID)
+		elsewhere, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: t.TempDir()})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Len(t, elsewhere, 0)
+	})
 	t.Run("suga's default session list hides it", func(t *testing.T) {
 		dbPath, err := appconfig.ResolveCoreStorePath()
 		assert.Require(t, assert.NoErr(t, err))

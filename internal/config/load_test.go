@@ -43,6 +43,27 @@ func TestLoadUsesSugaConfigFromSugaHome(t *testing.T) {
 	assertMainModel(t, "home-model")
 }
 
+// TestLoadedHomeRecordsTheRoot covers the record an embedding host reads to
+// keep one configuration per process (pkg/sugasdk's SUGA_HOME guard).
+func TestLoadedHomeRecordsTheRoot(t *testing.T) {
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+	ResetLoadedStateForTest()
+	t.Cleanup(ResetLoadedStateForTest)
+	root := t.TempDir()
+	t.Setenv("SUGA_HOME", root)
+	t.Setenv("SUGA_CONFIG", "")
+	t.Chdir(t.TempDir())
+	assert.NoErr(t, os.WriteFile(filepath.Join(root, "config.yaml"), []byte("model: openai/home-model\n"), 0600))
+
+	_, loaded := LoadedHome()
+	assert.False(t, loaded, "an unloaded process reports no root")
+	assert.NoErr(t, Load())
+	home, loaded := LoadedHome()
+	assert.True(t, loaded)
+	assert.Eq(t, root, home)
+}
+
 func TestLoadUsesExplicitConfigFile(t *testing.T) {
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)

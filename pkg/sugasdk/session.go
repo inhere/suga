@@ -239,7 +239,8 @@ func (s *Session) Compact(ctx context.Context) error {
 }
 
 // Close releases the session's runtime and forgets it in the engine. It is
-// idempotent.
+// idempotent. Close it while no turn runs: the runtime the turn uses is closed
+// here, so a Send still in flight fails.
 func (s *Session) Close() error {
 	if s == nil {
 		return nil
