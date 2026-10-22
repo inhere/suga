@@ -323,7 +323,7 @@ gofer job resume <job-id> --prompt "从上次会话继续"
 
 `initialize` 声明 `sessionCapabilities.list/resume/close`（`load_session` 仍由顶层 loadSession 能力声明）：
 
-- `session/list`：按 `updated_at` 倒序，每页 50 条，`nextCursor` 为上一页最后一条的 `(updated_at, id)` 编码；只列普通会话，排除 archived 与子 agent。目录规则与 CLI `suga sessions` 一致（设计 2026-10-20「会话列表默认当前目录」）：请求带 `cwd` 按它过滤（同目录，Windows 不区分大小写），不带时用 suga 进程的工作目录；没有记录目录的旧会话只在 `_meta` 带 `suga/all: true` 的请求里出现。响应 `_meta` 始终带 `suga/otherDirs`（其它目录的会话数）；默认视图结果为空且 N>0 时另带 `suga/hint`，文本与 CLI 的 stderr 提示相同（“当前目录 <dir> 没有会话…或用 suga sessions --all 列出全部”）。列表只含标题与目录，不含会话内容。
+- `session/list`：按 `updated_at` 倒序，每页 50 条，`nextCursor` 为上一页最后一条的 `(updated_at, id)` 编码；只列普通会话，排除 archived 与子 agent。目录规则与 CLI `suga sessions` 一致（设计 2026-10-20「会话列表默认当前目录」）：请求带 `cwd` 按它过滤（同目录，Windows 不区分大小写），不带时用 suga 进程的工作目录；没有记录目录的旧会话只在 `_meta` 带 `suga/all: true` 的请求里出现。与 CLI 一致，宿主会话（`origin=xhen`）默认不返回，数量在响应 `_meta.suga/hiddenXhen` 里；客户端需要时用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 `suga sessions --origin xhen`；默认视图为空时 `suga/hint` 里也会点名）。响应 `_meta` 始终带 `suga/otherDirs`（其它目录的会话数）；默认视图结果为空且 N>0 时另带 `suga/hint`，文本与 CLI 的 stderr 提示相同（“当前目录 <dir> 没有会话…或用 suga sessions --all 列出全部”）。列表只含标题与目录，不含会话内容。
 - `session/load`：按协议把当前分段以 `session/update` 通知回放给客户端——压缩摘要一条 agent 思考（“之前的对话已压缩：…”）、用户消息 `user_message_chunk`、助手正文 `agent_message_chunk`、工具调用与结果 `tool_call`/`tool_call_update`（completed/failed，结果只带前 2KB 文本）；回放总量上限 2MB，超过时只回放最近部分并在开头一条思考说明。回放的边界与采用规则复用上下文组装的 `loadHistory`（`personal.SegmentHistory`），客户端看到的内容与下一回合模型的一致。
 - `session/resume`：与 load 相同的检查（目录一致、没有进行中的回合），不回放任何通知；响应带 `modes` 与 `configOptions`。`chat --resume` 的目录询问与 chdir 逻辑不受影响（v0.25.0）。
 - `session/close`：有进行中的回合先取消并等待结束（同 `session/cancel`），之后释放该会话的进程内状态（always 规则不持久化）；关闭后的 prompt 返回 invalid params。会话本身不删除（数据治理走 `suga data gc`）。
