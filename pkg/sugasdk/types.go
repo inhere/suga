@@ -69,6 +69,16 @@ type Prompt struct {
 	// Images are picture files attached to the message (same checks, scaling
 	// and storage as chat's :image).
 	Images []string
+	// RequestID makes the turn an idempotent request of this session: the caller
+	// generates it (a UUID is recommended) and it is scoped to one session.
+	// Empty keeps the plain behaviour of Send. With an id, a Send for an id this
+	// session already finished returns the stored first result with Result.Replayed
+	// set instead of running the turn again; a Send for an id whose turn currently
+	// runs errors with ErrRequestRunning; a record left running by a process that
+	// died mid-turn reads as delivery uncertain (ErrDeliveryUncertain, and
+	// "unknown" from RequestStatus): resend under a NEW id, nothing is replayed
+	// on its own.
+	RequestID string
 }
 
 // Event is one update of a running turn. Only stable fields are carried: the
@@ -131,6 +141,9 @@ type Result struct {
 	// ReturnedSteers are the steering messages the turn did not deliver, as
 	// text: the caller runs them as the next turn.
 	ReturnedSteers []string `json:"returned_steers,omitempty"`
+	// Replayed marks a result returned from the stored record of an earlier
+	// Send with the same RequestID (the model was not called again).
+	Replayed bool `json:"replayed,omitempty"`
 }
 
 // Card is a read-only snapshot of where a session stands.

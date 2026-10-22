@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/memory"
@@ -37,7 +38,11 @@ type Session struct {
 
 	mu      sync.Mutex
 	running bool
-	closed  bool
+	// runningRequest is the Prompt.RequestID of the turn that currently holds
+	// the slot ("" for a plain send without an id); it lets a second Send with
+	// the same id read as ErrRequestRunning instead of a bare ErrBusy.
+	runningRequest string
+	closed         bool
 }
 
 // OpenSession opens a conversation: an existing session id continues it, an
@@ -141,18 +146,86 @@ func (s *Session) Workspace() string { return s.workspace }
 // turn ends when ctx is cancelled; a panic inside the turn is recovered and
 // returned as an error, so it never reaches the caller. A session runs one turn
 // at a time: a second Send while one runs returns ErrBusy instead of queueing.
+// With a RequestID the send is an idempotent request instead: an id already
+// finished replays its stored first result (Result.Replayed), an id whose turn
+// runs errors with ErrRequestRunning, and a record left running by a process
+// that died mid-turn errors with ErrDeliveryUncertain (resend with a new id).
 func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (res Result, err error) {
-	if err := s.beginTurn(); err != nil {
+	requestID := strings.TrimSpace(prompt.RequestID)
+	if prompt.RequestID != "" && requestID == "" {
+		return Result{}, errors.New("sugasdk: the request id is empty")
+	}
+	// The request ledger lives in the session meta: one store handle covers the
+	// dispatch checks, the claim and the records this turn writes.
+	var repo *store.Store
+	if requestID != "" {
+		if repo, err = s.engine.openStore(); err != nil {
+			return Result{}, err
+		}
+		// Registered before the other defers, so it runs last (after the turn
+		// outcome was recorded).
+		defer func() { _ = repo.Close() }()
+		rec, rerr := s.readRequestRecord(ctx, repo, requestID)
+		if rerr != nil {
+			return Result{}, rerr
+		}
+		if rec != nil {
+			// An existing claim answers the send: replay it, or report running /
+			// uncertain, without taking the turn slot.
+			return s.dispatchRecord(ctx, repo, requestID, rec)
+		}
+	}
+	if err := s.claimRequest(requestID); err != nil {
 		return Result{}, err
 	}
 	defer s.endTurn()
+	if requestID != "" {
+		// Persist the claim (state running, no turn id yet) as a write-once key:
+		// from here on a crash leaves the id marked running (delivery uncertain)
+		// instead of silently lost.
+		applied, perr := s.claimRequestRecord(ctx, repo, requestID)
+		if perr != nil {
+			return Result{}, fmt.Errorf("sugasdk: claim request %q: %w", requestID, perr)
+		}
+		if !applied {
+			// Another claimer took the key between the read and this patch:
+			// re-read and answer from the record.
+			rec, rerr := s.readRequestRecord(ctx, repo, requestID)
+			if rerr != nil {
+				return Result{}, rerr
+			}
+			if rec == nil {
+				// Unreachable (the guard key and the patch key are the same), but
+				// a nil record must never reach dispatchRecord.
+				return Result{}, fmt.Errorf("sugasdk: claim of request %q vanished", requestID)
+			}
+			return s.dispatchRecord(ctx, repo, requestID, rec)
+		}
+		// The claim grew the session's record registry: apply the size cap (best
+		// effort, so an old finished record gets out of the meta again).
+		s.trimRequestRecordsFor(ctx, repo)
+	}
 	// The turn runs suga's own code (tools, provider): a panic there must not
 	// take the host down, and the session keeps whichever state suga left.
+	// The outcome is recorded (or the panic recovered) below, before the turn
+	// slot and the store close.
+	var turnID string
+	// The provider may call the stream callback from its own goroutine: the
+	// turn id it records (below) must not race with the finish defer reading it.
+	var turnMu sync.Mutex
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			s.engine.logger.Error("sugasdk: recovered panic in a turn", "session", s.id, "panic", recovered)
 			err = fmt.Errorf("sugasdk: turn panicked: %v", recovered)
 			res = Result{SessionID: s.id, State: string(personal.RunFailed)}
+		}
+		turnMu.Lock()
+		turn, request := turnID, requestID
+		turnMu.Unlock()
+		if request != "" && turn != "" {
+			if perr := s.requestTurnFinished(ctx, repo, request, turn, res, err); perr != nil {
+				s.engine.logger.Warn("sugasdk: record the request outcome", "session", s.id, "request", request, "err", perr)
+			}
 		}
 	}()
 	images, err := s.prepareImages(prompt.Images)
@@ -160,26 +233,54 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		return Result{}, err
 	}
 	events := func(_ context.Context, ev personal.Event) error {
+		if requestID != "" && ev.TurnID != "" {
+			turnMu.Lock()
+			if turnID == "" {
+				// The turn's row exists (run_started and later): store the
+				// id-to-turn mapping early, so a crash mid-turn still lets a
+				// host line the request up with the turn it may have reached
+				// the model with.
+				turnID = ev.TurnID
+				stored := turnID
+				turnMu.Unlock()
+				s.requestTurnStarted(ctx, repo, requestID, stored)
+			} else {
+				turnMu.Unlock()
+			}
+		}
 		if emit != nil {
 			emit(convertEvent(ev))
 		}
 		return nil
 	}
 	runResult, runErr := s.rt.Runner.Run(ctx, personal.RunRequest{SessionID: s.id, Prompt: prompt.Text, Images: images, Emit: events})
+	if runResult.TurnID != "" {
+		turnMu.Lock()
+		if turnID == "" {
+			turnID = runResult.TurnID
+		}
+		turnMu.Unlock()
+	}
 	return convertResult(runResult), runErr
 }
 
-// beginTurn takes the session's single turn slot.
-func (s *Session) beginTurn() error {
+// claimRequest takes the session's single turn slot. requestID (empty for a
+// plain send) is recorded with the slot, so a second Send with the same id
+// reads as ErrRequestRunning while a different turn in flight stays ErrBusy.
+func (s *Session) claimRequest(requestID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return ErrSessionClosed
 	}
 	if s.running {
+		if requestID != "" && s.runningRequest == requestID {
+			return ErrRequestRunning
+		}
 		return ErrBusy
 	}
 	s.running = true
+	s.runningRequest = requestID
 	return nil
 }
 
@@ -187,7 +288,51 @@ func (s *Session) beginTurn() error {
 func (s *Session) endTurn() {
 	s.mu.Lock()
 	s.running = false
+	s.runningRequest = ""
 	s.mu.Unlock()
+}
+
+// RequestStatus reports where the request requestID of this session stands:
+// RequestStatusRunning while its turn runs here, RequestStatusDone or
+// RequestStatusFailed once its stored outcome is replayable, and
+// RequestStatusUnknown otherwise - including a record left running by a
+// process that died mid-turn (delivery uncertain: resend with a new id).
+func (s *Session) RequestStatus(ctx context.Context, requestID string) (string, error) {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return "", errors.New("sugasdk: the request id is empty")
+	}
+	if err := s.checkOpen(); err != nil {
+		return "", err
+	}
+	repo, err := s.engine.openStore()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = repo.Close() }()
+	rec, err := s.readRequestRecord(ctx, repo, requestID)
+	if err != nil {
+		return "", err
+	}
+	if rec == nil {
+		return RequestStatusUnknown, nil
+	}
+	switch strings.TrimSpace(rec.State) {
+	case requestStateDone:
+		return RequestStatusDone, nil
+	case requestStateFailed:
+		return RequestStatusFailed, nil
+	case requestStateRunning:
+		s.mu.Lock()
+		mine := s.running && s.runningRequest == requestID
+		s.mu.Unlock()
+		if mine {
+			return RequestStatusRunning, nil
+		}
+	}
+	// Nothing running in a live place reads unknown: the claim is a leftover,
+	// and the caller decides to resend under a new id.
+	return RequestStatusUnknown, nil
 }
 
 // Steer inserts text into the running turn of the session (the turn's next model

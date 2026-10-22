@@ -28,6 +28,30 @@
 // is already running (ErrNoRunningTurn when there is none). A panic inside a
 // turn is recovered and returned as an error; it never propagates to the host.
 //
+// # Idempotent sends
+//
+// Prompt.RequestID (recommended: a UUID the caller generates, scoped to one
+// session) makes a Send deduplicated instead of always running: with an id this
+// session already finished, Send replays the stored first result with
+// Result.Replayed set and the model is not called again. The replay comes from
+// storage: a small record in the session meta (turn id, state, a summary with
+// the usage numbers and the end time; never the answer text, so the meta does
+// not grow with the length of the answers), and the output rebuilt from the
+// turn's own assistant entry. A turn whose entries are gone from the session
+// log no longer replays: Send reports ErrRequestOutputGone. Each session keeps
+// only the most recent 200 of these records (requestRecordLimit) - the window
+// serves reconnects, so older finished records (but never a running one) drop
+// from the meta as newer claims arrive, and an id trimmed out of the window is
+// an unclaimed request to Send again.
+// An id whose turn is running errors with ErrRequestRunning; a record left
+// running by a process that died mid-turn (delivery unknown) errors with
+// ErrDeliveryUncertain and reads "unknown" from Session.RequestStatus: the
+// host resends the prompt under a NEW request id, nothing replays on its own.
+// The mapping and outcomes survive restarts and a reopened session handle
+// answers the same way. A Prompt without a RequestID keeps the plain
+// behaviour. Missing or blank ids in place of RequestID (a Prompt with a
+// whitespace-only id) are refused.
+//
 // Sessions opened without SessionOptions.Origin record origin "xhen" and are
 // hidden by the default `suga sessions` list, which the host then filters with
 // Engine.Sessions(SessionFilter{Origin: "xhen"}).
