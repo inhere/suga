@@ -3,7 +3,10 @@
 package proctree
 
 import (
+	"errors"
+	"fmt"
 	"os/exec"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -11,8 +14,10 @@ import (
 
 // Tree is a job object holding the shell and every process it starts.
 // The job is created with KILL_ON_JOB_CLOSE, so closing it ends leftovers.
-// Between Start and the assignment a child could escape; that window is a
-// few microseconds and accepted.
+// The shell is started CREATE_SUSPENDED and resumed only after it has been
+// assigned to the job: a child the shell starts in a window between Start and
+// the assignment would be outside the job, escaping both the kill and the
+// resource limits.
 type Tree struct {
 	cmd *exec.Cmd
 	job windows.Handle
@@ -77,20 +82,98 @@ func NewLimited(cmd *exec.Cmd, limits Limits) *Tree {
 		return p
 	}
 	p.job = job
+	// With a job to enter, start the shell suspended and resume it in Started
+	// only after the assignment: while suspended the shell can start nothing, so
+	// a child cannot end up outside the job. Without a job the shell is started
+	// normally and only the shell itself can be killed (as before).
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_SUSPENDED
 	return p
 }
 
-// Started puts the shell into the job; children inherit the job.
-func (p *Tree) Started() {
-	if p.job == 0 || p.cmd.Process == nil {
-		return
+// Started assigns the suspended shell to the job (children inherit it) and then
+// resumes it. The caller must start the command right away and call this right
+// after Start: until Started succeeds the shell cannot run. When the assignment
+// or the resume fails, the still-suspended shell is terminated so that nothing
+// ever runs outside the job, and the error is returned for the caller to report
+// the command as failed.
+func (p *Tree) Started() error {
+	if p.cmd.Process == nil {
+		return nil
+	}
+	if p.job == 0 {
+		// No job (creating it failed): the process started normally, not
+		// suspended, and the shell alone can still be killed.
+		return nil
 	}
 	h, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(p.cmd.Process.Pid))
 	if err != nil {
-		return
+		p.abort()
+		return fmt.Errorf("assign the shell to its job: open pid %d: %w", p.cmd.Process.Pid, err)
 	}
-	_ = windows.AssignProcessToJobObject(p.job, h)
+	err = windows.AssignProcessToJobObject(p.job, h)
 	_ = windows.CloseHandle(h)
+	if err != nil {
+		p.abort()
+		return fmt.Errorf("assign the shell to its job: %w", err)
+	}
+	if err := resumeProcess(uint32(p.cmd.Process.Pid)); err != nil {
+		p.abort()
+		return fmt.Errorf("resume the suspended shell: %w", err)
+	}
+	return nil
+}
+
+// abort terminates a shell that could not join the job or be resumed, so it
+// never starts (and never starts children) outside the job's limits.
+func (p *Tree) abort() {
+	if p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+	}
+}
+
+// resumeProcess resumes the threads of a process started with
+// CREATE_SUSPENDED. Such a process holds just its initial thread (suspended,
+// so it can have created no others); os.StartProcess does not return that
+// thread's handle, so the threads are listed with the tool help snapshot and
+// each one opened and resumed.
+func resumeProcess(pid uint32) error {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, pid)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(snap)
+	entry := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
+	if err := windows.Thread32First(snap, &entry); err != nil {
+		return err
+	}
+	resumed := 0
+	for {
+		if entry.OwnerProcessID == pid {
+			th, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, entry.ThreadID)
+			if err != nil {
+				return err
+			}
+			_, err = windows.ResumeThread(th)
+			_ = windows.CloseHandle(th)
+			if err != nil {
+				return err
+			}
+			resumed++
+		}
+		if err := windows.Thread32Next(snap, &entry); err != nil {
+			// The enumeration ends with ERROR_NO_MORE_FILES; anything else on a
+			// snapshot of a mid flight process is not expected, and a thread that
+			// was never found and resumed keeps the process dead until Kill.
+			break
+		}
+	}
+	if resumed == 0 {
+		return errors.New("no thread of the process in the snapshot")
+	}
+	return nil
 }
 
 // Kill terminates the whole job, and the shell directly in case it was not

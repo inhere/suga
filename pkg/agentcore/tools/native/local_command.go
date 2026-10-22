@@ -143,7 +143,14 @@ func (c *LocalCommand) Run(ctx context.Context, command string, stream io.Writer
 		}
 		res.ExitCode = -1
 	} else {
-		tree.Started()
+		if serr := tree.Started(); serr != nil {
+			// Started kills the suspended shell when it cannot join the job: reap
+			// it and report why nothing ran.
+			_ = cmd.Wait()
+			tree.Close()
+			res.ExitCode = -1
+			return res, fmt.Errorf("run %s: %w", c.shell.name(), serr)
+		}
 		waitErr := cmd.Wait()
 		tree.Close() // also ends background children left behind by the command
 		res.ExitCode = cmd.ProcessState.ExitCode()

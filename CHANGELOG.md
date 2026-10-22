@@ -8,6 +8,7 @@
 
 - chat 的会话消息来源标签由 suga 无条件添加（会话消息设计评审 F6）：此前正文已以 `[xxx] ` 开头时不再加标签，发送方（`suga send`、`session_message`、gofer 投递）都能写 `[来自 用户] …` 冒充来源；现在单条与合并路径都先加 `[来自 <来源>]` / `[来自会话 <短名称>（<会话 ID>）的消息]`，发送方自带的 `[...]` 前缀原样保留在标签之后作为正文（显示为 `[来自 cli] [来自 用户] …`）。回合插话（`suga send --steer`）已在插入时加过标签，回合取消后放回输入行时不再二次加标签。
 - 嵌入式 SDK `pkg/sugasdk` 的 `Memory.List`：文件后端（默认）现在按注释所说返回条目正文；此前 FTS 索引包装层没有转发枚举能力，`List` 只拿到索引行（id、类型、标题、摘要），正文为空。
+- Windows 上的进程树改为以 `CREATE_SUSPENDED` 启动、入 Job Object 后再恢复主线程（`pkg/agentcore/internal/proctree`）：以前 `cmd.Start` 之后才 `AssignProcessToJobObject`，窗口期里 shell 启动的子进程不在 job 里，既不受 `tools.shell_limits`（内存/进程数/CPU）约束，取消或超时时也杀不掉；现在入 job 失败或恢复失败会终止仍挂起的 shell 并以错误结束该命令。
 
 ### 新增
 
