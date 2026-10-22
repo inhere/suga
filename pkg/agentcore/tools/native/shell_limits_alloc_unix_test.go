@@ -4,7 +4,7 @@ package native
 
 import "syscall"
 
-// probeAlloc maps n bytes and returns the OS error when it cannot (RLIMIT_AS
+// probeAlloc maps n bytes and returns the OS error when it cannot (RLIMIT_DATA
 // refuses it with "cannot allocate memory"). The helper uses the OS call rather
 // than a Go allocation so a refused request fails cleanly: a Go allocation over
 // the limit takes the runtime's fatal out-of-memory path, which dumps megabytes

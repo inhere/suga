@@ -10,7 +10,7 @@ import "time"
 // enforce is ignored rather than approximated.
 type Limits struct {
 	// MemoryBytes caps the memory of one process and of the whole tree
-	// (Windows: ProcessMemoryLimit and JobMemoryLimit; Unix: RLIMIT_AS).
+	// (Windows: ProcessMemoryLimit and JobMemoryLimit; Unix: RLIMIT_DATA).
 	MemoryBytes uint64
 	// Processes caps how many processes the tree may have at once (Windows:
 	// ActiveProcessLimit; Unix: RLIMIT_NPROC, which counts the whole user).

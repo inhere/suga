@@ -56,9 +56,15 @@ func applyLimits(cmd *exec.Cmd, limits Limits) {
 	var script strings.Builder
 	// The hard limit goes with the soft one (no -S): a command then cannot raise
 	// its own limit back. A shell or kernel that does not know one of these
-	// (RLIMIT_AS on macOS) leaves that one limit off, the rest still apply.
+	// leaves that one limit off, the rest still apply.
+	//
+	// Memory is RLIMIT_DATA (ulimit -d), not RLIMIT_AS (ulimit -v): Go, Java and
+	// Node reserve large inaccessible address ranges at start, which RLIMIT_AS
+	// counts, so a 1GiB virtual cap failed a Go program allocating 64MiB. Linux
+	// (4.7+) counts private writable mappings in RLIMIT_DATA - the memory a
+	// program really uses - and not those reservations.
 	if limits.MemoryBytes > 0 {
-		fmt.Fprintf(&script, "ulimit -v %d 2>/dev/null\n", limits.MemoryBytes/1024)
+		fmt.Fprintf(&script, "ulimit -d %d 2>/dev/null\n", limits.MemoryBytes/1024)
 	}
 	if n := limitProcesses(limits.Processes); n > 0 {
 		fmt.Fprintf(&script, "ulimit -u %d 2>/dev/null\n", n)
