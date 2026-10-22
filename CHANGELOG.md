@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 进程内嵌入式 SDK `pkg/sugasdk`（实验性，对外 API 可能在小版本间调整）：同级仓库 xhen 这类宿主程序可以直接在自己的进程里驱动 suga——`Open` 打开引擎（`SUGA_HOME` 守卫：未加载则设置并加载、同目录复用、不同目录返回 `ErrSugaHomeMismatch`；一个进程同时只允许一个引擎，`Close` 后可再 `Open`）、`OpenSession` 按会话工作区装配运行时（可传宿主自带工具、`HostContext`、`agentcore.Hook`、审批器与记忆写入确认），`Send` 跑一个回合并接收 `Event`（文本增量、工具调用/结果的摘要、用量、错误），并可用 `Steer` 在回合中插话、`Card`、`Compact`、`Search`、`Sessions`、`Memory` 读改同一份会话库与记忆。导出的 API 不出现任何 `internal` 类型；会话默认记 `origin=xhen`（`suga sessions` 默认不列出），同一会话同时只跑一个回合（第二个 `Send` 返回忙错误而不排队），回合内 panic 转成错误返回而不传给宿主。用法见 `README.md` 的“Embedding”一节。
 - 面向嵌入方（进程内驱动 suga 的程序）的两个扩展点，普通用户无变化：
   - `wiring.Options.ExtraTools` 允许宿主把自己的 Go 工具注册进主会话工具表：它们出现在工具列表、`tool_search` 与 `suga_manifest` 的工具清单里，和内置工具一样受 `tools.disabled` 控制；与内置/MCP 工具或运行时自身注册的工具（`task`、`agent`、`update_plan` 等）重名时 `Open` 返回错误，而不是静默覆盖；子 agent 默认不获得这些工具。
   - `wiring.Options.HostContext`（`personal.Config.HostContextSource`）允许宿主每回合提供一段文本（人物设定、主题索引、原话约束等）与其 hash：段开始时冻结进段上下文，作为 `## Host context` 一节放在附加提示之后；段内每回合按 hash 比较，变化时以现有的“上下文更新”消息追加新版本，不变则不写；交接/压缩后的新段重新读取最新内容；空内容等同于没有（不输出空节）；`suga inspect manifest` 的常驻上下文新增 `host_context` 一项。
