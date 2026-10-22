@@ -195,6 +195,11 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 			if rerr != nil {
 				return Result{}, rerr
 			}
+			if rec == nil {
+				// Unreachable (the guard key and the patch key are the same), but
+				// a nil record must never reach dispatchRecord.
+				return Result{}, fmt.Errorf("sugasdk: claim of request %q vanished", requestID)
+			}
 			dres, derr := s.dispatchRecord(requestID, rec)
 			return dres, derr
 		}
@@ -204,15 +209,21 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 	// The outcome is recorded (or the panic recovered) below, before the turn
 	// slot and the store close.
 	var turnID string
+	// The provider may call the stream callback from its own goroutine: the
+	// turn id it records (below) must not race with the finish defer reading it.
+	var turnMu sync.Mutex
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			s.engine.logger.Error("sugasdk: recovered panic in a turn", "session", s.id, "panic", recovered)
 			err = fmt.Errorf("sugasdk: turn panicked: %v", recovered)
 			res = Result{SessionID: s.id, State: string(personal.RunFailed)}
 		}
-		if requestID != "" && turnID != "" {
-			if perr := s.requestTurnFinished(ctx, repo, requestID, turnID, res, err); perr != nil {
-				s.engine.logger.Warn("sugasdk: record the request outcome", "session", s.id, "request", requestID, "err", perr)
+		turnMu.Lock()
+		turn, request := turnID, requestID
+		turnMu.Unlock()
+		if request != "" && turn != "" {
+			if perr := s.requestTurnFinished(ctx, repo, request, turn, res, err); perr != nil {
+				s.engine.logger.Warn("sugasdk: record the request outcome", "session", s.id, "request", request, "err", perr)
 			}
 		}
 	}()
@@ -221,12 +232,20 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		return Result{}, err
 	}
 	events := func(_ context.Context, ev personal.Event) error {
-		if requestID != "" && turnID == "" && ev.TurnID != "" {
-			// The turn's row exists (run_started and later): store the id-to-turn
-			// mapping early, so a crash mid-turn still lets a host line the
-			// request up with the turn it may have reached the model with.
-			turnID = ev.TurnID
-			s.requestTurnStarted(ctx, repo, requestID, turnID)
+		if requestID != "" && ev.TurnID != "" {
+			turnMu.Lock()
+			if turnID == "" {
+				// The turn's row exists (run_started and later): store the
+				// id-to-turn mapping early, so a crash mid-turn still lets a
+				// host line the request up with the turn it may have reached
+				// the model with.
+				turnID = ev.TurnID
+				stored := turnID
+				turnMu.Unlock()
+				s.requestTurnStarted(ctx, repo, requestID, stored)
+			} else {
+				turnMu.Unlock()
+			}
 		}
 		if emit != nil {
 			emit(convertEvent(ev))
@@ -235,7 +254,11 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 	}
 	runResult, runErr := s.rt.Runner.Run(ctx, personal.RunRequest{SessionID: s.id, Prompt: prompt.Text, Images: images, Emit: events})
 	if runResult.TurnID != "" {
-		turnID = runResult.TurnID
+		turnMu.Lock()
+		if turnID == "" {
+			turnID = runResult.TurnID
+		}
+		turnMu.Unlock()
 	}
 	return convertResult(runResult), runErr
 }
