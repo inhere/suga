@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # 输出契约（OutputSchema）一期 实施计划
 
-> 状态：Draft 0.1 / 待人工计划批准
+> 状态：Approved 0.1（2026-10-22 用户：“批准输出契约计划，开始实施”）/ 实施中
 
 ## 修订记录
 
