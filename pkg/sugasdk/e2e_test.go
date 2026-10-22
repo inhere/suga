@@ -15,8 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gookit/goutil/x/assert"
 	gkconfig "github.com/gookit/config/v2"
+	"github.com/gookit/goutil/x/assert"
 
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal/store"
