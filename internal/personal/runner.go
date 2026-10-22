@@ -372,7 +372,10 @@ type Runner struct {
 	// (see gate.go).
 	gateMu sync.Mutex
 	gates  map[string]*gateState
-	rec    *recorder
+	rec *recorder
+	// toolLookup resolves a call's tool for the admit ledger, whose Meta decides
+	// whether the call has side effects; nil counts every call as one.
+	toolLookup tools.Lookup
 	// deadline is the run's job-deadline state (nil-equivalent when
 	// DeadlineEnv is empty); the deadline hint hook shares it across turns.
 	deadline *deadlineState
@@ -406,8 +409,11 @@ func New(cfg Config) (*Runner, error) {
 	if cfg.CompactProvider != nil {
 		cfg.CompactProvider = rec.observeProvider(cfg.CompactProvider, cfg.CompactProvider.Name(), cfg.CompactModel)
 	}
+	// The admit hook reads a tool's Meta before the call runs; the wrapped
+	// registry still exposes lookup (observedTools.Get passes it through).
+	toolLookup, _ := cfg.Tools.(tools.Lookup)
 	runner := &Runner{cfg: cfg, heldLocks: make(map[string]*process.SessionLock),
-		steers: make(map[string]*steerInbox), rec: rec}
+		steers: make(map[string]*steerInbox), rec: rec, toolLookup: toolLookup}
 	runner.deadline = newDeadlineState(cfg.DeadlineEnv, runner.clock())
 	runner.bindVisibility()
 	return runner, nil
@@ -719,6 +725,11 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 		hooks = append(hooks, toolEventHook{sink: sink, sessionID: result.SessionID, turnID: result.TurnID,
 			runID: result.RunID, workspace: r.cfg.Workspace, diffPreview: r.cfg.DiffPreview})
 	}
+	// The admit ledger writes the call down before it runs (issue suga-r72b), so
+	// an interrupted turn can answer it as "state unknown" instead of replaying
+	// it. It never fails a tool: the ledger is best-effort.
+	hooks = append(hooks, admitHook{repo: r.cfg.Repository, lookup: r.toolLookup,
+		sessionID: result.SessionID, turnID: result.TurnID})
 	// The loop guard goes last so its remark (appended to the repeated call's
 	// result event below) stays out of the tool_result line chat and the other
 	// callers show; AfterTool mutations persist into the stored message.

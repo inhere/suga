@@ -155,6 +155,13 @@ func (r *Runner) finish(ctx context.Context, model Session, result RunResult, tu
 	// docs/design/2026-10-15-interrupted-turn-replay-design.md, issue suga-y0sk).
 	// The note is best-effort: the turn's own outcome is what the caller reports.
 	if turnStatus != store.TurnCompleted {
+		// An admitted call whose result never made it into the transcript is
+		// answered as "state unknown" instead of being replayed (issue suga-r72b);
+		// it must be written before the note so the note stays the turn's last
+		// entry (design D4 of the interrupted-turn replay design).
+		if err := r.markInterruptedToolCalls(finishCtx, model.ID, result.TurnID); err != nil {
+			slog.Warn("mark interrupted tool calls", "session_id", model.ID, "turn_id", result.TurnID, "err", err)
+		}
 		reason := ""
 		if runErr != nil && !canceled {
 			reason = runErr.Error()

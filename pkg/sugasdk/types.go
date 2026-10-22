@@ -43,7 +43,10 @@ type SessionOptions struct {
 	AllowWrite bool
 	// ExtraTools are the host's own tools: they sit next to the built-in ones
 	// (tool table, manifest, tool_search) and tools.disabled can remove them.
-	// A name a built-in or MCP tool already has is an error.
+	// A name a built-in or MCP tool already has is an error. Execute reads
+	// tools.InvocationID(ctx) - an id unique to the call, stable for the whole
+	// call - so a host may use it as the idempotency key of its own side-effect
+	// ledger (see doc.go, "Tool invocations").
 	ExtraTools []api.Tool
 	// Hooks observe the turn (agentcore.Hook).
 	Hooks []agentcore.Hook

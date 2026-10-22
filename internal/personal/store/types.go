@@ -40,6 +40,11 @@ const (
 	EntryPlan          = "plan"
 	EntryHandoff       = "handoff"
 	EntryContextUpdate = "context_update"
+	// EntryAdmit is the ledger row of one tool call with side effects, written
+	// before the call runs (issue suga-r72b): an interrupted turn finds an
+	// admitted call without a tool result and answers it as "state unknown"
+	// instead of replaying it. It is never a model message.
+	EntryAdmit = "admit"
 )
 
 // Event kinds stored in events.kind.
@@ -116,6 +121,11 @@ const (
 	// tool call's result: name = tool, attrs rule (R1 consecutive / R2 total
 	// repeats within a turn) and count (which call of the group it was).
 	EventLoopGuard = "loop_guard"
+	// EventToolInterrupted records a tool call with side effects that a turn
+	// ended before storing its result: name = tool, status "interrupted",
+	// attrs invocation_id and call_id. The next turn's replay answers the call
+	// as "state unknown" instead of running it again.
+	EventToolInterrupted = "tool_interrupted"
 )
 
 // Session is one conversation. Meta holds free-form keys (rules hash, append

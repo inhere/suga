@@ -22,6 +22,7 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 // allowAll permits every tool call (the SDK's fail-closed default is nil).
@@ -30,7 +31,12 @@ type allowAll struct{}
 func (allowAll) Decide(context.Context, api.ToolCall, api.Tool) error { return nil }
 
 // echoTool is the host's own tool: it proves ExtraTools reach the tool table.
-type echoTool struct{ calls *int32 }
+type echoTool struct {
+	calls *int32
+	// invocations collects the invocation id of every execution: what a host
+	// ledger keys on to recognize a call it already ran (see doc.go).
+	invocations *[]string
+}
 
 func (echoTool) Name() string        { return "sdk_echo" }
 func (echoTool) Description() string { return "echoes the given text" }
@@ -43,8 +49,11 @@ func (echoTool) Schema() api.ToolSchema {
 	}}
 }
 
-func (t echoTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolResult, error) {
+func (t echoTool) Execute(ctx context.Context, call api.ToolCall) (*api.ToolResult, error) {
 	atomic.AddInt32(t.calls, 1)
+	if t.invocations != nil {
+		*t.invocations = append(*t.invocations, tools.InvocationID(ctx))
+	}
 	return &api.ToolResult{CallID: call.CallID, Name: "sdk_echo", Content: "echo: " + argumentText(call)}, nil
 }
 
@@ -109,10 +118,11 @@ func TestEngineEndToEnd(t *testing.T) {
 	t.Cleanup(func() { _ = engine.Close() })
 
 	var calls int32
+	var invocations []string
 	var events []Event
 	session, err := engine.OpenSession(ctx, "", SessionOptions{
 		Workspace:  workspace,
-		ExtraTools: []api.Tool{echoTool{calls: &calls}},
+		ExtraTools: []api.Tool{echoTool{calls: &calls, invocations: &invocations}},
 		HostContext: func() (string, string) {
 			return "host persona: answer briefly", "hash-1"
 		},
@@ -132,6 +142,10 @@ func TestEngineEndToEnd(t *testing.T) {
 	assert.True(t, result.Usage.InputTokens > 0)
 	assert.True(t, result.SessionUsage.InputTokens > 0)
 
+	t.Run("the host tool saw an invocation id", func(t *testing.T) {
+		assert.Require(t, assert.Eq(t, 1, len(invocations)))
+		assert.True(t, strings.HasPrefix(invocations[0], result.TurnID+"/"))
+	})
 	t.Run("the host tool ran", func(t *testing.T) {
 		assert.Eq(t, int32(1), atomic.LoadInt32(&calls))
 		var call, result Event
