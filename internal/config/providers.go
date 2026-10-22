@@ -150,10 +150,14 @@ func (s ModelSpec) APIModel() string {
 }
 
 // ModelSettings is the effective model selection: main, optional compact
-// (summary) model and ordered fallbacks.
+// (summary) model and ordered fallbacks. Idle and Handoff are the per-scenario
+// overrides (models.idle / models.handoff); nil means the scenario falls back
+// to the compact model, then the turn's own model.
 type ModelSettings struct {
 	Main      ModelSpec
 	Compact   *ModelSpec
+	Idle      *ModelSpec
+	Handoff   *ModelSpec
 	Fallbacks []ModelSpec
 }
 
@@ -572,6 +576,22 @@ func CheckLegacyConfig() error {
 	return nil
 }
 
+var compactRefKeys = []string{"compact_model", "models.compact"} // the new key wins when both are set
+
+// resolveModelRef resolves one model ref key (models.<scenario> and its
+// aliases); "" (unset) returns nil and the runtime keeps its fallback model.
+func resolveModelRef(key string, providers map[string]ProviderConfig, defaultProvider string) (*ModelSpec, error) {
+	ref := strings.TrimSpace(gkconfig.String(key))
+	if ref == "" {
+		return nil, nil
+	}
+	spec, err := ResolveModel(ref, providers, defaultProvider)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", key, err)
+	}
+	return &spec, nil
+}
+
 // ReadModelSettings resolves the main model (flagModel > SUGA_MODEL > model),
 // compact_model and fallback_models. The main ref's provider is the default
 // provider for bare model ids in compact_model and fallback_models.
@@ -608,12 +628,20 @@ func ReadModelSettings(flagModel string) (ModelSettings, error) {
 		slog.Warn(w)
 	}
 
-	if ref := strings.TrimSpace(gkconfig.String("compact_model")); ref != "" {
-		spec, err := ResolveModel(ref, providers, main.Provider.ID)
+	for _, key := range compactRefKeys {
+		spec, err := resolveModelRef(key, providers, main.Provider.ID)
 		if err != nil {
-			return ModelSettings{}, fmt.Errorf("compact_model: %w", err)
+			return ModelSettings{}, err
 		}
-		settings.Compact = &spec
+		if spec != nil {
+			settings.Compact = spec
+		}
+	}
+	if settings.Idle, err = resolveModelRef("models.idle", providers, main.Provider.ID); err != nil {
+		return ModelSettings{}, err
+	}
+	if settings.Handoff, err = resolveModelRef("models.handoff", providers, main.Provider.ID); err != nil {
+		return ModelSettings{}, err
 	}
 	for i, ref := range normalizeStringList(gkconfig.Get("fallback_models")) {
 		spec, err := ResolveModel(ref, providers, main.Provider.ID)

@@ -601,3 +601,49 @@ providers:
 	assert.NotNil(t, sent["input"])
 	assert.Nil(t, sent["messages"])
 }
+
+func TestReadModelSettingsScenarioModels(t *testing.T) {
+	t.Run("models.compact wins over compact_model", func(t *testing.T) {
+		loadYAML(t, "model: deepseek/deepseek-chat\n" +
+			"compact_model: deepseek-lite\n" +
+			"models:\n  compact: openai/gpt-4o-mini\n")
+		s, err := ReadModelSettings("")
+		assert.NoErr(t, err)
+		assert.Require(t, assert.NotNil(t, s.Compact))
+		assert.Eq(t, "openai/gpt-4o-mini", s.Compact.Ref())
+	})
+
+	t.Run("compact_model alone still works", func(t *testing.T) {
+		loadYAML(t, "model: deepseek/deepseek-chat\ncompact_model: deepseek-lite\n")
+		s, err := ReadModelSettings("")
+		assert.NoErr(t, err)
+		assert.Require(t, assert.NotNil(t, s.Compact))
+		assert.Eq(t, "deepseek/deepseek-lite", s.Compact.Ref()) // bare name uses the main provider
+		assert.Nil(t, s.Idle)
+		assert.Nil(t, s.Handoff)
+	})
+
+	t.Run("models.idle and models.handoff resolve", func(t *testing.T) {
+		loadYAML(t, "model: deepseek/deepseek-chat\n" +
+			"models:\n  idle: gpt-4o-mini\n  handoff: openai/gpt-4o-mini\n")
+		s, err := ReadModelSettings("")
+		assert.NoErr(t, err)
+		assert.Require(t, assert.NotNil(t, s.Idle))
+		assert.Eq(t, "deepseek/gpt-4o-mini", s.Idle.Ref()) // bare name uses the main provider
+		assert.Require(t, assert.NotNil(t, s.Handoff))
+		assert.Eq(t, "openai/gpt-4o-mini", s.Handoff.Ref())
+		assert.Nil(t, s.Compact)
+	})
+
+	t.Run("effective values via the config registry", func(t *testing.T) {
+		loadYAML(t, "model: deepseek/deepseek-chat\n" +
+			"models:\n  idle: openai/gpt-4o-mini\n")
+		v, err := ReadConfigValue("models.idle")
+		assert.NoErr(t, err)
+		assert.Eq(t, "openai/gpt-4o-mini", v.Value)
+		// unset scenario keys report "not configured", like compact_model.
+		v, err = ReadConfigValue("models.handoff")
+		assert.NoErr(t, err)
+		assert.Eq(t, "", v.Value)
+	})
+}
