@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
@@ -148,4 +150,55 @@ func TestDiscardQueuedReceipt(t *testing.T) {
 	stateNow, known := source.DeliveryState("d-1")
 	assert.True(t, known)
 	assert.Eq(t, personalprocess.StateDiscarded, stateNow)
+}
+
+// TestDeliveryOverTheSessionSocket drives the whole receiving path of one message:
+// the session socket (StartMessages with the chat's own deliverRequested and status
+// answers), the queue, the turn the chat loop starts, and the --wait-processed
+// receipt that reaches the sender (design D1-D3).
+func TestDeliveryOverTheSessionSocket(t *testing.T) {
+	state, source := newDeliveryState(t, mock.NewProvider(mock.Final("回答")))
+	// A busy chat, so the message queues for a turn of its own and the sender waits
+	// for that turn's receipt (an idle chat starts the turn at once, which has no
+	// receipt to report - the --wait semantics of every older version).
+	source.SetBusy(true)
+	home := shortTestHome(t)
+	server, err := personalprocess.StartMessages(filepath.Join(home, "run"), "session-delivery", "suga-del", home, nil,
+		state.deliverRequested, source.DeliveryState)
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = server.Close() })
+
+	done := make(chan error, 1)
+	sent := make(chan personalprocess.Response, 1)
+	go func() {
+		response, err := personalprocess.Send(server.Record(), personalprocess.Request{
+			Text: "你好", ID: "s-1", WaitProcessed: true,
+		})
+		if err != nil {
+			done <- err
+			return
+		}
+		sent <- response
+		done <- nil
+	}()
+
+	// The chat loop takes the queued message and runs the turn that carries it.
+	deadline := time.After(5 * time.Second)
+	for len(source.deliveries) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("the message never reached the chat queue")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	var lost string
+	in, err := nextChatInput(context.Background(), source, state.render, nil, &lost)
+	assert.Require(t, assert.NoErr(t, err))
+	state.turnDeliveries = in.deliveries
+	assert.NoErr(t, state.runTurn(in.line, in.injected, in.images))
+
+	assert.NoErr(t, settledOrFail(t, done, "the socket sender"))
+	response := <-sent
+	assert.Eq(t, "s-1", response.MessageID)
+	assert.Eq(t, personalprocess.StateProcessed, response.State)
 }
