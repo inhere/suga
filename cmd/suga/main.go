@@ -97,13 +97,29 @@ func bootstrapExempt(args []string) bool {
 	return args[0] == "help" || args[0] == "version" || args[0] == "--version" || args[0] == "-V"
 }
 
-// readOnlyInspectCommand reports `suga inspect manifest` (alias "info"): a
-// pure query that must not write anything under SUGA_HOME, so it skips the
-// config bootstrap and the log file and reads the configuration in place
-// (a missing .env reads as empty; the built-in skills are enumerated from the
-// embedded resources, see buildReadOnlySkillRegistry).
+// readOnlyInspectCommand reports `suga inspect manifest` (alias "info") and
+// `suga inspect rules <approval|output|nudge|lang>`: pure queries that must not
+// write anything under SUGA_HOME, so they skip the config bootstrap and the log
+// file and read the configuration in place (a missing .env reads as empty; the
+// built-in skills are enumerated from the embedded resources, see
+// buildReadOnlySkillRegistry).
 func readOnlyInspectCommand(args []string) bool {
-	return len(args) > 1 && args[0] == "inspect" && (args[1] == "manifest" || args[1] == "info")
+	if len(args) <= 1 || args[0] != "inspect" {
+		return false
+	}
+	if args[1] == "manifest" || args[1] == "info" {
+		return true
+	}
+	// The rule inspector needs no model or sessions either: a bare kind
+	// argument is enough to know it only reads the rule files.
+	switch {
+	case len(args) > 2 && args[1] == "rules":
+		switch args[2] {
+		case "approval", "output", "nudge", "lang":
+			return true
+		}
+	}
+	return false
 }
 
 func isInitCommand(args []string) bool {
