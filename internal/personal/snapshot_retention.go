@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
@@ -40,6 +42,12 @@ type SnapshotCheckpointState struct {
 type SnapshotCleanupReport struct {
 	RemovedTurns int
 	RemovedBytes int64
+	// SkippedRecords counts call records left unreadable because their
+	// meta.json was missing or corrupt.
+	SkippedRecords int
+	// RepairedPartials counts stale half-written call directories removed by
+	// cleanup.
+	RepairedPartials int
 }
 
 type snapshotCheckpoint struct {
@@ -198,9 +206,6 @@ func (s *SessionSnapshots) BeforeUndo(ctx context.Context, req native.SnapshotRe
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return native.SnapshotBefore{}, err
 	}
-	if err := os.MkdirAll(callDir, 0o700); err != nil {
-		return native.SnapshotBefore{}, fmt.Errorf("snapshots: create pre-undo record: %w", err)
-	}
 	meta := SnapshotMeta{
 		SessionID: sid, TurnID: tid, CallID: req.CallID, Seq: seq, Tool: req.Tool,
 		Root: req.Root, Rel: filepath.ToSlash(req.Rel), RealRel: filepath.ToSlash(req.RealRel),
@@ -214,17 +219,27 @@ func (s *SessionSnapshots) BeforeUndo(ctx context.Context, req native.SnapshotRe
 	if int64(len(req.Before)) > s.limits.MaxFileBytes {
 		meta.Unrecoverable = native.SnapshotUnrecoverableOversize
 	} else if err := s.checkCapacity(sid, int64(len(req.Before))); err != nil {
-		_ = os.RemoveAll(callDir)
 		return native.SnapshotBefore{}, err
-	} else if req.Kind == native.SnapshotKindFile {
-		if err := os.WriteFile(filepath.Join(callDir, "before"), req.Before, 0o600); err != nil {
-			_ = os.RemoveAll(callDir)
+	}
+	// Publish the record the same way BeforeCall does: the files go into a hidden
+	// partial directory and the rename makes it visible.
+	partialDir := filepath.Join(preDir, snapshotPartialDirName(name))
+	if err := os.MkdirAll(partialDir, 0o700); err != nil {
+		return native.SnapshotBefore{}, fmt.Errorf("snapshots: create pre-undo record: %w", err)
+	}
+	if meta.Unrecoverable == "" && req.Kind == native.SnapshotKindFile {
+		if err := os.WriteFile(filepath.Join(partialDir, "before"), req.Before, 0o600); err != nil {
+			_ = os.RemoveAll(partialDir)
 			return native.SnapshotBefore{}, fmt.Errorf("snapshots: write pre-undo before: %w", err)
 		}
 	}
-	if err := writeSnapshotMetaFile(filepath.Join(callDir, "meta.json"), meta); err != nil {
-		_ = os.RemoveAll(callDir)
+	if err := writeSnapshotMetaFile(filepath.Join(partialDir, "meta.json"), meta); err != nil {
+		_ = os.RemoveAll(partialDir)
 		return native.SnapshotBefore{}, fmt.Errorf("snapshots: write pre-undo metadata: %w", err)
+	}
+	if err := os.Rename(partialDir, callDir); err != nil {
+		_ = os.RemoveAll(partialDir)
+		return native.SnapshotBefore{}, fmt.Errorf("snapshots: publish pre-undo record: %w", err)
 	}
 	if meta.Unrecoverable != "" {
 		return native.SnapshotBefore{Unrecoverable: meta.Unrecoverable, Notice: "本次回滚前状态不可保存：快照超过单文件上限（16 MiB）"}, nil
@@ -373,11 +388,28 @@ func (s *SessionSnapshots) CleanupAll() (SnapshotCleanupReport, error) {
 
 func (s *SessionSnapshots) cleanupSessionLocked(sessionID, preserveTurn string, required int64) (SnapshotCleanupReport, error) {
 	limits := snapshotLimitsWithRetention(s.limits)
-	checkpoints, err := s.collectSessionCheckpoints(sessionID)
+	checkpoints, skippedRecords, err := s.collectSessionCheckpoints(sessionID)
 	if err != nil {
 		return SnapshotCleanupReport{}, err
 	}
 	var report SnapshotCleanupReport
+	report.SkippedRecords = skippedRecords
+	// Repair half-written records of this session first: a stale partial
+	// directory is a writer that died, so removing it does not race a live call.
+	turnDirs := make([]string, 0, len(checkpoints))
+	for _, cp := range checkpoints {
+		turnDirs = append(turnDirs, cp.dir)
+	}
+	if preserveTurn != "" {
+		turnDirs = append(turnDirs, filepath.Join(s.dir, sessionID, "snapshots", preserveTurn))
+	}
+	for _, dir := range turnDirs {
+		repaired, err := s.prunePartialDirs(dir)
+		if err != nil {
+			return report, err
+		}
+		report.RepairedPartials += repaired
+	}
 	cutoff := s.nowTime().Add(-time.Duration(limits.KeepDays) * 24 * time.Hour)
 	completed := make([]snapshotCheckpoint, 0, len(checkpoints))
 	keepTurns := limits.KeepTurns
@@ -413,10 +445,11 @@ func (s *SessionSnapshots) cleanupSessionLocked(sessionID, preserveTurn string, 
 		if bytes+required <= limits.MaxSessionBytes {
 			return report, nil
 		}
-		candidates, err := s.collectSessionCheckpoints(sessionID)
+		candidates, skipped, err := s.collectSessionCheckpoints(sessionID)
 		if err != nil {
 			return report, err
 		}
+		report.SkippedRecords += skipped
 		var oldest *snapshotCheckpoint
 		for i := range candidates {
 			cp := &candidates[i]
@@ -435,44 +468,47 @@ func (s *SessionSnapshots) cleanupSessionLocked(sessionID, preserveTurn string, 
 	}
 }
 
-func (s *SessionSnapshots) collectSessionCheckpoints(sessionID string) ([]snapshotCheckpoint, error) {
+func (s *SessionSnapshots) collectSessionCheckpoints(sessionID string) ([]snapshotCheckpoint, int, error) {
 	root := filepath.Join(s.dir, sessionID, "snapshots")
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, 0, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var result []snapshotCheckpoint
+	skipped := 0
 	for _, entry := range entries {
 		if entry.Name() == snapshotPreUndoDir {
 			continue
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("snapshots: checkpoint %q is a symlink", entry.Name())
+			return nil, 0, fmt.Errorf("snapshots: checkpoint %q is a symlink", entry.Name())
 		}
 		if !entry.IsDir() {
 			continue
 		}
 		if err := validateSnapshotID(entry.Name(), "turn"); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		dir := filepath.Join(root, entry.Name())
 		info, err := os.Lstat(dir)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("snapshots: checkpoint %q is a symlink", entry.Name())
+			return nil, 0, fmt.Errorf("snapshots: checkpoint %q is a symlink", entry.Name())
 		}
-		metas, err := loadTurn(dir)
+		loaded, err := loadTurn(dir)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
+		metas := loaded.Metas
+		skipped += len(loaded.Skipped)
 		state, err := s.LoadCheckpointState(sessionID, entry.Name())
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		created := info.ModTime()
 		complete := len(metas) > 0
@@ -486,7 +522,7 @@ func (s *SessionSnapshots) collectSessionCheckpoints(sessionID string) ([]snapsh
 		}
 		bytes, err := snapshotBytesForCheckpoint(dir)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		result = append(result, snapshotCheckpoint{
 			sessionID: sessionID, turnID: entry.Name(), dir: dir, state: state.State,
@@ -494,7 +530,46 @@ func (s *SessionSnapshots) collectSessionCheckpoints(sessionID string) ([]snapsh
 			eligible: complete && (state.State == SnapshotStateOpen || state.State == SnapshotStateUndone),
 		})
 	}
-	return result, nil
+	return result, skipped, nil
+}
+
+// prunePartialDirs removes the half-written call directories of one turn that
+// are older than snapshotPartialStaleAfter. Younger ones belong to a writer that
+// is still running (possibly in another process), so they are left alone.
+func (s *SessionSnapshots) prunePartialDirs(turnDir string) (int, error) {
+	removed := 0
+	cutoff := s.nowTime().Add(-snapshotPartialStaleAfter)
+	for _, dir := range []string{turnDir, filepath.Join(turnDir, snapshotPreUndoDir)} {
+		entries, err := os.ReadDir(dir)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return removed, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), snapshotPartialPrefix) {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			info, err := entry.Info()
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return removed, err
+			}
+			if info.ModTime().After(cutoff) {
+				continue
+			}
+			if err := os.RemoveAll(path); err != nil {
+				return removed, err
+			}
+			removed++
+			slog.Warn("snapshots: removed stale half-written call record", "dir", path)
+		}
+	}
+	return removed, nil
 }
 
 func (s *SessionSnapshots) collectEligibleCheckpoints() ([]snapshotCheckpoint, error) {
@@ -513,7 +588,7 @@ func (s *SessionSnapshots) collectEligibleCheckpoints() ([]snapshotCheckpoint, e
 		if err := validateSnapshotID(entry.Name(), "session"); err != nil {
 			return nil, err
 		}
-		checkpoints, err := s.collectSessionCheckpoints(entry.Name())
+		checkpoints, _, err := s.collectSessionCheckpoints(entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -544,5 +619,7 @@ func snapshotBytesForCheckpoint(dir string) (int64, error) {
 func addCleanupReports(a, b SnapshotCleanupReport) SnapshotCleanupReport {
 	a.RemovedTurns += b.RemovedTurns
 	a.RemovedBytes += b.RemovedBytes
+	a.SkippedRecords += b.SkippedRecords
+	a.RepairedPartials += b.RepairedPartials
 	return a
 }
