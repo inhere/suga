@@ -114,6 +114,10 @@ func toolCallSummary(c *agentcore.ToolCall) string {
 // note itself are not part of the prefix and never cut it.
 func replayablePrefix(entries []store.Entry) (kept []store.Entry, calls []string, dropped int, err error) {
 	results := make(map[string]bool)
+	// uncertain are the calls whose result is the synthetic "state unknown" result
+	// of an interrupted turn (admit ledger, issue suga-r72b): the note has to say
+	// so instead of counting them as executed.
+	uncertain := make(map[string]bool)
 	for _, e := range entries {
 		if e.Type != store.EntryTool {
 			continue
@@ -124,6 +128,9 @@ func replayablePrefix(entries []store.Entry) (kept []store.Entry, calls []string
 		}
 		if m.ToolResult != nil && m.ToolResult.CallID != "" {
 			results[m.ToolResult.CallID] = true
+			if v, _ := m.Metadata[metaToolInterrupted].(bool); v {
+				uncertain[m.ToolResult.CallID] = true
+			}
 		}
 	}
 
@@ -172,7 +179,11 @@ func replayablePrefix(entries []store.Entry) (kept []store.Entry, calls []string
 				return nil, nil, 0, fmt.Errorf("decode assistant entry %d: %w", e.Seq, err)
 			}
 			if m.ToolCall != nil {
-				calls = append(calls, toolCallSummary(m.ToolCall))
+				summary := toolCallSummary(m.ToolCall)
+				if m.ToolCall.CallID != "" && uncertain[m.ToolCall.CallID] {
+					summary += "（中断时状态未知）"
+				}
+				calls = append(calls, summary)
 			}
 		case store.EntryTool:
 			// Kept: the assistant message that asked for it was kept too (an

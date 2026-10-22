@@ -223,7 +223,7 @@ func TestMarkInterruptedToolCalls(t *testing.T) {
 		assert.Eq(t, 0, dropped)
 		assert.Require(t, assert.Eq(t, 3, len(kept)))
 		assert.Eq(t, store.EntryTool, kept[2].Type)
-		assert.Eq(t, []string{"write path=work.txt"}, calls)
+		assert.Eq(t, []string{"write path=work.txt（中断时状态未知）"}, calls)
 	})
 	t.Run("a second run adds nothing", func(t *testing.T) {
 		assert.NoErr(t, runner.markInterruptedToolCalls(ctx, sess.ID, turnID))
@@ -339,6 +339,21 @@ func TestCancelledTurnMarksTheAdmittedCall(t *testing.T) {
 		assert.Require(t, assert.Eq(t, 1, len(events)))
 		assert.Eq(t, "write", events[0].Name)
 		assert.Eq(t, res.TurnID, events[0].TurnID)
+	})
+	t.Run("the interruption note does not claim the call ran", func(t *testing.T) {
+		entries, err := repo.ListEntries(context.Background(), res.SessionID, store.EntryFilter{
+			TurnID: res.TurnID, Types: []string{store.EntryUser},
+		})
+		assert.NoErr(t, err)
+		var note string
+		for _, e := range entries {
+			var m agentcore.Message
+			assert.NoErr(t, json.Unmarshal(e.JSON, &m))
+			if isInterruptionNote(m) {
+				note = m.Content
+			}
+		}
+		assert.StrContains(t, note, "write path=work.txt（中断时状态未知）")
 	})
 
 	t.Run("the next turn sees the unknown state", func(t *testing.T) {
