@@ -9,7 +9,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"io/fs"
+	"os"
 	"strings"
 	"testing"
 
@@ -18,15 +18,17 @@ import (
 
 func TestExportedAPINamesNoInternal(t *testing.T) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi fs.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	entries, err := os.ReadDir(".")
 	assert.Require(t, assert.NoErr(t, err))
-	parsed, ok := pkgs["sugasdk"]
-	assert.Require(t, assert.True(t, ok, "the package parses"))
 
 	texts := map[string]string{}
-	for _, file := range parsed.Files {
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		assert.Require(t, assert.NoErr(t, err))
 		collectExportedAPI(fset, file, texts)
 	}
 	assert.Require(t, assert.True(t, len(texts) > 10), "the walk found the exported declarations")
