@@ -18,6 +18,7 @@ import (
 
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/pkg/agentcore"
 )
 
 func TestSugaHomeGuard(t *testing.T) {
@@ -154,6 +155,14 @@ func TestSendIsSingleFlight(t *testing.T) {
 	assert.Eq(t, "also mention the tests", first.ReturnedSteers[0])
 }
 
+// panickingHook is a host hook that panics before the run: the SDK recovers it
+// like any other panic of a turn.
+type panickingHook struct{ agentcore.NopHook }
+
+func (panickingHook) BeforeRun(context.Context, *agentcore.RunEvent, *agentcore.Control) error {
+	panic("hook exploded")
+}
+
 func TestSendRecoversPanic(t *testing.T) {
 	ctx := context.Background()
 	server := chatServer(t, "sdk_echo", "fine", nil)
@@ -179,5 +188,15 @@ func TestSendRecoversPanic(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, "COMPLETED", result.State)
 		assert.Eq(t, "fine", result.Output)
+	})
+	t.Run("a panic in a host hook becomes an error too", func(t *testing.T) {
+		panicking, err := engine.OpenSession(ctx, "", SessionOptions{Workspace: t.TempDir(),
+			Approver: allowAll{}, Hooks: []agentcore.Hook{panickingHook{}}})
+		assert.Require(t, assert.NoErr(t, err))
+		defer panicking.Close()
+		result, err := panicking.Send(ctx, Prompt{Text: "hello"}, nil)
+		assert.Require(t, assert.Err(t, err))
+		assert.StrContains(t, err.Error(), "hook exploded")
+		assert.Eq(t, string(personal.RunFailed), result.State)
 	})
 }
