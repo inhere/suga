@@ -101,7 +101,8 @@ def deny_scene(s):
     s.line("跑一下")
     s.check("deny reason shown", s.until(re.escape(DENY_REASON), m))
     s.check("no approval question", not s.until(r"允许执行 shell_exec", m, timeout=2))
-    s.check("nothing ran", not s.until(r"SMOKE_DENY", m, timeout=0.5))
+    # The command text shows on the call line itself: only a result line counts.
+    s.check("nothing ran", not s.until(r"⎿[^\n]*SMOKE_DENY", m, timeout=0.5))
     s.check("turn ended", s.until(r"tokens · ", m))
     return finish(s)
 

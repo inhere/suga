@@ -188,12 +188,14 @@ func markInteractivelyUsed(stderr io.Writer, runner *personal.Runner, sessionID 
 
 // Run drives the interactive chat REPL on top of runner; hooks may be nil.
 func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Reader, stdout, stderr io.Writer, hooks sugahooks.Client) error {
-	hooks = recordHooks(hooks, runner)
 	// The PreToolUse hook gates tool calls through the approval layer, which runs
-	// it before its own decision (see hooks_gate.go).
+	// it before its own decision (see hooks_gate.go). Take the gate from the
+	// client itself: the recording wrapper below only forwards Client, so
+	// GateOf on it would find no gate (the gate records its own trace events).
 	if gate := sugahooks.GateOf(hooks); gate != nil && opts.SetCallRewriter != nil {
 		opts.SetCallRewriter(newToolGate(gate, runner))
 	}
+	hooks = recordHooks(hooks, runner)
 	sessionID := ""
 	// startupTitle is the stored title of a session this chat continues ("" for a
 	// new one, which gets its title from the first message); it names the terminal
