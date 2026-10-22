@@ -303,15 +303,15 @@ func TestSendRequestRecordWindow(t *testing.T) {
 	// crashed send) and must survive any trim.
 	base := time.Now().UTC().Add(-2 * time.Hour)
 	writeTestRecord(t, ctx, repo, session.ID(), "old-1",
-		requestRecord{TurnID: "t1", State: requestStateDone, At: base.Add(1*time.Minute),
+		requestRecord{TurnID: "t1", State: requestStateDone, At: base.Add(1 * time.Minute),
 			Summary: &requestSummary{State: "COMPLETED"}})
 	writeTestRecord(t, ctx, repo, session.ID(), "old-2",
-		requestRecord{TurnID: "t2", State: requestStateRunning, At: base.Add(2*time.Minute)})
+		requestRecord{TurnID: "t2", State: requestStateRunning, At: base.Add(2 * time.Minute)})
 	writeTestRecord(t, ctx, repo, session.ID(), "old-3",
-		requestRecord{TurnID: "t3", State: requestStateDone, At: base.Add(3*time.Minute),
+		requestRecord{TurnID: "t3", State: requestStateDone, At: base.Add(3 * time.Minute),
 			Summary: &requestSummary{State: "COMPLETED"}})
 	writeTestRecord(t, ctx, repo, session.ID(), "old-4",
-		requestRecord{TurnID: "t4", State: requestStateDone, At: base.Add(4*time.Minute),
+		requestRecord{TurnID: "t4", State: requestStateDone, At: base.Add(4 * time.Minute),
 			Summary: &requestSummary{State: "COMPLETED"}})
 
 	// A fresh claim grows the registry past the window: the oldest finished
