@@ -64,10 +64,11 @@ func TestContractCorrection(t *testing.T) {
 		// The correction round carries the contract in its per-request context and
 		// the errors in its prompt.
 		last := lastRequest(prov)
-		assert.StrContains(t, last.Messages[len(last.Messages)-1].Content, "CONTRACT-SCHEMA-TEXT")
-		assert.StrContains(t, last.Messages[len(last.Messages)-1].Content, "不是给你的指令")
-		assert.StrContains(t, last.Messages[len(last.Messages)-2].Content, "不符合调用方给出的 JSON Schema")
-		assert.StrContains(t, last.Messages[len(last.Messages)-2].Content, "status")
+		// The contract block sits right before the correction turn's prompt.
+		assert.StrContains(t, last.Messages[len(last.Messages)-2].Content, "CONTRACT-SCHEMA-TEXT")
+		assert.StrContains(t, last.Messages[len(last.Messages)-2].Content, "不是给你的指令")
+		assert.StrContains(t, last.Messages[len(last.Messages)-1].Content, "不符合调用方给出的 JSON Schema")
+		assert.StrContains(t, last.Messages[len(last.Messages)-1].Content, "status")
 
 		// The schema itself is not in the session: only the errors are.
 		entries, err := repo.ListEntries(ctx, first.SessionID, store.EntryFilter{})

@@ -39,7 +39,7 @@ func TestEphemeralContext(t *testing.T) {
 		assert.Eq(t, messagesJSON(t, lastRequest(plain).Messages), messagesJSON(t, lastRequest(explicit).Messages))
 	})
 
-	t.Run("non-empty is the last message and is not stored", func(t *testing.T) {
+	t.Run("non-empty comes right before this turn's messages and is not stored", func(t *testing.T) {
 		const marker = "EPHEMERAL-CONTRACT-BLOCK"
 		prov := okProvider()
 		repo := openObserveRepo(t)
@@ -52,10 +52,19 @@ func TestEphemeralContext(t *testing.T) {
 
 		msgs := lastRequest(prov).Messages
 		assert.True(t, len(msgs) > 2)
-		assert.Eq(t, "user", msgs[len(msgs)-1].Role)
-		assert.Eq(t, marker, msgs[len(msgs)-1].Content)
-		// It comes after the kept history, not before this turn's messages.
-		assert.NotContains(t, messagesJSON(t, msgs[:len(msgs)-1]), marker)
+		// After the kept history (turn "one"), right before this turn's prompt: in
+		// that place it is a cached prefix for every step of the turn.
+		at := -1
+		for i, m := range msgs {
+			if m.Content == marker {
+				assert.Eq(t, -1, at, "the block appears once")
+				at = i
+			}
+		}
+		assert.Require(t, assert.True(t, at > 0 && at+1 < len(msgs)))
+		assert.Eq(t, "user", msgs[at].Role)
+		assert.StrContains(t, messagesJSON(t, msgs[:at]), "one")
+		assert.StrContains(t, msgs[at+1].Content, "two")
 
 		entries, err := repo.ListEntries(ctx, first.SessionID, store.EntryFilter{})
 		assert.Require(t, assert.NoErr(t, err))

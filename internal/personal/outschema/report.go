@@ -134,7 +134,7 @@ func CorrectionText(res Result) string {
 			fmt.Fprintf(&b, "- %s\n", err.String())
 		}
 	}
-	b.WriteString("请只重新给出最终回答：一个符合本次请求末尾给出的 JSON Schema 的 JSON 值。\n")
+	b.WriteString("请只重新给出最终回答：一个符合上面输出契约里 JSON Schema 的 JSON 值。\n")
 	b.WriteString("不要执行新的工具调用，不要解释，不要加代码围栏。")
 	return b.String()
 }

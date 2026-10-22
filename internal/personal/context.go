@@ -261,8 +261,11 @@ type contextBuilder struct {
 	hookContext string
 
 	// ephemeral is the per-request context (EphemeralContext): the output contract
-	// of this call. It is rendered as the view's last message and is never stored,
-	// so it disappears with the request (design 2026-10-22 4.2).
+	// of this call. It is rendered right after the hook context - after the kept
+	// history, before this turn's messages - and is never stored, so it disappears
+	// with the request (design 2026-10-22 4.2, plan T2). In that place it stays a
+	// cached prefix for every step of the turn; at the very end it would be billed
+	// again at each tool step.
 	ephemeral string
 
 	summary     string // current segment's handoff package ("" = none)
@@ -329,17 +332,6 @@ func (r *Runner) newContextBuilder(sessionID, turnID string, hist historyView, p
 		summary: hist.summary, fromHandoff: hist.fromHandoff, prev: hist.items, seg: hist.segment, eff: hist.eff,
 		window: window, reserve: reserve, foldAt: r.cfg.FoldAt,
 	}
-}
-
-// withEphemeral appends this request's ephemeral context (the output contract,
-// design 2026-10-22 4.2) as the view's last message: it is part of this model
-// request only - not of items(), not of the stored turn, not of a fold - so the
-// system prompt, the tools and the history prefix stay as they were.
-func (b *contextBuilder) withEphemeral(view []agentcore.Message) []agentcore.Message {
-	if b.ephemeral == "" {
-		return view
-	}
-	return append(view, agentcore.Message{Role: "user", Content: b.ephemeral})
 }
 
 // threshold is the estimated size above which compaction triggers.
@@ -417,6 +409,12 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 	if b.hookContext != "" {
 		out = append(out, agentcore.Message{Role: "user", Content: b.hookContext})
 	}
+	// This request's ephemeral context (the output contract): part of this model
+	// request only - not of items(), not of the stored turn - so the system
+	// prompt, the tools and the history prefix stay as they were.
+	if b.ephemeral != "" {
+		out = append(out, agentcore.Message{Role: "user", Content: b.ephemeral})
+	}
 	// The injected entries gone from the list were cut away by a segment break
 	// of this turn (see keptInjected); every remaining one is in the view, at its
 	// place.
@@ -434,7 +432,7 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 	b.foldPending = nil
 	boundary, steps := foldBoundary(out, every, keep)
 	if boundary == 0 {
-		return b.withEphemeral(out)
+		return out
 	}
 	folded := foldHistory(out, every, keep)
 	// Old results of re-runnable read-only tools are replaced by a note at the
@@ -446,7 +444,7 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 			toolResults: toolStats.results, toolCharsBefore: toolStats.charsBefore,
 			toolCharsAfter: toolStats.charsAfter}
 	}
-	return b.withEphemeral(folded)
+	return folded
 }
 
 // limited returns a tool message with its content truncated to truncLimit; the
