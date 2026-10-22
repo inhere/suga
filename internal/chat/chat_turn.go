@@ -198,6 +198,15 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 	// their receipt at its end (chat_delivery.go).
 	heldIDs := s.takeHeldSessionMessageIDs()
 	deliveries := s.takeTurnDeliveries()
+	// A turn that ends before its own receipt (a setup failure, an error that ends
+	// the chat) would leave its senders waiting: for them it is a failed turn, which
+	// also holds what is still queued (design D2).
+	receiptsSent := false
+	defer func() {
+		if !receiptsSent {
+			s.settleTurnDeliveries(deliveries, heldIDs, false)
+		}
+	}()
 	// A turn starts: no idle consolidation until it has ended (EndTurn).
 	s.idle.Pause()
 	// The depth belongs to this turn only: the next one sets its own (0 unless a
@@ -311,6 +320,7 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 	// session-message-delivery D2): a failed turn holds what it never took instead of
 	// retrying it.
 	s.settleTurnDeliveries(deliveries, heldIDs, completed)
+	receiptsSent = true
 	// A cancelled turn: the person ended it (Esc, Ctrl-C), an approval question was
 	// cancelled, or a model call was. The runner's error may hide the cancellation
 	// (a wrapped error, a failed persist of the cancelled turn), so the turn's own
