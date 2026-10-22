@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- Windows 上的进程树改为以 `CREATE_SUSPENDED` 启动、入 Job Object 后再恢复主线程（`pkg/agentcore/internal/proctree`）：以前 `cmd.Start` 之后才 `AssignProcessToJobObject`，窗口期里 shell 启动的子进程不在 job 里，既不受 `tools.shell_limits`（内存/进程数/CPU）约束，取消或超时时也杀不掉；现在入 job 失败或恢复失败会终止仍挂起的 shell 并以错误结束该命令。
+
 ## [0.45.1] - 2026-10-22
 
 修复 Windows 上快照清理与并发写入相撞时失败。
