@@ -108,6 +108,12 @@ type chatState struct {
 	// session_message; session_message.go).
 	sessionMu   sync.Mutex
 	sessionHeld []string
+	// sessionHeldIDs are the message IDs of sessionHeld, in the same order: a
+	// completed turn that runs them reports them processed (chat_delivery.go).
+	sessionHeldIDs []string
+	// turnDeliveries are the queue deliveries the running turn carries: the receipt
+	// of each is sent when that turn ends (chat_delivery.go).
+	turnDeliveries []chatInputEvent
 	// turnHops is the automatic-reply depth of the turn runTurn is about to run
 	// (personal.RunRequest.Hops): 0 for a turn the person started, h for a turn a
 	// hops-h session message started.
@@ -188,6 +194,10 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 	if held := s.takeHeldSessionMessages(); len(held) > 0 {
 		line = appendContext(strings.Join(held, "\n\n"), line)
 	}
+	// The IDs of those held messages and the queue deliveries this turn carries get
+	// their receipt at its end (chat_delivery.go).
+	heldIDs := s.takeHeldSessionMessageIDs()
+	deliveries := s.takeTurnDeliveries()
 	// A turn starts: no idle consolidation until it has ended (EndTurn).
 	s.idle.Pause()
 	// The depth belongs to this turn only: the next one sets its own (0 unless a
@@ -297,6 +307,10 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 	// one all of them.
 	backs := steerReturns(result.ReturnedSteers, turnEnd.unaccepted())
 	completed := runErr == nil && (result.State == personal.RunCompleted || result.State == personal.RunInputRequired)
+	// The fate of every message this turn carried reaches its sender now (design
+	// session-message-delivery D2): a failed turn holds what it never took instead of
+	// retrying it.
+	s.settleTurnDeliveries(deliveries, heldIDs, completed)
 	// A cancelled turn: the person ended it (Esc, Ctrl-C), an approval question was
 	// cancelled, or a model call was. The runner's error may hide the cancellation
 	// (a wrapped error, a failed persist of the cancelled turn), so the turn's own

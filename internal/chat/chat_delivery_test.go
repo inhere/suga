@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -84,4 +85,55 @@ func TestDeliveryIDSkipsADuplicate(t *testing.T) {
 	stateNow, known := source.DeliveryState("m-1")
 	assert.True(t, known)
 	assert.Eq(t, personalprocess.StateQueued, stateNow)
+}
+
+// TestDeliveryReceiptProcessed: the sender of a --wait-processed message learns that
+// its turn completed (design D2), and the state table says processed.
+func TestDeliveryReceiptProcessed(t *testing.T) {
+	state, source := newDeliveryState(t, mock.NewProvider(mock.Final("回答")))
+	settled := deliverIn(t, state, personalprocess.DeliverRequest{Text: "一", ID: "p-1", WaitProcessed: true})
+
+	var lost string
+	in, err := nextChatInput(context.Background(), source, state.render, nil, &lost)
+	assert.NoErr(t, err)
+	// What the chat loop does with the input nextChatInput returned.
+	state.turnHops = in.hops
+	state.turnDeliveries = in.deliveries
+	assert.NoErr(t, state.runTurn(in.line, in.injected, in.images))
+
+	assert.NoErr(t, settledOrFail(t, settled, "processed"))
+	stateNow, known := source.DeliveryState("p-1")
+	assert.True(t, known)
+	assert.Eq(t, personalprocess.StateProcessed, stateNow)
+}
+
+// TestDeliveryFailureHoldsQueuedMessages: a failed turn reports failed to the message
+// it carried, moves what is still queued into sessionHeld (design D2 failure barrier)
+// and never retries on its own; the person's next completed turn processes the held
+// message.
+func TestDeliveryFailureHoldsQueuedMessages(t *testing.T) {
+	state, source := newDeliveryState(t,
+		mock.NewProvider(mock.Error(errors.New("boom")), mock.Final("下一回合的答复")))
+	carried := deliverIn(t, state, personalprocess.DeliverRequest{Text: "坏消息", ID: "f-1", WaitProcessed: true})
+	queued := deliverIn(t, state, personalprocess.DeliverRequest{Text: "后面这条", ID: "f-2", WaitProcessed: true})
+
+	// Only the first message reaches the failing turn; the second is still queued.
+	first := <-source.deliveries
+	state.turnDeliveries = []chatInputEvent{first}
+	assert.NoErr(t, state.runTurn(first.line, first.injected, first.images))
+
+	assert.ErrIs(t, settledOrFail(t, carried, "failed"), personalprocess.ErrFailed)
+	assert.ErrIs(t, settledOrFail(t, queued, "held"), personalprocess.ErrHeld)
+	// The barrier moved the queued message to the person's next turn.
+	assert.Eq(t, 1, state.heldSessionCount())
+	assert.Eq(t, 0, len(source.deliveries))
+	heldState, known := source.DeliveryState("f-2")
+	assert.True(t, known)
+	assert.Eq(t, personalprocess.StateHeld, heldState)
+
+	// The person's next turn carries the held message and processes it.
+	state.turnDeliveries = nil
+	assert.NoErr(t, state.runTurn("继续", false, nil))
+	heldState, _ = source.DeliveryState("f-2")
+	assert.Eq(t, personalprocess.StateProcessed, heldState)
 }

@@ -29,6 +29,20 @@ import (
 // chat.steering is off); every other mode queues the message, which is what every
 // client that predates Request.Mode asks for.
 func (s *chatState) deliverMessage(mode, text, from, fromName string, hops int, refs []personalprocess.ImageRef) (personalprocess.Delivery, <-chan error, error) {
+	return s.deliver(personalprocess.DeliverRequest{Mode: mode, Text: text, From: from, FromName: fromName, Hops: hops, Images: refs})
+}
+
+// deliverRequested is the endpoint a receiver that knows message IDs registers
+// (personalprocess.DeliverMessageFunc, design session-message-delivery D1): the same
+// delivery as deliverMessage, plus the sender's message ID and the receipt it asked
+// for.
+func (s *chatState) deliverRequested(req personalprocess.DeliverRequest) (personalprocess.Delivery, <-chan error, error) {
+	return s.deliver(req)
+}
+
+// deliver is what both delivery entry points run.
+func (s *chatState) deliver(req personalprocess.DeliverRequest) (personalprocess.Delivery, <-chan error, error) {
+	mode, text, from, fromName, hops, refs := req.Mode, req.Text, req.From, req.FromName, req.Hops, req.Images
 	// The pictures of `suga send --image` are checked before anything is queued: a
 	// reference whose file is gone or whose bytes changed refuses the whole message
 	// (design send --image).
@@ -41,6 +55,12 @@ func (s *chatState) deliverMessage(mode, text, from, fromName string, hops int, 
 	// person's next turn instead of starting one (design session_message D3).
 	if shouldHoldSessionMessage(from, hops) {
 		s.holdSessionMessage(deliveryLineFor(text, from, fromName))
+		s.holdSessionMessageID(req.ID)
+		if req.ID != "" {
+			// The message is taken and waits for the person: a status query says held
+			// (design session-message-delivery D3).
+			s.source.recordDeliveryState(req.ID, personalprocess.StateHeld)
+		}
 		s.render.Hint(sessionQueuedHint(fromName, hops))
 		return personalprocess.Delivery{Queued: true, Warning: warning}, nil, nil
 	}
@@ -66,7 +86,7 @@ func (s *chatState) deliverMessage(mode, text, from, fromName string, hops int, 
 			return personalprocess.Delivery{Steered: true, Warning: warning}, settled, nil
 		}
 	}
-	queued, settled, err := s.source.DeliverImages(text, from, fromName, hops, images)
+	queued, settled, err := s.source.DeliverMessage(req.ID, req.WaitProcessed, text, from, fromName, hops, images)
 	if err != nil {
 		return personalprocess.Delivery{}, nil, err
 	}
