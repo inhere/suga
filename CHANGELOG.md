@@ -13,6 +13,10 @@
   - 未设置这两个选项时，段上下文、上下文更新消息与工具列表与之前逐字节一致。
 - 会话来源 `xhen`：宿主应用（xhen）通过 `wiring.Options.SessionOrigin` 声明来源，创建的会话带 `origin=xhen`；`suga sessions` 默认不列这类会话（结果为空时提示被隐藏的数量），新增 `--origin <name>` 过滤（`--origin all` 列出全部来源，`--all` 仍只表示所有目录），`--json` 行新增 `origin` 字段；`suga data gc --retention` 不再按期清理它们（报告单列「由宿主管理，未清理 N 个」，生命周期由宿主决定），`--older-than` 显式清理仍可删除。
 
+### 修复
+
+- ACP `session/list` 与 `suga sessions` 口径一致：默认不返回宿主会话（`origin=xhen`），隐藏的数量在响应 `_meta.suga/hiddenXhen` 里，结果为空时提示中点名；ACP 客户端需要时可用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 CLI 的 `--origin xhen`）（suga-kz0r）。
+
 ## [0.44.0] - 2026-10-22
 
 本版：修正 `tools.loop_guard`（按结果判断、改动后重置、同命令失败 3 次提示）；新增收工检查 `agents.nudge` 与 `nudge-rules.yaml`；语言规则文件 `lang-rules.yaml`（实现抽到 `codeintel` 子包，新增 C#、Kotlin、Ruby、C/C++、Dart）、flutter/dart 输出规则；`suga inspect rules` 与 suga-guide 的规则编写参考；ACP 中只读 MCP 工具报 kind=read。
