@@ -1,0 +1,6 @@
+service: gateway
+timeout: 30s
+replicas: 2
+features:
+  - name: ratelimit
+    enabled: true

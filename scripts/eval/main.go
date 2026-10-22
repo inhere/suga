@@ -296,6 +296,14 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	before := snapshotWorkspace(ws)
 
 	env := withVariantEnv(isolatedEnv(home), v)
+	// Without --model the run uses the model the temp config resolves to; record
+	// that instead of the empty flag (suga-h5vn), so results.jsonl and the table
+	// name the model the run actually talked to.
+	if o.model == "" {
+		if resolved := resolvedModel(ctx, bin, ws, env); resolved != "" {
+			r.Model = resolved
+		}
+	}
 	if len(t.CompactAfter) > 0 && o.agent != "suga" {
 		return r, errors.New("compact_after works only with --agent suga (the forced break is `suga compact`)")
 	}
@@ -409,6 +417,23 @@ func firstErr(errs ...error) error {
 		}
 	}
 	return nil
+}
+
+// resolvedModel asks suga for the model its loaded config resolves to (`suga
+// config get model`, which prints "model = <value>" and the value's source), so
+// a run without --model records the effective model instead of an empty field
+// (suga-h5vn). It returns "" when the command or its output cannot be read.
+func resolvedModel(ctx context.Context, bin, ws string, env []string) string {
+	out, err := runCmd(ctx, bin, []string{"config", "get", "model"}, ws, env)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "model = "); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // runCmd runs bin in dir with env and returns its stdout. A non-zero exit
@@ -655,12 +680,14 @@ func copyDir(src, dst string) error {
 	})
 }
 
+// printTable writes the summary table, one row per run: MODEL is the model the
+// run resolved to (the --model flag or the temp config's default).
 func printTable(w io.Writer, rs []Result, repeated bool) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	// PROMPT is every prompt token sent (uncached + cache read/write), the
 	// fair basis across agents; TOKENS(in/out) keeps uncached input / output.
 	// FIRST is the uncached input of the first main-loop call ("-" if unknown).
-	fmt.Fprintln(tw, "TASK\tAGENT\tRESULT\tCALLS\tTOOLS\tSPILL\tFIRST\tPROMPT\tTOKENS(in/out)\tHIT%\tCOST\tTIME\tWEB\tARGS")
+	fmt.Fprintln(tw, "TASK\tAGENT\tMODEL\tRESULT\tCALLS\tTOOLS\tSPILL\tFIRST\tPROMPT\tTOKENS(in/out)\tHIT%\tCOST\tTIME\tWEB\tARGS")
 	for i, r := range rs {
 		status := "FAIL"
 		if r.Passed {
@@ -675,7 +702,7 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 		if repeated {
 			label = fmt.Sprintf("%s-r%d", r.Task, r.Round)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\t%s\n", label, r.Agent, status, r.Calls, r.ToolCalls, r.Spilled,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\t%s\n", label, r.Agent, truncArgs(r.Model, 32), status, r.Calls, r.ToolCalls, r.Spilled,
 			first, prompt, r.InputTokens, r.OutputToks, r.CacheHit*100, r.CostUSD, float64(r.DurationMs)/1000, r.Web, truncArgs(r.AgentArgs, 24))
 		if repeated && (i == len(rs)-1 || rs[i+1].Task != r.Task) {
 			j := i
@@ -683,7 +710,7 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 				j--
 			}
 			a := averageRounds(rs[j : i+1])
-			fmt.Fprintf(tw, "%s\t%s\t%d/%d\t%.1f\t%.1f\t-\t-\t%.0f\t%.0f/%.0f\t-\t-\t%.1fs\t%s\t%s\n", r.Task+" (avg)", r.Agent, a.Passed, a.Rounds,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d/%d\t%.1f\t%.1f\t-\t-\t%.0f\t%.0f/%.0f\t-\t-\t%.1fs\t%s\t%s\n", r.Task+" (avg)", r.Agent, truncArgs(r.Model, 32), a.Passed, a.Rounds,
 				a.Calls, a.ToolCalls, a.Prompt, a.Uncached, a.Out, a.Seconds, r.Web, truncArgs(r.AgentArgs, 24))
 		}
 	}

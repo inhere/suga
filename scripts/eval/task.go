@@ -73,10 +73,11 @@ type Insert struct {
 }
 
 // Check is one pass/fail assertion. Types: file_contains, file_equals,
-// file_not_contains (use path+text), answer_contains, answer_not_contains,
-// answer_matches, answer_not_matches (text only; the last two take a regular
-// expression) and command (args [+ timeout]: exec in the workspace without a
-// shell, exit 0 passes).
+// file_not_contains, file_matches, file_not_matches (path+text; the last two take
+// a regular expression, so a line-anchored rule uses `(?m)^...$`), answer_contains,
+// answer_not_contains, answer_matches, answer_not_matches (text only; the last two
+// take a regular expression) and command (args [+ timeout]: exec in the workspace
+// without a shell, exit 0 passes).
 type Check struct {
 	Type    string   `yaml:"type"`
 	Path    string   `yaml:"path"`
@@ -169,7 +170,7 @@ func loadTask(dir string) (*Task, error) {
 		if c.Turn < 0 || c.Turn > len(t.Turns()) {
 			return nil, fmt.Errorf("%s: check turn %d is outside 1..%d", dir, c.Turn, len(t.Turns()))
 		}
-		if c.Type == "answer_matches" || c.Type == "answer_not_matches" {
+		if isRegexCheck(c.Type) {
 			if c.Text == "" {
 				return nil, fmt.Errorf("%s: %s needs a pattern in text", dir, c.Type)
 			}
@@ -368,6 +369,13 @@ func runChecks(ws string, answers []string, checks []Check) []CheckResult {
 			r.Passed = !strings.Contains(s, c.Text)
 		case "file_equals":
 			r.Passed = strings.TrimRight(s, "\r\n") == strings.TrimRight(c.Text, "\r\n")
+		case "file_matches", "file_not_matches":
+			re, err := regexp.Compile(c.Text)
+			if err != nil {
+				r.Detail = err.Error()
+				break
+			}
+			r.Passed = re.MatchString(s) == (c.Type == "file_matches")
 		default:
 			r.Detail = "unknown check type"
 		}
@@ -383,6 +391,16 @@ func allPassed(rs []CheckResult) bool {
 		}
 	}
 	return true
+}
+
+// isRegexCheck reports whether a check type reads its text as a regular
+// expression (the matcher itself is applied by runChecks / answerCheckPassed).
+func isRegexCheck(typ string) bool {
+	switch typ {
+	case "answer_matches", "answer_not_matches", "file_matches", "file_not_matches":
+		return true
+	}
+	return false
 }
 
 // isAnswerCheck reports whether a check type judges an answer instead of a file.
