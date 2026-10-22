@@ -166,6 +166,12 @@ go run ./scripts/eval --fake --bin tmp/smoke/suga --task 'longsession-hard-*'
 固定同一段回答不可能同时在“换段前带 `--SIGMA`、换段后带 `--DELTA`”，也不会真的写出 `notes/` 文件或算出三个数字——
 这正是真实模型要过的门槛。
 
+压缩前后体积（`turns[].compacted` 的 `tokens_before`/`tokens_after`，估算值）：压缩能不能丢细节靠的是上下文体量，不是配置——
+`--fake` 下假模型每轮只回一小段短文本，所以 14 轮的长任务也只到 ~6.7k token，换段后 ~5.9k（前面固定的 system + tools 前缀就有 ~5.5k）；
+把每轮回答换成约 1.5k token（临时测量任务，不进仓库）后，同一结构在第 3/7/11 轮后是
+~10678→~7419、~14330→~7406、~14310→~7402。也就是说内容量起来之后换段丢掉的是真实细节；
+真实模型跑这些任务时应该看同一个数字，掉不下来说明任务还不够重。
+
 ## 长编码任务
 
 `long-coding-schedule`：fixture 只有 `go.mod`（`module evalfixture/longcoding`）与说明 README，agent 需从零写出
