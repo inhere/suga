@@ -676,6 +676,12 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		_ = capabilities.Close()
 		return nil, err
 	}
+	// The admit ledger is written by the approval layer, after a call passed the
+	// decision and before the tool runs (issue suga-r72b): a call the person
+	// refused, or one whose approval prompt was cancelled, never runs and gets no
+	// row, so the next turn does not replay it as "state unknown". A sub-agent's
+	// table holds only read-only tools, so its own approval layer records nothing.
+	approvalLayer.SetOnApproved(personal.AdmitApprovedCall)
 	memSetup.Bind(repo)
 	memHost.bind(runner, repo)
 	sessionEnv.Bind(runner)

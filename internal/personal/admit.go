@@ -1,10 +1,15 @@
 package personal
 
 // Tool-invocation ledger (issue suga-r72b, borrowed from whip's recovery
-// rule): a tool call with side effects is written down as admitted before it
-// runs, so a turn interrupted between execution and result storage is not
+// rule): a tool call with side effects is written down as admitted right before
+// it runs, so a turn interrupted between execution and result storage is not
 // replayed as if nothing happened. The next turn gets a synthetic result saying
 // that the effects are unknown instead of the call running again.
+//
+// The row is written by the approval layer once the call is allowed
+// (AdmitApprovedCall, wired through tools.Approval.SetOnApproved), not before
+// the decision: a call cancelled at the approval prompt never runs, so it must
+// not look like an effect whose state is unknown.
 
 import (
 	"context"
@@ -45,30 +50,45 @@ type admitRecord struct {
 	Arguments    map[string]any `json:"arguments,omitempty"`
 }
 
-// admitHook writes one EntryAdmit row before a tool call with side effects runs
-// (BeforeTool runs before the approval layer inside the registry: a call that is
-// refused afterwards still gets its own tool_result). A read-only tool is not
-// recorded: an interrupted read has no effect to verify, so the replay may
-// simply drop it, as before.
-//
-// The write is best-effort: a ledger that cannot be written must not stop the
-// tool. An interruption then replays the call like any other incomplete one -
-// no worse than before this ledger existed.
-type admitHook struct {
-	agentcore.NopHook
+// admitScope is the ledger target of one turn: the store, the session and the
+// turn its admitted calls are written to. The runner puts it in the turn's
+// context (withAdmitScope) and the approval layer's approved-call callback reads
+// it back, so the ledger follows the turn without the approval layer knowing
+// anything about sessions.
+type admitScope struct {
 	repo      *store.Store
-	lookup    tools.Lookup
 	sessionID string
 	turnID    string
 }
 
-func (h admitHook) BeforeTool(ctx context.Context, event *agentcore.ToolEvent, _ *agentcore.Control) error {
-	if event == nil || event.Call == nil || h.repo == nil || h.turnID == "" {
-		return nil
+// admitScopeKey is the context key of a turn's admit ledger target.
+type admitScopeKey struct{}
+
+// withAdmitScope returns ctx carrying the admit ledger target of the turn
+// beginning with sessionID/turnID. Without a scope (a runner that has no store)
+// AdmitApprovedCall writes nothing.
+func withAdmitScope(ctx context.Context, repo *store.Store, sessionID, turnID string) context.Context {
+	return context.WithValue(ctx, admitScopeKey{}, admitScope{repo: repo, sessionID: sessionID, turnID: turnID})
+}
+
+// AdmitApprovedCall writes the ledger row of one call the approval layer just
+// allowed (tools.Approval.SetOnApproved, installed by wiring): it runs after the
+// decision and right before the tool executes. A call that was refused, or whose
+// approval prompt was cancelled or timed out, never gets here and is not
+// recorded - it never ran, so the next turn must not be told its state is
+// unknown. A read-only tool is not recorded either: an interrupted read has no
+// effect to verify, so the replay may simply drop it, as before.
+//
+// The write is best-effort: a ledger that cannot be written must not stop the
+// tool. An interruption then replays the call like any other incomplete one -
+// no worse than before this ledger existed.
+func AdmitApprovedCall(ctx context.Context, call agentcore.ToolCall, tool agentcore.Tool) {
+	scope, ok := ctx.Value(admitScopeKey{}).(admitScope)
+	if !ok || scope.repo == nil || scope.turnID == "" {
+		return
 	}
-	call := event.Call
-	if !toolHasSideEffects(h.lookup, call.Name) {
-		return nil
+	if !toolHasSideEffects(tool) {
+		return
 	}
 	raw, err := json.Marshal(admitRecord{
 		InvocationID: tools.InvocationID(ctx),
@@ -79,28 +99,23 @@ func (h admitHook) BeforeTool(ctx context.Context, event *agentcore.ToolEvent, _
 	})
 	if err != nil {
 		turnLogger(ctx).Warn("encode admitted tool call", "tool", call.Name, "err", err)
-		return nil
+		return
 	}
-	if _, err := h.repo.AppendEntries(ctx, h.sessionID, store.NewEntry{
-		TurnID: h.turnID, Type: store.EntryAdmit, JSON: raw,
+	if _, err := scope.repo.AppendEntries(ctx, scope.sessionID, store.NewEntry{
+		TurnID: scope.turnID, Type: store.EntryAdmit, JSON: raw,
 	}); err != nil {
 		turnLogger(ctx).Warn("record admitted tool call", "tool", call.Name, "err", err)
 	}
-	return nil
 }
 
-// toolHasSideEffects reports whether calls of the named tool may change
-// something outside the session: built-in tools say so through tools.Meta
-// (ReadOnly), MCP tools through their server's readOnlyHint - and a server that
-// declared nothing is not trusted, so its tool counts as having side effects. A
-// tool the registry cannot resolve is treated the same way (unknown, so assume
-// it can change something).
-func toolHasSideEffects(lookup tools.Lookup, name string) bool {
-	if lookup == nil {
-		return true
-	}
-	t, err := lookup.Get(name)
-	if err != nil || t == nil {
+// toolHasSideEffects reports whether calls of t may change something outside
+// the session: built-in tools say so through tools.Meta (ReadOnly), MCP tools
+// through their server's readOnlyHint - and a server that declared nothing is
+// not trusted, so its tool counts as having side effects. A tool the approval
+// layer could not resolve (nil) is treated the same way (unknown, so assume it
+// can change something).
+func toolHasSideEffects(t agentcore.Tool) bool {
+	if t == nil {
 		return true
 	}
 	if tools.IsMCP(t) {

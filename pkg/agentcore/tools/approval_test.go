@@ -173,6 +173,67 @@ func (t *approvalRunTool) Execute(_ context.Context, call api.ToolCall) (*api.To
 	return &api.ToolResult{Content: "ok"}, nil
 }
 
+// TestApprovalOnApproved covers the post-decision callback (SetOnApproved): it
+// sees the call that is about to run - the rewritten one - and only when the
+// decision let the call through; a refusal or an aborted decision never reaches
+// it.
+func TestApprovalOnApproved(t *testing.T) {
+	call := api.ToolCall{CallID: "c1", Name: "act", Arguments: map[string]any{"path": "docs/a.txt"}}
+	build := func(decide func() error) (*Approval, *approvalTool, *[]api.ToolCall) {
+		tool := &approvalTool{}
+		reg := NewRegistry()
+		reg.Register(tool)
+		a := NewApproval(reg, ApproverFunc(func(context.Context, api.ToolCall, api.Tool) error { return decide() }))
+		var seen []api.ToolCall
+		a.SetOnApproved(func(_ context.Context, c api.ToolCall, _ api.Tool) { seen = append(seen, c) })
+		return a, tool, &seen
+	}
+
+	t.Run("allowed call: called once, before the tool ran", func(t *testing.T) {
+		a, tool, seen := build(func() error { return nil })
+		runsAtCall := 0
+		a.SetOnApproved(func(_ context.Context, c api.ToolCall, _ api.Tool) {
+			runsAtCall = tool.runs
+			*seen = append(*seen, c)
+		})
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.NoErr(t, err)
+		assert.Eq(t, 1, tool.runs)
+		assert.Eq(t, 0, runsAtCall)
+		assert.Require(t, assert.Eq(t, 1, len(*seen)))
+		assert.Eq(t, "c1", (*seen)[0].CallID)
+	})
+	t.Run("denied call: not called", func(t *testing.T) {
+		a, tool, seen := build(func() error { return Denied("no") })
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.Eq(t, true, errors.Is(err, ErrDenied))
+		assert.Eq(t, 0, tool.runs)
+		assert.Len(t, *seen, 0)
+	})
+	t.Run("aborted decision: not called", func(t *testing.T) {
+		a, tool, seen := build(func() error { return context.Canceled })
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.Eq(t, true, errors.Is(err, ErrAborted))
+		assert.Eq(t, 0, tool.runs)
+		assert.Len(t, *seen, 0)
+	})
+	t.Run("the rewritten call is the one recorded", func(t *testing.T) {
+		tool := &approvalTool{}
+		reg := NewRegistry()
+		reg.Register(tool)
+		a := NewApproval(reg, ApproverFunc(func(context.Context, api.ToolCall, api.Tool) error { return nil }))
+		a.SetRewriter(approvalRewriter{rewrite: func(c api.ToolCall) (api.ToolCall, error) {
+			c.Arguments = map[string]any{"path": "docs/b.txt"}
+			return c, nil
+		}})
+		var recorded api.ToolCall
+		a.SetOnApproved(func(_ context.Context, c api.ToolCall, _ api.Tool) { recorded = c })
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.NoErr(t, err)
+		assert.Eq(t, "docs/b.txt", recorded.Arguments["path"])
+	})
+}
+
 func TestApprovalReport(t *testing.T) {
 	call := api.ToolCall{CallID: "c1", Name: "act"}
 	reg := NewRegistry()
