@@ -742,6 +742,12 @@ func Send(record Record, request Request) (Response, error) {
 	if err := decoder.Decode(&final); err != nil {
 		return response, fmt.Errorf("%w: connection closed before the message ran", ErrNotOnline)
 	}
+	// A --wait-processed receipt that names its state (discarded at exit) is read by
+	// the CLI like any other terminal state; the old error stays for --wait and for a
+	// closing session that sent no state.
+	if request.WaitProcessed && final.State == StateDiscarded {
+		return final, nil
+	}
 	if final.Error == codeDiscarded || final.Error == codeSessionClosed {
 		return final, fmt.Errorf("%w: the message was discarded before it ran", ErrNotOnline)
 	}

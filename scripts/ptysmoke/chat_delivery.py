@@ -34,9 +34,11 @@ was written on a machine without a pty):
   discarded.
 """
 import argparse
+import concurrent.futures
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -121,18 +123,23 @@ def main():
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(ws, exist_ok=True)
     isolate_ws(ws)
-    write_home(home, args.port, tools_extra="", extra="")
+    # One attempt per model request: a failing turn fails in seconds, not after the
+    # retry budget (the barrier scene needs a turn that fails while a message waits).
+    write_home(home, args.port, tools_extra="", extra="retry:\n  max_attempts: 1\n")
     env = dict(os.environ, SUGA_HOME=home, TERM="xterm", NO_COLOR="1")
     env.pop("SUGA_CONFIG", None)
 
     here = os.path.dirname(os.path.abspath(__file__))
 
-    def start_model():
+    def start_model(delay=3, failing=False):
         # text mode with a delay: a turn of B stays busy long enough to queue behind.
-        return subprocess.Popen([sys.executable, "-I", os.path.join(here, "fakellm.py"),
-                                 "--port", str(args.port), "--mode", "text",
-                                 "--delay", "3", "--reply", REPLY],
-                                stdout=subprocess.PIPE, text=True)
+        # failing: every request answers 503 after the delay (the turn fails).
+        cmd = [sys.executable, "-I", os.path.join(here, "fakellm.py"),
+               "--port", str(args.port), "--mode", "text",
+               "--delay", str(delay), "--reply", REPLY]
+        if failing:
+            cmd += ["--fail-from", "1"]
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
 
     fake = start_model()
     b = None
@@ -150,9 +157,13 @@ def main():
         # delivered together as the next turn (design D3).
         b.line(BUSY)
         time.sleep(1.0)
-        codes = []
-        for i in (1, 2, 3):
-            codes.append(send(binary, env, ws, b_name, "排队消息 %d" % i, msg_id="merge-%d" % i))
+        # The three senders run at once: each --wait-processed send blocks until its
+        # message ran, so sending them one after another would never queue them
+        # together.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            futures = [pool.submit(send, binary, env, ws, b_name, "排队消息 %d" % i, "merge-%d" % i)
+                       for i in (1, 2, 3)]
+            codes = [f.result() for f in futures]
         for i, (code, out) in enumerate(codes, start=1):
             results.append(("sender %d of the batch exits 0" % i, code == 0))
             results.append(("sender %d reads processed" % i, STATE_PROCESSED in out))
@@ -174,17 +185,26 @@ def main():
 
         # With the model gone the turn fails: its sender reads failed, and the message
         # queued behind it is held for the person instead of being retried (design D2).
+        # The model now fails every request (after a delay): the second message is
+        # sent while the first one's turn is still failing, so it waits behind it.
         fake.terminate()
         fake.wait(timeout=5)
-        code, out = send(binary, env, ws, b_name, "坏消息", msg_id="fail-1")
+        fake = start_model(delay=3, failing=True)
+        wait_port(fake)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            failing = pool.submit(send, binary, env, ws, b_name, "坏消息", "fail-1")
+            time.sleep(1.0)
+            held = pool.submit(send, binary, env, ws, b_name, "后面这条", "held-1")
+            (code, out), (hcode, hout) = failing.result(), held.result()
         results.append(("the failed sender exits 3 (%d)" % code, code == 3))
         results.append(("the failed sender reads failed", STATE_FAILED in out))
-        code, out = send(binary, env, ws, b_name, "后面这条", msg_id="held-1")
-        results.append(("the held sender exits 0 (%d)" % code, code == 0))
-        results.append(("the held sender reads held", STATE_HELD in out))
+        results.append(("the held sender exits 0 (%d)" % hcode, hcode == 0))
+        results.append(("the held sender reads held", STATE_HELD in hout))
 
         # B exits with a message still queued: its sender reads discarded.
-        fake = start_model()
+        fake.terminate()
+        fake.wait(timeout=5)
+        fake = start_model(delay=8)
         wait_port(fake)
         b.line(BUSY)
         time.sleep(1.0)
@@ -193,7 +213,10 @@ def main():
                                    env=env, cwd=ws, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True)
         time.sleep(1.0)
-        exit_chat(b)
+        # SIGTERM while the busy turn still runs: chat shuts down with the message
+        # still queued (two Ctrl-C would cancel the turn first and let chat take the
+        # queued message as the next turn).
+        os.kill(b.pid, signal.SIGTERM)
         exited = True
         try:
             out, _ = pending.communicate(timeout=SEND_TIMEOUT)

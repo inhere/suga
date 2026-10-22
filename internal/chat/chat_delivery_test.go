@@ -202,3 +202,48 @@ func TestDeliveryOverTheSessionSocket(t *testing.T) {
 	assert.Eq(t, "s-1", response.MessageID)
 	assert.Eq(t, personalprocess.StateProcessed, response.State)
 }
+
+// TestDeliveryDuplicateLearnsTheFirstCopysFate: a resend of an ID still queued gets
+// a settled channel that reports the first copy's fate, and a resend of an ID that
+// already reached a final state reads it at once - a --wait-processed duplicate
+// never sees a closed connection.
+func TestDeliveryDuplicateLearnsTheFirstCopysFate(t *testing.T) {
+	state, source := newDeliveryState(t, mock.NewProvider(mock.Final("ok")))
+	req := personalprocess.DeliverRequest{Text: "你好", ID: "dup-1", WaitProcessed: true}
+	deliverIn(t, state, req)
+
+	_, waiting, err := state.deliverRequested(req)
+	assert.NoErr(t, err)
+	assert.Require(t, assert.NotNil(t, waiting))
+	select {
+	case <-waiting:
+		t.Fatal("the duplicate settled before the first copy did")
+	default:
+	}
+	source.recordDeliveryState("dup-1", personalprocess.StateProcessed)
+	assert.NoErr(t, settledOrFail(t, waiting, "processed"))
+
+	// Final already: the next duplicate reads it at once.
+	_, again, err := state.deliverRequested(req)
+	assert.NoErr(t, err)
+	assert.NoErr(t, settledOrFail(t, again, "processed"))
+}
+
+// TestDeliveryChatExitIsNoBarrier: a turn cut short because chat itself is ending
+// leaves the queued messages queued, so the exit path reports them discarded
+// rather than held (design step 5).
+func TestDeliveryChatExitIsNoBarrier(t *testing.T) {
+	state, source := newDeliveryState(t, mock.NewProvider(mock.Final("ok")))
+	deliverIn(t, state, personalprocess.DeliverRequest{Text: "排队", ID: "q-1", WaitProcessed: true})
+	ctx, cancel := context.WithCancel(context.Background())
+	state.ctx = ctx
+	cancel()
+
+	state.settleTurnDeliveries(nil, nil, false)
+	assert.Eq(t, 1, len(source.deliveries))
+	stateNow, _ := source.DeliveryState("q-1")
+	assert.Eq(t, personalprocess.StateQueued, stateNow)
+	assert.Eq(t, 1, source.DiscardQueued())
+	stateNow, _ = source.DeliveryState("q-1")
+	assert.Eq(t, personalprocess.StateDiscarded, stateNow)
+}

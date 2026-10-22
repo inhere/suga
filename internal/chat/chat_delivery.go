@@ -80,6 +80,13 @@ func (s *chatState) settleTurnDeliveries(deliveries []chatInputEvent, heldIDs []
 		}
 		return
 	}
+	// A turn cut short because chat itself is ending (SIGTERM, the input closed) is
+	// no failure barrier: the queued messages stay queued, and the exit path reports
+	// them as discarded (design step 5) instead of holding them for a person who is
+	// leaving.
+	if s.ctx != nil && s.ctx.Err() != nil {
+		return
+	}
 	s.holdQueuedDeliveries()
 }
 

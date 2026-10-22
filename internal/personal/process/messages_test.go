@@ -127,6 +127,27 @@ func TestMessages_Protocol(t *testing.T) {
 		assert.Eq(t, StateProcessed, response.State)
 	})
 
+	t.Run("wait-processed reads discarded as a state, wait keeps ErrNotOnline", func(t *testing.T) {
+		// A message chat drops at exit: the --wait-processed sender reads the state
+		// (the CLI exits 3 with 消息未处理（discarded）); --wait still gets the error
+		// it always got.
+		for _, wp := range []bool{true, false} {
+			requests, fates := newChannels(t)
+			record := messagesServer(t, requests, fates)
+			go func() {
+				<-requests
+				fates <- ErrDiscarded
+			}()
+			response, err := Send(record, Request{Text: "你好", ID: "d-1", Wait: !wp, WaitProcessed: wp})
+			if wp {
+				assert.NoErr(t, err)
+				assert.Eq(t, StateDiscarded, response.State)
+			} else {
+				assert.ErrIs(t, err, ErrNotOnline)
+			}
+		}
+	})
+
 	t.Run("wait keeps its own semantics for a failed message", func(t *testing.T) {
 		requests, fates := newChannels(t)
 		record := messagesServer(t, requests, fates)
