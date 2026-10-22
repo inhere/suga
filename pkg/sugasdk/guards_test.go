@@ -192,6 +192,50 @@ func (panickingHook) BeforeRun(context.Context, *agentcore.RunEvent, *agentcore.
 	panic("hook exploded")
 }
 
+// TestSendCancelsWithContext covers the turn following its caller's context:
+// a cancelled Send ends the turn instead of waiting for the provider.
+func TestSendCancelsWithContext(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	var requests int32
+	server := slowServer(t, release, &requests, &[]string{})
+	home := sdkTestHome(t, server.URL)
+	engine, err := Open(context.Background(), EngineOptions{SugaHome: home})
+	assert.Require(t, assert.NoErr(t, err))
+	defer engine.Close()
+
+	session, err := engine.OpenSession(context.Background(), "", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
+	assert.Require(t, assert.NoErr(t, err))
+	defer session.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	type outcome struct {
+		result Result
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := session.Send(ctx, Prompt{Text: "slow"}, nil)
+		done <- outcome{result: result, err: err}
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for atomic.LoadInt32(&requests) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the turn never reached the provider")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case got := <-done:
+		assert.Require(t, assert.Err(t, got.err))
+		assert.True(t, errors.Is(got.err, context.Canceled), "want context.Canceled, got %v", got.err)
+		assert.Eq(t, "CANCELED", got.result.State)
+	case <-time.After(15 * time.Second):
+		t.Fatal("a cancelled turn did not end")
+	}
+}
+
 func TestSendRecoversPanic(t *testing.T) {
 	ctx := context.Background()
 	server := chatServer(t, "sdk_echo", "fine", nil)
