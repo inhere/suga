@@ -150,6 +150,9 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		// message. held means the failed turn moved it to the person's next turn: it is
 		// accepted, nothing runs on its own (design session-message-delivery D2).
 		if sendWaitProcessed {
+			// The state is what the sender was waiting for: processed, held (a failed
+			// turn moved it to the person's next turn) or a failure (exit 3).
+			fmt.Fprintf(stderr, "状态：%s\n", response.State)
 			switch response.State {
 			case personalprocess.StateFailed, personalprocess.StateDiscarded:
 				fmt.Fprintf(stderr, "id: %s\n", messageID)

@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 会话消息可靠投递（一期，内存语义）：`suga send --id <消息 ID>` 为消息起名，`session_message` 用每次工具调用的 `invocation_id` 做 ID（工具结果新增 `message_id`，新增 `action=status` 按 ID 查状态）；同一接收方进程内重复 ID 不再入队（“至多处理一次”）。接收方空闲时最多 10 条排队消息合并成一个回合（每条保留自己的来源标签，跳数取最大）。新增 `suga send --wait-processed` 等消息终态：回合完成回执 `processed`，回合失败/取消回执 `failed` 且退出码 3，失败的回合把还没取走的消息转入 `sessionHeld` 并回执 `held`（不自动重试，用户下一回合处理），chat 退出时排队消息回执 `discarded`。不带新参数时 `suga send` 的输出与退出码逐字节不变。伪终端冒烟见 `scripts/ptysmoke/chat_delivery.py`。
 - 按场景指定背景调用的模型：`models.idle`（空闲整理的后台压缩）与 `models.handoff`（`--from` 交接摘要）指向其它已配置模型；未配置时回落 compact 模型，再回落当前回合模型。`models.compact` 与 `compact_model` 同义（旧键保留为别名，两个键都写了时 `models.compact` 优先生效）；fallback 沿用 `fallback_models`。`suga inspect manifest` 的 Models 一节列出各场景实际使用的模型。
 - 进程内嵌入式 SDK `pkg/sugasdk`（实验性，对外 API 可能在小版本间调整）：同级仓库 xhen 这类宿主程序可以直接在自己的进程里驱动 suga——`Open` 打开引擎（`SUGA_HOME` 守卫：未加载则设置并加载、同目录复用、不同目录返回 `ErrSugaHomeMismatch`；一个进程同时只允许一个引擎，`Close` 后可再 `Open`）、`OpenSession` 按会话工作区装配运行时（可传宿主自带工具、`HostContext`、`agentcore.Hook`、审批器与记忆写入确认），`Send` 跑一个回合并接收 `Event`（文本增量、工具调用/结果的摘要、用量、错误），并可用 `Steer` 在回合中插话、`Card`、`Compact`、`Search`、`Sessions`、`Memory` 读改同一份会话库与记忆。导出的 API 不出现任何 `internal` 类型；会话默认记 `origin=xhen`（`suga sessions` 默认不列出），同一会话同时只跑一个回合（第二个 `Send` 返回忙错误而不排队），回合内 panic 转成错误返回而不传给宿主。用法见 `README.md` 的“Embedding”一节。
 - 面向嵌入方（进程内驱动 suga 的程序）的两个扩展点，普通用户无变化：
