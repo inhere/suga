@@ -419,8 +419,10 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	}
 	if runner.ProcessRoot() != "" {
 		// The delivery endpoint is the chat state's own method: `suga send --steer`
-		// inserts its message into the turn running right now (steer_send.go).
-		processServer, sessionName, err = registerChatProcess(sessionID, runner, state.deliverMessage, stderr)
+		// inserts its message into the turn running right now, and the sender's
+		// message ID names the message in a receipt or a status query
+		// (steer_send.go, session-message-delivery).
+		processServer, sessionName, err = registerChatProcess(sessionID, runner, state.deliverRequested, inputSource.DeliveryState, stderr)
 		if err != nil {
 			// Registration only adds the local session socket (`suga send`, gofer delivery);
 			// losing it must not end the chat. The common cause is a SUGA_HOME deep enough
@@ -594,6 +596,9 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		}
 		// The turn itself, from the idle pause to its Stop hook (chat_turn.go).
 		state.turnHops = in.hops
+		// The queue deliveries this turn carries: their receipts follow when the
+		// turn ends (chat_delivery.go).
+		state.turnDeliveries = in.deliveries
 		if err := state.runTurn(line, injected, in.images); err != nil {
 			if errors.Is(err, errExitChat) {
 				// A second Ctrl-C during a turn: leave chat like the second one at
@@ -645,6 +650,10 @@ type chatInput struct {
 	// (design session_message): a turn started by a hops-h session message runs at
 	// h, every other turn at 0.
 	hops int
+	// deliveries are the queue deliveries this turn carries (one, or a merged batch
+	// of up to deliveryMergeLimit): each of them gets its receipt when the turn ends
+	// (chat_delivery.go).
+	deliveries []chatInputEvent
 }
 
 func nextChatInput(ctx context.Context, source *chatInputSource, render *Renderer, waiting sugahooks.Wait, lost *string) (chatInput, error) {
@@ -686,9 +695,10 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 				*lost = appendContext(*lost, waiting.Interrupt(context.Background()))
 				interrupted = true
 			}
-			render.External(delivery.line)
-			delivery.settle(nil)
-			return chatInput{line: delivery.line, hasLine: true, injected: true, interrupted: interrupted, images: delivery.images, hops: delivery.hops}, nil
+			// The messages queued behind it merge into this turn (chat_delivery.go).
+			in := takeDelivery(source, render, delivery)
+			in.interrupted = interrupted
+			return in, nil
 		default:
 		}
 		select {
@@ -729,9 +739,10 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 				*lost = appendContext(*lost, waiting.Interrupt(context.Background()))
 				interrupted = true
 			}
-			render.External(delivery.line)
-			delivery.settle(nil)
-			return chatInput{line: delivery.line, hasLine: true, injected: delivery.injected, interrupted: interrupted, images: delivery.images, hops: delivery.hops}, nil
+			// The messages queued behind it merge into this turn (chat_delivery.go).
+			in := takeDelivery(source, render, delivery)
+			in.interrupted = interrupted
+			return in, nil
 		case <-ctx.Done():
 			return chatInput{interrupted: interrupted}, ctx.Err()
 		}

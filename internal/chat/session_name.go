@@ -49,10 +49,11 @@ func resolveChatShortName(stored string, records []personalprocess.Record, dir s
 // the server plus the effective name for the banner, `suga ps` and the exit
 // summary. The name is generated and stored on the first registration and reused
 // by every resume. deliver is where the socket hands an incoming message
-// (chatState.deliverMessage, which resolves the request's mode). The record
-// declares FeatureImages, so a `suga send --image` sender knows this receiver
-// takes pictures (design send --image D2).
-func registerChatProcess(sessionID string, runner *personal.Runner, deliver personalprocess.DeliverImagesFunc, stderr io.Writer) (*personalprocess.Server, string, error) {
+// (chatState.deliverRequested, which resolves the request's mode, its message ID and
+// the receipt it asked for), and status answers a status query for a message ID of
+// this process. The record declares FeatureImages, so a `suga send --image` sender
+// knows this receiver takes pictures (design send --image D2).
+func registerChatProcess(sessionID string, runner *personal.Runner, deliver personalprocess.DeliverMessageFunc, status personalprocess.StatusFunc, stderr io.Writer) (*personalprocess.Server, string, error) {
 	ctx := context.Background()
 	stored, err := runner.SessionShortName(ctx, sessionID)
 	if err != nil {
@@ -68,8 +69,8 @@ func registerChatProcess(sessionID string, runner *personal.Runner, deliver pers
 	// takes pictures (design send --image D2), and FeatureHops, so a session message sender
 	// knows this chat holds a message at the automatic-reply limit instead of starting a turn
 	// (design session_message).
-	server, err := personalprocess.StartWaitImages(runner.ProcessRoot(), sessionID, name, cwd,
-		[]string{personalprocess.FeatureImages, personalprocess.FeatureHops}, deliver)
+	server, err := personalprocess.StartMessages(runner.ProcessRoot(), sessionID, name, cwd,
+		[]string{personalprocess.FeatureImages, personalprocess.FeatureHops}, deliver, status)
 	if err != nil {
 		return nil, "", err
 	}

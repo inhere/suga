@@ -175,6 +175,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_refs.py --bin tmp/smoke/suga --work tmp/smoke-refs
 	python3 -I scripts/ptysmoke/chat_tool_lines.py --bin tmp/smoke/suga --work tmp/smoke-toollines
 	python3 -I scripts/ptysmoke/chat_session_message.py --bin tmp/smoke/suga --work tmp/smoke-session-message
+	python3 -I scripts/ptysmoke/chat_delivery.py --bin tmp/smoke/suga --work tmp/smoke-delivery
 	python3 -I scripts/ptysmoke/preferred_tools.py --bin tmp/smoke/suga --work tmp/smoke-preferred-tools
 
 ## smoke-go: run the Go ptytest chat smoke (Linux/macOS and Windows ConPTY)

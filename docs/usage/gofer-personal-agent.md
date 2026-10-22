@@ -346,6 +346,7 @@ Suga 的 ACP 服务端支持图片内容块（第二期）：
 - 当前模型不支持看图、或任何一张图读取失败（不存在、格式不支持、超限）时，run 在开始回合前报错退出（exit 1）：错误写明第几张与路径/原因，并提示用 `--model` 指定支持看图的模型或为该模型配置 `vision`，不会静默丢图。
 - `--output stream-json` 的首行 session 事件在有图时多一个 `images` 字段（张数）；无 `--image` 时该行与原来逐字节一致。
 - gofer 的命令行形态可按路径传图：`suga run --model <provider>/<model> --image <绝对路径> -p "描述这张图"`（图片在发送端读取、按 chat `:image` 的规则校验后随本条消息发出）。`suga send --image` 尚未支持：投递协议（`internal/personal/process`）只携带文本，需要附图时用 run 或 ACP 图片块。
+- `suga send` 的退出码表与 `--wait` 语义对 gofer 是稳定契约（0 已投递/已排队，1 队列满，2 选择器歧义，3 未在线或消息被丢弃，4 文本过大，5 接收方不支持附图）：会话消息可靠投递（一期）只在这些之外新增 `--id` 与 `--wait-processed`，不带新参数时输出与退出码逐字节不变。带 `--wait-processed` 时，发送方拿到的是消息的终态：`processed` 退出 0，`held`（失败的回合把它转给用户下一回合）退出 0，`failed`/`discarded` 退出 3；状态行写 `状态：<state>`，另有 `id: <消息 ID>` 行。
 
 ### ACP 用量上报
 

@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gookit/goutil/cflag"
 	"github.com/gookit/goutil/cflag/capp"
@@ -66,8 +70,8 @@ suga send --session 1a2b --image shot.png 看看这张
 suga send --session 1a2b -- -hello`
 
 func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
-	var sendSession, sendText, sendSource string
-	var sendWait, sendSteer bool
+	var sendSession, sendText, sendSource, sendID string
+	var sendWait, sendSteer, sendWaitProcessed bool
 	var sendImages []string
 	send := capp.NewCmd("send", "Send text to a local Suga chat process", func(c *capp.Cmd) error {
 		// The session check runs before any stdin read, so a missing --session
@@ -112,7 +116,13 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		// --wait keeps the connection until the message reached the model or starts a
 		// turn (or was discarded, exit 3). Without it a queued message returns at
 		// once, so an automated sender never blocks for the length of the current turn.
-		response, err := personalprocess.Send(record, personalprocess.Request{Text: text, From: sendSource, Wait: sendWait, Mode: mode, Images: images})
+		// A message ID is only generated when the sender asks for one (--id or
+		// --wait-processed): a plain send stays byte-for-byte what it always was.
+		messageID := strings.TrimSpace(sendID)
+		if messageID == "" && sendWaitProcessed {
+			messageID = newSendMessageID()
+		}
+		response, err := personalprocess.Send(record, personalprocess.Request{Text: text, From: sendSource, Wait: sendWait, WaitProcessed: sendWaitProcessed, Mode: mode, Images: images, ID: messageID})
 		if errors.Is(err, personalprocess.ErrNotOnline) {
 			return processExitError{code: 3, err: err}
 		}
@@ -135,6 +145,20 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 			// text note): the sender shows it and still exits 0.
 			fmt.Fprintln(stderr, "提示："+response.Warning)
 		}
+		// A --wait-processed sender learns the message's terminal state: one that failed
+		// (or was discarded on the way) exits 3, like --wait does for a discarded
+		// message. held means the failed turn moved it to the person's next turn: it is
+		// accepted, nothing runs on its own (design session-message-delivery D2).
+		if sendWaitProcessed {
+			// The state is what the sender was waiting for: processed, held (a failed
+			// turn moved it to the person's next turn) or a failure (exit 3).
+			fmt.Fprintf(stderr, "状态：%s\n", response.State)
+			switch response.State {
+			case personalprocess.StateFailed, personalprocess.StateDiscarded:
+				fmt.Fprintf(stderr, "id: %s\n", messageID)
+				return processExitError{code: 3, err: fmt.Errorf("消息未处理（%s）", response.State)}
+			}
+		}
 		switch {
 		case response.Steered && !sendWait:
 			// The message went into the turn running right now (no --wait: the ack is
@@ -151,6 +175,10 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		default:
 			fmt.Fprintln(stderr, "delivered")
 		}
+		if messageID != "" {
+			// The ID is what --wait-processed and session_message action=status name.
+			fmt.Fprintf(stderr, "id: %s\n", messageID)
+		}
 		return nil
 	})
 	send.SetOutput(stderr)
@@ -160,10 +188,24 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 	send.StringVar(&sendSession, "session", "", "session ID, ID prefix, or the short name of a running chat (suga ps){[;sid]}")
 	send.StringVar(&sendText, "text", "", "message text; cannot be combined with arguments; defaults to stdin{[]}")
 	send.StringVar(&sendSource, "source", "cli", "source label the chat shows before the text as [来自 <source>]; text already starting with a [...] tag is shown as is{[]}")
+	send.StringVar(&sendID, "id", "", "message ID the receiver dedupes on and a receipt names; generated when --wait-processed is used{[]}")
+	send.BoolVar(&sendWaitProcessed, "wait-processed", false, "wait until the message was processed or failed; exit 3 when it failed or was discarded{[]}")
 	send.BoolVar(&sendWait, "wait", false, "wait until the message reaches the running turn or starts a turn; exit 3 if it is discarded{[]}")
 	send.BoolVar(&sendSteer, "steer", false, "insert the text into the turn running right now; queue it for the next turn when there is none{[]}")
 	send.Var((*cflag.Strings)(&sendImages), "image", "image file delivered with the message (repeatable, at most 16; same checks and scaling as chat :image)")
 	return send
+}
+
+// newSendMessageID is the ID of a message whose sender did not name one: a random
+// 128-bit hex value, unique enough that no two messages of one receiver collide.
+func newSendMessageID() string {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// A broken random source still needs an ID: the PID and the clock are enough
+		// for in-process dedupe, which is what the ID is for (design D2).
+		return fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
+	}
+	return hex.EncodeToString(raw[:])
 }
 
 // sendMessageText resolves the message from the three accepted sources: the

@@ -47,6 +47,10 @@ func (stubSessionMessenger) Send(context.Context, string, string, string) (nativ
 	return native.SessionSendResult{}, nil
 }
 
+func (stubSessionMessenger) Status(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
 // TestWebFetchUserAgentWiring covers tools.web_fetch.user_agent: the config key
 // the registry accepts, the default when it is unset, and the value the native
 // environment hands to the tool.

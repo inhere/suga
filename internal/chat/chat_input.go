@@ -40,6 +40,12 @@ type chatInputEvent struct {
 	// session_message): the turn this delivery starts runs at that depth.
 	fromName string
 	hops     int
+	// id is the sender's message ID (design session-message-delivery D1): it names
+	// the delivery in the state table a status query reads.
+	id string
+	// deferSettle (a --wait-processed delivery) defers its receipt to the end of the
+	// turn that runs it; a --wait delivery is settled when it is taken (settle).
+	deferSettle bool
 }
 
 // settle reports the delivery's final fate to a waiting sender; never blocks.
@@ -50,6 +56,15 @@ func (e chatInputEvent) settle(err error) {
 	select {
 	case e.settled <- err:
 	default:
+	}
+}
+
+// taken reports the moment chat takes the delivery off the queue: a --wait sender
+// learns now that its message starts a turn, while a --wait-processed sender waits
+// for the end of that turn (settleTurnDeliveries, chat_delivery.go).
+func (e chatInputEvent) taken() {
+	if !e.deferSettle {
+		e.settle(nil)
 	}
 }
 
@@ -145,6 +160,15 @@ type chatInputSource struct {
 	interruptSeen bool
 	activity      chan struct{}
 	deliveries    chan chatInputEvent
+	// deliverySeen and deliveryStates are the message IDs this process took (design
+	// session-message-delivery D2/D3): an ID here is not queued twice, and its state
+	// is what a status query answers. deliveryOrder is the insertion order, so the
+	// oldest ID is the one dropped at maxDeliveryStates. Both guarded by mu.
+	deliverySeen   map[string]struct{}
+	deliveryStates map[string]string
+	deliveryOrder  []string
+	// deliveryWaiters are the duplicates of a message ID waiting for its fate.
+	deliveryWaiters map[string][]chan error
 	// taskWake signals a background task end (tasks.wake_on_exit); nil when
 	// off. taskNotice takes the pending notices as the text of an injected
 	// turn ("" when the running turn already took them).
@@ -260,49 +284,15 @@ func (s *chatInputSource) DeliverWait(text, from string) (bool, <-chan error, er
 // (design session_message): the line names that session, and hops is the
 // automatic-reply depth the turn it starts carries.
 func (s *chatInputSource) DeliverImages(text, from, fromName string, hops int, images []agentcore.ImagePart) (bool, <-chan error, error) {
-	if strings.TrimSpace(text) == "" {
-		return false, nil, fmt.Errorf("delivery text is empty")
-	}
-	settled := make(chan error, 1)
-	line := deliveryLine(text, from)
-	if strings.HasPrefix(from, process.SessionFromPrefix) {
-		// A message of another session names the peer and its full ID, so the model
-		// reads it as a request or report of a companion, not as the person's own
-		// instruction (design session_message "来源标记").
-		line = sessionDeliveryLine(text, from, fromName)
-	}
-	event := chatInputEvent{line: line, injected: true, settled: settled, images: images, fromName: fromName, hops: hops}
-	// Hold mu across the closed check and the enqueue so DiscardQueued cannot miss a delivery.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return false, nil, process.ErrSessionClosed
-	}
-	queued := s.busy || len(s.deliveries) > 0
-	select {
-	case s.deliveries <- event:
-		return queued, settled, nil
-	default:
-		return true, nil, process.ErrQueueFull
-	}
+	return s.enqueueDelivery("", false, text, from, fromName, hops, images)
 }
 
-// DiscardQueued refuses further deliveries and fails every message still queued (its sender,
-// if waiting, learns it was not delivered). It returns how many were dropped.
-func (s *chatInputSource) DiscardQueued() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.closed = true
-	n := 0
-	for {
-		select {
-		case event := <-s.deliveries:
-			event.settle(process.ErrDiscarded)
-			n++
-		default:
-			return n
-		}
-	}
+// DeliverMessage is DeliverImages with the sender's message ID and the receipt it
+// asked for (design session-message-delivery D1): an ID this process already took
+// is not queued a second time, and waitProcessed defers the receipt to the end of
+// the message's turn instead of the moment chat takes it.
+func (s *chatInputSource) DeliverMessage(id string, waitProcessed bool, text, from, fromName string, hops int, images []agentcore.ImagePart) (bool, <-chan error, error) {
+	return s.enqueueDelivery(id, waitProcessed, text, from, fromName, hops, images)
 }
 
 // deliveryLine labels a delivered message with its source: "[来自 <from>] text".

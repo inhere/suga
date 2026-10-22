@@ -45,6 +45,9 @@ type SessionSendResult struct {
 	// Legacy is true when the peer runs a version without the automatic-reply
 	// limit: the message was delivered and starts its turn whenever it arrives.
 	Legacy bool
+	// MessageID is the ID the receiver dedupes on and a receipt or a status query
+	// names (empty for a peer of an older version).
+	MessageID string
 }
 
 // SessionMessenger is the host side of session_message: the running chat
@@ -57,6 +60,10 @@ type SessionMessenger interface {
 	// Send delivers text to the session `to` names (a short name, a full session
 	// ID or an ID prefix). mode is "follow_up" or "steer".
 	Send(ctx context.Context, to, text, mode string) (SessionSendResult, error)
+	// Status answers the state of one message ID a former send to `to` produced
+	// (queued|steered|processed|failed|held|discarded); the empty state means the
+	// receiver never saw that ID (it restarted) or knows nothing of it.
+	Status(ctx context.Context, to, id string) (string, error)
 }
 
 // SessionMessageTool lets the model list and message the other chat sessions of
@@ -98,10 +105,11 @@ func (t *SessionMessageTool) Schema() api.ToolSchema {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action": map[string]any{"type": "string", "enum": []any{"list", "send"},
-					"description": "list: the running chat sessions; send: deliver text to one of them"},
-				"to":   map[string]any{"type": "string", "description": "send: the short name (e.g. suga-k7) or the session ID/ID prefix of the target"},
+				"action": map[string]any{"type": "string", "enum": []any{"list", "send", "status"},
+					"description": "list: the running chat sessions; send: deliver text to one of them; status: the state of a message ID you sent"},
+				"to":   map[string]any{"type": "string", "description": "send/status: the short name (e.g. suga-k7) or the session ID/ID prefix of the target"},
 				"text": map[string]any{"type": "string", "description": "send: the message text the other session's model reads"},
+				"id":   map[string]any{"type": "string", "description": "status: the message_id a send returned"},
 			},
 			"required": []any{"action"},
 		},
@@ -123,8 +131,14 @@ func (t *SessionMessageTool) Execute(ctx context.Context, call api.ToolCall) (*a
 			return nil, fmt.Errorf("session_message: %w", err)
 		}
 		return result(call, t.Name(), text), nil
+	case "status":
+		text, err := t.status(ctx, call.Arguments)
+		if err != nil {
+			return nil, fmt.Errorf("session_message: %w", err)
+		}
+		return result(call, t.Name(), text), nil
 	default:
-		return nil, fmt.Errorf("session_message: action 必须是 list 或 send，收到 %q", action)
+		return nil, fmt.Errorf("session_message: action 必须是 list、send 或 status，收到 %q", action)
 	}
 }
 
@@ -173,6 +187,10 @@ func (t *SessionMessageTool) send(ctx context.Context, args map[string]any) (str
 		return "", err
 	}
 	lines := []string{sessionSendOutcome(mode, res)}
+	if res.MessageID != "" {
+		// The ID names the message for a status query (`action=status`).
+		lines = append(lines, "message_id: "+res.MessageID)
+	}
 	if res.Warning != "" {
 		lines = append(lines, "提示："+res.Warning)
 	}
@@ -180,6 +198,44 @@ func (t *SessionMessageTool) send(ctx context.Context, args map[string]any) (str
 		lines = append(lines, "注意：对方是旧版本 suga，不支持连续回复上限；这条消息仍已投递，但会直接开始对方的回合。")
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// status answers the state of one message ID that a send returned: what the
+// receiver did with it, or that the receiver never saw it (design
+// session-message-delivery D3).
+func (t *SessionMessageTool) status(ctx context.Context, args map[string]any) (string, error) {
+	to := strings.TrimSpace(stringArg(args, "to"))
+	id := strings.TrimSpace(stringArg(args, "id"))
+	if to == "" || id == "" {
+		return "", fmt.Errorf("status 需要 to 和 id：接收方的短名称或会话 ID，以及 send 返回的 message_id")
+	}
+	state, err := t.messenger.Status(ctx, to, id)
+	if err != nil {
+		return "", err
+	}
+	if state == "" {
+		return fmt.Sprintf("消息 %s 的状态：未知（接收方已重启或不在线，无法确认）", id), nil
+	}
+	return fmt.Sprintf("消息 %s 的状态：%s（%s）", id, state, sessionStateLabel(state)), nil
+}
+
+// sessionStateLabel says what one state means for the model that asks.
+func sessionStateLabel(state string) string {
+	switch state {
+	case "queued":
+		return "已排队，等对方下一回合"
+	case "steered":
+		return "已插入对方正在运行的回合"
+	case "processed":
+		return "已处理（对方的回合已完成）"
+	case "failed":
+		return "处理失败（对方的回合失败或被取消），不会自动重试"
+	case "held":
+		return "待对方用户处理（失败回合转入了对方的下一回合）"
+	case "discarded":
+		return "未处理（接收方已退出）"
+	}
+	return state
 }
 
 // sessionSendOutcome says what the receiver did with the message.

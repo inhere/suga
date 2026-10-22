@@ -41,6 +41,30 @@ func writeSessionRecord(t *testing.T, root, sessionID, name string, features []s
 	return record
 }
 
+// TestSessionMessengerStatusQueriesTheReceiver: `session_message action=status`
+// reaches the live receiver over the session socket and answers its state table; an
+// ID the receiver never saw is reported as unknown instead of guessed.
+func TestSessionMessengerStatusQueriesTheReceiver(t *testing.T) {
+	root := sessionMessageRoot(t)
+	server, err := personalprocess.StartMessages(root, "checkout-at-3", "suga-k7", t.TempDir(), nil, nil,
+		func(id string) (string, bool) {
+			if id == "known" {
+				return personalprocess.StateProcessed, true
+			}
+			return "", false
+		})
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = server.Close() })
+
+	messenger := &sessionMessenger{root: root}
+	state, err := messenger.Status(context.Background(), "suga-k7", "known")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, personalprocess.StateProcessed, state)
+	state, err = messenger.Status(context.Background(), "suga-k7", "lost")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "", state)
+}
+
 // TestSessionMessengerPeersSkipThisProcess: the list never offers the session of
 // this very process (a chat listing itself), and a peer declares whether its
 // version understands the hop limit.

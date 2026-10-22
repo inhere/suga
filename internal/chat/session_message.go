@@ -25,6 +25,28 @@ func (s *chatState) holdSessionMessage(line string) {
 	s.sessionHeld = append(s.sessionHeld, line)
 }
 
+// holdSessionMessageID records the message ID of a held session message, in the
+// same order as holdSessionMessage: the completed turn that runs it reports it
+// processed (chat_delivery.go).
+func (s *chatState) holdSessionMessageID(id string) {
+	if id == "" {
+		return
+	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	s.sessionHeldIDs = append(s.sessionHeldIDs, id)
+}
+
+// takeHeldSessionMessageIDs hands over the IDs of the held messages the turn about
+// to run carries and clears them.
+func (s *chatState) takeHeldSessionMessageIDs() []string {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	ids := s.sessionHeldIDs
+	s.sessionHeldIDs = nil
+	return ids
+}
+
 // takeHeldSessionMessages hands the held session messages to the turn about to
 // run, as the context that runs before the person's own line.
 func (s *chatState) takeHeldSessionMessages() []string {
