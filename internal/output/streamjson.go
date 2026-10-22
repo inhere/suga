@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -114,6 +115,35 @@ func NudgeLine(rule, kind, action, evidence string) map[string]any {
 // leaves the line exactly as it was.
 func WithVerify(line map[string]any, passed bool, rounds int) map[string]any {
 	line["verify"] = map[string]any{"passed": passed, "rounds": rounds}
+	return line
+}
+
+// WithOutputSchema adds the run's --output-schema outcome to the closing result
+// line (design 2026-10-22 4.4): checked:false with a reason when the turn's end
+// left nothing to judge, else passed/rounds/source plus the errors of a failure
+// or the checked value of a pass. A run without --output-schema leaves the line
+// exactly as it was.
+func WithOutputSchema(line map[string]any, rep personal.ContractReport) map[string]any {
+	view := map[string]any{"checked": rep.Checked}
+	if !rep.Checked {
+		view["reason"] = rep.Reason
+		line["output_schema"] = view
+		return line
+	}
+	view["passed"], view["rounds"], view["source"] = rep.Passed, rep.Rounds, rep.Source
+	if len(rep.Errors) > 0 {
+		errs := make([]map[string]string, 0, len(rep.Errors))
+		for _, err := range rep.Errors {
+			errs = append(errs, map[string]string{"path": err.Path, "message": err.Message})
+		}
+		view["errors"] = errs
+	}
+	if rep.Passed && len(rep.Value) > 0 {
+		// The value is the checked JSON text; it goes out as JSON, not as a quoted
+		// string, so the caller can read it without decoding twice.
+		view["value"] = json.RawMessage(rep.Value)
+	}
+	line["output_schema"] = view
 	return line
 }
 
