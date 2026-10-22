@@ -1,7 +1,7 @@
 # 输出契约（OutputSchema）设计
 
 日期：2026-10-22
-状态：**Draft 0.2 / 待用户批准**（0.2 按评审 `docs/review/2026-10-22-output-schema-design-review.md` 的 F1–F3 修订）
+状态：**Approved 0.2**（2026-10-22 用户：“批准输出契约设计 0.2”；设计批准只授权进入规划）（0.2 按评审 `docs/review/2026-10-22-output-schema-design-review.md` 的 F1–F3 修订）
 参考：whip（context-labs/whip）的输出契约（`docs/rlm-runtime.md:470-489`、`internal/daemon/output_contract.go`），见 `local/analysis/2026-10-22-whip-vs-suga.md` 的 B4；现有 `--verify`（`docs/design/2026-10-21-run-verify-design.md`）与收工检查 nudge（`docs/design/2026-10-22-nudge-design.md`）的注入式推回机制。
 本文件只做设计，不含实现；实施等本设计获批后另出计划。
 
