@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.45.0] - 2026-10-22
+
+会话消息可靠投递一期（消息 ID、合并投递、处理回执与失败屏障）；嵌入式 SDK `pkg/sugasdk` 与宿主扩展点（为 xhen 准备）；工具调用台账、调用前 hook、流式空闲超时与重试总时限；shell 子进程资源限制、快照容错；`suga compact` 与更难的长会话评测。
+
 ### 新增
 
 - 按场景指定背景调用的模型：`models.idle`（空闲整理的后台压缩）与 `models.handoff`（`--from` 交接摘要）指向其它已配置模型；未配置时回落 compact 模型，再回落当前回合模型。`models.compact` 与 `compact_model` 同义（旧键保留为别名，两个键都写了时 `models.compact` 优先生效）；fallback 沿用 `fallback_models`。`suga inspect manifest` 的 Models 一节列出各场景实际使用的模型。
@@ -33,6 +37,7 @@
 - 宿主注入的 hook（`agentcore.Hook`）panic 不再把整个进程/回合拖倒：hook 链每个阶段都把 panic 换成错误（`hook %T panicked: ...`），判定“是否允许执行”的 `BeforeTool` 阶段因此拒绝该调用并留下错误事件，只做观察的 `AfterTool` 阶段已跑完的工具结果照常进会话记录。`pkg/sugasdk` 的回合级 panic 兜底不变。
 - 快照层（`file_edit`/`file_write`/`file_remove` 的前镜像）不再因为一个损坏的记录让整个会话不可用（suga-m870）：读取 turn 目录时，缺 `meta.json` 或 JSON 损坏的子目录被跳过并记 `slog` 警告，其他快照照常可用（`suga data gc` 报告跳过的记录数）；快照记录改为先写进隐藏的 `.partial-` 临时目录、`meta.json` 落盘后再 rename 成正式目录，读者与清理都不会看到半成品；清理会删掉早于 30 分钟的半成品目录（含缺 `meta.json` 的旧记录目录，`suga data gc` 报告清理数量），别人正在写的目录保留；初始化扫描失败不再被永久缓存为“不可用”，下一次调用重试，只有配置错误或目录无写权限才视为永久不可用，单次失败只让这一次调用降级（`tools.snapshots.on_error=continue` 时照旧提示“本次写入不可撤销”）。
 - 评测运行器未传 `--model` 时 results.jsonl 里的 `model` 为空（suga-h5vn）：改为向 `suga config get model` 取本次运行实际解析出的模型（`--model` 仍优先），并在汇总表新增 MODEL 列显示。
+- provider 持续失败时进程退出慢：一次请求的全部重试现在受 `retry.max_elapsed`（默认 `3m`，`off` 关闭）限制，到点不再重试、直接失败（配了 `fallback_models` 则交给下一个模型），不再按“尝试次数 × 单次超时”拖到 3–4 分钟；失败回合的收尾本来只做有时限的记账（收工检查、`--verify`、后台任务收尾在出错时都跳过），所以进程数秒内退出并释放会话锁，紧跟着的 `--resume` 不再撞 `session is locked`。
 
 ## [0.44.0] - 2026-10-22
 
@@ -49,7 +54,6 @@
 
 ### 修复
 
-- provider 持续失败时进程退出慢：一次请求的全部重试现在受 `retry.max_elapsed`（默认 `3m`，`off` 关闭）限制，到点不再重试、直接失败（配了 `fallback_models` 则交给下一个模型），不再按“尝试次数 × 单次超时”拖到 3–4 分钟；失败回合的收尾本来只做有时限的记账（收工检查、`--verify`、后台任务收尾在出错时都跳过），所以进程数秒内退出并释放会话锁，紧跟着的 `--resume` 不再撞 `session is locked`。
 - chat：Ctrl-C 结束本地命令时，输入行上已输入的内容（半行）随中断事件归还，不再依赖编辑器缓冲的时序，任何时序下都能回到下一次提示（suga-l7u2）
 - 循环调用检测（`tools.loop_guard`）改为按“动作 + 结果”判定，不再把正常迭代当成死循环：重复调用的键现在包含结果摘要（是否出错 + 追加提示前结果正文的哈希），结果变了就不算重复；同一条成功写入类工具（`file_edit`/`file_write`/`file_remove`）之后 R1/R2 的计数清零，`改代码 → go test → 再改 → 再 go test` 这样累计 4 次不再提示。新增 R3：同一条 `shell_exec` 命令在一个回合内失败 3 次（中间有编辑也计数，改了还失败才是死路）时提示“这条命令已失败 N 次”，trace 的 `loop_guard` 事件 `rule` 新增 `R3`，chat 显示 `↻ shell_exec 已失败 ×N，已提醒模型`。提示语按规则如实描述：R1/R2 说“第 N 次相同调用且结果没有变化”，R3 说“第 N 次失败”；每组每回合最多提醒 2 次与排除工具（`update_plan`/`session_message`/`agent`）不变。
 
@@ -1083,7 +1087,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.44.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.45.0...HEAD
+[0.45.0]: https://github.com/inhere/suga/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/inhere/suga/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/inhere/suga/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/inhere/suga/compare/v0.41.0...v0.42.0
