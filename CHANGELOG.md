@@ -6,6 +6,8 @@
 
 ### 新增
 
+- 嵌入式 SDK `pkg/sugasdk` 的 `Send` 支持可选幂等请求：`Prompt.RequestID`（调用方生成，建议 UUID，按会话隔离）把一个回合变成可去重的请求——同一会话内已完成的 id 直接从存储重放首次的 `Result`（`Result.Replayed=true`，模型不再被调用）；正在执行的 id 返回 `ErrRequestRunning`；进程中途崩溃留下的 running 记录读作“投递不确定”（`ErrDeliveryUncertain`，`Session.RequestStatus` 返回 `unknown`），不自动重放，由宿主用新 id 重发。RequestID 到 turn_id 的映射与已完成结果持久化在会话 meta（`sdk_req:` 前缀键，无库迁移），`RequestStatus` 返回 `unknown`/`running`/`done`/`failed`；不带 RequestID 的 `Send` 行为不变（suga-sg0w）。
+
 - 进程内嵌入式 SDK `pkg/sugasdk`（实验性，对外 API 可能在小版本间调整）：同级仓库 xhen 这类宿主程序可以直接在自己的进程里驱动 suga——`Open` 打开引擎（`SUGA_HOME` 守卫：未加载则设置并加载、同目录复用、不同目录返回 `ErrSugaHomeMismatch`；一个进程同时只允许一个引擎，`Close` 后可再 `Open`）、`OpenSession` 按会话工作区装配运行时（可传宿主自带工具、`HostContext`、`agentcore.Hook`、审批器与记忆写入确认），`Send` 跑一个回合并接收 `Event`（文本增量、工具调用/结果的摘要、用量、错误），并可用 `Steer` 在回合中插话、`Card`、`Compact`、`Search`、`Sessions`、`Memory` 读改同一份会话库与记忆。导出的 API 不出现任何 `internal` 类型；会话默认记 `origin=xhen`（`suga sessions` 默认不列出），同一会话同时只跑一个回合（第二个 `Send` 返回忙错误而不排队），回合内 panic 转成错误返回而不传给宿主。用法见 `README.md` 的“Embedding”一节。
 - 面向嵌入方（进程内驱动 suga 的程序）的两个扩展点，普通用户无变化：
   - `wiring.Options.ExtraTools` 允许宿主把自己的 Go 工具注册进主会话工具表：它们出现在工具列表、`tool_search` 与 `suga_manifest` 的工具清单里，和内置工具一样受 `tools.disabled` 控制；与内置/MCP 工具或运行时自身注册的工具（`task`、`agent`、`update_plan` 等）重名时 `Open` 返回错误，而不是静默覆盖；子 agent 默认不获得这些工具。
