@@ -291,7 +291,15 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("shell_exec: start %s: %w", t.shell.name(), err)
 	}
-	tree.Started()
+	// started and resumed only once it is assigned; if the assignment fails,
+	// Started terminates the suspended shell and the command reports the error.
+	if serr := tree.Started(); serr != nil {
+		// cmd.Wait reaps the terminated shell; its output stays in output, which
+		// is dropped along the error.
+		_ = cmd.Wait()
+		tree.Close()
+		return nil, fmt.Errorf("shell_exec: start %s: %w", t.shell.name(), serr)
+	}
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()

@@ -177,7 +177,10 @@ var ErrUnknownTask = errors.New("unknown task")
 type ProcessTree interface {
 	Kill() error
 	Close()
-	Started()
+	// Started assigns a start suspended process to the tree (Windows) and
+	// resumes it; it returns an error if the process could not join, and the
+	// caller then ends it and reports a failed command.
+	Started() error
 	// Exceeded reports whether a resource limit ended a process of the tree.
 	Exceeded() bool
 }
@@ -312,7 +315,15 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (Info, error) {
 		_ = file.Close()
 		return Info{}, fmt.Errorf("start: %w", err)
 	}
-	t.tree.Started()
+	// The task is not registered yet: if the shell could not join its job (its
+	// still suspended process is terminated by Started), it becomes an error of
+	// Start instead of a task that instantly failed.
+	if serr := t.tree.Started(); serr != nil {
+		_ = cmd.Wait()
+		t.tree.Close()
+		_ = file.Close()
+		return Info{}, fmt.Errorf("start: %w", serr)
+	}
 	m.register(s, t)
 	go m.wait(s, t, cmd)
 	return t.snapshot(), nil

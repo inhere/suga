@@ -28,7 +28,7 @@ func NewLimited(cmd *exec.Cmd, limits Limits) *Tree {
 }
 
 // Started is a no-op: the group exists from Start.
-func (p *Tree) Started() {}
+func (p *Tree) Started() error { return nil }
 
 // Kill sends SIGKILL to the whole group.
 func (p *Tree) Kill() error {

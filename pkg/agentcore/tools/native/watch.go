@@ -231,7 +231,14 @@ func (w *watcher) once(ctx context.Context, out io.Writer, n int, trigger string
 		fmt.Fprintf(out, "=== start failed: %v ===\n", err)
 		return watchRun{exit: -1, key: "start failed"}, ctx.Err() == nil
 	}
-	tree.Started()
+	if serr := tree.Started(); serr != nil {
+		// Started kills the suspended shell when it cannot join the job: reap it
+		// and write the reason as this run's end line, like a start failure.
+		_ = cmd.Wait()
+		tree.Close()
+		fmt.Fprintf(out, "=== start failed: %v ===\n", serr)
+		return watchRun{exit: -1, key: "start failed"}, ctx.Err() == nil
+	}
 	err := cmd.Wait()
 	tree.Close()
 	if ctx.Err() != nil {
