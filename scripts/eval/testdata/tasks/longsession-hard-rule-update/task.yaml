@@ -1,0 +1,81 @@
+name: longsession-hard-rule-update
+mode: allow-write
+fake_mode: text
+# 难版长会话 2：约束更新。
+# 第 1 轮给规则 A（全英文回答 + 末尾署名 --SIGMA）；第 6 轮把署名规则改成 --DELTA
+# （英文要求保留，A 作废）；第 3、6、9 轮后各强制换段一次；第 7 轮起检查遵守的是 A′ 而不是 A。
+fake_reply: |-
+  Current rules are kept: every answer stays in English only, and the last line is the signature --DELTA.
+prompts:
+  - |-
+    Two long-lived rules for this whole session:
+    1) every answer of yours is written in English only, no Chinese characters;
+    2) the very last line of every answer is the signature --SIGMA on its own line.
+    Confirm both rules and say which one is easier to forget.
+  - |-
+    Now some unrelated work: read data/log_a.txt, tell me how many lines it has, which status value appears most often, and quote the three lines with the highest units value.
+  - |-
+    Next unrelated task: explain in a few paragraphs how you would add retry with exponential backoff and jitter to a client that talks to a flaky HTTP API, including which errors are worth retrying.
+  - |-
+    Next: read config/service.yaml and describe the deployment it configures, then list three risks you see in that configuration.
+  - |-
+    Next: explain the difference between a mutex and a channel for protecting a counter in Go, with a short code sketch for each, and say when you would reject one of them in review.
+  - |-
+    Rule update (this replaces rule 2 of turn 1): from now on the signature rule is cancelled - never write --SIGMA again. The last line of every answer must be --DELTA instead. The English-only rule stays exactly as it was.
+    Confirm the new rule set.
+  - |-
+    Back to some work: read data/log_b.txt, give its line count, its sum of units, and the average units per line (two decimals).
+  - |-
+    Next: describe how you would investigate a production incident where p99 latency doubled after a deploy while error rate stayed flat. Give the checks in the order you would run them.
+  - |-
+    Next: explain what a context window budget means for a long-running agent session, and why keeping old turns verbatim is expensive.
+  - |-
+    Next: read config/service.yaml again and propose two concrete hardening changes (do not edit the file, just propose them).
+  - |-
+    Next: summarise in one paragraph each the three topics we covered between the rule update and now.
+  - |-
+    Next: explain why log timestamps should be stored in UTC and rendered in local time, with at least four reasons.
+  - |-
+    Next: write a checklist of five items a reviewer should verify on a pull request that changes a retry policy.
+  - |-
+    Finally: state the rules that are in force right now in this session and confirm you are following each of them in this very answer.
+compact_after: [3, 6, 9]
+checks:
+  # 第 1 轮：规则 A 生效。
+  - {type: answer_contains, text: '--SIGMA', turn: 1}
+  - {type: answer_not_contains, text: '--DELTA', turn: 1}
+  # 第 3 轮（更新之前，已经换段一次）：仍然是 A。
+  - {type: answer_contains, text: '--SIGMA', turn: 3}
+  - {type: answer_not_contains, text: '--DELTA', turn: 3}
+  # 第 7 轮（更新之后又换段一次）：必须已经切到 A′。
+  - {type: answer_contains, text: '--DELTA', turn: 7}
+  - {type: answer_not_contains, text: '--SIGMA', turn: 7}
+  # 三次换段之后：仍是 A′，不是 A。
+  - {type: answer_contains, text: '--DELTA', turn: 10}
+  - {type: answer_not_contains, text: '--SIGMA', turn: 10}
+  # 最后一轮：A′ 生效，且英文要求没被一起丢掉。
+  - {type: answer_contains, text: '--DELTA', turn: 14}
+  - {type: answer_not_contains, text: '--SIGMA', turn: 14}
+  - {type: answer_not_matches, text: '[\p{Han}]', turn: 14}
+  # 只读输入文件不许被改写。
+  - type: file_equals
+    path: config/service.yaml
+    text: |-
+      service: billing
+      replicas: 3
+      timeout: 30s
+      retry:
+        attempts: 2
+        backoff: 200ms
+# 撑大上下文的输入：400 行日志（log_b 的 units 合计在测试里不参与判定，只作为工作内容）。
+generate:
+  - path: data/log_a.txt
+    count: 400
+    line: "2026-10-02T08:00:00Z seq={i} status=ok units={i}"
+    inserts:
+      - {at: 33, text: "2026-10-02T08:00:33Z seq=33 status=error units=0"}
+      - {at: 210, text: "2026-10-02T08:03:30Z seq=210 status=error units=0"}
+  - path: data/log_b.txt
+    count: 200
+    line: "2026-10-03T09:00:00Z seq={i} units={i}"
+timeout: 40m

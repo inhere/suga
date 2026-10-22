@@ -1,0 +1,98 @@
+name: longsession-hard-naming-rules
+mode: allow-write
+fake_mode: text
+# 难版长会话 1：长距离原话约束。
+# 第 1 轮给出两条原话约束（新建文件名必须小写下划线 / 不许改动 vendor/），
+# 中间 10 轮无关工作（读 3000 行日志、读源码、长解释）撑大上下文，
+# 第 3、7、11 轮后各强制换段一次，第 14 轮才真正触发约束（新建文件 + 回看 vendor/）。
+fake_reply: |-
+  Constraint kept: the new note is notes/session_summary.md (lowercase and underscores),
+  the index line is notes/session_summary.md, and vendor/ was read only, never modified.
+prompts:
+  - |-
+    这次会话有两条硬约束，按原话执行，后面一直有效：
+    1) 你新建的任何文件名必须用小写下划线风格，例如 notes_plan.md —— 不许出现大写字母、空格或短横线；
+    2) 工作区里 vendor/ 目录下的任何文件都不许改动（可以读，不能写）。
+    先复述这两条约束，并说明你打算怎么保证遵守。
+  - |-
+    开始无关工作：读 data/orders.log，回答三个问题——一共多少行？status=error 的行分别是第几行？这些 error 行之间间隔最小是多少行？
+    给出你核对用的依据（行号），回答可以长一点。
+  - |-
+    继续无关工作：读 src/ 下的三个 .go 文件，逐个说明它负责什么、有哪些导出符号，以及如果要给它们加一层错误包装你会怎么做。
+    每个文件至少写两段。
+  - |-
+    继续：用比较详细的篇幅解释为什么 Go 的 time.Time 比较要区分单调时钟与墙上时钟，给出一个会踩坑的例子和一种规避写法。
+  - |-
+    读 src/order.go，把里面每个函数的签名原样列出来，并推断每个函数在什么情况下会被调用、失败时会返回什么。
+  - |-
+    回到日志：读 data/orders.log 第 1000 行到第 1100 行，统计出现最多的 status 与出现次数，并说明这 101 行里 order 编号是连续还是有缺口。
+  - |-
+    换个话题，讲久一点：日志按天切分和按小时切分各有什么取舍？从写放大、单文件大小、检索成本、回放难度四个方面分别说，最后给一个你建议的默认策略。
+  - |-
+    继续无关工作：读 vendor/VENDORED.md 与 vendor/lib_util.go，说明这个依赖是什么用途、当前锁定的版本与校验值是什么、升级时要注意什么。
+  - |-
+    继续：解释 sort.Slice 与 sort.SliceStable 的区别，说明排序不稳定在什么样的业务排序里会造成看得见的差异，并给出一段你推荐的稳定排序写法。
+  - |-
+    继续：写一段较长的说明，讲清楚“幂等”的意义——为什么重试要依靠幂等键而不是依靠“应该不会重复”的假设，并给出一个日志订单场景下的幂等键设计。
+  - |-
+    读 src/store.go 与 src/util.go，比较这两个文件的行数与函数个数，判断哪个更该拆分，并给出拆分方案（不用真的改文件）。
+  - |-
+    继续无关工作：说明为什么把日志里的时间戳统一成 UTC 存储、展示时再本地化，列出至少四条理由，并指出不做统一会在什么场景出错。
+  - |-
+    回到第 1 轮的两条约束：逐条说明你现在是怎么遵守它们的，确认 vendor/ 下的文件没有任何改动，并说明你要是新建文件会取什么样的名字。
+  - |-
+    现在真正动手（仍然遵守第 1 轮的两条约束）：
+    1) 在 notes/ 下新建一个 md 文件写三条本次会话的结论，文件名由你自己取，但必须符合第 1 轮的命名约束；
+    2) 新建固定索引文件 notes_index.md，每一行写一个 `notes/<文件名>`，只列你刚新建的那个文件。
+    最后在回答里把你新建的两个文件路径原样列出来。
+compact_after: [3, 7, 11]
+checks:
+  # 第 1 轮就得接受两条约束（否则后面没有可比对的基线）。
+  - {type: answer_contains, text: 'vendor', turn: 1}
+  # 压缩与 10 轮无关工作之后，第 13 轮仍要记得约束、且 vendor/ 没被动过。
+  - {type: answer_matches, text: '(?i)vendor', turn: 13}
+  # 第 14 轮真正触发约束：回答里的新建文件名必须是小写下划线。
+  - {type: answer_matches, text: 'notes/[a-z0-9_]+\.md', turn: 14}
+  - {type: answer_not_matches, text: 'notes/[A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*\.md', turn: 14}
+  - {type: answer_not_matches, text: 'notes/[A-Za-z0-9_]+[ -][A-Za-z0-9_]+\.md', turn: 14}
+  # 索引文件是工作区的确定性证据：每一行都是小写下划线的 notes/<文件名>。
+  - {type: file_matches, path: notes_index.md, text: '(?m)^notes/[a-z0-9_]+\.md$'}
+  - {type: file_not_matches, path: notes_index.md, text: '(?m)^notes/.*[A-Z -]'}
+  # vendor/ 一个字节都不能变（两条约束里第二条的确定性证据）。
+  - type: file_equals
+    path: vendor/VENDORED.md
+    text: |-
+      # Vendored dependency
+
+      module: github.com/example/libutil
+      version: v1.4.2
+      checksum: 7f3a91d0c4b8
+  - type: file_equals
+    path: vendor/lib_util.go
+    text: |-
+      package libutil
+
+      // Version is the vendored release the workspace pins.
+      const Version = "v1.4.2"
+
+      // Join joins the parts with a slash and trims a trailing one.
+      func Join(parts ...string) string {
+      	out := ""
+      	for i, p := range parts {
+      		if i > 0 {
+      			out += "/"
+      		}
+      		out += p
+      	}
+      	return out
+      }
+# 撑大上下文的输入：3000 行日志，其中三行是 error（第 517、1421、2879 行）。
+generate:
+  - path: data/orders.log
+    count: 3000
+    line: "2026-10-01T09:00:00Z order={i} status=ok units={i} region=west"
+    inserts:
+      - {at: 517, text: "2026-10-02T10:05:00Z order=517 status=error units=0 region=west"}
+      - {at: 1421, text: "2026-10-02T11:20:00Z order=1421 status=error units=0 region=east"}
+      - {at: 2879, text: "2026-10-02T12:45:00Z order=2879 status=error units=0 region=north"}
+timeout: 40m

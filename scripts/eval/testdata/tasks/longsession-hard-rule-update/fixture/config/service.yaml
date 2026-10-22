@@ -1,0 +1,6 @@
+service: billing
+replicas: 3
+timeout: 30s
+retry:
+  attempts: 2
+  backoff: 200ms

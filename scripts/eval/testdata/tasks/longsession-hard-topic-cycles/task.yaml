@@ -1,0 +1,79 @@
+name: longsession-hard-topic-cycles
+mode: allow-write
+fake_mode: text
+# 难版长会话 3：多次切题 A → B → C → 回 A → 回 B → 回 C。
+# 三个主题各有中间结果（数字 / 文件名），中间穿插无关工作并换段三次，
+# 回到每个主题时检查中间结果接得上，并且不把别题的结果混进来。
+fake_reply: |-
+  west totals 2500 units over 4 rows (625 per row); the backlog maximum is 917 units
+  (plus 13 makes 930); src/handler.go has the most functions, four of them.
+prompts:
+  - |-
+    任务 A：读 reports/q1.csv，只算 region=west 的 units 合计，以及 west 一共有几条记录。
+    把这两个中间结果记在心里，先不要写文件，后面还要接着用。
+  - |-
+    任务 B：读 queue/backlog.txt，找出其中最大的数值是多少（把行号也记下来）。
+    这是另一个主题的中间结果，别和 A 混在一起。
+  - |-
+    任务 C：数一下 src/ 下每个 .go 文件里定义的函数个数（含方法），告诉我哪个文件函数最多、有几个。
+  - |-
+    回到任务 A：按你前面算出的 west 合计与 west 的记录条数，算出 west 平均每条记录的 units，并说明你的算式。
+  - |-
+    回到任务 B：把 B 的最大值加 13 得到多少？只回答 B 这个主题的结果。
+  - |-
+    回到任务 C：C 里函数最多的文件是哪个？函数个数是多少？
+  - |-
+    无关工作：用较长的篇幅解释为什么 Go 的 map 并发读写要用锁或 sync.Map，给出两种做法各自的代价，并说明你会怎样在 code review 里指出这种竞态。
+  - |-
+    无关工作：读 data/big.log，说明它一共有多少行、status=error 的行是第几行，并给出你核对用的方法。
+  - |-
+    无关工作：解释指数退避里的 jitter 为什么必要，给出 full jitter 与 equal jitter 的区别与一个推荐参数。
+  - |-
+    无关工作：读 src/report.go，说明它和 src/handler.go、src/store.go 的依赖方向，指出哪一层不该依赖哪一层。
+  - |-
+    无关工作：总结前面三轮无关工作里你给出的结论，每轮一行。
+  - |-
+    回到任务 A，给最终结论：west 的 units 合计是多少？一共几条记录？平均每条多少？只回答 A 这个主题。
+  - |-
+    回到任务 B，给最终结论：backlog 的最大值是多少？在第几行？只回答 B 这个主题。
+  - |-
+    回到任务 C，给最终结论：src/ 里函数最多的文件是哪个？这个文件有几个函数？只回答 C 这个主题。
+compact_after: [3, 7, 10]
+generate:
+  - path: data/big.log
+    count: 1200
+    line: "2026-09-30T07:00:00Z seq={i} status=ok ms={i}"
+    inserts:
+      - {at: 611, text: "2026-09-30T07:10:11Z seq=611 status=error ms=0"}
+checks:
+  # 第 1、3 轮各主题的中间结果必须真的读出来（否则后面无可比对的基线）。
+  - {type: answer_contains, text: '2500', turn: 1}
+  - {type: answer_matches, text: '(?i)handler\.go', turn: 3}
+  # 回到 A / B 时接得上中间结果。
+  - {type: answer_contains, text: '625', turn: 4}
+  - {type: answer_contains, text: '930', turn: 5}
+  # 最终回到每个主题：结果接得上，且不串题（不含别题的标记）。
+  - {type: answer_contains, text: '2500', turn: 12}
+  - {type: answer_contains, text: '625', turn: 12}
+  - {type: answer_not_contains, text: '917', turn: 12}
+  - {type: answer_not_contains, text: '930', turn: 12}
+  - {type: answer_not_contains, text: 'handler.go', turn: 12}
+  - {type: answer_contains, text: '917', turn: 13}
+  - {type: answer_not_contains, text: '2500', turn: 13}
+  - {type: answer_not_contains, text: 'handler.go', turn: 13}
+  - {type: answer_matches, text: '(?i)handler\.go', turn: 14}
+  - {type: answer_not_contains, text: '2500', turn: 14}
+  - {type: answer_not_contains, text: '917', turn: 14}
+  # 只读输入文件不许被改写（改写会让 A 的中间结果失真）。
+  - type: file_equals
+    path: reports/q1.csv
+    text: |-
+      region,units
+      west,520
+      east,900
+      west,480
+      north,300
+      west,700
+      south,150
+      west,800
+timeout: 40m
