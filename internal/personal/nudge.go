@@ -156,14 +156,19 @@ func promiseEvidence(patterns []*regexp.Regexp, finalText string) string {
 	if tail == "" || nudgeQuestionEnd(tail) {
 		return ""
 	}
+	// Quote from the earliest match of any pattern: the patterns overlap (a
+	// "接下来我去…" sentence also matches the first-person pattern at "我去…"),
+	// and the list order must not cut the quoted promise short.
+	start := -1
 	for _, pattern := range patterns {
-		loc := pattern.FindStringIndex(tail)
-		if loc == nil {
-			continue
+		if loc := pattern.FindStringIndex(tail); loc != nil && (start < 0 || loc[0] < start) {
+			start = loc[0]
 		}
-		return "结尾说" + truncateRunes(nudgeOneLine(tail[loc[0]:]), 120)
 	}
-	return ""
+	if start < 0 {
+		return ""
+	}
+	return "结尾说" + truncateRunes(nudgeOneLine(tail[start:]), 120)
 }
 
 // nudgeTail is the end of an answer a promise is searched in: at most

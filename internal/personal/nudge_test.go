@@ -5,6 +5,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -314,4 +315,13 @@ func TestShellCommandAttrIsRedacted(t *testing.T) {
 	command, _ := attrs["command"].(string)
 	assert.StrContains(t, command, "curl")
 	assert.NotContains(t, command, "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789")
+}
+
+// TestPromiseEvidenceQuotesFromTheEarliestMatch: overlapping patterns quote
+// the whole promise, whatever their order.
+func TestPromiseEvidenceQuotesFromTheEarliestMatch(t *testing.T) {
+	late := regexp.MustCompile(`我(会|将|要|来|去)`)
+	early := regexp.MustCompile(`接下来(我)?(会|将|要|来|去)`)
+	got := promiseEvidence([]*regexp.Regexp{late, early}, "文件已写入。接下来我去跑测试。")
+	assert.Eq(t, "结尾说接下来我去跑测试。", got)
 }
