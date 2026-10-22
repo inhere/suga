@@ -9,8 +9,8 @@
 2. **每次调用都重复发送约 8.5k token 的固定前缀**（工具 schema 27,383 字符 ≈ 7.0k token + system 3,391 字符 ≈ 0.9k token，按实测 3.9 字符/token 折算）。84 次 turn 内调用 × 8.5k ≈ **711k prompt token，占全部 prompt 的 29%**。
 3. **最贵的一轮是 t12（评测第 9 轮，`sort.Slice` vs `sort.SliceStable`）**：11 次调用、382,560 prompt、57,184 新输入、20,737 输出、135 s，占全价等价开销的 18%。原因是模型自选策略——它读了 Go 标准库 `sort/sort.go`（11.5 KB）、`sort/slice.go`、`slices/sort.go`（grep 13.7 KB），写了 2 个脚本、5 次 write/edit，又 4 次改跑 demo。
 4. **t10 那 456 s（占总墙钟 31%）不是任务成本**：command-code 的 443 端口两次 dial timeout，重试 4 次 / 2 次（178 s + 178 s）后降级到 `opencode-go`；降级后缓存是冷的（37,714 新输入）。日志见 `home/logs/suga-20261022.log`。
-5. **5 次 nudge（`unverified-write`）里有 4 次是误报**：规则的内置 `check_command` 只认 `go test|vet|build`、`pytest`、`npm test` 这类命令，不认这次实际用的 `python tmp/xxx.py`、`go run xxx.go`。按 trace 重放（见第五节）：4 次误报的代价是 8 次额外调用、298k prompt（12%）、48 s；第 5 次（t18 写 `notes_index.md` 后只列了目录）算真缺口。
-6. **3 次换段（compaction）花掉 68,752 新输入 + 37,663 输出（占总输出 25%）+ 187 s（13% 墙钟）**。交接包 4,747 → 7,793 → 16,018 字符单调增长；第三份 ≈16 KB ≈ 5.8k token，此后 19 次调用每次都带着它（≈110k prompt token）。
+5. **5 次 nudge（`unverified-write`）里有 4 次是误报**：规则的内置 `check_command` 只认 `go test|vet|build`、`pytest`、`npm test` 这类命令，不认这次实际用的 `python tmp/xxx.py`、`go run xxx.go`。按 trace 重放（见第五节）：4 次误报的代价是 8 次额外调用、298k prompt（12%）、48 s；第 5 次（t18 写 `notes_index.md` 后只列了目录）算真缺口。同批 topic-cycles 那 1 次同类 nudge（`python tmp/check_biglog.py`）也是误报，4 个任务合计 6 次 nudge / 5 次误报。
+6. **3 次换段（compaction）花掉 68,752 新输入 + 37,663 输出（占总输出 25%）+ 187 s（13% 墙钟）**。交接包 4,747 → 7,793 → 16,018 字符单调增长（同批 topic-cycles 2.8→5.5→11.5 KB、distractor 3.6→6.7 KB，而内容少的 rule-update 稳定在 4 KB）；第三份 ≈16 KB ≈ 5.8k token，此后 19 次调用每次都带着它（≈110k prompt token）。
 7. **换段没有让模型丢掉需要的信息**：三份交接包都原文保留了第 1 轮的两条约束（「小写下划线」「vendor/ 只读」）和 `src/` 的符号/行号表；换段后首轮重读文件只有 2 次、每次 1.5–3.2 KB（≈400–900 token），不是开销主因。
 8. **与另三项的差异主要来自任务设计 + 模型自选策略**：naming 用 14 轮里有 12 轮要求开放式长答、还要"给出行号依据"，把模型推成「读标准库源码 + 写 demo 反复验证」；rule-update/distractor 同样 13–14 轮却只有 5/13 次工具调用。suga 侧的放大项是固定前缀、nudge 误报、换段成本。
 9. **另三项的耗时也不全是任务工作**：rule-update 的 273 s 里 100 s（37%）是 3 次换段，14 轮本身只 171 s；而且它 61% 的输入 token 是固定前缀（18 次 turn 调用 × 8.4k）。
@@ -107,6 +107,8 @@ turn 内 84 次调用：prompt 2,422,230 = 新输入 279,382 + 缓存 2,142,848
 | 4 | t14 后 | 66,866 → 12,418 | 79 | 16,018 字符 | prompt 33,893 / 输出 21,676 | 102 s |
 
 第三次换段最贵：要把前一份 7.8 KB 的包折叠进新包，输出 21,676 token（占全部输出 14%）、耗时 102 s，`tokens_after` 也因此从 8–9k 抬到 12.4k。`internal/personal/compact.go` 的 `summarize` 注释明确写着 "No MaxTokens on purpose: a summary is short by nature"——在英文短会话里成立，在这种中文长会话里不成立。
+
+这个增长不是本任务的偶然：同批另外三项的交接包长度是 **topic-cycles 2,809 → 5,504 → 11,538 字符（×4.1）、distractor 3,583 → 6,709（×1.9）、rule-update 4,174 → 3,964 → 4,786（×1.15，内容少且没有累积的坐标表）**。也就是说「折叠上一份包」的机制本身会累积，累积速度取决于摘要里有没有可增长的结构（本任务的「坐标」章节每段都在加文件与行号）。
 
 ### 换段后第一轮的工具调用（证据）
 
