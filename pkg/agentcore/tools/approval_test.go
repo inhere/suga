@@ -173,7 +173,8 @@ func (t *approvalRunTool) Execute(_ context.Context, call api.ToolCall) (*api.To
 	return &api.ToolResult{Content: "ok"}, nil
 }
 
-func TestApprovalReport(t *testing.T) {	call := api.ToolCall{CallID: "c1", Name: "act"}
+func TestApprovalReport(t *testing.T) {
+	call := api.ToolCall{CallID: "c1", Name: "act"}
 	reg := NewRegistry()
 	reg.Register(&approvalTool{})
 	t.Run("let through without a word is the rule", func(t *testing.T) {
