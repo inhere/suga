@@ -283,6 +283,13 @@ def make_handler(args):
             # would call it again when a message inserted into the turn (a steer)
             # follows the result.
             tool_done = last_index(body["messages"], "tool") > last_index(body["messages"], "assistant")
+            # A tool result followed by the interruption note ("[上一回合…") belongs
+            # to an earlier, interrupted turn (an admitted call suga closed with an
+            # "unknown state" result): this turn has not called its tool yet.
+            last_tool = last_index(body["messages"], "tool")
+            if tool_done and any(m.get("role") == "user" and str(m.get("content", "")).startswith("[上一回合")
+                                 for m in body["messages"][last_tool + 1:]):
+                tool_done = False
             # Tool results since the last user message: the step of this turn.
             step = 0
             for m in reversed(body["messages"]):

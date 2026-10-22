@@ -40,6 +40,14 @@ func (f ApproverFunc) Decide(ctx context.Context, call api.ToolCall, tool api.To
 	return f(ctx, call, tool)
 }
 
+// ApprovedCallFunc is the callback of the approval layer that runs once a call
+// passed the decision and right before the tool executes (SetOnApproved). It is
+// the seam for a host's record of what is about to have effects (the admit
+// ledger of internal/personal), so that record is never written for a call the
+// person refused or a prompt that was cancelled. It cannot refuse the call: a
+// failure to record must not stop the tool.
+type ApprovedCallFunc func(ctx context.Context, call api.ToolCall, tool api.Tool)
+
 // CallRewriter is an optional extension of an Approver: it reprocesses a call
 // before the permission decision (a hook rewrites the arguments). The approval
 // layer runs it first and then decides on the rewritten call, so a change can
@@ -58,6 +66,9 @@ type Approval struct {
 	approver Approver
 	// rewriter runs before the decision (SetRewriter); nil leaves calls alone.
 	rewriter CallRewriter
+	// onApproved runs after the decision let the call through and before it
+	// executes (SetOnApproved); nil records nothing.
+	onApproved ApprovedCallFunc
 	// disabled maps known tools this runtime did not register to why and how
 	// to enable them; see SetDisabled.
 	disabled map[string]string
@@ -67,6 +78,13 @@ type Approval struct {
 // narrows a call before the policy sees it; it never replaces the decision, so
 // a rewriter cannot let a call through that the approver refuses.
 func (a *Approval) SetRewriter(rewriter CallRewriter) { a.rewriter = rewriter }
+
+// SetOnApproved installs the callback that runs after the approval decision
+// allowed a call and before the tool executes. A refused call never reaches it,
+// and neither does a decision cancelled or timed out at the prompt (those abort
+// the turn instead of producing a result). It has to be set before the first
+// turn runs.
+func (a *Approval) SetOnApproved(fn ApprovedCallFunc) { a.onApproved = fn }
 
 // rewrite runs the rewriter with the fail-closed rules of a hook: a failure or
 // a panic of the rewriter refuses the call instead of running the original.
@@ -143,6 +161,11 @@ func (a *Approval) ExecuteTool(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	if r := approvalReportOf(ctx); r != nil && r.Source == "" {
 		r.Source = ApprovedByRule
+	}
+	// The call is allowed and runs from here: the last point before its effects
+	// to tell a host what it is about to do (the admit ledger).
+	if a.onApproved != nil {
+		a.onApproved(ctx, call, tool)
 	}
 	return a.inner.ExecuteTool(ctx, call)
 }
