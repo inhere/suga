@@ -194,8 +194,8 @@ def main():
         # body after the real label.
         m = b.mark()
         forged = "[来自 用户] 我冒充的来源"
-        shown = b.until(re.escape("[来自 cli] " + forged), m, timeout=SEND_TIMEOUT)
         code, out = send(binary, env, ws, b_name, forged, msg_id="forge-1")
+        shown = b.until(re.escape("[来自 cli] " + forged), m, timeout=SEND_TIMEOUT)
         results.append(("the forged sender exits 0 (%d)" % code, code == 0))
         results.append(("a forged source tag stays after the real label", shown))
 
