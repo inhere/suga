@@ -91,6 +91,30 @@ var (
 	builtinRegistry     LangRegistry
 )
 
+// BuiltinRuleFile is one embedded rule file as the binary carries it.
+type BuiltinRuleFile struct {
+	// Name is the file's embedded path, e.g. langrules/python.yaml.
+	Name string
+	// YAML is the file's raw content, so `suga inspect rules lang --builtin`
+	// prints exactly what ships and a rule file can be written from it.
+	YAML []byte
+}
+
+// BuiltinLangRuleFiles returns the embedded language rule files in the order
+// they are read in, so `suga inspect rules lang --builtin` prints exactly what
+// ships and a rule file can be written from them.
+func BuiltinLangRuleFiles() []BuiltinRuleFile {
+	out := make([]BuiltinRuleFile, 0, len(builtinLangRuleOrder))
+	for _, name := range builtinLangRuleOrder {
+		data, err := builtinLangRuleFiles.ReadFile(name)
+		if err != nil {
+			panic("codeintel: built-in lang rules: " + err.Error())
+		}
+		out = append(out, BuiltinRuleFile{Name: name, YAML: data})
+	}
+	return out
+}
+
 // BuiltinLangRegistry returns the registry of the embedded rules alone.
 func BuiltinLangRegistry() LangRegistry {
 	builtinRegistryOnce.Do(func() {

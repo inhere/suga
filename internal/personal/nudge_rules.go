@@ -128,6 +128,17 @@ func builtinNudgeRules() []NudgeRule {
 	}
 }
 
+// BuiltinNudgeRulesYAML returns the built-in rules in the nudge-rules.yaml file
+// shape, so `suga inspect rules nudge --builtin` prints them and a rule file
+// can be written from the shipped rules (parsed again by LoadNudgeRules).
+func BuiltinNudgeRulesYAML() []byte {
+	data, err := yaml.Marshal(&nudgeRuleFile{Rules: builtinNudgeRules()})
+	if err != nil {
+		panic("personal: built-in nudge rules: " + err.Error())
+	}
+	return data
+}
+
 // builtinNudgeRuleFunc is the runner's rules source when wiring passes none
 // (tests build runners directly): the built-in rules, compiled once.
 func builtinNudgeRuleFunc() func() []NudgeRule {

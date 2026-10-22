@@ -79,6 +79,11 @@ type OutputRule struct {
 	MinSaving *float64 `yaml:"min_saving"`
 	Summary   string   `yaml:"summary"`
 
+	// Source is the layer the rule came from (\"builtin\", or the rule file's
+	// path); the loaders fill it and the manifest and `suga inspect rules`
+	// report it.
+	Source string `yaml:"-"`
+
 	compiled *compiledRule
 }
 
@@ -133,6 +138,10 @@ type outputRuleFile struct {
 	Rules []OutputRule `yaml:"rules"`
 }
 
+// BuiltinSource marks a rule that ships with the binary (the embedded rule
+// files); a user or project rule file carries its path instead.
+const BuiltinSource = "builtin"
+
 // DefaultOutputRules returns the built-in rules (go build/vet/test, cargo test,
 // TypeScript/ESLint, Ruff/Mypy, Jest/Vitest, pytest, maven, gradle and the
 // command-line tool families), read from the embedded rule files in
@@ -148,6 +157,9 @@ func DefaultOutputRules() []OutputRule {
 		file, err := parseOutputRules(data)
 		if err != nil {
 			panic("native: built-in output rules " + name + ": " + err.Error())
+		}
+		for i := range file {
+			file[i].Source = BuiltinSource
 		}
 		rules = append(rules, file...)
 	}
@@ -175,6 +187,11 @@ func LoadOutputRules(paths ...string) ([]OutputRule, []error) {
 			errs = append(errs, fmt.Errorf("%s: %w", path, err))
 			continue
 		}
+		// A file's rules keep the file's path as their layer, so the manifest
+		// and `suga inspect rules` show where a rule came from.
+		for i := range extra {
+			extra[i].Source = path
+		}
 		rules = mergeOutputRules(rules, extra)
 	}
 	var out []OutputRule
@@ -187,6 +204,31 @@ func LoadOutputRules(paths ...string) ([]OutputRule, []error) {
 	return out, errs
 }
 
+// BuiltinRuleFile is one embedded rule file as the binary carries it.
+type BuiltinRuleFile struct {
+	// Name is the file's embedded path, e.g. rules/go.yaml.
+	Name string
+	// YAML is the file's raw content, so `suga inspect rules --builtin` prints
+	// exactly what ships and a template can be written from it.
+	YAML []byte
+}
+
+// BuiltinOutputRuleFiles returns the embedded output rule files in the order
+// they are read in, so a rule writer sees the shipped rules verbatim.
+func BuiltinOutputRuleFiles() []BuiltinRuleFile {
+	out := make([]BuiltinRuleFile, 0, len(builtinRuleFileOrder))
+	for _, name := range builtinRuleFileOrder {
+		data, err := builtinRuleFiles.ReadFile(name)
+		if err != nil {
+			panic("native: built-in output rules: " + err.Error())
+		}
+		out = append(out, BuiltinRuleFile{Name: name, YAML: data})
+	}
+	return out
+}
+
+// mergeOutputRules merges a file's rules into the loaded ones: a same-name rule
+// is replaced, a new name is appended.
 func mergeOutputRules(base, extra []OutputRule) []OutputRule {
 	for _, r := range extra {
 		replaced := false
