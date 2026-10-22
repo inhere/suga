@@ -72,9 +72,9 @@ func TestUndoContentRecovery(t *testing.T) {
 
 		pre, err := loadTurn(filepath.Join(f.snapshots.dir, "undo-restore", "snapshots", "turn-restore", snapshotPreUndoDir))
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Require(t, assert.Len(t, pre, 2))
-		assert.Eq(t, snapshotSourcePreUndo, pre[0].Source)
-		before, err := os.ReadFile(filepath.Join(f.snapshots.dir, "undo-restore", "snapshots", "turn-restore", snapshotPreUndoDir, "001-"+snapshotCallHash(pre[0].CallID), "before"))
+		assert.Require(t, assert.Len(t, pre.Metas, 2))
+		assert.Eq(t, snapshotSourcePreUndo, pre.Metas[0].Source)
+		before, err := os.ReadFile(filepath.Join(f.snapshots.dir, "undo-restore", "snapshots", "turn-restore", snapshotPreUndoDir, "001-"+snapshotCallHash(pre.Metas[0].CallID), "before"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, "two", string(before))
 	})
@@ -142,5 +142,5 @@ func TestUndoDeletesNewFileAndPreUndoProtectsIt(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 	pre, err := loadTurn(filepath.Join(snapshots.dir, sid, "snapshots", turnID, snapshotPreUndoDir))
 	assert.Require(t, assert.NoErr(t, err))
-	assert.Require(t, assert.Len(t, pre, 1))
+	assert.Require(t, assert.Len(t, pre.Metas, 1))
 }

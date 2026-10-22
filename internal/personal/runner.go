@@ -380,12 +380,10 @@ type Runner struct {
 	gateMu sync.Mutex
 	gates  map[string]*gateState
 	rec    *recorder
-	// toolLookup resolves a call's tool for the admit ledger, whose Meta decides
-	// whether the call has side effects; nil counts every call as one.
-	toolLookup tools.Lookup
-	// withoutAdmitLedger keeps the admit hook out of the turn hooks. Only the
-	// test that pins the model request to be identical with and without the
-	// ledger sets it (issue suga-r72b); production paths never do.
+	// withoutAdmitLedger keeps the turn's admit ledger target out of the context,
+	// so the approval layer's approved-call callback writes no row. Only the test
+	// that pins the model request to be identical with and without the ledger
+	// sets it (issue suga-r72b); production paths never do.
 	withoutAdmitLedger bool
 	// deadline is the run's job-deadline state (nil-equivalent when
 	// DeadlineEnv is empty); the deadline hint hook shares it across turns.
@@ -428,11 +426,10 @@ func New(cfg Config) (*Runner, error) {
 	if cfg.HandoffProvider != nil {
 		cfg.HandoffProvider = rec.observeProvider(cfg.HandoffProvider, cfg.HandoffProvider.Name(), cfg.HandoffModel)
 	}
-	// The admit hook reads a tool's Meta before the call runs; the wrapped
-	// registry still exposes lookup (observedTools.Get passes it through).
-	toolLookup, _ := cfg.Tools.(tools.Lookup)
+	// The admit ledger reads a tool's Meta after the approval layer resolved the
+	// tool (personal.AdmitApprovedCall), so it needs no lookup of its own here.
 	runner := &Runner{cfg: cfg, heldLocks: make(map[string]*process.SessionLock),
-		steers: make(map[string]*steerInbox), rec: rec, toolLookup: toolLookup}
+		steers: make(map[string]*steerInbox), rec: rec}
 	runner.deadline = newDeadlineState(cfg.DeadlineEnv, runner.clock())
 	runner.bindVisibility()
 	return runner, nil
@@ -558,6 +555,12 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 		ctx = withTurnLogger(ctx, model.ID, turnID)
 		meter = r.newRunUsageMeter(ctx, model.ID, turnID, req.Emit)
 		ctx = withRunUsage(ctx, meter)
+	}
+	// The admit ledger target of this turn: the approval layer's approved-call
+	// callback (wiring) writes through it after the decision and before the call
+	// runs. Set once the turn id is final.
+	if !r.withoutAdmitLedger {
+		ctx = withAdmitScope(ctx, r.cfg.Repository, model.ID, turnID)
 	}
 	// Sub-agents of this session count their usage in this run (usage.go). The
 	// meter is activated last, so it is the one the turn is stored under.
@@ -743,13 +746,6 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 	if sink != nil {
 		hooks = append(hooks, toolEventHook{sink: sink, sessionID: result.SessionID, turnID: result.TurnID,
 			runID: result.RunID, workspace: r.cfg.Workspace, diffPreview: r.cfg.DiffPreview})
-	}
-	// The admit ledger writes the call down before it runs (issue suga-r72b), so
-	// an interrupted turn can answer it as "state unknown" instead of replaying
-	// it. It never fails a tool: the ledger is best-effort.
-	if !r.withoutAdmitLedger {
-		hooks = append(hooks, admitHook{repo: r.cfg.Repository, lookup: r.toolLookup,
-			sessionID: result.SessionID, turnID: result.TurnID})
 	}
 	// The loop guard goes last so its remark (appended to the repeated call's
 	// result event below) stays out of the tool_result line chat and the other

@@ -80,12 +80,14 @@ func runGC(ctx context.Context, out io.Writer, cutoff time.Time, apply bool) err
 		MaxFileBytes: snapshotSettings.MaxFileBytes, MaxSessionBytes: snapshotSettings.MaxSessionBytes,
 		MaxGlobalBytes: snapshotSettings.MaxGlobalBytes, KeepTurns: snapshotSettings.KeepTurns, KeepDays: snapshotSettings.KeepDays,
 	})
-	if _, err := snapshots.CleanupAll(); err != nil {
+	snapshotReport, err := snapshots.CleanupAll()
+	if err != nil {
 		if snapshotSettings.OnError == appconfig.SnapshotOnErrorDeny {
 			return fmt.Errorf("clean snapshots: %w", err)
 		}
 		fmt.Fprintf(out, "warning: clean snapshots: %v\n", err)
 	}
+	reportSnapshotCleanup(out, snapshotReport)
 
 	repo, err := openCoreStore()
 	if err != nil {
@@ -128,6 +130,16 @@ func runGC(ctx context.Context, out io.Writer, cutoff time.Time, apply bool) err
 	}
 	writeGCReport(out, report, cutoff)
 	return nil
+}
+
+// reportSnapshotCleanup prints what the snapshot cleanup found in the tree:
+// skipped call records (missing or corrupt meta.json) and stale half-written
+// directories removed. Both are the repair path for a damaged snapshot tree.
+func reportSnapshotCleanup(out io.Writer, report personal.SnapshotCleanupReport) {
+	if report.SkippedRecords == 0 && report.RepairedPartials == 0 {
+		return
+	}
+	fmt.Fprintf(out, "snapshots: 跳过 %d 个缺元数据的记录，清理 %d 个半成品目录\n", report.SkippedRecords, report.RepairedPartials)
 }
 
 // sessionDir returns sessions/<id> when id is a plain single path element; an

@@ -17,7 +17,7 @@
 - 调用前 hook（`hooks.pre_tool_use.tools` / `.name`，仅 chat）：在工具执行前发送 `PreToolUse` 事件（`tool_name`、`tool_input` 完整参数），回答可用 `hookSpecificOutput.permissionDecision: "deny"` 拒绝该调用，或用 `updatedInput` 改写参数。三条硬规则：改写后的参数重走审批（改写发生在审批层的决定之前，审批模式、approval rules、受保护路径看到的都是新参数）；hook 超时、非零退出、回答不可解析或宿主 hook panic 一律按拒绝执行（fail closed），理由记进 trace 与工具错误；hook 的 `allow` 不绕过审批模式，只能收窄不能放宽。实现：审批层新增 `tools.CallRewriter`（`Approval.SetRewriter`），「PreToolUse → 审批」的接入在 `internal/chat/hooks_gate.go`；未配置 `hooks.pre_tool_use.tools` 时行为不变。
 - 工具调用台账与 `invocation_id`（suga-r72b，借鉴 whip 的中断恢复规则）：
   - 每次工具调用生成一个会话内唯一的调用 ID（`<run_id>/<call_id>`），在 `BeforeTool` 之前放进 ctx，`tools.InvocationID(ctx)` 在钩子与工具执行里读到同一个值；宿主的 `wiring.Options.ExtraTools` / `pkg/sugasdk` 的 `ExtraTools` 可以拿它当自己副作用账本的幂等键。
-  - 有副作用的工具（`tools.Meta.ReadOnly` 为假的工具；MCP 工具看 `readOnlyHint`，没有声明就当作有副作用）在执行前写一条 `admit` 记录（调用 ID、工具名、参数摘要）。它是台账不是消息，不进上下文投影。
+  - 有副作用的工具（`tools.Meta.ReadOnly` 为假的工具；MCP 工具看 `readOnlyHint`，没有声明就当作有副作用）在审批放行之后、真正执行之前写一条 `admit` 记录（调用 ID、工具名、参数摘要），被拒、以及在审批提问处取消回合的调用不写。它是台账不是消息，不进上下文投影。
   - 回合在“已执行、结果未落盘”处中断（取消/失败，或进程死亡后恢复的回合）时，收尾与恢复都会为这类调用补一条“该调用在中断时状态未知（可能已执行），请先核实再决定是否重做”的工具结果，并在 trace 里记 `tool_interrupted` 事件（attrs 含 invocation_id）；下一回合照常回放这次调用与这条结果，不再把它当成未完成的调用截掉，只读工具保持原有回放行为。正常回合的模型请求与改动前一致。
 - 嵌入式 SDK `pkg/sugasdk` 的 `Send` 支持可选幂等请求：`Prompt.RequestID`（调用方生成，建议 UUID，按会话隔离）把一个回合变成可去重的请求——同一会话内已完成的 id 直接重放首次的 `Result`（`Result.Replayed=true`，模型不再被调用）：meta 里每条请求只存一个小记录（turn_id、状态、用量数字与结束时间等摘要，不存输出文本，会话 meta 不随输出长度增长），重放时按 runner 结果的组装方式从该回合的最后一条助手消息重建输出，条目已不在会话日志中时返回明确错误（`ErrRequestOutputGone`）；每个会话只保留最近 200 条请求记录（窗口为断线重连服务），接受新 claim 时删除最旧的已完成记录、running 记录永不删除，超出窗口的 id 等同未声明可重发。正在执行的 id 返回 `ErrRequestRunning`；进程中途崩溃留下的 running 记录读作“投递不确定”（`ErrDeliveryUncertain`，`Session.RequestStatus` 返回 `unknown`），不自动重放，由宿主用新 id 重发。无库迁移；`RequestStatus` 返回 `unknown`/`running`/`done`/`failed`；不带 RequestID 的 `Send` 行为不变（suga-sg0w）。
 
@@ -26,6 +26,7 @@
 - ACP `session/list` 与 `suga sessions` 口径一致：默认不返回宿主会话（`origin=xhen`），隐藏的数量在响应 `_meta.suga/hiddenXhen` 里，结果为空时提示中点名；ACP 客户端需要时可用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 CLI 的 `--origin xhen`）（suga-kz0r）。
 - 收工检查的 `promise-zh` 内置句式收紧，不再把描述测试手法的句子（如“先读取接口，再跑一遍只读接口”）当成“承诺继续”：每条句式都要求带第一人称将来时标记（`我(会|将|要|来|去|先|再)`、`接下来`、`下一步`、`马上`、`这就`、`让我`），单独的“再跑/先运行”不算（2026-10-22 第三十一批 S3 误报）。用户自己写的 `nudge-rules.yaml` 句式不受影响；删除了原来未带主语的 `(我)?(先|再|现在|马上|这就)…` 句式。
 - 宿主注入的 hook（`agentcore.Hook`）panic 不再把整个进程/回合拖倒：hook 链每个阶段都把 panic 换成错误（`hook %T panicked: ...`），判定“是否允许执行”的 `BeforeTool` 阶段因此拒绝该调用并留下错误事件，只做观察的 `AfterTool` 阶段已跑完的工具结果照常进会话记录。`pkg/sugasdk` 的回合级 panic 兜底不变。
+- 快照层（`file_edit`/`file_write`/`file_remove` 的前镜像）不再因为一个损坏的记录让整个会话不可用（suga-m870）：读取 turn 目录时，缺 `meta.json` 或 JSON 损坏的子目录被跳过并记 `slog` 警告，其他快照照常可用（`suga data gc` 报告跳过的记录数）；快照记录改为先写进隐藏的 `.partial-` 临时目录、`meta.json` 落盘后再 rename 成正式目录，读者与清理都不会看到半成品；清理会删掉早于 30 分钟的半成品目录（含缺 `meta.json` 的旧记录目录，`suga data gc` 报告清理数量），别人正在写的目录保留；初始化扫描失败不再被永久缓存为“不可用”，下一次调用重试，只有配置错误或目录无写权限才视为永久不可用，单次失败只让这一次调用降级（`tools.snapshots.on_error=continue` 时照旧提示“本次写入不可撤销”）。
 
 ## [0.44.0] - 2026-10-22
 

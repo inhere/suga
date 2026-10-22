@@ -61,6 +61,19 @@ func (t *mcpAnnotationsTool) Execute(context.Context, agentcore.ToolCall) (*agen
 
 func boolPtr(v bool) *bool { return &v }
 
+// allowAllApprover lets every call run without asking.
+var allowAllApprover = tools.ApproverFunc(func(context.Context, agentcore.ToolCall, agentcore.Tool) error { return nil })
+
+// admittingStack stacks the registry the way wiring.Open does: the approval
+// layer carries the admitted-call callback that writes the ledger
+// (AdmitApprovedCall), and every call reaches the tool only after approver
+// allowed it.
+func admittingStack(reg *tools.Registry, approver tools.Approver) *tools.Approval {
+	approval := tools.NewApproval(reg, approver)
+	approval.SetOnApproved(AdmitApprovedCall)
+	return approval
+}
+
 // admitEntries returns the turn's admitted ledger rows.
 func admitEntries(t *testing.T, repo *store.Store, sessionID, turnID string) []admitRecord {
 	t.Helper()
@@ -91,7 +104,7 @@ func TestAdmitLedgerRecordsSideEffectCalls(t *testing.T) {
 			FinishReason: agentcore.FinishToolCalls},
 		{Content: "done", FinishReason: agentcore.FinishFinal},
 	}}
-	runner, err := New(Config{Repository: repo, Tools: reg, Provider: provider})
+	runner, err := New(Config{Repository: repo, Tools: admittingStack(reg, allowAllApprover), Provider: provider})
 	assert.NoErr(t, err)
 
 	res, err := runner.Run(context.Background(), RunRequest{Prompt: "写一下"})
@@ -290,7 +303,7 @@ func TestAdmitLedgerKeepsTheNextModelRequestIdentical(t *testing.T) {
 			{Content: "done", FinishReason: agentcore.FinishFinal},
 			{Content: "下一回合完成", FinishReason: agentcore.FinishFinal},
 		}}
-		runner, err := New(Config{Repository: repo, Provider: provider, Tools: reg, Workspace: workspace})
+		runner, err := New(Config{Repository: repo, Provider: provider, Tools: admittingStack(reg, allowAllApprover), Workspace: workspace})
 		assert.NoErr(t, err)
 		runner.withoutAdmitLedger = !ledger
 		first, err := runner.Run(context.Background(), RunRequest{SessionID: sessionID, CreateIfMissing: true, Prompt: "写一下"})
@@ -346,7 +359,7 @@ func TestCancelledTurnMarksTheAdmittedCall(t *testing.T) {
 		{ToolCalls: []agentcore.ToolCall{{CallID: "c1", Name: "write", Arguments: map[string]any{"path": "work.txt"}}},
 			FinishReason: agentcore.FinishToolCalls},
 	}}
-	runner, err := New(Config{Repository: repo, Provider: provider, Tools: reg})
+	runner, err := New(Config{Repository: repo, Provider: provider, Tools: admittingStack(reg, allowAllApprover)})
 	assert.NoErr(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -419,6 +432,95 @@ func TestCancelledTurnMarksTheAdmittedCall(t *testing.T) {
 		}
 		assert.Eq(t, true, call)
 		assert.Eq(t, true, unknown)
+	})
+}
+
+// TestApprovalCancelWritesNoAdmit: cancelling the turn at the approval prompt
+// (Ctrl-C on the question) is not an executed call. No admit row is written, so
+// the next turn is not told the effects are unknown - the replay cuts the
+// unanswered call as before.
+func TestApprovalCancelWritesNoAdmit(t *testing.T) {
+	repo := openObserveRepo(t)
+	reg := tools.NewRegistry()
+	write := &ctxTool{name: "write"}
+	reg.Register(write)
+	asked := make(chan struct{})
+	// The chat approver asks a question; Ctrl-C cancels the turn's context while
+	// the question is open, which the asker reports as an error.
+	askThenCancel := tools.ApproverFunc(func(ctx context.Context, _ agentcore.ToolCall, _ agentcore.Tool) error {
+		close(asked)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	provider := &captureProvider{steps: []*agentcore.GenerateResult{
+		{ToolCalls: []agentcore.ToolCall{{CallID: "c1", Name: "write", Arguments: map[string]any{"path": "work.txt"}}},
+			FinishReason: agentcore.FinishToolCalls},
+	}}
+	runner, err := New(Config{Repository: repo, Provider: provider, Tools: admittingStack(reg, askThenCancel)})
+	assert.NoErr(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan RunResult, 1)
+	go func() {
+		res, _ := runner.Run(ctx, RunRequest{Prompt: "写一下"})
+		done <- res
+	}()
+	<-asked
+	cancel()
+	res := <-done
+	assert.Eq(t, RunCanceled, res.State)
+
+	t.Run("no admit row", func(t *testing.T) {
+		assert.Len(t, admitEntries(t, repo, res.SessionID, res.TurnID), 0)
+	})
+	t.Run("the tool never ran", func(t *testing.T) {
+		assert.Len(t, write.seen, 0)
+	})
+	t.Run("no interrupted event", func(t *testing.T) {
+		assert.Len(t, eventsOf(t, repo, res.SessionID, store.EventToolInterrupted), 0)
+	})
+	t.Run("the next turn's request has no unknown state", func(t *testing.T) {
+		next := &captureProvider{}
+		nextRunner, err := New(Config{Repository: repo, Provider: next, Tools: admittingStack(reg, allowAllApprover)})
+		assert.NoErr(t, err)
+		_, err = nextRunner.Run(context.Background(), RunRequest{SessionID: res.SessionID, Prompt: "继续"})
+		assert.NoErr(t, err)
+		assert.Require(t, assert.Eq(t, 1, len(next.requests)))
+		for _, m := range next.requests[0].Messages {
+			assert.NotContains(t, m.Content, "状态未知")
+		}
+	})
+}
+
+// TestApprovalDeniedWritesNoAdmit: a call the person refused never runs and is
+// not recorded as admitted either (its refusal becomes the call's tool result).
+func TestApprovalDeniedWritesNoAdmit(t *testing.T) {
+	repo := openObserveRepo(t)
+	reg := tools.NewRegistry()
+	write := &ctxTool{name: "write"}
+	reg.Register(write)
+	deny := tools.ApproverFunc(func(context.Context, agentcore.ToolCall, agentcore.Tool) error {
+		return tools.Denied("用户拒绝执行 write")
+	})
+	provider := &captureProvider{steps: []*agentcore.GenerateResult{
+		{ToolCalls: []agentcore.ToolCall{{CallID: "c1", Name: "write", Arguments: map[string]any{"path": "work.txt"}}},
+			FinishReason: agentcore.FinishToolCalls},
+		{Content: "换一种做法", FinishReason: agentcore.FinishFinal},
+	}}
+	runner, err := New(Config{Repository: repo, Provider: provider, Tools: admittingStack(reg, deny)})
+	assert.NoErr(t, err)
+
+	res, err := runner.Run(context.Background(), RunRequest{Prompt: "写一下"})
+	assert.NoErr(t, err)
+	assert.Eq(t, RunCompleted, res.State)
+	t.Run("no admit row", func(t *testing.T) {
+		assert.Len(t, admitEntries(t, repo, res.SessionID, res.TurnID), 0)
+	})
+	t.Run("the tool never ran", func(t *testing.T) {
+		assert.Len(t, write.seen, 0)
+	})
+	t.Run("no interrupted event", func(t *testing.T) {
+		assert.Len(t, eventsOf(t, repo, res.SessionID, store.EventToolInterrupted), 0)
 	})
 }
 
@@ -518,31 +620,21 @@ func (t *ctxToolWithCounter) Execute(context.Context, agentcore.ToolCall) (*agen
 }
 
 func TestToolHasSideEffects(t *testing.T) {
-	lookupOf := func(list ...agentcore.Tool) tools.Lookup {
-		reg := tools.NewRegistry()
-		for _, tool := range list {
-			reg.Register(tool)
-		}
-		return reg
-	}
 	t.Run("unknown tool counts as side effects", func(t *testing.T) {
-		assert.Eq(t, true, toolHasSideEffects(lookupOf(), "missing"))
-	})
-	t.Run("nil lookup counts as side effects", func(t *testing.T) {
-		assert.Eq(t, true, toolHasSideEffects(nil, "write"))
+		assert.Eq(t, true, toolHasSideEffects(nil))
 	})
 	t.Run("a read-only native tool does not", func(t *testing.T) {
-		assert.Eq(t, false, toolHasSideEffects(lookupOf(&ctxTool{name: "look", meta: tools.Meta{ReadOnly: true}}), "look"))
+		assert.Eq(t, false, toolHasSideEffects(&ctxTool{name: "look", meta: tools.Meta{ReadOnly: true}}))
 	})
 	t.Run("a native tool with side effects does", func(t *testing.T) {
-		assert.Eq(t, true, toolHasSideEffects(lookupOf(&ctxTool{name: "write"}), "write"))
+		assert.Eq(t, true, toolHasSideEffects(&ctxTool{name: "write"}))
 	})
 	t.Run("an MCP readOnlyHint counts as read-only", func(t *testing.T) {
 		tool := &mcpAnnotationsTool{name: "list", annotations: mcp.Annotations{ReadOnlyHint: boolPtr(true)}}
-		assert.Eq(t, false, toolHasSideEffects(lookupOf(tool), "list"))
+		assert.Eq(t, false, toolHasSideEffects(tool))
 	})
 	t.Run("an MCP tool without annotations has side effects", func(t *testing.T) {
 		tool := &mcpAnnotationsTool{name: "write"}
-		assert.Eq(t, true, toolHasSideEffects(lookupOf(tool), "write"))
+		assert.Eq(t, true, toolHasSideEffects(tool))
 	})
 }

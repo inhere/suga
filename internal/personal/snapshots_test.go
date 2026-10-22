@@ -134,7 +134,7 @@ func TestSessionSnapshots(t *testing.T) {
 		assert.ErrMsgContains(t, err, "global limit")
 	})
 
-	t.Run("missing old session is empty and corrupt metadata is reported", func(t *testing.T) {
+	t.Run("missing old session is empty and corrupt metadata is skipped", func(t *testing.T) {
 		store := NewSessionSnapshots(t.TempDir())
 		metas, err := store.LoadTurn("old", "turn_old")
 		assert.NoErr(t, err)
@@ -143,8 +143,12 @@ func TestSessionSnapshots(t *testing.T) {
 		assert.NoErr(t, os.MkdirAll(filepath.Join(turnDir, "001-bad"), 0o700))
 		assert.NoErr(t, os.WriteFile(filepath.Join(turnDir, "001-bad", "meta.json"), []byte("{"), 0o600))
 		corrupt := NewSessionSnapshots(filepath.Dir(filepath.Dir(filepath.Dir(turnDir))))
-		_, err = corrupt.LoadTurn("sess", "turn")
-		assert.Err(t, err)
+		metas, err = corrupt.LoadTurn("sess", "turn")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Empty(t, metas)
+		loaded, err := loadTurn(turnDir)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, []string{"001-bad"}, loaded.Skipped)
 	})
 
 	t.Run("native file_write uses the real snapshot path", func(t *testing.T) {
@@ -321,9 +325,9 @@ func TestSessionSnapshotsRetentionStateAndPreUndo(t *testing.T) {
 		assert.Require(t, assert.Len(t, metas, 1))
 		pre, err := loadTurn(filepath.Join(store.dir, "undo", "snapshots", "turn_1", snapshotPreUndoDir))
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Require(t, assert.Len(t, pre, 1))
-		assert.Eq(t, snapshotSourcePreUndo, pre[0].Source)
-		assert.Eq(t, native.SnapshotStatusComplete, pre[0].Status)
+		assert.Require(t, assert.Len(t, pre.Metas, 1))
+		assert.Eq(t, snapshotSourcePreUndo, pre.Metas[0].Source)
+		assert.Eq(t, native.SnapshotStatusComplete, pre.Metas[0].Status)
 	})
 
 	t.Run("empty sessions root fails closed", func(t *testing.T) {
