@@ -137,3 +137,11 @@ func TestLLMRequestTimeoutMapping(t *testing.T) {
 	assert.Eq(t, llm.NoTimeout, llmRequestTimeout(-time.Second))
 	assert.Eq(t, 90*time.Second, llmRequestTimeout(90*time.Second))
 }
+
+// The settings registry reports an off bound as 0s, the value the other
+// duration keys use for it, instead of the negative "no limit" sentinel.
+func TestDurationForDisplay(t *testing.T) {
+	assert.Eq(t, time.Duration(0), durationForDisplay(llm.NoTimeout))
+	assert.Eq(t, time.Duration(0), durationForDisplay(0))
+	assert.Eq(t, 45*time.Second, durationForDisplay(45*time.Second))
+}

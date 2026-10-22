@@ -180,7 +180,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		case "retry.max_delay":
 			return policy.MaxDelay, true, nil
 		case "retry.max_elapsed":
-			return policy.MaxElapsed, true, nil
+			return durationForDisplay(policy.MaxElapsed), true, nil
 		default:
 			return policy.ResetAfter, true, nil
 		}
@@ -193,7 +193,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 		case "timeouts.request":
 			return settings.Request, true, nil
 		case "timeouts.stream_idle":
-			return settings.StreamIdle, true, nil
+			return durationForDisplay(settings.StreamIdle), true, nil
 		}
 		return settings.ResponseHeader, true, nil
 	case "context.idle_after", "context.idle_min_ratio":
@@ -467,7 +467,7 @@ func effectiveProviderValue(key string) (any, bool, error) {
 				return provider.Retry.MaxDelay, true, nil
 			}
 			if field == "retry.max_elapsed" {
-				return provider.Retry.MaxElapsed, true, nil
+				return durationForDisplay(provider.Retry.MaxElapsed), true, nil
 			}
 			return provider.Retry.ResetAfter, true, nil
 		}
@@ -475,7 +475,7 @@ func effectiveProviderValue(key string) (any, bool, error) {
 			return provider.RequestTimeout, true, nil
 		}
 		if field == "timeouts.stream_idle" {
-			return provider.StreamIdleTimeout, true, nil
+			return durationForDisplay(provider.StreamIdleTimeout), true, nil
 		}
 		return provider.ResponseHeaderTimeout, true, nil
 	}
@@ -501,6 +501,16 @@ func effectiveProviderValue(key string) (any, bool, error) {
 	default:
 		return nil, false, fmt.Errorf("unknown provider configuration key %q", key)
 	}
+}
+
+// durationForDisplay maps the "no limit" convention of the timeout and retry
+// keys (a negative duration) onto 0, which is what the other duration keys
+// report for off.
+func durationForDisplay(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 func matchProviderConfigKey(key string) (ConfigKey, bool) {
