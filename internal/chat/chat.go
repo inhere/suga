@@ -192,7 +192,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	source := "startup"
 	createdAtStartup := false
 	if opts.FromID != "" {
-		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: "New chat", Origin: personal.OriginChat})
+		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: "New chat", Origin: runner.SessionOrigin(personal.OriginChat)})
 		if err != nil {
 			return personal.SessionNotFound(err, opts.FromID)
 		}
@@ -213,7 +213,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			source = "resume"
 			markInteractivelyUsed(stderr, runner, model.ID)
 		} else if errors.Is(err, personal.ErrSessionNotFound) {
-			model, err = runner.NewSessionFor(ctx, opts.SessionID, "New chat", personal.OriginChat)
+			model, err = runner.NewSessionFor(ctx, opts.SessionID, "New chat", runner.SessionOrigin(personal.OriginChat))
 			if err != nil {
 				return err
 			}
@@ -222,7 +222,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			return err
 		}
 	} else {
-		model, err := runner.NewSessionFor(ctx, "", "New chat", personal.OriginChat)
+		model, err := runner.NewSessionFor(ctx, "", "New chat", runner.SessionOrigin(personal.OriginChat))
 		if err != nil {
 			return err
 		}

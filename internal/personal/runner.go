@@ -47,6 +47,10 @@ type Config struct {
 	Model        string
 	ProviderName string
 	Tools        agentcore.ToolRegistry
+	// SessionOrigin is the meta.origin an embedded host records on the
+	// sessions it creates (wiring.Options.Origin). Empty keeps the entry
+	// point's own default (chat, run, ACP).
+	SessionOrigin string
 	// Vision is the live capability of the current model: view_image leaves the
 	// tool table of a model that cannot see images, and a :model switch updates
 	// this gate instead of rebuilding the tools. nil = the model can see.

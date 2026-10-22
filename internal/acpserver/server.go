@@ -180,7 +180,7 @@ func (a *Agent) NewSession(ctx context.Context, req acp.NewSessionRequest) (acp.
 	if err != nil {
 		return acp.NewSessionResponse{}, err
 	}
-	model, runErr := runtime.Runner.NewSessionFor(ctx, "", "", personal.OriginACP)
+	model, runErr := runtime.Runner.NewSessionFor(ctx, "", "", runtime.Runner.SessionOrigin(personal.OriginACP))
 	if err := errors.Join(runErr, runtime.close()); err != nil {
 		return acp.NewSessionResponse{}, err
 	}

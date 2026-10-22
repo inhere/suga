@@ -29,6 +29,11 @@ type Options struct {
 	Workspace string
 	RuleCWD   string
 	Model     string
+	// SessionOrigin is the meta.origin an embedded host records on the sessions
+	// it creates (e.g. personal.OriginXhen for xhen): its sessions then stay out
+	// of the default `suga sessions` list and of gc --retention. Empty keeps the
+	// entry point's own origin (chat, run, ACP).
+	SessionOrigin string
 	// Thinking overrides the main model's thinking level (--thinking).
 	Thinking string
 	// AllowWrite exposes workspace write and shell tools.
@@ -563,6 +568,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		taskNotices = opts.Tasks
 	}
 	runner, err := personal.New(personal.Config{
+		SessionOrigin: opts.SessionOrigin,
 		Tasks:         taskNotices,
 		ContextWindow: contextWindow,
 		// History folding of the request view (context.fold_every/fold_keep/fold_at).

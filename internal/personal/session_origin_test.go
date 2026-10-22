@@ -66,4 +66,21 @@ func TestSessionOriginRecordedAtCreation(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.False(t, store.SessionUsedInteractively(stored))
 	})
+
+	// An embedded host declares its origin through the runtime options; the
+	// entry point's own origin is the fallback when it does not.
+	t.Run("an embedded host origin overrides the entry point default", func(t *testing.T) {
+		host, err := New(Config{Repository: repo, Provider: mock.NewProvider(), Model: "m", ProviderName: "p",
+			SessionOrigin: OriginXhen})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, OriginXhen, host.SessionOrigin(OriginRun))
+		model, err := host.NewSessionFor(ctx, "", "topic", host.SessionOrigin(OriginRun))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, store.OriginXhen, store.SessionOrigin(model))
+		assert.True(t, store.HostManagedSession(model))
+
+		// Without one, each entry point keeps its own origin.
+		assert.Eq(t, OriginChat, runner.SessionOrigin(OriginChat))
+		assert.Eq(t, OriginACP, runner.SessionOrigin(OriginACP))
+	})
 }

@@ -469,7 +469,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 func openRequestedSession(ctx context.Context, runner *personal.Runner, opts personalOptions) (string, error) {
 	if opts.FromID != "" {
 		// --session-id names the new session; an existing one is rejected by Handoff.
-		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: opts.Prompt, Origin: personal.OriginRun})
+		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: opts.Prompt, Origin: runner.SessionOrigin(personal.OriginRun)})
 		if err != nil {
 			return "", personal.SessionNotFound(err, opts.FromID)
 		}
@@ -490,13 +490,13 @@ func openRequestedSession(ctx context.Context, runner *personal.Runner, opts per
 		if !errors.Is(err, personal.ErrSessionNotFound) {
 			return "", err
 		}
-		model, err = runner.NewSessionFor(ctx, opts.SessionID, opts.Prompt, personal.OriginRun)
+		model, err = runner.NewSessionFor(ctx, opts.SessionID, opts.Prompt, runner.SessionOrigin(personal.OriginRun))
 		if err != nil {
 			return "", err
 		}
 		return model.ID, nil
 	}
-	model, err := runner.NewSessionFor(ctx, "", opts.Prompt, personal.OriginRun)
+	model, err := runner.NewSessionFor(ctx, "", opts.Prompt, runner.SessionOrigin(personal.OriginRun))
 	if err != nil {
 		return "", err
 	}
