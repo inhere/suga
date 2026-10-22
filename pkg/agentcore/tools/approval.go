@@ -40,6 +40,14 @@ func (f ApproverFunc) Decide(ctx context.Context, call api.ToolCall, tool api.To
 	return f(ctx, call, tool)
 }
 
+// CallRewriter is an optional extension of an Approver: it reprocesses a call
+// before the permission decision (a hook rewrites the arguments). The approval
+// layer runs it first and then decides on the rewritten call, so a change can
+// never be approved on the arguments it replaced.
+type CallRewriter interface {
+	Rewrite(ctx context.Context, call api.ToolCall, tool api.Tool) (api.ToolCall, error)
+}
+
 // Approval is the permission layer of the tool registry stack (order:
 // observe -> visibility -> approval -> base). Every call that reaches it is
 // resolved against the base registry and handed to the Approver before it runs.
@@ -48,9 +56,38 @@ func (f ApproverFunc) Decide(ctx context.Context, call api.ToolCall, tool api.To
 type Approval struct {
 	inner    lookupRegistry
 	approver Approver
+	// rewriter runs before the decision (SetRewriter); nil leaves calls alone.
+	rewriter CallRewriter
 	// disabled maps known tools this runtime did not register to why and how
 	// to enable them; see SetDisabled.
 	disabled map[string]string
+}
+
+// SetRewriter installs the pre-decision rewriter (chat's PreToolUse hook). It
+// narrows a call before the policy sees it; it never replaces the decision, so
+// a rewriter cannot let a call through that the approver refuses.
+func (a *Approval) SetRewriter(rewriter CallRewriter) { a.rewriter = rewriter }
+
+// rewrite runs the rewriter with the fail-closed rules of a hook: a failure or
+// a panic of the rewriter refuses the call instead of running the original.
+func (a *Approval) rewrite(ctx context.Context, call api.ToolCall, tool api.Tool) (rewritten api.ToolCall, err error) {
+	if a.rewriter == nil {
+		return call, nil
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			rewritten, err = call, Denied(fmt.Sprintf("工具 %s 的调用前 hook 崩溃，已拒绝执行：%v", call.Name, recovered))
+		}
+	}()
+	rewritten, err = a.rewriter.Rewrite(ctx, call, tool)
+	if err != nil {
+		return call, err
+	}
+	if rewritten.Name == "" {
+		// A rewriter may only replace the arguments of the call it was given.
+		rewritten.Name = call.Name
+	}
+	return rewritten, nil
 }
 
 // SetDisabled names the known tools that are off in this runtime (write tools
@@ -88,6 +125,15 @@ func (a *Approval) ExecuteTool(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	if a.approver == nil {
 		return nil, Denied(fmt.Sprintf("tool %q is not permitted: no approval policy", call.Name))
+	}
+	// A rewrite (hook) comes first: Decide below, and the tool itself, only see
+	// the rewritten call, so rewritten arguments are never approved unchecked.
+	call, err = a.rewrite(ctx, call, tool)
+	if err != nil {
+		if errors.Is(err, ErrDenied) {
+			return nil, err
+		}
+		return nil, &abortedError{err: err}
 	}
 	if err := a.approver.Decide(ctx, call, tool); err != nil {
 		if errors.Is(err, ErrDenied) {

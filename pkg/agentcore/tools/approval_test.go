@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,8 +79,101 @@ func TestApproval(t *testing.T) {
 	})
 }
 
-func TestApprovalReport(t *testing.T) {
-	call := api.ToolCall{CallID: "c1", Name: "act"}
+// approvalRewriter is a CallRewriter with a scripted behaviour.
+type approvalRewriter struct {
+	rewrite func(api.ToolCall) (api.ToolCall, error)
+}
+
+func (r approvalRewriter) Rewrite(_ context.Context, call api.ToolCall, _ api.Tool) (api.ToolCall, error) {
+	return r.rewrite(call)
+}
+
+// TestApprovalRewrite covers the pre-decision rewriter (a hook rewriting the
+// arguments): the decision is always taken on the rewritten call, and a rewriter
+// that fails or panics refuses the call instead of letting the original run.
+func TestApprovalRewrite(t *testing.T) {
+	call := api.ToolCall{CallID: "c1", Name: "act", Arguments: map[string]any{"path": "docs/a.txt"}}
+	build := func(rewrite func(api.ToolCall) (api.ToolCall, error), decide func(api.ToolCall) error) (*Approval, *approvalTool) {
+		tool := &approvalTool{}
+		reg := NewRegistry()
+		reg.Register(tool)
+		a := NewApproval(reg, ApproverFunc(func(_ context.Context, c api.ToolCall, _ api.Tool) error { return decide(c) }))
+		a.SetRewriter(approvalRewriter{rewrite: rewrite})
+		return a, tool
+	}
+
+	t.Run("the decision sees the rewritten arguments", func(t *testing.T) {
+		var decided map[string]any
+		a, tool := build(func(c api.ToolCall) (api.ToolCall, error) {
+			c.Arguments = map[string]any{"path": "go.mod"}
+			return c, nil
+		}, func(c api.ToolCall) error {
+			decided = c.Arguments
+			if c.Arguments["path"] == "go.mod" {
+				return Denied("受保护路径")
+			}
+			return nil
+		})
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.Eq(t, true, errors.Is(err, ErrDenied))
+		assert.Eq(t, "go.mod", decided["path"])
+		assert.Eq(t, 0, tool.runs)
+	})
+	t.Run("a rewriter cannot allow what the approver refuses", func(t *testing.T) {
+		a, tool := build(func(c api.ToolCall) (api.ToolCall, error) { return c, nil },
+			func(api.ToolCall) error { return Denied("read_only") })
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.Eq(t, true, errors.Is(err, ErrDenied))
+		assert.Eq(t, "read_only", err.Error())
+		assert.Eq(t, 0, tool.runs)
+	})
+	t.Run("a failing rewriter refuses the call", func(t *testing.T) {
+		a, tool := build(func(c api.ToolCall) (api.ToolCall, error) {
+			return c, Denied("hook 超时")
+		}, func(api.ToolCall) error { return nil })
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.Eq(t, true, errors.Is(err, ErrDenied))
+		assert.Eq(t, "hook 超时", err.Error())
+		assert.Eq(t, 0, tool.runs)
+	})
+	t.Run("a panicking rewriter refuses the call", func(t *testing.T) {
+		a, tool := build(func(api.ToolCall) (api.ToolCall, error) {
+			panic("boom")
+		}, func(api.ToolCall) error { return nil })
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.Eq(t, true, errors.Is(err, ErrDenied))
+		assert.Eq(t, false, errors.Is(err, ErrAborted))
+		assert.Eq(t, true, strings.Contains(err.Error(), "boom"))
+		assert.Eq(t, 0, tool.runs)
+	})
+	t.Run("the rewritten call is the one that runs", func(t *testing.T) {
+		run := &approvalRunTool{}
+		reg := NewRegistry()
+		reg.Register(run)
+		a := NewApproval(reg, ApproverFunc(func(context.Context, api.ToolCall, api.Tool) error { return nil }))
+		a.SetRewriter(approvalRewriter{rewrite: func(c api.ToolCall) (api.ToolCall, error) {
+			c.Arguments = map[string]any{"path": "docs/b.txt"}
+			return c, nil
+		}})
+		_, err := a.ExecuteTool(context.Background(), call)
+		assert.NoErr(t, err)
+		assert.Eq(t, "docs/b.txt", run.args["path"])
+	})
+}
+
+// approvalRunTool keeps the arguments its call ran with.
+type approvalRunTool struct{ args map[string]any }
+
+func (*approvalRunTool) Name() string           { return "act" }
+func (*approvalRunTool) Description() string    { return "act" }
+func (*approvalRunTool) Schema() api.ToolSchema { return api.ToolSchema{Name: "act"} }
+func (*approvalRunTool) Kind() Kind             { return KindNative }
+func (t *approvalRunTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolResult, error) {
+	t.args = call.Arguments
+	return &api.ToolResult{Content: "ok"}, nil
+}
+
+func TestApprovalReport(t *testing.T) {	call := api.ToolCall{CallID: "c1", Name: "act"}
 	reg := NewRegistry()
 	reg.Register(&approvalTool{})
 	t.Run("let through without a word is the rule", func(t *testing.T) {
