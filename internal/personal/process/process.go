@@ -549,14 +549,23 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages De
 	ack := Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered, Warning: delivery.Warning}
 	if request.ID != "" {
 		// Only a request that names an ID gets the new fields: an older client reads
-		// exactly the answer it always got (design D4).
-		ack.MessageID, ack.State = request.ID, StateQueued
-		if delivery.Steered {
+		// exactly the answer it always got (design D4). A message that starts a turn
+		// at once (an idle chat, neither queued nor steered) has no state yet: its
+		// receipt carries the terminal one.
+		ack.MessageID = request.ID
+		switch {
+		case delivery.Steered:
 			ack.State = StateSteered
+		case delivery.Queued:
+			ack.State = StateQueued
 		}
 	}
 	_ = encoder.Encode(ack)
-	if (!request.Wait && !request.WaitProcessed) || settled == nil || (!delivery.Queued && !delivery.Steered) {
+	// A --wait sender waits for a message the server took into its queue or into the
+	// running turn; a --wait-processed sender waits for the terminal state of every
+	// message whose fate the receiver can still report (design D4).
+	if (!request.Wait && !request.WaitProcessed) || settled == nil ||
+		(!delivery.Queued && !delivery.Steered && !request.WaitProcessed) {
 		return
 	}
 	// Two-phase reply: the sender already has the "queued"/"steered" ack; keep the connection open (no
@@ -722,8 +731,9 @@ func Send(record Record, request Request) (Response, error) {
 	// Only a message the server took into its queue or into the running turn is
 	// waited for: one that goes straight into a turn (an idle chat) has nothing to
 	// report later, which is the behaviour --wait always had. --wait-processed waits
-	// for the terminal state of exactly those messages too (design D4).
-	if (!request.Wait && !request.WaitProcessed) || (!response.Queued && !response.Steered) {
+	// for the terminal state of any message whose receiver still tracks it (design D4).
+	if (!request.Wait && !request.WaitProcessed) ||
+		(!response.Queued && !response.Steered && !request.WaitProcessed) {
 		return response, nil
 	}
 	// Wait for the message's fate. A dropped connection means the chat died.

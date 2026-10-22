@@ -111,6 +111,22 @@ func TestMessages_Protocol(t *testing.T) {
 		assert.True(t, response.OK)
 	})
 
+	t.Run("wait-processed waits for a message that starts its turn at once", func(t *testing.T) {
+		// An idle chat takes the message straight into a turn (neither queued nor
+		// steered): --wait-processed still waits for that turn's own end.
+		fates := make(chan error, 1)
+		server, err := StartMessages(shortProcessRoot(t), "session-m2", "messages", t.TempDir(), nil,
+			func(req DeliverRequest) (Delivery, <-chan error, error) {
+				return Delivery{}, fates, nil
+			}, nil)
+		assert.Require(t, assert.NoErr(t, err))
+		t.Cleanup(func() { _ = server.Close() })
+		go func() { fates <- nil }()
+		response, err := Send(server.Record(), Request{Text: "你好", ID: "m-5", WaitProcessed: true})
+		assert.NoErr(t, err)
+		assert.Eq(t, StateProcessed, response.State)
+	})
+
 	t.Run("wait keeps its own semantics for a failed message", func(t *testing.T) {
 		requests, fates := newChannels(t)
 		record := messagesServer(t, requests, fates)
