@@ -40,14 +40,20 @@ const metaContextUpdate = "suga.context_update"
 // history. It is stored in the segment start record and rendered as the
 // segment context message; session meta only caches rules/memory/append.
 type segmentContext struct {
-	Environment   string `json:"environment"`
-	Rules         string `json:"rules"`
-	RulesHash     string `json:"rules_hash,omitempty"`
-	MemoryIndex   string `json:"memory_index"`
-	MemoryHash    string `json:"memory_hash,omitempty"`
-	Skills        string `json:"skills"`
-	AppendPrompt  string `json:"append_prompt"`
-	DeferredTools string `json:"deferred_tools"`
+	Environment  string `json:"environment"`
+	Rules        string `json:"rules"`
+	RulesHash    string `json:"rules_hash,omitempty"`
+	MemoryIndex  string `json:"memory_index"`
+	MemoryHash   string `json:"memory_hash,omitempty"`
+	Skills       string `json:"skills"`
+	AppendPrompt string `json:"append_prompt"`
+	// HostContext is the embedding host's context text (persona, topic index,
+	// verbatim constraints; HostContextSource) and its hash. Frozen when the
+	// segment starts, compared by hash at every turn; nil source = no section,
+	// which keeps the rendering of a runtime without a host byte-identical.
+	HostContext     string `json:"host_context,omitempty"`
+	HostContextHash string `json:"host_context_hash,omitempty"`
+	DeferredTools   string `json:"deferred_tools"`
 	// Hash is sha256 over all the fields above (see seal).
 	Hash string `json:"hash"`
 }
@@ -101,6 +107,13 @@ func (r *Runner) freshSnapshot(ctx context.Context, sessionID string, prev *segm
 		AppendPrompt:  r.currentAppendPrompt(prev.AppendPrompt),
 		DeferredTools: r.deferredToolsPrompt(),
 	}
+	// The host context is re-read for every new segment (a handoff or compaction
+	// ends a segment); without a source the previous one is carried over, like
+	// the append prompt.
+	c.HostContext, c.HostContextHash = prev.HostContext, prev.HostContextHash
+	if content, hash, ok := r.hostContext(); ok {
+		c.HostContext, c.HostContextHash = content, hash
+	}
 	if content, hash, ok := r.memorySnapshot(ctx, sessionID); ok {
 		c.MemoryIndex, c.MemoryHash = content, hash
 	}
@@ -115,6 +128,26 @@ func (r *Runner) freshSnapshot(ctx context.Context, sessionID string, prev *segm
 	}
 	c.seal()
 	return c, err
+}
+
+// hostContext reads the injected host context (HostContextSource): the content
+// and the hash the caller uses to tell versions apart. ok is false when there is
+// none - no source, or empty content, which is the same as no section at all. A
+// caller-supplied empty hash is derived from the content, so a host that only
+// renders text still gets change detection.
+func (r *Runner) hostContext() (string, string, bool) {
+	if r.cfg.HostContextSource == nil {
+		return "", "", false
+	}
+	content, hash := r.cfg.HostContextSource()
+	if strings.TrimSpace(content) == "" {
+		return "", "", false
+	}
+	if hash == "" {
+		sum := sha256.Sum256([]byte(content))
+		hash = hex.EncodeToString(sum[:])
+	}
+	return content, hash, true
 }
 
 // environment and skills read the injected sources ("" when not wired).
@@ -212,10 +245,14 @@ const (
 	segmentContextIntro = "以下是本段对话的上下文（环境、规则与参考信息）；本段内的变化会以“上下文更新”消息追加，以最新的为准。"
 	rulesHeading        = "# Project rules"
 	appendHeading       = "# Additional instructions"
+	// hostContextHeading heads the embedding host's section (persona, topic
+	// index, verbatim constraints): after the additional instructions, before
+	// the deferred tool listing.
+	hostContextHeading = "## Host context"
 )
 
 // renderSegmentParts renders the snapshot parts in the fixed order 环境 → 项目规则
-// → 记忆索引 → skills → 附加提示 → 延迟工具列表; empty parts are skipped.
+// → 记忆索引 → skills → 附加提示 → 宿主上下文 → 延迟工具列表; empty parts are skipped.
 func renderSegmentParts(c *segmentContext) []string {
 	if c == nil {
 		return nil
@@ -234,6 +271,9 @@ func renderSegmentParts(c *segmentContext) []string {
 	add(c.Skills)
 	if strings.TrimSpace(c.AppendPrompt) != "" {
 		add(appendHeading + "\n\n" + c.AppendPrompt)
+	}
+	if strings.TrimSpace(c.HostContext) != "" {
+		add(hostContextHeading + "\n\n" + c.HostContext)
 	}
 	add(c.DeferredTools)
 	return parts
@@ -279,6 +319,9 @@ type contextUpdateRecord struct {
 	MemoryIndex  *string `json:"memory_index,omitempty"`
 	MemoryHash   string  `json:"memory_hash,omitempty"`
 	AppendPrompt *string `json:"append_prompt,omitempty"`
+	// HostContext is the host's new text (nil = unchanged; "" = cleared).
+	HostContext     *string `json:"host_context,omitempty"`
+	HostContextHash string  `json:"host_context_hash,omitempty"`
 }
 
 // applyTo overlays the update on the effective context c.
@@ -294,6 +337,9 @@ func (u contextUpdateRecord) applyTo(c *segmentContext) {
 	}
 	if u.AppendPrompt != nil {
 		c.AppendPrompt = *u.AppendPrompt
+	}
+	if u.HostContext != nil {
+		c.HostContext, c.HostContextHash = *u.HostContext, u.HostContextHash
 	}
 }
 
@@ -315,6 +361,9 @@ func (u contextUpdateRecord) message() agentcore.Message {
 	}
 	if u.AppendPrompt != nil {
 		parts = append(parts, appendHeading+"\n\n"+orCleared(*u.AppendPrompt, "（附加提示已清除，不再适用）"))
+	}
+	if u.HostContext != nil {
+		parts = append(parts, hostContextHeading+"\n\n"+orCleared(*u.HostContext, "（宿主上下文已清除，不再适用）"))
 	}
 	return agentcore.Message{Role: "user", Content: strings.Join(parts, "\n\n"), Metadata: map[string]any{metaContextUpdate: true}}
 }
@@ -369,6 +418,17 @@ func (r *Runner) contextUpdate(ctx context.Context, sessionID string, eff *segme
 	}
 	if appended := r.currentAppendPrompt(eff.AppendPrompt); appended != eff.AppendPrompt {
 		u.AppendPrompt, changed = &appended, true
+	}
+	// The host context is compared by hash, not by text: a host that publishes a
+	// new version of an unchanged-looking text still gets its update. No source
+	// or empty content means the section is gone (cleared when the segment had one).
+	if content, hash, ok := r.hostContext(); ok {
+		if hash != eff.HostContextHash {
+			u.HostContext, u.HostContextHash, changed = &content, hash, true
+		}
+	} else if eff.HostContext != "" {
+		empty := ""
+		u.HostContext, changed = &empty, true
 	}
 	if !changed {
 		return nil, nil

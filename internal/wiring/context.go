@@ -42,13 +42,16 @@ const (
 // the chat start notice measure exactly these strings, so the numbers describe
 // what the provider receives.
 type ResidentContext struct {
-	SystemPrompt  string
-	Environment   string
-	Rules         string
-	RuleStats     personal.RuleStats
-	MemoryIndex   string // rendered memory section (see personal.RenderMemorySection)
-	Skills        string
-	AppendPrompt  string
+	SystemPrompt string
+	Environment  string
+	Rules        string
+	RuleStats    personal.RuleStats
+	MemoryIndex  string // rendered memory section (see personal.RenderMemorySection)
+	Skills       string
+	AppendPrompt string
+	// HostContext is the embedding host's context text (Options.HostContext);
+	// empty when the host provides none (the section is then not rendered).
+	HostContext   string
 	DeferredTools string
 	// MemoryIndexNote explains a memory index that was not read (a command
 	// backend is never run to size it).
@@ -114,12 +117,14 @@ type ManifestContextTruncated struct {
 // ManifestContext reports the size of the resident context and the parts that
 // crossed a soft threshold (OverBudget, by part name, plus "total").
 type ManifestContext struct {
-	SystemPrompt  ManifestContextPart `json:"system_prompt"`
-	Environment   ManifestContextPart `json:"environment"`
-	Rules         ManifestContextPart `json:"rules"`
-	MemoryIndex   ManifestContextPart `json:"memory_index"`
-	Skills        ManifestContextPart `json:"skills"`
-	AppendPrompt  ManifestContextPart `json:"append_prompt"`
+	SystemPrompt ManifestContextPart `json:"system_prompt"`
+	Environment  ManifestContextPart `json:"environment"`
+	Rules        ManifestContextPart `json:"rules"`
+	MemoryIndex  ManifestContextPart `json:"memory_index"`
+	Skills       ManifestContextPart `json:"skills"`
+	AppendPrompt ManifestContextPart `json:"append_prompt"`
+	// HostContext measures the section an embedding host adds (Options.HostContext).
+	HostContext   ManifestContextPart `json:"host_context"`
 	DeferredTools ManifestContextPart `json:"deferred_tools"`
 	TotalBytes    int                 `json:"total_bytes"`
 	TotalTokens   int                 `json:"total_tokens"`
@@ -145,6 +150,7 @@ func BuildManifestContext(in ResidentContext) ManifestContext {
 		MemoryIndex:   newContextPart(in.MemoryIndex, ResidentMemoryIndexSoftBytes, memorySuggestion),
 		Skills:        newContextPart(in.Skills, ResidentSkillsSoftBytes, skillsSuggestion),
 		AppendPrompt:  newContextPart(in.AppendPrompt, 0, ""),
+		HostContext:   newContextPart(in.HostContext, 0, ""),
 		DeferredTools: newContextPart(in.DeferredTools, 0, ""),
 		OverBudget:    []string{},
 	}
@@ -171,7 +177,7 @@ func BuildManifestContext(in ResidentContext) ManifestContext {
 	}{
 		{"system_prompt", c.SystemPrompt}, {"environment", c.Environment}, {"rules", c.Rules},
 		{"memory_index", c.MemoryIndex}, {"skills", c.Skills}, {"append_prompt", c.AppendPrompt},
-		{"deferred_tools", c.DeferredTools},
+		{"host_context", c.HostContext}, {"deferred_tools", c.DeferredTools},
 	}
 	for _, p := range parts {
 		c.TotalBytes += p.part.Bytes
@@ -184,6 +190,19 @@ func BuildManifestContext(in ResidentContext) ManifestContext {
 		c.OverBudget = append(c.OverBudget, "total")
 	}
 	return c
+}
+
+// hostContextText reads the host's context text for the resident report (""
+// when the host provides none: an empty section is never rendered).
+func hostContextText(src func() (content, hash string)) string {
+	if src == nil {
+		return ""
+	}
+	content, _ := src()
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+	return content
 }
 
 // TotalSuggestion is the action shown when the resident context total is over
@@ -233,6 +252,8 @@ func (c ManifestContext) Part(name string) ManifestContextPart {
 		return c.Skills
 	case "append_prompt":
 		return c.AppendPrompt
+	case "host_context":
+		return c.HostContext
 	case "deferred_tools":
 		return c.DeferredTools
 	}

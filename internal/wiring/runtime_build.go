@@ -12,6 +12,7 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/llm"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/mcp"
@@ -130,8 +131,15 @@ func buildPersonalCapabilitiesWithServers(ctx context.Context, workspace string,
 }
 
 func buildPersonalCapabilitiesWithServersAndSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
+	return buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, nil)
+}
+
+// buildPersonalCapabilitiesWithExtras is buildPersonalCapabilitiesWithServersAndSnapshot
+// with extra, the host's in-process tools (Options.ExtraTools). They are part of
+// the main session in every mode; only sub-agents never get them (subagent.go).
+func buildPersonalCapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
 	if allowWrite {
-		return buildDefaultCapabilitiesWithServersAndSnapshot(ctx, workspace, dirs, servers, snapshotter)
+		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra)
 	}
 	// Read-only: only the catalog's read tools, and no MCP (ACP read_only
 	// sessions must not start MCP servers).
@@ -139,17 +147,23 @@ func buildPersonalCapabilitiesWithServersAndSnapshot(ctx context.Context, worksp
 	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter), false) {
 		registry.Register(tool)
 	}
+	if err := registerHostTools(registry, extra); err != nil {
+		return defaultCapabilities{}, err
+	}
 	if err := applyDisabledTools(registry); err != nil {
 		return defaultCapabilities{}, err
 	}
 	return defaultCapabilities{Registry: registry}, nil
 }
 
-func buildPersonalCLICapabilitiesWithSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
+// buildPersonalCLICapabilitiesWithExtras is the CLI capability build with
+// extra, the host's in-process tools (Options.ExtraTools); nil builds the
+// historical tool set. Open passes them in.
+func buildPersonalCLICapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
 	if allowWrite {
-		return buildDefaultCapabilitiesWithServersAndSnapshot(ctx, workspace, dirs, servers, snapshotter)
+		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra)
 	}
-	built, err := buildPersonalCapabilitiesWithServers(ctx, workspace, dirs, false, nil)
+	built, err := buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, false, nil, nil, extra)
 	if err != nil {
 		return defaultCapabilities{}, err
 	}
