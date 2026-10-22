@@ -22,6 +22,8 @@ type fakeMessenger struct {
 	sent   []sentMessage
 	err    error
 	result SessionSendResult
+	// status is what a status query answers ("" = the receiver never saw the ID).
+	status string
 }
 
 func (f *fakeMessenger) Peers(context.Context) ([]SessionPeer, error) {
@@ -37,6 +39,13 @@ func (f *fakeMessenger) Send(_ context.Context, to, text, mode string) (SessionS
 		return SessionSendResult{}, f.err
 	}
 	return f.result, nil
+}
+
+func (f *fakeMessenger) Status(_ context.Context, _, _ string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.status, nil
 }
 
 // turnOf reads the turn id session_message limits its sends by ("" = outside a
@@ -91,7 +100,7 @@ func TestSessionMessageArgumentErrors(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"action missing", map[string]any{}, "action 必须是 list 或 send"},
+		{"action missing", map[string]any{}, "action 必须是 list、send 或 status"},
 		{"to missing", map[string]any{"action": "send", "text": "hi"}, "需要 to"},
 		{"text missing", map[string]any{"action": "send", "to": "suga-k7"}, "需要 text"},
 	}

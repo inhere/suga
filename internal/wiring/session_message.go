@@ -11,6 +11,7 @@ import (
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 
 	axconfig "github.com/inhere/suga/internal/config"
@@ -110,6 +111,10 @@ func (m *sessionMessenger) Send(ctx context.Context, to, text, mode string) (nat
 		mode = personalprocess.ModeFollowUp
 	}
 	request := sessionMessageRequest(ctx, sender, self, text, mode)
+	// The invocation id names the message: a receiver that sees it twice does not
+	// queue it twice, and a receipt or a status query names it (design
+	// session-message-delivery D1/D2).
+	request.ID = tools.InvocationID(ctx)
 	response, err := personalprocess.Send(record, request)
 	switch {
 	case errors.Is(err, personalprocess.ErrNotOnline):
@@ -123,9 +128,40 @@ func (m *sessionMessenger) Send(ctx context.Context, to, text, mode string) (nat
 	}
 	return native.SessionSendResult{
 		Queued: response.Queued, Steered: response.Steered, Warning: response.Warning,
+		// The ID the receiver dedupes on and a receipt names (design
+		// session-message-delivery D1): the invocation id of this tool call, so a
+		// retried call of the same invocation is not queued twice.
+		MessageID: response.MessageID,
 		// An older receiver ignores Request.Hops and starts a turn every time.
 		Legacy: !record.HasFeature(personalprocess.FeatureHops),
 	}, nil
+}
+
+// Status asks the receiving session for the state of one message ID
+// (`session_message action=status`). An ID that process never saw is reported as
+// unknown instead of guessed: another process, or a restarted chat.
+func (m *sessionMessenger) Status(ctx context.Context, to, id string) (string, error) {
+	records, err := personalprocess.List(m.root)
+	if err != nil {
+		return "", err
+	}
+	record, err := personalprocess.Resolve(records, to)
+	switch {
+	case errors.Is(err, personalprocess.ErrNotOnline):
+		return "", fmt.Errorf("对方会话 %q 不存在或已退出（可用 action=list 查看正在运行的会话）", to)
+	case errors.Is(err, personalprocess.ErrAmbiguous):
+		return "", fmt.Errorf("选择器 %q 匹配多个会话，请改用完整会话 ID 或短名称", to)
+	case err != nil:
+		return "", err
+	}
+	state, err := personalprocess.Status(record, id)
+	if errors.Is(err, personalprocess.ErrUnknownMessage) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return state, nil
 }
 
 // senderOf is the record of this process, the empty one when it is not

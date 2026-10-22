@@ -92,6 +92,29 @@ type ImageRef struct {
 	Height    int    `json:"height,omitempty"`
 }
 
+// States of one message in its receiving process (Response.State and the status
+// query; design session-message-delivery D2/D3).
+const (
+	// StateQueued is a message waiting for the next turn of the receiver.
+	StateQueued = "queued"
+	// StateSteered is a message inserted into the turn running right now.
+	StateSteered = "steered"
+	// StateProcessed is a message whose turn completed: it ran exactly once.
+	StateProcessed = "processed"
+	// StateFailed is a message whose turn failed or was cancelled: it did not run
+	// and is not retried automatically (design D2).
+	StateFailed = "failed"
+	// StateHeld is a message a failed turn moved to the person's next turn.
+	StateHeld = "held"
+	// StateDiscarded is a message the receiver dropped at exit: it never ran.
+	StateDiscarded = "discarded"
+)
+
+// TypeStatus is the Request.Type that asks for the state of one message ID
+// (`session_message action=status`, design session-message-delivery D3).
+const TypeStatus = "status"
+
+// Request is one message or one status query a sender hands to a receiver.
 type Request struct {
 	Type      string `json:"type"`
 	SessionID string `json:"session_id,omitempty"`
@@ -118,6 +141,15 @@ type Request struct {
 	// older server ignores the unknown field, which the sender's feature check
 	// prevents (Record.Features).
 	Images []ImageRef `json:"images,omitempty"`
+	// ID is the sender's message ID: a message whose ID the receiver already took
+	// is not queued a second time, and the ID names the message in a receipt and in
+	// a status query (design session-message-delivery D2). An older server ignores
+	// the unknown field, so the message is delivered as before.
+	ID string `json:"id,omitempty"`
+	// WaitProcessed asks for the receipt of the message's terminal state (processed,
+	// failed, held or discarded) instead of the one Wait reports, which is sent when
+	// the message starts a turn (design D4: the semantics of Wait do not change).
+	WaitProcessed bool `json:"wait_processed,omitempty"`
 }
 
 type Response struct {
@@ -131,6 +163,12 @@ type Response struct {
 	// Warning reports something the receiver did to accept the message that the
 	// sender should show (the model cannot see images, so they became a note).
 	Warning string `json:"warning,omitempty"`
+	// MessageID echoes Request.ID, and State says what happened to that message:
+	// queued or steered in the first answer, processed, failed, held or discarded in
+	// the second. Both stay empty for a request that names no ID, so the answers of
+	// an older client are byte-identical to the ones this version always sent.
+	MessageID string `json:"message_id,omitempty"`
+	State     string `json:"state,omitempty"`
 }
 
 // Delivery is the acknowledgement of one accepted message: exactly one of Queued
@@ -155,6 +193,30 @@ type DeliverFunc func(mode, text, from string) (Delivery, error)
 // pictures.
 type DeliverImagesFunc func(mode, text, from, fromName string, hops int, images []ImageRef) (Delivery, <-chan error, error)
 
+// DeliverRequest is one incoming request as a receiver that knows message IDs sees
+// it: the fields of Request a chat reads, including the sender's ID and which
+// receipt it asked for (design session-message-delivery D1).
+type DeliverRequest struct {
+	Mode, Text, From, FromName string
+	Hops                       int
+	Images                     []ImageRef
+	// ID and WaitProcessed decide which receipt the receiver sends: the ID is
+	// recorded in the state table, and WaitProcessed defers the receipt to the end
+	// of the message's turn.
+	ID            string
+	WaitProcessed bool
+}
+
+// DeliverMessageFunc is what a receiver that knows message IDs registers: it takes
+// the whole DeliverRequest and reports the final fate of an accepted message on the
+// settled channel (nil processed, ErrFailed, ErrHeld, ErrDiscarded).
+type DeliverMessageFunc func(req DeliverRequest) (Delivery, <-chan error, error)
+
+// StatusFunc answers Request.Type == TypeStatus: the state of one message ID in
+// this process, ok=false for an ID it never saw (a restart, or a message of
+// another process; design session-message-delivery D3).
+type StatusFunc func(id string) (state string, ok bool)
+
 // DeliverWaitFunc is a DeliverFunc that can also report the final fate of an accepted message:
 // settled (may be nil) yields nil once the message is delivered or starts a turn (OK), or an
 // error if it is discarded before it ran.
@@ -172,6 +234,23 @@ var ErrSessionClosed = errors.New("session is closing")
 // ErrDiscarded is the error a deliver func reports on a settled channel for a message dropped at exit.
 var ErrDiscarded = errors.New("message discarded before it ran")
 
+// ErrFailed is the error a deliver func reports on a settled channel for a message
+// whose turn failed or was cancelled: it did not run and is not retried (design
+// session-message-delivery D2).
+var ErrFailed = errors.New("the turn carrying the message failed")
+
+// ErrHeld is the error a deliver func reports on a settled channel for a message a
+// failed turn moved to the person's next turn (StateHeld): it runs there once the
+// person writes, never on its own.
+var ErrHeld = errors.New("message held for the person's next turn")
+
+// codeUnknownMessage is the status answer of a receiver that never saw the ID.
+const codeUnknownMessage = "unknown_message"
+
+// ErrUnknownMessage is what Status reports for an ID the receiving process does
+// not know: the message belongs to another process, or its chat restarted.
+var ErrUnknownMessage = errors.New("message ID unknown to the receiving process")
+
 type Server struct {
 	root     string
 	mu       sync.RWMutex
@@ -180,6 +259,10 @@ type Server struct {
 	done     chan struct{}
 	closing  chan struct{} // closed by Close so connections waiting on a queued message end promptly
 	closeOne sync.Once
+	// messages and status belong to a receiver that knows message IDs
+	// (StartMessages); both are set before serve starts and never change after.
+	messages DeliverMessageFunc
+	status   StatusFunc
 }
 
 func Start(root, sessionID, name, cwd string, deliver DeliverFunc) (*Server, error) {
@@ -195,13 +278,21 @@ func StartFeatures(root, sessionID, name, cwd string, features []string, deliver
 	return startServer(root, sessionID, name, cwd, features, nil, func(mode, text, from string) (Delivery, <-chan error, error) {
 		delivery, err := deliver(mode, text, from)
 		return delivery, nil, err
-	})
+	}, nil, nil)
+}
+
+// StartMessages is the receiver of a process that knows message IDs: deliver takes
+// the whole DeliverRequest (so the ID and the receipt choice reach the chat) and
+// status answers Request.Type == TypeStatus for this process (design
+// session-message-delivery D1/D3).
+func StartMessages(root, sessionID, name, cwd string, features []string, deliver DeliverMessageFunc, status StatusFunc) (*Server, error) {
+	return startServer(root, sessionID, name, cwd, features, nil, nil, deliver, status)
 }
 
 // StartWaitImages is StartWait with the Record.Features the process declares and a
 // deliver func that also takes the request's images (`suga send --image`).
 func StartWaitImages(root, sessionID, name, cwd string, features []string, deliver DeliverImagesFunc) (*Server, error) {
-	return startServer(root, sessionID, name, cwd, features, deliver, nil)
+	return startServer(root, sessionID, name, cwd, features, deliver, nil, nil, nil)
 }
 
 // SecureDir restricts an existing directory to the current user: 0700 on
@@ -270,13 +361,13 @@ func trustedSocket(socket, root string, pid int) bool {
 }
 
 func StartWait(root, sessionID, name, cwd string, deliver DeliverWaitFunc) (*Server, error) {
-	return startServer(root, sessionID, name, cwd, nil, nil, deliver)
+	return startServer(root, sessionID, name, cwd, nil, nil, deliver, nil, nil)
 }
 
 // startServer is what every Start variant runs: the record declares features,
 // and either deliverImages (a receiver that takes pictures) or deliver (a text
 // only one) handles a request.
-func startServer(root, sessionID, name, cwd string, features []string, deliverImages DeliverImagesFunc, deliver DeliverWaitFunc) (*Server, error) {
+func startServer(root, sessionID, name, cwd string, features []string, deliverImages DeliverImagesFunc, deliver DeliverWaitFunc, messages DeliverMessageFunc, status StatusFunc) (*Server, error) {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(sessionID) == "" {
 		return nil, fmt.Errorf("process registration requires root and session ID")
 	}
@@ -313,7 +404,7 @@ func startServer(root, sessionID, name, cwd string, features []string, deliverIm
 	_ = os.Chmod(socket, 0o600)
 	host, _ := os.Hostname()
 	record := Record{PID: pid, SessionID: sessionID, Name: name, CWD: cwd, Kind: "chat", Socket: socket, StartedAt: time.Now().UTC(), ProcStart: procStart, Host: host, State: "idle", Features: features}
-	server := &Server{root: root, record: record, listener: listener, done: make(chan struct{}), closing: make(chan struct{})}
+	server := &Server{root: root, record: record, listener: listener, done: make(chan struct{}), closing: make(chan struct{}), messages: messages, status: status}
 	if err := server.writeRecord(); err != nil {
 		_ = listener.Close()
 		_ = os.Remove(socket)
@@ -400,17 +491,21 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages De
 		_ = json.NewEncoder(conn).Encode(Response{OK: true})
 		return
 	}
+	if request.Type == TypeStatus {
+		s.handleStatus(conn, request)
+		return
+	}
 	if request.Type != "deliver" || request.SessionID != s.Record().SessionID || strings.TrimSpace(request.Text) == "" {
 		_ = json.NewEncoder(conn).Encode(Response{Error: "invalid_request"})
 		return
 	}
-	if deliver == nil && deliverImages == nil {
+	if deliver == nil && deliverImages == nil && s.messages == nil {
 		_ = json.NewEncoder(conn).Encode(Response{Error: "delivery_unavailable"})
 		return
 	}
 	// Images need a receiver that knows them: answering with an error instead of
 	// taking the text is what keeps a picture from being dropped silently.
-	if len(request.Images) > 0 && deliverImages == nil {
+	if len(request.Images) > 0 && deliverImages == nil && s.messages == nil {
 		_ = json.NewEncoder(conn).Encode(Response{Error: codeImagesUnsupported})
 		return
 	}
@@ -420,13 +515,24 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages De
 	if mode == "" {
 		mode = ModeFollowUp
 	}
-	deliverFunc := deliver
-	if deliverImages != nil {
-		deliverFunc = func(mode, text, from string) (Delivery, <-chan error, error) {
-			return deliverImages(mode, text, from, request.FromName, request.Hops, request.Images)
+	// A receiver that knows message IDs takes the whole request; the older
+	// endpoints are adapted, so a chat that registers them behaves as before.
+	deliverMessage := s.messages
+	switch {
+	case deliverMessage != nil:
+	case deliverImages != nil:
+		deliverMessage = func(req DeliverRequest) (Delivery, <-chan error, error) {
+			return deliverImages(req.Mode, req.Text, req.From, req.FromName, req.Hops, req.Images)
+		}
+	default:
+		deliverMessage = func(req DeliverRequest) (Delivery, <-chan error, error) {
+			return deliver(req.Mode, req.Text, req.From)
 		}
 	}
-	delivery, settled, err := deliverFunc(mode, request.Text, request.From)
+	delivery, settled, err := deliverMessage(DeliverRequest{
+		Mode: mode, Text: request.Text, From: request.From, FromName: request.FromName,
+		Hops: request.Hops, Images: request.Images, ID: request.ID, WaitProcessed: request.WaitProcessed,
+	})
 	if err != nil {
 		code := "delivery_failed"
 		if errors.Is(err, ErrImageRejected) {
@@ -436,12 +542,21 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages De
 		} else if errors.Is(err, ErrSessionClosed) {
 			code = codeSessionClosed
 		}
-		_ = json.NewEncoder(conn).Encode(Response{Error: code})
+		_ = json.NewEncoder(conn).Encode(Response{Error: code, MessageID: request.ID})
 		return
 	}
 	encoder := json.NewEncoder(conn)
-	_ = encoder.Encode(Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered, Warning: delivery.Warning})
-	if !request.Wait || settled == nil || (!delivery.Queued && !delivery.Steered) {
+	ack := Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered, Warning: delivery.Warning}
+	if request.ID != "" {
+		// Only a request that names an ID gets the new fields: an older client reads
+		// exactly the answer it always got (design D4).
+		ack.MessageID, ack.State = request.ID, StateQueued
+		if delivery.Steered {
+			ack.State = StateSteered
+		}
+	}
+	_ = encoder.Encode(ack)
+	if (!request.Wait && !request.WaitProcessed) || settled == nil || (!delivery.Queued && !delivery.Steered) {
 		return
 	}
 	// Two-phase reply: the sender already has the "queued"/"steered" ack; keep the connection open (no
@@ -449,14 +564,55 @@ func (s *Server) handle(conn net.Conn, deliver DeliverWaitFunc, deliverImages De
 	_ = conn.SetDeadline(time.Time{})
 	select {
 	case err := <-settled:
-		if err == nil {
-			_ = encoder.Encode(Response{OK: true, Queued: delivery.Queued, Steered: delivery.Steered, Warning: delivery.Warning})
-		} else {
-			_ = encoder.Encode(Response{Queued: delivery.Queued, Steered: delivery.Steered, Error: codeDiscarded})
-		}
+		_ = encoder.Encode(receipt(request, ack, err))
 	case <-s.closing:
-		_ = encoder.Encode(Response{Queued: delivery.Queued, Steered: delivery.Steered, Error: codeSessionClosed})
+		_ = encoder.Encode(Response{Queued: delivery.Queued, Steered: delivery.Steered, Error: codeSessionClosed, MessageID: request.ID})
 	}
+}
+
+// receipt is the second answer of a waiting sender. A --wait sender gets exactly the
+// answer it always got (the ack, or "discarded"/"session_closed") so its exit codes
+// do not change; a --wait-processed sender gets the message's terminal state
+// (design session-message-delivery D4).
+func receipt(request Request, ack Response, settledErr error) Response {
+	if !request.WaitProcessed {
+		if settledErr == nil {
+			return ack
+		}
+		return Response{Queued: ack.Queued, Steered: ack.Steered, Error: codeDiscarded, MessageID: request.ID}
+	}
+	resp := Response{Queued: ack.Queued, Steered: ack.Steered, Warning: ack.Warning, MessageID: request.ID}
+	switch {
+	case settledErr == nil:
+		resp.OK, resp.State = true, StateProcessed
+	case errors.Is(settledErr, ErrHeld):
+		// The failed turn moved the message to the person's next turn: accepted, not run.
+		resp.OK, resp.State = true, StateHeld
+	case errors.Is(settledErr, ErrDiscarded):
+		resp.State, resp.Error = StateDiscarded, codeDiscarded
+	default:
+		resp.State, resp.Error = StateFailed, StateFailed
+	}
+	return resp
+}
+
+// handleStatus answers one status query: the state of a message ID in this process.
+// An ID it never saw (a restart, or another process's message) is reported as an
+// error, so the caller can say "unknown" instead of guessing.
+func (s *Server) handleStatus(conn net.Conn, request Request) {
+	if request.SessionID != s.Record().SessionID || strings.TrimSpace(request.ID) == "" {
+		_ = json.NewEncoder(conn).Encode(Response{Error: "invalid_request"})
+		return
+	}
+	state, ok := "", false
+	if s.status != nil {
+		state, ok = s.status(request.ID)
+	}
+	if !ok {
+		_ = json.NewEncoder(conn).Encode(Response{Error: codeUnknownMessage, MessageID: request.ID})
+		return
+	}
+	_ = json.NewEncoder(conn).Encode(Response{OK: true, MessageID: request.ID, State: state})
 }
 
 // codeImagesUnsupported is the response of a server that does not know
@@ -557,13 +713,17 @@ func Send(record Record, request Request) (Response, error) {
 	if response.Error == codeSessionClosed {
 		return response, ErrNotOnline
 	}
+	if response.Error == codeUnknownMessage {
+		return response, ErrUnknownMessage
+	}
 	if !response.OK {
 		return response, fmt.Errorf("delivery failed: %s", response.Error)
 	}
 	// Only a message the server took into its queue or into the running turn is
 	// waited for: one that goes straight into a turn (an idle chat) has nothing to
-	// report later, which is the behaviour --wait always had.
-	if !request.Wait || (!response.Queued && !response.Steered) {
+	// report later, which is the behaviour --wait always had. --wait-processed waits
+	// for the terminal state of exactly those messages too (design D4).
+	if (!request.Wait && !request.WaitProcessed) || (!response.Queued && !response.Steered) {
 		return response, nil
 	}
 	// Wait for the message's fate. A dropped connection means the chat died.
@@ -575,6 +735,11 @@ func Send(record Record, request Request) (Response, error) {
 	if final.Error == codeDiscarded || final.Error == codeSessionClosed {
 		return final, fmt.Errorf("%w: the message was discarded before it ran", ErrNotOnline)
 	}
+	if request.WaitProcessed {
+		// A --wait-processed sender reads the terminal state itself (the CLI decides
+		// what exit code failed and discarded get): no error hides the state.
+		return final, nil
+	}
 	if !final.OK {
 		return final, fmt.Errorf("delivery failed: %s", final.Error)
 	}
@@ -582,6 +747,21 @@ func Send(record Record, request Request) (Response, error) {
 }
 
 var ErrNotOnline = errors.New("session process is not online")
+
+// Status asks one running process for the state of a message ID (`suga send --id`,
+// session_message action=status). ErrUnknownMessage means the process never saw the
+// ID: it belongs to another process, or the chat restarted (design
+// session-message-delivery D3).
+func Status(record Record, id string) (string, error) {
+	response, err := Send(record, Request{Type: TypeStatus, ID: id})
+	if errors.Is(err, ErrUnknownMessage) {
+		return "", ErrUnknownMessage
+	}
+	if err != nil {
+		return "", err
+	}
+	return response.State, nil
+}
 
 // processAlive reports whether pid still runs the process that recorded procStart.
 // An empty procStart (older record or unsupported platform) falls back to the PID alone.
