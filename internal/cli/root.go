@@ -78,13 +78,14 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 // (trace, stats, export, manifest) that used to sit at the top level. The group
 // only holds subcommands, the leaves keep their own flags.
 func newInspectCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
-	inspect := capp.NewCmd("inspect", "Inspect sessions: trace / stats / export / manifest")
+	inspect := capp.NewCmd("inspect", "Inspect sessions: trace / stats / export / manifest / rules")
 	inspect.SetOutput(stderr)
 	inspect.Add(
 		newTraceCommand(ctx, stdout, stderr),
 		newStatsCommand(ctx, stdout, stderr),
 		newExportCommand(ctx, stdout, stderr),
 		newManifestCommand(ctx, stdout, stderr),
+		newInspectRulesCommand(ctx, stdout, stderr),
 	)
 	return inspect
 }

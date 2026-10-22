@@ -70,7 +70,7 @@ func TestGroupHelpListsLeaves(t *testing.T) {
 		group  string
 		leaves []string
 	}{
-		{group: "inspect", leaves: []string{"trace", "stats", "export", "manifest"}},
+		{group: "inspect", leaves: []string{"trace", "stats", "export", "manifest", "rules"}},
 		{group: "data", leaves: []string{"gc", "bodies", "vacuum", "compress-spill", "backup", "restore"}},
 	} {
 		t.Run(tc.group, func(t *testing.T) {

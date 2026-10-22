@@ -227,14 +227,7 @@ func minimizeOutput(workspace string) func(agentcore.ToolCall, string) (string, 
 	if !gkconfig.Bool("tools.minimize_output", true) {
 		return nil
 	}
-	var files []string
-	if home, err := axconfig.ResolveSugaHome(); err == nil && filepath.IsAbs(home) {
-		files = append(files, filepath.Join(home, outputRulesFile))
-	}
-	if workspace != "" {
-		files = append(files, filepath.Join(workspace, ".suga", outputRulesFile))
-	}
-	rules, errs := native.LoadOutputRules(files...)
+	rules, errs := native.LoadOutputRules(layeredRulePaths(workspace, outputRulesFile)...)
 	for _, err := range errs {
 		slog.Warn("skip output rules file", "err", err)
 	}
@@ -256,6 +249,20 @@ const outputRulesFile = "output-rules.yaml"
 // nudgeRulesFile names the user and project nudge rule files.
 const nudgeRulesFile = "nudge-rules.yaml"
 
+// layeredRulePaths returns the layer paths of one tunable rule file kind, in
+// load order (later files win): $SUGA_HOME/<name>, then
+// <workspace>/.suga/<name>.
+func layeredRulePaths(workspace, name string) []string {
+	var files []string
+	if home, err := axconfig.ResolveSugaHome(); err == nil && filepath.IsAbs(home) {
+		files = append(files, filepath.Join(home, name))
+	}
+	if workspace != "" {
+		files = append(files, filepath.Join(workspace, ".suga", name))
+	}
+	return files
+}
+
 // langRulesFile names the user and project language rule files: the
 // declaration languages of file_symbols/file_refs and their test commands
 // (design docs/design/2026-10-22-lang-rules-design.md).
@@ -267,13 +274,7 @@ const langRulesFile = "lang-rules.yaml"
 // file that does not parse or holds a broken rule is reported and skipped as a
 // whole, like an output-rules file, and the manifest lists it.
 func loadLangRuleFiles(workspace string) codeintel.LangRegistry {
-	var files []string
-	if home, err := axconfig.ResolveSugaHome(); err == nil && filepath.IsAbs(home) {
-		files = append(files, filepath.Join(home, langRulesFile))
-	}
-	if workspace != "" {
-		files = append(files, filepath.Join(workspace, ".suga", langRulesFile))
-	}
+	files := layeredRulePaths(workspace, langRulesFile)
 	reg, errs := codeintel.LoadLangRules(files...)
 	codeintel.InstallLangRules(reg)
 	for _, err := range errs {
@@ -290,14 +291,7 @@ func loadLangRuleFiles(workspace string) codeintel.LangRegistry {
 // then <workspace>/.suga/nudge-rules.yaml. A file that does not parse or holds
 // a broken rule is reported and skipped as a whole, like an output-rules file.
 func loadNudgeRuleFiles(workspace string) []personal.NudgeRule {
-	var files []string
-	if home, err := axconfig.ResolveSugaHome(); err == nil && filepath.IsAbs(home) {
-		files = append(files, filepath.Join(home, nudgeRulesFile))
-	}
-	if workspace != "" {
-		files = append(files, filepath.Join(workspace, ".suga", nudgeRulesFile))
-	}
-	rules, errs := personal.LoadNudgeRules(files...)
+	rules, errs := personal.LoadNudgeRules(layeredRulePaths(workspace, nudgeRulesFile)...)
 	for _, err := range errs {
 		slog.Warn("skip nudge rules file", "err", err)
 	}

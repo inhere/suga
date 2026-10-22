@@ -45,6 +45,11 @@ type Manifest struct {
 	ApprovalRules ManifestApprovalRules `json:"approval_rules"`
 	// NudgeRules lists the effective nudge rules (name, kind, source layer).
 	NudgeRules []ManifestNudgeRule `json:"nudge_rules"`
+	// OutputRules lists the effective output rules (name, source layer), and
+	// OutputRuleSkips the output rule files that did not load: a typo would
+	// otherwise silently disable the whole file.
+	OutputRules     []ManifestRuleLayer `json:"output_rules"`
+	OutputRuleSkips []RuleFileSkip      `json:"output_rule_skips"`
 	// LangRules lists the effective declaration languages of file_symbols and
 	// file_refs (name, extensions, source layer), and LangRuleSkips the language
 	// rule files that did not load with their reason: a rule file with a typo
@@ -199,6 +204,13 @@ type ManifestApprovalDefaults struct {
 	ToolsApproval string `json:"tools_approval"`
 }
 
+// ManifestRuleLayer is one effective rule's name and the layer it came from
+// ("builtin", or the rule file's path); shared by the output rule summary.
+type ManifestRuleLayer struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
 // ManifestNudgeRule is one effective nudge rule: its name, fixed kind and
 // where it came from (builtin, or the loaded rule file's path).
 type ManifestNudgeRule struct {
@@ -228,6 +240,27 @@ func manifestLangRules(reg codeintel.LangRegistry) []codeintel.LangManifest {
 		return []codeintel.LangManifest{}
 	}
 	return languages
+}
+
+// manifestOutputRules converts the loaded output rules into the manifest's
+// summary: each enabled rule's name and the layer it came from.
+func manifestOutputRules(rules []native.OutputRule) []ManifestRuleLayer {
+	if rules == nil {
+		return []ManifestRuleLayer{}
+	}
+	out := make([]ManifestRuleLayer, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, ManifestRuleLayer{Name: rule.Name, Source: rule.Source})
+	}
+	return out
+}
+
+// manifestRuleSkips keeps an empty list when nothing was skipped.
+func manifestRuleSkips(skips []RuleFileSkip) []RuleFileSkip {
+	if skips == nil {
+		return []RuleFileSkip{}
+	}
+	return skips
 }
 
 // manifestLangRuleSkips lists the language rule files that were skipped, so a
@@ -289,6 +322,12 @@ type ManifestInput struct {
 	TaintTools, TaintOnSpill []string
 	// NudgeRules are the effective nudge rules (LoadNudgeRules result).
 	NudgeRules []personal.NudgeRule
+	// OutputRules are the effective output rules (native.LoadOutputRules over
+	// the layered files); the manifest summarizes their names and layers and
+	// files the load skipped.
+	OutputRules []native.OutputRule
+	// OutputRuleSkips are the rule files the load did not apply, with reasons.
+	OutputRuleSkips []RuleFileSkip
 	// ReadRoots are the read-only root directories the read-only file tools may
 	// read (labels included, so a manifest shows their source).
 	ReadRoots []native.ReadRoot
@@ -309,17 +348,19 @@ func BuildManifest(in ManifestInput) Manifest {
 			TaintTools:   nonNil(in.TaintTools),
 			TaintOnSpill: nonNil(in.TaintOnSpill),
 		},
-		WritePolicy:   ManifestWritePolicy{MemoryWrite: in.Policy.Write, MemoryWriteTainted: in.Policy.Tainted},
-		ApprovalRules: manifestApprovalRules(in.Approval, in.ToolsApproval),
-		NudgeRules:    manifestNudgeRules(in.NudgeRules),
-		LangRules:     manifestLangRules(in.LangRules),
-		LangRuleSkips: manifestLangRuleSkips(in.LangRules),
-		Tools:         []ManifestTool{},
-		MCPServers:    []ManifestMCPServer{},
-		Preferred:     []ManifestPreferred{},
-		Memory:        []ManifestMemory{},
-		Skills:        ManifestSkills{Roots: []string{}, Skipped: []ManifestSkillSkipped{}, Shadowed: []ManifestSkillShadow{}},
-		Context:       in.Context,
+		WritePolicy:     ManifestWritePolicy{MemoryWrite: in.Policy.Write, MemoryWriteTainted: in.Policy.Tainted},
+		ApprovalRules:   manifestApprovalRules(in.Approval, in.ToolsApproval),
+		NudgeRules:      manifestNudgeRules(in.NudgeRules),
+		OutputRules:     manifestOutputRules(in.OutputRules),
+		OutputRuleSkips: manifestRuleSkips(in.OutputRuleSkips),
+		LangRules:       manifestLangRules(in.LangRules),
+		LangRuleSkips:   manifestLangRuleSkips(in.LangRules),
+		Tools:           []ManifestTool{},
+		MCPServers:      []ManifestMCPServer{},
+		Preferred:       []ManifestPreferred{},
+		Memory:          []ManifestMemory{},
+		Skills:          ManifestSkills{Roots: []string{}, Skipped: []ManifestSkillSkipped{}, Shadowed: []ManifestSkillShadow{}},
+		Context:         in.Context,
 		// A standalone manifest starts no server, so this keeps the empty list
 		// that means "no runtime conflict discovered".
 		ToolConflicts: []ManifestToolConflict{},
@@ -560,6 +601,9 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		return Manifest{}, manifestParts{}, err
 	}
 	rootList, _ := readRoots(workspace)
+	// The output rules join the nudge and lang summaries: their names, layers
+	// and the files that did not load.
+	outputRules, outputSkips := InspectOutputRules(workspace)
 	m := BuildManifest(ManifestInput{
 		Version: buildVersion, Settings: st.models, Registry: reg,
 		MCPServers: mcpServers, Preferred: preferred,
@@ -570,8 +614,9 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		ToolsApproval: manifestToolsApprovalAction(),
 		InlineBytes:   st.inlineBytes, SpillBytes: st.spillBytes, SessionsDir: st.sessionsDir,
 		TaintTools: st.taintTools, TaintOnSpill: st.taintOnSpill,
-		NudgeRules: loadNudgeRuleFiles(workspace),
-		LangRules:  loadLangRuleFiles(workspace),
+		NudgeRules:  loadNudgeRuleFiles(workspace),
+		LangRules:   loadLangRuleFiles(workspace),
+		OutputRules: outputRules, OutputRuleSkips: outputSkips,
 	})
 	return m, manifestParts{workspace: workspace, registry: reg, skills: skillReg}, nil
 }

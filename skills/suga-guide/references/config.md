@@ -143,30 +143,11 @@
 
 ### 审批规则文件
 
-规则正文不放进 `config.yaml`，而是分别从 `$SUGA_HOME/approval-rules.yaml` 和 `<workspace>/.suga/approval-rules.yaml` 读取。每个文件是 `rules: [...]`，条目可含 `tool`、`command`、`path`、`action`（`allow`/`ask`/`deny`）和 `modes`。MCP 工具写 `server/toolglob`；`command` 只匹配 `shell_exec`，`path` 只匹配明确的文件写/编辑/删除工具。动作按 `deny > ask > allow` 合并，项目 allow 只有在 `project_trust` 同时信任绝对 workspace 和当前文件 hash 后才生效。
+规则正文不放进 `config.yaml`，而是分别从 `$SUGA_HOME/approval-rules.yaml` 和 `<workspace>/.suga/approval-rules.yaml` 读取；`tools.approval_rules.*`（`enabled`、`always_prefix_tokens`、`persist_ask`、`project_trust`）是它的设置项，见本文的 `tools.*` 表。条目的完整字段表（`tool`/`command`/`path`/`action`/`modes`）、匹配与 fail-closed 语义、项目 allow 的信任门槛与完整示例见 `references/rules.md` 的审批一节——不要在这里重复维护一份。chat 的 `a`/`d` 创建会话规则时用 `u` 写用户级、`p` 写项目级 deny；ACP 的 `allow_always`/`reject_always` 只保存在当前进程状态。写完用 `suga inspect rules approval` 与 `suga inspect manifest` 的 Approval rules 一节（路径、生效条数、hash/信任与忽略原因）核对；`suga inspect trace <session> --json` 显示 `approval_rule_persist`。`enabled: false` 可回退旧路径。
 
-allow 命令按实际 sh/bash、PowerShell 或 cmd 做 ASCII 字符、配对引号和 token 校验；只有末尾独立 `*`/`**` 扩展 token。allow 路径同时检查 root 锚定的词法和真实路径，符号链接、硬链接、特殊文件、解析失败及 Windows 特殊路径不放行。YAML anchor/alias、未知字段、错误组合、超过 64 KiB 或超过 256 条规则都会导致启动失败。规则不能绕过只读模式、沙箱、危险删除守卫或 `$SUGA_HOME`、`.suga`、`.git` 等受保护路径。
+输出规则：内置规则按语言/工具分文件（`suga inspect rules output --builtin` 可逐份打印原文）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。能力概览：丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），可用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果短于原文且达到节省门槛才交给模型。**完整字段表（含 `match_output`、`block`、`count`/`sum`、`fold`、`summary`）与执行顺序见 `references/rules.md` 的输出整理一节**；改完用 `suga inspect rules output` 或 `suga inspect manifest` 的 `Output rules` 一节核对（生效规则与来源层，被跳过的文件列在 `output_rule_skips`）。
 
-chat 的 `a`/`d` 会创建按命令前缀、写入目录或删除精确路径区分的会话规则；`persist_ask` 开启时，随后用 `u` 写用户级，`p` 只写项目级 deny，回车保留本会话。ACP 的 `allow_always`/`reject_always` 只保存在当前进程会话状态，不写规则文件。`suga inspect manifest --json` 显示路径、生效条数、hash/信任与忽略原因；`suga inspect trace <session> --json` 显示 `approval_rule`、`approval_scope` 与 `approval_rule_persist`。`enabled: false` 可回退旧路径。
-
-输出规则：内置规则按语言/工具分文件（`go`、`rust`、`js`、`python`、`java`、`git`、`grep`）→ `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。一条规则可按命令（可加 `match_output` 再按输出）匹配，然后丢行、折叠噪声、按正则改写（`replace`）、按捕获键分组合并（`group_by`）、保留首尾 N 行（`head`/`tail`），并用 `min_bytes`/`min_saving` 给自己设更低的处理门槛（默认 <600 字节不动、省不到 20% 放弃）；整理结果永远不短于原文时不交给模型。字段与执行顺序见 `pkg/agentcore/tools/native/rules/README.md`。
-
-收工检查规则：内置规则（`promise-zh`、`promise-en`：回答末尾承诺继续的句式；`unverified-write`：改动后没有验证；`plan-open`：会话计划还有未完成项）→ `$SUGA_HOME/nudge-rules.yaml` → `<workspace>/.suga/nudge-rules.yaml`（同名整条替换、新名追加、`enabled: false` 关闭；配置不写 kind 时沿用同名内置规则的种类）。种类固定三种，配置只能调参数、加句式、开关，不能写任意逻辑：`promise`（必填 `patterns`，命中回答末尾段落）；`unverified_write`（`write_tools`、`check_tools`、可选 `check_command`：check 工具的命令要匹配它才算验证；整条替换时空工具列表沿用种类默认 `file_edit/file_write/file_remove` 与 `shell_exec`）；`plan_open`（无字段）。坏正则、未知 kind、新规则缺 kind、解析失败会带文件路径与规则名报错，整个文件被跳过。格式示例：
-
-   ```yaml
-   rules:
-     - name: promise-zh
-       enabled: false
-     - name: promise-later
-       kind: promise
-       patterns: ['我稍后(会|再)', '待会(儿)?(我)?(会|再)']
-     - name: unverified-write
-       check_command: '(go (test|vet)|make check)'
-     - name: plan-open
-       enabled: false
-   ```
-
-生效的规则按名字、种类、来源层（`builtin` 或文件路径）列在 `suga inspect manifest`。
+收工检查规则：内置规则（`promise-zh`、`promise-en`：回答末尾承诺继续的句式；`unverified-write`：改动后没有验证；`plan-open`：会话计划还有未完成项）→ `$SUGA_HOME/nudge-rules.yaml` → `<workspace>/.suga/nudge-rules.yaml`（同名整条替换、新名追加、`enabled: false` 关闭；配置不写 kind 时沿用同名内置规则的种类）。种类固定三种（`promise` / `unverified_write` / `plan_open`），配置只能调参数、加句式、开关，不能写任意逻辑；**字段表（`patterns`/`write_tools`/`check_tools`/`check_command`）与完整示例见 `references/rules.md` 的收工检查一节**。坏正则、未知 kind、新规则缺 kind、解析失败会带文件路径与规则名报错，整个文件被跳过——改完用 `suga inspect rules nudge` 核对（生效规则按名字、种类、来源层列出，坏文件出现在 skipped）。
 
 ## `store.*`
 
