@@ -127,6 +127,28 @@ func (f *watchFixture) notices() []string {
 	return out
 }
 
+// TestWatchLimitsNotice: a watch run that hits the resource limits says so in
+// its run header line, so the output and the change comparison both carry it.
+func TestWatchLimitsNotice(t *testing.T) {
+	f := newWatchFixture(t)
+	f.shell.limits = ShellLimits{MemoryBytes: 1 << 30}
+	id := f.start(t, map[string]any{"command": helperCommand(t, 4096), "every": 10})
+	f.waitRuns(t, id, 1)
+
+	info, err := f.m.Get("s1", id)
+	assert.Require(t, assert.NoErr(t, err))
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		data, readErr := os.ReadFile(info.Path)
+		assert.Require(t, assert.NoErr(t, readErr))
+		if strings.Contains(string(data), "超出 suga 的资源限制") {
+			assert.StrContains(t, string(data), "内存 1GiB")
+			assert.StrContains(t, string(data), "=== exit 3;")
+			return
+		}
+	}
+	t.Fatalf("the watch output of %s does not name the resource limit", id)
+}
+
 // watchCommands: print the file and fail with 3 when it says "bad"; append
 // to a watched file (the run's own write must not trigger a run).
 func watchCommands() (check, selfWrite string) {
