@@ -1,6 +1,7 @@
 package process
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
@@ -25,6 +26,18 @@ func messagesServer(t *testing.T, requests chan DeliverRequest, fates chan error
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = server.Close() })
 	return server.Record()
+}
+
+// TestReceipt_OldClientAnswers: a request that names no message ID is answered
+// exactly as before (design D4 fail-closed): neither answer carries a new key.
+func TestReceipt_OldClientAnswers(t *testing.T) {
+	ack := Response{OK: true, Queued: true}
+	raw, err := json.Marshal(receipt(Request{}, ack, nil))
+	assert.NoErr(t, err)
+	assert.Eq(t, `{"ok":true,"queued":true}`, string(raw))
+	raw, err = json.Marshal(receipt(Request{}, ack, ErrFailed))
+	assert.NoErr(t, err)
+	assert.Eq(t, `{"ok":false,"queued":true,"error":"discarded"}`, string(raw))
 }
 
 // TestMessages_Protocol: the fields a message ID and a receipt add travel through
