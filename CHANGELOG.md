@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [0.45.1] - 2026-10-22
+
+修复 Windows 上快照清理与并发写入相撞时失败。
+
+### 修复
+
+- Windows 上快照清理（保留策略与容量检查）遇到另一个写入方正在发布的 `.partial-` 记录目录时报“文件被另一进程占用”而失败：统计容量时不再进入未发布的 `.partial-` 目录（过期的仍由修复步骤删除），遍历中途被并发删除或改名的条目直接跳过。
+
 ## [0.45.0] - 2026-10-22
 
 会话消息可靠投递一期（消息 ID、合并投递、处理回执与失败屏障）；嵌入式 SDK `pkg/sugasdk` 与宿主扩展点（为 xhen 准备）；工具调用台账、调用前 hook、流式空闲超时与重试总时限；shell 子进程资源限制、快照容错；`suga compact` 与更难的长会话评测。
@@ -1087,7 +1095,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.45.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.45.1...HEAD
+[0.45.1]: https://github.com/inhere/suga/compare/v0.45.0...v0.45.1
 [0.45.0]: https://github.com/inhere/suga/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/inhere/suga/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/inhere/suga/compare/v0.42.0...v0.43.0

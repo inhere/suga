@@ -430,13 +430,28 @@ func beforeBytes(root string) (int64, error) {
 	}
 	var total int64
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		// A ".partial-" directory belongs to a writer that has not published its
+		// record (possibly another process): it is not counted, and not opened -
+		// on Windows opening it while the writer renames it fails with a sharing
+		// violation. A stale one is removed by prunePartialDirs.
+		if entry != nil && entry.IsDir() && path != root && strings.HasPrefix(entry.Name(), snapshotPartialPrefix) {
+			return filepath.SkipDir
+		}
 		if walkErr != nil {
+			// An entry a concurrent writer or cleanup removed (or renamed) during
+			// the walk is simply gone.
+			if errors.Is(walkErr, os.ErrNotExist) {
+				return nil
+			}
 			return walkErr
 		}
 		if entry.IsDir() || entry.Name() != "before" {
 			return nil
 		}
 		fileInfo, err := entry.Info()
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
