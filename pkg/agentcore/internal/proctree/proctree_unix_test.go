@@ -13,8 +13,9 @@ import (
 )
 
 // TestApplyLimitsSetsRlimits: the wrapper sets the limits with setrlimit before
-// the shell starts, so a command sees them as its own soft limits. Unix has no
-// counter for "a limit ended this", which is why the value itself is checked.
+// the shell starts, so a command sees them as its own limits (hard and soft: it
+// cannot raise them back). Unix has no counter for "a limit ended this", which
+// is why the value itself is checked.
 func TestApplyLimitsSetsRlimits(t *testing.T) {
 	cmd := exec.Command("sh", "-c", "ulimit -v; ulimit -t")
 	applyLimits(cmd, Limits{MemoryBytes: 512 << 20, CPUTime: 30 * time.Second})
@@ -45,7 +46,7 @@ func TestNewLimitedKeepsProcessGroup(t *testing.T) {
 	assert.Require(t, assert.NotNil(t, tree))
 	assert.True(t, cmd.SysProcAttr != nil && cmd.SysProcAttr.Setpgid, "the process group is still set")
 	assert.Eq(t, "sh", cmd.Args[0])
-	assert.StrContains(t, cmd.Args[2], "ulimit -S -v 262144")
+	assert.StrContains(t, cmd.Args[2], "ulimit -v 262144")
 	assert.StrContains(t, cmd.Args[2], `exec "$0" "$@"`)
 	assert.Eq(t, cmd.Path, cmd.Args[3], "the wrapper execs the real command")
 }

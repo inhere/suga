@@ -54,17 +54,18 @@ func applyLimits(cmd *exec.Cmd, limits Limits) {
 		return
 	}
 	var script strings.Builder
-	// -S keeps the hard limit, so a command can tighten but not lift a limit;
-	// a kernel that ignores one (RLIMIT_AS on macOS) leaves it off.
+	// The hard limit goes with the soft one (no -S): a command then cannot raise
+	// its own limit back. A shell or kernel that does not know one of these
+	// (RLIMIT_AS on macOS) leaves that one limit off, the rest still apply.
 	if limits.MemoryBytes > 0 {
-		fmt.Fprintf(&script, "ulimit -S -v %d 2>/dev/null\n", limits.MemoryBytes/1024)
+		fmt.Fprintf(&script, "ulimit -v %d 2>/dev/null\n", limits.MemoryBytes/1024)
 	}
 	if n := limitProcesses(limits.Processes); n > 0 {
-		fmt.Fprintf(&script, "ulimit -S -u %d 2>/dev/null\n", n)
+		fmt.Fprintf(&script, "ulimit -u %d 2>/dev/null\n", n)
 	}
 	if limits.CPUTime > 0 {
 		secs := int(math.Ceil(limits.CPUTime.Seconds()))
-		fmt.Fprintf(&script, "ulimit -S -t %d 2>/dev/null\n", secs)
+		fmt.Fprintf(&script, "ulimit -t %d 2>/dev/null\n", secs)
 	}
 	script.WriteString(`exec "$0" "$@"`)
 	sh := shellPath()

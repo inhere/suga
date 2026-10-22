@@ -74,15 +74,25 @@ func (l ShellLimits) notice() string {
 	return fmt.Sprintf("[超出 suga 的资源限制（%s）：进程被终止或分配失败；这是 tools.shell_limits 的上限，不是命令本身的问题]", l.describe())
 }
 
-// limitHit reports whether a finished run looks like it hit the limits. The
-// tree answers for a process the system ended (Windows job accounting); a
-// refused allocation or fork ends nothing and only shows in the output, so the
-// output of a failed run is read as well (Unix has no counter to ask).
-func (l ShellLimits) limitHit(tree *proctree.Tree, exitCode int, output string) bool {
+// taskLimitNotice is what a background task asks for its output (tasks.Spec.
+// LimitNotice): the notice when the run hit a limit, empty otherwise.
+func (l ShellLimits) taskLimitNotice(terminated bool, exitCode int, output string) string {
+	if l.limitHit(terminated, exitCode, output) {
+		return l.notice()
+	}
+	return ""
+}
+
+// limitHit reports whether a finished run looks like it hit the limits.
+// terminated is what the process tree says (the system ended a process of it,
+// which Windows job accounting counts); a refused allocation or fork ends
+// nothing and only shows in the output, so the output of a failed run is read
+// as well (Unix has no counter to ask).
+func (l ShellLimits) limitHit(terminated bool, exitCode int, output string) bool {
 	if l.Empty() || exitCode == 0 {
 		return false
 	}
-	if tree != nil && tree.Exceeded() {
+	if terminated {
 		return true
 	}
 	if l.MemoryBytes == 0 && l.Processes == 0 {
@@ -93,11 +103,13 @@ func (l ShellLimits) limitHit(tree *proctree.Tree, exitCode int, output string) 
 
 // limitHitPattern matches what an exhausted memory or process limit leaves in a
 // program's output: a refused allocation ("out of memory", "MemoryError",
-// "bad_alloc"), a refused fork ("resource temporarily unavailable") and the
-// "not enough quota" a full job reports (the English text of the same error a
-// localized Windows prints as 配额不足).
-var limitHitPattern = regexp.MustCompile(`(?i)out of memory|memoryerror|memory error|cannot allocate memory|` +
-	`bad_alloc|not enough memory|insufficient memory|heap limit|` +
+// "bad_alloc", Windows' commitment limit - "errno=1455" or its message "the
+// paging file is too small", 页面文件太小 on a localized Windows), a refused fork
+// ("resource temporarily unavailable") and the "not enough quota" a full job
+// reports (the English text of the same error a localized Windows prints as
+// 配额不足).
+var limitHitPattern = regexp.MustCompile(`(?i)out of memory|memoryerror|memory error|outofmemory|cannot allocate memory|` +
+	`bad_alloc|not enough memory|insufficient memory|heap limit|errno=1455|commitment limit|paging file is too small|页面文件太小|` +
 	`resource temporarily unavailable|not enough quota|配额不足|too many processes|cannot create (a )?process|process limit`)
 
 // FormatByteSize renders a byte count the way the limits are configured

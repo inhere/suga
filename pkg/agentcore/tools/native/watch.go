@@ -247,7 +247,7 @@ func (w *watcher) once(ctx context.Context, out io.Writer, n int, trigger string
 	}
 	// A run the limits stopped says so in the run's header line and therefore
 	// in the change comparison as well.
-	if w.tool.limits.limitHit(tree, res.exit, buf.String()) {
+	if w.tool.limits.limitHit(tree.Exceeded(), res.exit, buf.String()) {
 		status += "; " + w.tool.limits.notice()
 	}
 	fmt.Fprintf(out, "=== %s ===\n", status)

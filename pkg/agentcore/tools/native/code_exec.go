@@ -371,7 +371,7 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	}
 	// A run the limits stopped says so: the exit code alone would read like the
 	// program's own failure.
-	limitHit := t.limits.limitHit(tree, exitCode, content)
+	limitHit := t.limits.limitHit(tree.Exceeded(), exitCode, content)
 	if limitHit {
 		status += "\n" + t.limits.notice()
 	}
@@ -480,7 +480,7 @@ func (t *ShellExecTool) startBackground(ctx context.Context, call api.ToolCall, 
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir, cmd.Env = t.workspace, shellEnv(ctx, t.extraEnv)
 	info, err := t.tasks.Start(ctx, tasks.Spec{Kind: "shell", Summary: taskSummary(command), Cmd: cmd, Clean: cleanTaskLine,
-		Limits: t.limits.tree(), LimitNotice: t.limits.notice()})
+		Limits: t.limits.tree(), LimitNotice: t.limits.taskLimitNotice})
 	if err != nil {
 		return nil, fmt.Errorf("shell_exec: background: %w", err)
 	}

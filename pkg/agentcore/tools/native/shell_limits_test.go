@@ -2,7 +2,9 @@ package native
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tasks"
 )
 
 // allocEnv makes the helper below allocate memory: a shell command cannot
@@ -20,8 +23,8 @@ import (
 const allocEnv = "SUGA_TEST_ALLOC_MB"
 
 // TestShellLimitsHelperProcess is the process the memory limit tests run: with
-// SUGA_TEST_ALLOC_MB set it allocates and touches that many MiB and then exits
-// 0, so a limit below that makes it fail the way a runaway build does.
+// SUGA_TEST_ALLOC_MB set it asks the OS for that many MiB and then exits 0, so
+// a limit below that makes it fail the way a runaway build does.
 func TestShellLimitsHelperProcess(t *testing.T) {
 	raw := os.Getenv(allocEnv)
 	if raw == "" {
@@ -31,16 +34,11 @@ func TestShellLimitsHelperProcess(t *testing.T) {
 	if err != nil || mb <= 0 {
 		t.Fatalf("SUGA_TEST_ALLOC_MB=%q", raw)
 	}
-	hold := make([][]byte, 0, mb)
-	for i := 0; i < mb; i++ {
-		block := make([]byte, 1<<20)
-		for j := range block {
-			block[j] = byte(i)
-		}
-		hold = append(hold, block)
+	if err := probeAlloc(uint64(mb) << 20); err != nil {
+		fmt.Fprintf(os.Stderr, "allocation refused: %v\n", err)
+		os.Exit(3)
 	}
-	runtime.KeepAlive(hold)
-	t.Logf("allocated %d MiB", mb)
+	fmt.Printf("allocated %d MiB\n", mb)
 }
 
 // helperCommand is the shell command line that runs the helper with mb MiB. The
@@ -79,7 +77,7 @@ func TestShellLimitsMemoryLimit(t *testing.T) {
 	ws := t.TempDir()
 
 	t.Run("a command over the memory limit is stopped", func(t *testing.T) {
-		tool := limitTool(ws, ShellLimits{MemoryBytes: 1 << 30}) // 1GiB
+		tool := limitTool(ws, ShellLimits{MemoryBytes: 1 << 30})          // 1GiB
 		content, meta := runLimitedShell(t, tool, helperCommand(t, 4096)) // 4GiB
 		assert.StrContains(t, content, "超出 suga 的资源限制")
 		assert.StrContains(t, content, "内存 1GiB")
@@ -101,6 +99,28 @@ func TestShellLimitsMemoryLimit(t *testing.T) {
 		assert.Eq(t, 0, meta["exit_code"], content)
 		assert.StrNotContains(t, content, "超出 suga 的资源限制")
 	})
+}
+
+// TestShellLimitsBackgroundTask: a background run carries the same limits and
+// the notice is written into the task output, which is all the model sees of a
+// background command.
+func TestShellLimitsBackgroundTask(t *testing.T) {
+	dir := t.TempDir()
+	m := tasks.NewManager(tasks.Config{Output: func(sid, id string) (string, string, error) {
+		return filepath.Join(dir, id+".txt"), "out:" + sid + ":" + id, nil
+	}})
+	t.Cleanup(m.Close)
+	shell := limitTool(t.TempDir(), ShellLimits{MemoryBytes: 1 << 30})
+	shell.SetTasks(m)
+	ctx := api.WithSessionID(context.Background(), "s1")
+	res, err := shell.Execute(ctx, api.ToolCall{CallID: "c", Name: "shell_exec", Arguments: map[string]any{
+		"command": helperCommand(t, 4096), "background": true}})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "t1", res.Metadata["task_id"])
+	waited, err := NewTaskTool(m, 0).Execute(ctx, api.ToolCall{CallID: "c2", Name: "task",
+		Arguments: map[string]any{"action": "wait", "id": "t1", "timeout": 60}})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.StrContains(t, waited.Content, "超出 suga 的资源限制")
 }
 
 // TestParseMemorySize covers the tools.shell_limits.memory forms: a byte count,
@@ -166,23 +186,28 @@ func TestShellLimitsDescribe(t *testing.T) {
 func TestShellLimitsHitPattern(t *testing.T) {
 	limits := ShellLimits{MemoryBytes: 1 << 30, Processes: 256}
 	cases := []struct {
-		name   string
-		limits ShellLimits
-		exit   int
-		output string
-		want   bool
+		name       string
+		limits     ShellLimits
+		terminated bool
+		exit       int
+		output     string
+		want       bool
 	}{
 		{name: "go runtime out of memory", limits: limits, exit: 2, output: "fatal error: runtime: out of memory", want: true},
 		{name: "python MemoryError", limits: limits, exit: 1, output: "MemoryError", want: true},
+		{name: "windows commitment limit", limits: limits, exit: 3, output: "VirtualAlloc of 4294967296 bytes failed with errno=1455", want: true},
+		{name: "windows paging file", limits: limits, exit: 3, output: "allocation refused: The paging file is too small for this operation to complete.", want: true},
 		{name: "refused fork", limits: limits, exit: 127, output: "sh: 1: fork: retry: Resource temporarily unavailable", want: true},
 		{name: "windows quota", limits: limits, exit: 1, output: "Not enough quota is available to process this command.", want: true},
+		{name: "a process the job ended", limits: limits, terminated: true, exit: -1, output: "", want: true},
 		{name: "another failure is no limit", limits: limits, exit: 1, output: "undefined: foo", want: false},
 		{name: "a run that succeeded", limits: limits, exit: 0, output: "out of memory", want: false},
 		{name: "limits off", limits: ShellLimits{}, exit: 2, output: "out of memory", want: false},
+		{name: "only a CPU limit is not read from the text", limits: ShellLimits{CPUTime: time.Minute}, exit: 2, output: "out of memory", want: false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Eq(t, c.want, c.limits.limitHit(nil, c.exit, c.output))
+			assert.Eq(t, c.want, c.limits.limitHit(c.terminated, c.exit, c.output))
 		})
 	}
 	t.Run("the notice names the limits", func(t *testing.T) {
