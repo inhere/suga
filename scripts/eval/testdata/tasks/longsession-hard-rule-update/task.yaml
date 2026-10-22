@@ -39,6 +39,7 @@ prompts:
     Next: write a checklist of five items a reviewer should verify on a pull request that changes a retry policy.
   - |-
     Finally: state the rules that are in force right now in this session and confirm you are following each of them in this very answer.
+    State only the rules in force - do not quote the rule that was cancelled.
 compact_after: [3, 6, 9]
 checks:
   # 第 1 轮：规则 A 生效。
