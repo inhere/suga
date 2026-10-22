@@ -12,11 +12,13 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// The built-in output rules live one file per language under rules/ (embedded
-// below into the binary); rules/README.md documents the fields and how users
-// override a rule.
+// The built-in output rules live one file per language under outrules/
+// (embedded below into the binary); outrules/README.md documents the fields and
+// how users override a rule. The directory name follows the langrules/ one so the
+// two kinds of rules read alike: langrules/ holds the language rules, outrules/
+// the output rules.
 //
-//go:embed rules/*.yaml
+//go:embed outrules/*.yaml
 var builtinRuleFiles embed.FS
 
 // builtinRuleFileOrder is the order the rule files are read in: it is the order
@@ -27,21 +29,22 @@ var builtinRuleFiles embed.FS
 // the result on a command several rules match -
 // and the loader's test keeps this list and the embedded files in step.
 var builtinRuleFileOrder = []string{
-	"rules/go.yaml",
-	"rules/rust.yaml",
-	"rules/js.yaml",
-	"rules/python.yaml",
-	"rules/java.yaml",
-	"rules/git.yaml",
-	"rules/grep.yaml",
-	"rules/docker.yaml",
-	"rules/make.yaml",
-	"rules/gh.yaml",
-	"rules/php.yaml",
+	"outrules/go.yaml",
+	"outrules/rust.yaml",
+	"outrules/js.yaml",
+	"outrules/python.yaml",
+	"outrules/java.yaml",
+	"outrules/git.yaml",
+	"outrules/grep.yaml",
+	"outrules/docker.yaml",
+	"outrules/make.yaml",
+	"outrules/gh.yaml",
+	"outrules/php.yaml",
+	"outrules/dart.yaml",
 }
 
 // OutputRule tidies the output of the shell commands it matches; see
-// rules/README.md for the fields. Rules are data so new tools and languages are
+// outrules/README.md for the fields. Rules are data so new tools and languages are
 // added without code (omp's shell minimizer works the same way).
 type OutputRule struct {
 	Name    string `yaml:"name"`
@@ -206,7 +209,7 @@ func LoadOutputRules(paths ...string) ([]OutputRule, []error) {
 
 // BuiltinRuleFile is one embedded rule file as the binary carries it.
 type BuiltinRuleFile struct {
-	// Name is the file's embedded path, e.g. rules/go.yaml.
+	// Name is the file's embedded path, e.g. outrules/go.yaml.
 	Name string
 	// YAML is the file's raw content, so `suga inspect rules --builtin` prints
 	// exactly what ships and a template can be written from it.

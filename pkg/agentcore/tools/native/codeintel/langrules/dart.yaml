@@ -1,0 +1,51 @@
+# Dart and Flutter: brace-delimited, C-style comments. `//` also starts the `///`
+# doc comments; `/* */` block comments nest in Dart, which a rule cannot express -
+# the inner `/*` is taken for the text of the outer comment (a known miss, see
+# skills/suga-guide/references/rules.md). `'''`/`"""` text blocks are multi-line
+# strings; a raw string (`r'...'`) is read like a plain one, so a backslash in it
+# may keep the literal open (also a known miss).
+#
+# `dart test` and `flutter test` (also `fvm flutter test` and the `flutter.bat`
+# wrapper of Windows) are the test commands; before this rule no Flutter or Dart
+# run was recognised, so this is new recognition rather than a migration.
+languages:
+  - name: Dart
+    exts: [.dart]
+    markers: [pubspec.yaml, pubspec.lock, analysis_options.yaml]
+    test_commands: '\b(?:fvm\s+)?flutter(?:\.bat)? test\b|\bdart(?:\.exe)? test\b'
+    focused_flags: ['--name', '-n', '--plain-name', '--tags']
+    ctags: Dart
+    syntax:
+      line_comment: ['//']
+      block_comment: [['/*', '*/']]
+      strings: ['"', "'"]
+      multiline_strings: ['"""', "'''"]
+    blocks: brace
+    decls:
+      # A class: the modifiers include Dart's class modifiers (abstract, base,
+      # final, interface, sealed) and `mixin class Foo`.
+      - {pattern: '^\s*(?:(?:abstract|base|final|interface|sealed|mixin)\s+)*class\s+([A-Za-z_]\w*)', kind: class, name: 1, body: true}
+      - {pattern: '^\s*enum\s+([A-Za-z_]\w*)', kind: class, name: 1, body: true}
+      - {pattern: '^\s*(?:base\s+)?mixin\s+([A-Za-z_]\w*)', kind: class, name: 1, body: true}
+      # A named extension (`extension on String` has no name, so it is skipped)
+      # and Dart 3's `extension type`.
+      - {pattern: '^\s*extension(?:\s+type)?\s+([A-Za-z_]\w*)', kind: type, name: 1, body: true}
+      - {pattern: '^\s*typedef\s+([A-Za-z_]\w*)', kind: type, name: 1}
+      # A named constructor: Foo.named(...) - the name keeps the class prefix, so
+      # a search for `Store.memory` finds its declaration.
+      - {pattern: '^\s*(?:(?:external|static|const|factory)\s+)*([A-Za-z_]\w*\.[A-Za-z_]\w*)\s*\(', kind: method, name: 1, member: true}
+      # An unnamed constructor: Store(this.loader); only inside a type body - the
+      # name = value guard of matchDeclLine keeps a field's initialiser out.
+      - {pattern: '^\s*(?:(?:external|const|factory)\s+)*([A-Za-z_]\w*)\s*\(', kind: method, name: 1, member: true}
+      # A method: modifiers, a return type, the name, then parameters (the return
+      # type is required here, so a bare call in a class body is no method).
+      # Inside a class body it is a method, at the top level a function.
+      - {pattern: '^\s*(?:(?:external|static|abstract|covariant|final)\s+)*[\w<>?,\[\].]+\s+([A-Za-z_]\w*)\s*\(', kind: method, name: 1, member: true}
+      - {pattern: '^\s*(?:(?:external|static)\s+)*[\w<>?,\[\].]+\s+([A-Za-z_]\w*)\s*\(', kind: func, name: 1}
+      # A getter/setter: `double get width =>` / `set width(double value)`.
+      - {pattern: '^\s*(?:(?:external|static|abstract)\s+)*[\w<>?,\[\].]+\s+get\s+([A-Za-z_]\w*)', kind: method, name: 1, member: true}
+      - {pattern: '^\s*(?:(?:external|static)\s+)*set\s+([A-Za-z_]\w*)\s*\(', kind: method, name: 1, member: true}
+      - {pattern: '^\s*(?:(?:external|static)\s+)*[\w<>?,\[\].]+\s+get\s+([A-Za-z_]\w*)', kind: func, name: 1}
+      - {pattern: '^\s*(?:(?:external|static)\s+)*set\s+([A-Za-z_]\w*)\s*\(', kind: func, name: 1}
+      # A field: a final/const/var/late declaration with a value or no more.
+      - {pattern: '^\s*(?:(?:static|late|final|const|external)\s+)+(?:[\w<>?,\[\].]+\s+)?([A-Za-z_]\w*)\s*(?:=|;|,)', kind: var, name: 1}

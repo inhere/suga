@@ -153,7 +153,7 @@ rules:
 		_, _ = rulesCLIEnv(t)
 		out, err := runInspectRules(t, ctx, "output", "--builtin")
 		assert.Require(t, assert.NoErr(t, err))
-		assert.StrContains(t, out, "# rules/go.yaml")
+		assert.StrContains(t, out, "# outrules/go.yaml")
 		assert.StrContains(t, out, "name: go-test")
 	})
 	t.Run("approval has no builtin rules", func(t *testing.T) {

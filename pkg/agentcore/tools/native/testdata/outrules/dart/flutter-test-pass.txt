@@ -1,0 +1,19 @@
+00:00 +0: loading /home/dev/store/test/store_test.dart
+00:00 +0: Store loads its items from the loader
+00:01 +1: Store loads its items from the loader
+00:01 +2: Store counts the items it loaded
+00:02 +3: Store reports an empty list before the first load
+00:02 +4: Store reload keeps the label of a loaded item
+00:03 +5: Store reload resets the counter of a loaded item
+00:03 +6: StoreWidget shows the number of items in the app bar
+00:04 +7: StoreWidget rebuilds when the store notifies its listeners
+00:04 +8: StoreWidget paints the empty state on the first frame
+00:05 +9: Loader returns the path it was given
+00:05 +10: Loader fails on a missing file with a readable message
+00:06 +11: Loader retries once and then reports the error
+00:06 +12: Loader caches the value of the second attempt
+00:07 +13: Registry creates a store with the shared loader
+00:07 +14: Registry keeps the store between two lookups
+00:08 +15: openStore awaits the first load of the store
+00:08 +16: openStore returns the same store twice
+00:09 +16: All tests passed!

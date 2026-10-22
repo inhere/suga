@@ -1,5 +1,8 @@
 cpp/store.cpp:13 ref void reload();
 cpp/store.cpp:18 ref void Store::reload() {
+dart/store.dart:16 ref Future<int> reload() => load('reload');
+dart/store.dart:41 ref Future<int> reload() async {
+dart/store.dart:76 ref await store.reload();
 java/Store.java:15 ref public void reload() {
 java/Store.java:21 ref void reload() {
 kotlin/Store.kt:9 ref fun reload(): Int {
@@ -18,7 +21,7 @@ ts/loader.ts:30 ref const loader = new Loader({ reload: true });
 ts/loader.ts:31 ref loader.reload();
 yaml/config.yaml:13 def reload: true
 [no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
-[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, Dart, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
 [approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]
 [skipped 5 test file(s); pass include_tests: true to search them]
 [skipped 1 documentation file(s) (.md, .txt, .rst)]

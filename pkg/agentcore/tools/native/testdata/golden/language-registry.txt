@@ -8,6 +8,7 @@ C# markers=["*.csproj" "*.sln"] api="" tests="\\bdotnet test\\b" focused=[]
 Kotlin markers=["build.gradle.kts" "settings.gradle.kts"] api="" tests="\\bgradlew?(\\.bat)?( \\S+)* test\\b" focused=["--tests"]
 Ruby markers=["Gemfile" "Rakefile" "config.ru"] api="" tests="\\b(rspec|rake test|bundle exec rspec|bundle exec rake test)\\b" focused=["-e" "--example"]
 C/C++ markers=["CMakeLists.txt" "Makefile"] api="" tests="\\b(ctest|make test)\\b" focused=[]
+Dart markers=["pubspec.yaml" "pubspec.lock" "analysis_options.yaml"] api="" tests="\\b(?:fvm\\s+)?flutter(?:\\.bat)? test\\b|\\bdart(?:\\.exe)? test\\b" focused=["--name" "-n" "--plain-name" "--tags"]
 test-commands:
   go test ./...                            test=true focused=false
   go test -run TestX ./pkg                 test=true focused=true
@@ -30,5 +31,10 @@ test-commands:
   ctest                                    test=true focused=false
   rspec spec/models                        test=true focused=false
   dotnet test                              test=true focused=false
+  dart test                                test=true focused=false
+  flutter test                             test=true focused=false
+  fvm flutter test                         test=true focused=false
+  flutter.bat test                         test=true focused=false
+  flutter test --name reload               test=true focused=true
   ls -la                                   test=false focused=false
   go build ./...                           test=false focused=false

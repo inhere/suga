@@ -6,4 +6,4 @@ ruby/store.rb:16 method build def self.build(name)
 ruby/store.rb:20 class Nested class Nested
 ruby/store.rb:21 method reload_nested def reload_nested
 ruby/store.rb:27 method helper def self.helper
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

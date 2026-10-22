@@ -1,0 +1,19 @@
+dart/store.dart-14- 
+dart/store.dart-15- extension LoaderExt on Loader {
+dart/store.dart:16 ref Future<int> reload() => load('reload');
+dart/store.dart-17- }
+dart/store.dart-18- 
+--
+dart/store.dart-39- }
+dart/store.dart-40- 
+dart/store.dart:41 ref Future<int> reload() async {
+dart/store.dart-42- return loader.load('store');
+dart/store.dart-43- }
+--
+dart/store.dart-74- Future<Store> openStore() async {
+dart/store.dart-75- final store = Store(MemoryLoader());
+dart/store.dart:76 ref await store.reload();
+dart/store.dart-77- return store;
+dart/store.dart-78- }
+[no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
+[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, Dart, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]

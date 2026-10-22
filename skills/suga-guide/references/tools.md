@@ -176,7 +176,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 - 工具结果超过 `tools.max_output_bytes` 时，脱敏后的原文存到 `$SUGA_HOME/sessions/<id>/outputs/`，上下文只留头尾（各 2000 字节）和 ref（形如 `out:<session>:<hex>`）；用 `recall` 读取，用 `session_search` 检索。
 - 在此之前，shell 结果会先整理（`tools.minimize_output`，默认开）：去掉颜色码与进度重绘，折叠连续相同的行，测试与构建输出按输出规则裁剪——全部通过时只留各包结果和一行汇总，有失败时只留失败用例及其信息与日志；原文保存为 ref，结果中注明。
-- 内置规则覆盖 `go test`、`cargo test`、jest/vitest/mocha 与 `npm|pnpm|yarn|bun test`、pytest、Maven、Gradle、`git log`/`git diff`/`git status` 与 `rg`/`grep` 的命中。
+- 内置规则覆盖 `go test`、`cargo test`、jest/vitest/mocha 与 `npm|pnpm|yarn|bun test`、pytest、Maven、Gradle、`git log`/`git diff`/`git status`、`rg`/`grep` 的命中，以及 Dart/Flutter 的 `flutter test`/`dart test`、`flutter analyze`/`dart analyze`、`flutter build`、`flutter pub get`（命令匹配兼容 `fvm flutter` 与 `flutter.bat`）。
 - 一条规则可以丢行、折叠重复噪声、改写整理结果（`replace`）、按捕获的键分组（`group_by`）、保留首尾 N 行，并给自己设更低的门槛；`suga inspect rules output --builtin` 可以打印内置规则的原始 YAML 作为照写模板。
 - `$SUGA_HOME/output-rules.yaml` 与其后的 `<workspace>/.suga/output-rules.yaml` 可按名字替换规则、新增规则，或用 `enabled: false` 关掉某条。完整字段表与完整示例见 `references/rules.md` 的输出整理一节；改完用 `suga inspect rules output` 核对（生效规则与来源层、被跳过的文件）。
 - 命令本身用管道过滤了输出（`| grep`、`| Select-String`、`| tail` 等）时不套用这些规则，保留它筛出的内容。
@@ -184,7 +184,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 ## 语言规则（`lang-rules.yaml`）
 
-`file_symbols`、`file_refs` 的语言识别和 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里，其余语言（内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++ 与用户新增的）都由规则文件描述。
+`file_symbols`、`file_refs` 的语言识别和 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里，其余语言（内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++、Dart（含 Flutter）与用户新增的）都由规则文件描述。
 
 - 分层与输出规则一致：内置 → `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml`；同名替换整条规则，新名字追加，`enabled: false` 关掉某门（包括内置的）。`suga inspect rules lang --builtin` 可打印内置规则原文（每语言一份）。
 - 后加载的规则抢同名的扩展名时后者生效并在日志里警告；`.go`、`.php`、`.yaml`/`.yml`、`.toml` 属于代码里实现的语言，规则文件不能抢，写了会让该文件整体报错跳过。

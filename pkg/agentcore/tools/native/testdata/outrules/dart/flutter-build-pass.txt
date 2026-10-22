@@ -1,0 +1,15 @@
+Downloading https://services.gradle.org/distributions/gradle-8.3-all.zip
+  10%
+  20%
+  45%
+  70%
+  90%
+  100%
+Running Gradle task 'assembleRelease'...                            ⣽
+Running Gradle task 'assembleRelease'...                            ⣾
+Running Gradle task 'assembleRelease'...                            ⣻
+Running Gradle task 'assembleRelease'...                            ⢿
+Running Gradle task 'assembleRelease'...                            ⡿
+Running Gradle task 'assembleRelease'...                            Done 24.3s
+Running Gradle task 'assembleRelease'...                            Done 24.4s
+✓ Built build/app/outputs/flutter-apk/app-release.apk (7.5MB)

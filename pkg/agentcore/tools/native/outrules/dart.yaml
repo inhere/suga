@@ -1,0 +1,94 @@
+# Dart and Flutter: the test runner, the analyzer, a build and pub get (see
+# README.md for the fields). The commands also match through fvm and the Windows
+# flutter.bat wrapper, which is why every rule spells the tool prefix out.
+rules:
+  # flutter test / dart test: the compact reporter (the default) and --reporter
+  # expanded both write one "00:03 +12 -1: <test name>" progress line per test.
+  # The passing ones and the framework frames of a failure go; a failure line
+  # ("[E]") and the frames of the project itself stay.
+  - name: flutter-test
+    match: '\b(?:fvm\s+)?flutter(?:\.bat)? test\b|\bdart(?:\.exe)? test\b'
+    drop:
+      # A progress line: the elapsed time, then one counter per result ("+12" of
+      # 15 passed, "-1" of 1 failed, "~1" skipped).
+      - '^\s*\d+:\d+(?: [+\-~]\d+)+: '
+      - '^\s*$'
+      # The runner, the matcher and the async machinery: the same frames in every
+      # failure, so only the project's own frame is worth the lines.
+      - '^\s*(?:package:(?:flutter|flutter_test|test_api|matcher|stack_trace|test_core|fake_async)/|dart:)'
+    failure:
+      - '\[E\]$'
+      - 'Some tests failed'
+      - '^\s*Expected: '
+      - '^\s*Actual: '
+      - 'TestFailure'
+    sum:
+      tests: '^\s*\d+:\d+ \+(\d+): All tests passed!$'
+    summary: 'flutter test: All tests passed! ({tests} test(s))'
+
+  # flutter analyze / dart analyze: the "Analyzing <dir>..." progress line goes and
+  # the issue lines stay, grouped by severity (the repeated "  error • " prefix is
+  # printed once per run of same-severity lines, which is what saves the lines on
+  # a report with many issues). The analyzer's own closing line ("3 issues found" /
+  # "No issues found!") is the summary and stays as it is, so the rule adds none.
+  - name: dart-analyze
+    match: '\b(?:fvm\s+)?flutter(?:\.bat)? analyze\b|\bdart(?:\.exe)? analyze\b'
+    drop:
+      - '^Analyzing \S'
+      - '^\s*$'
+    group_by: '^\s*(?P<severity>error|warning|info) • '
+    # A short report is the normal case (two lines when the code is clean), so
+    # the rule does not wait for the global 600-byte gate.
+    min_bytes: 0
+    min_saving: 0
+
+  # flutter build apk|appbundle|ios|web: the Gradle/Xcode download and spinner
+  # redraws go; a success keeps the artifact line ("✓ Built build/...") and the
+  # timing line, a failure keeps the "FAILURE:"/"What went wrong" block and the
+  # Dart compile errors.
+  - name: flutter-build
+    match: '\b(?:fvm\s+)?flutter(?:\.bat)? build\b'
+    drop:
+      - '^Downloading https?://'
+      - '^\s*\d+%'
+      # A redraw of the same "Running Gradle task ..." line has no "Done" time.
+      - '^Running (?:Gradle|Xcode|pod) .*\.\.\.\s*$'
+      # The spinner glyphs of an in-place progress redraw.
+      - '[⣽⣾⣻⢿⡿⣟⣯⣷]'
+      - '^\s*$'
+    failure:
+      - '^FAILURE: '
+      - '^\* What went wrong:'
+      - '^BUILD FAILED'
+      - '\.dart:\d+:\d+: (?:Error|Warning): '
+      - '^Error: '
+      - 'failed with exit code'
+      - '^Target .* failed: '
+      - '^Exception: '
+    count:
+      success: '^✓ Built '
+    summary: 'flutter build: succeeded'
+
+  # flutter pub get / dart pub get: the resolving/downloading progress and the
+  # per-package list go, the outcome line ("Got dependencies!") and the number of
+  # changed packages stay. A version conflict keeps its text.
+  - name: dart-pub-get
+    match: '\b(?:fvm\s+)?flutter(?:\.bat)? pub get\b|\bdart(?:\.exe)? pub get\b'
+    drop:
+      - '^Resolving dependencies\.\.\.$'
+      - '^Downloading packages\.\.\.$'
+      - '^[+>*] [a-z_][a-z0-9_]* \d'
+      - '^  [a-z_][a-z0-9_]* \d'
+      # The count line is summed into the summary, so it is dropped here.
+      - '^Changed \d+ dependenc'
+      - '^\s*$'
+    failure:
+      - 'version solving failed'
+      - '^Because '
+      - '^Error: '
+      - '^Could not '
+    sum:
+      changed: '^Changed (\d+) dependenc'
+    summary: 'pub get: {changed} package(s) changed'
+    min_bytes: 0
+    min_saving: 0

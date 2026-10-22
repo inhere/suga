@@ -1,0 +1,18 @@
+00:00 +0: loading /home/dev/store/test/store_test.dart
+00:00 +0: My store Store loads its items from the loader
+00:01 +1: My store Store loads its items from the loader
+00:01 +1: My store Store counts the items it loaded
+00:02 +2: My store Store counts the items it loaded
+00:02 +2: My store Store reports an empty list before the first load
+00:03 +3: My store Store reports an empty list before the first load
+00:03 +3: My store Store reload keeps the label of a loaded item
+00:04 +4: My store Store reload keeps the label of a loaded item
+00:04 +4: My store Store reload resets the counter of a loaded item
+00:05 +5: My store Store reload resets the counter of a loaded item
+00:05 +5: My store StoreWidget shows the number of items in the app bar
+00:06 +6: My store StoreWidget shows the number of items in the app bar
+00:06 +6: My store StoreWidget rebuilds when the store notifies
+00:07 +7: My store StoreWidget rebuilds when the store notifies
+00:07 +7: My store StoreWidget paints the empty state on the first frame
+00:08 +8: My store StoreWidget paints the empty state on the first frame
+00:09 +8: All tests passed!

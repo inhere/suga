@@ -91,7 +91,7 @@ rules:
 
 **用途**：`shell_exec` 结果在交给模型前的整理规则（`tools.minimize_output`，默认开）：丢行、折叠重复噪声、改写、分组、首尾保留，并给测试/构建输出生成一行汇总。原文永远保存为 ref，整理只是让上下文少占地方；命令自己带了管道过滤（`| grep` 等）时不套用。
 
-**位置与内置文件**：内置规则按语言/工具族一份文件嵌进二进制，读取顺序即 `go, rust, js, python, java, git, grep, docker, make, gh, php`（`suga inspect rules output --builtin` 逐份打印原文，每份是独立文档）。之后依次读 `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。
+**位置与内置文件**：内置规则按语言/工具族一份文件嵌进二进制，读取顺序即 `go, rust, js, python, java, git, grep, docker, make, gh, php, dart`（`suga inspect rules output --builtin` 逐份打印原文，每份是独立文档）。之后依次读 `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。
 
 **字段表**（`rules:` 列表，正则都是 Go regexp；`drop`/`failure`/`count`/`sum`/`fold` 按单行匹配，`match_output`/`replace` 看整段输出）：
 
@@ -178,15 +178,16 @@ rules:
 
 ## 语言规则 `lang-rules.yaml`
 
-**用途**：`file_symbols` / `file_refs` 的语言识别与 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里（规则抢不走它们的 `.go`/`.php`/`.yaml`/`.toml` 扩展名，写了整份文件报错跳过）；其余语言——内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++ 与你新增的——都由规则文件描述。
+**用途**：`file_symbols` / `file_refs` 的语言识别与 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里（规则抢不走它们的 `.go`/`.php`/`.yaml`/`.toml` 扩展名，写了整份文件报错跳过）；其余语言——内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++、Dart（含 Flutter）与你新增的——都由规则文件描述。
 
-**位置**：内置每语言一份（`javascript, python, java, csharp, kotlin, ruby, cpp`），随后 `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml`（同名替换整条、新名追加、`enabled: false` 关掉，包括内置语言）。
+**位置**：内置每语言一份（`javascript, python, java, csharp, kotlin, ruby, cpp, dart`），随后 `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml`（同名替换整条、新名追加、`enabled: false` 关掉，包括内置语言）。
 
 **语义**：
 
 - 后加载的规则用同名扩展名抢走别的语言的扩展名时后者生效并在日志警告；所以替换一门语言（而非新增）要**同名**。
 - 未知字段直接报错（不是悄悄忽略）；文件只含正则与固定枚举，不能执行命令。
 - 规则语言的符号结果是 approx（按声明行近似，不解析），注释与字符串里的同名词不算引用；声明 `ctags` 时装了 universal-ctags 的环境优先用 ctags。
+- Dart 的已知漏报：`/* */` 块注释在 Dart 里可嵌套，规则只能当成不嵌套（内层 `/*` 被算进外层注释）；raw 字符串 `r'...'` 的反斜杠不转义这点表达不了；没有修饰词的隐式类型字段（`int retries = 0;`）不报，只报 `final`/`const`/`var`/`late`/`static` 字段；字符串插值 `${...}` 中的真实调用在遮蔽后不算 `file_refs` 的引用。
 - 依赖源码根探测与基础提示里的依赖 API 子句在代码里（提示缓存前缀的一部分），规则改不了。
 
 **字段表**（`languages:` 列表）：

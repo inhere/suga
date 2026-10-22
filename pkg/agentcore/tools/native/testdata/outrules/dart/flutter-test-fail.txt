@@ -1,0 +1,19 @@
+00:00 +0: loading /home/dev/store/test/store_test.dart
+00:00 +0: Store loads its items from the loader
+00:01 +1: Store loads its items from the loader
+00:01 +2: Store counts the items it loaded
+00:02 +3: Store reports an empty list before the first load
+00:02 +4: Store reload keeps the label of a loaded item
+00:03 +4 -1: Store reload resets the counter of a loaded item [E]
+  Expected: <3>
+    Actual: <4>
+  
+  package:matcher/src/expect/expect.dart 166:31  fail
+  package:matcher/src/expect/expect.dart 163:30  _expect
+  package:test_api/src/expect/expect.dart 63:5  expect
+  package:flutter_test/src/widget_tester.dart 467:18  expect
+  test/store_test.dart 25:5  main.<fn>
+  test/store_test.dart 19:35  main.<fn>
+  
+00:03 +4 -1: StoreWidget shows the number of items in the app bar
+00:04 +5 -1: Some tests failed.
