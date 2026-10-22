@@ -67,6 +67,8 @@ func TestLintScanCandidates(t *testing.T) {
 		assert.Eq(t, LintActionReview, conflict.Action)
 		assert.StrContains(t, conflict.Reason, "same title after normalization")
 		assert.StrContains(t, conflict.Reason, "bodies differ")
+		_, ok = kinds["duplicate:release-day,release-day-2"]
+		assert.False(t, ok, "a same-title pair with different bodies is a conflict, not a duplicate")
 
 		stale, ok := kinds["stale:old-fact"]
 		assert.Require(t, assert.True(t, ok))

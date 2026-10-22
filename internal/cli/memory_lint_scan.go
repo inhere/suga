@@ -243,7 +243,8 @@ func exactDuplicateCandidates(entries []lintEntry, keys []string) []lintCandidat
 
 // nearDuplicateCandidates compares entries that share a MinHash bucket and
 // reports pairs whose token similarity reaches the threshold. Exact groups are
-// reported separately, so pairs of entries with the same normalized text are
+// reported separately, and pairs with the same normalized title are left to
+// the conflict rule, so pairs of entries with the same normalized text are
 // skipped here.
 func nearDuplicateCandidates(entries []lintEntry, keys []string, tokens []map[string]struct{}) ([]lintCandidate, []string) {
 	buckets := make(map[lintBucketKey][]int)
@@ -285,6 +286,12 @@ func nearDuplicateCandidates(entries []lintEntry, keys []string, tokens []map[st
 			for b := a + 1; b < len(bucket) && budget > 0; b++ {
 				i, j := bucket[a], bucket[b]
 				if keys[i] == keys[j] {
+					continue
+				}
+				// Entries that share a title are covered by the conflict rule (or the
+				// exact group); calling such a pair a duplicate as well would ask for
+				// a merge that contradicts the conflict review.
+				if titleI, titleJ := lintNormalize(entries[i].Title), lintNormalize(entries[j].Title); titleI != "" && titleI == titleJ {
 					continue
 				}
 				pair := [2]int{min(i, j), max(i, j)}
