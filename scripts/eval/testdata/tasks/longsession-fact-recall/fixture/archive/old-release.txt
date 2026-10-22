@@ -1,0 +1,5 @@
+# old release facts (retired)
+
+port: 9000
+build: BUILD-0002
+team: osprey

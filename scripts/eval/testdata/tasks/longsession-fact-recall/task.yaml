@@ -1,0 +1,35 @@
+name: longsession-fact-recall
+mode: allow-write
+fake_mode: text
+# 早期给出的事实（端口、构建号、负责人）→ 无关工作 → 强制换段 → 再被问到，
+# 检查压缩之后是否还记得这些早期事实，且不与工作区里的干扰事实混淆。
+fake_reply: |-
+  Port 7311, build BUILD-1187, owning team heron. (The values in archive/old-release.txt belong to the retired release.)
+prompts:
+  - |-
+    先记住三条事实（只需要记住，不用做别的）：
+    1) 当前服务监听端口是 7311；
+    2) 当前构建号是 BUILD-1187；
+    3) 负责人团队是 heron。
+  - 统计 data/metrics.txt 有多少行，并指出文件中数值最大的那一行。
+  - 换个话题：解释一下为什么日志要按天切分。
+  - 回到最开始的事实：当前服务监听哪个端口？当前构建号是多少？负责人团队是哪个？三个一起回答。
+compact_after: [3]
+checks:
+  # 第 4 轮在切题与两次压缩之后仍要复述正确事实。
+  - {type: answer_contains, text: '7311', turn: 4}
+  - {type: answer_contains, text: 'BUILD-1187', turn: 4}
+  - {type: answer_contains, text: 'heron', turn: 4}
+  # 早期事实也要在第 1 轮被接受（否则整段没有可比对的基线）。
+  - {type: answer_contains, text: '7311', turn: 1}
+  # 干扰事实（旧发布存档）不得被当成当前值。
+  - {type: answer_not_contains, text: 'BUILD-0002', turn: 4}
+  # 数据文件不得被改写。
+  - type: file_equals
+    path: data/metrics.txt
+    text: |-
+      name,value
+      cpu,17
+      disk,63
+      net,41
+timeout: 20m

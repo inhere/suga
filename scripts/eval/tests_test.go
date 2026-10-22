@@ -98,7 +98,7 @@ func TestAccept(t *testing.T) {
 		{Type: "command", Args: []string{"go", "test", "-count=1", "./..."}, Timeout: "2m"},
 	}}
 	var r Result
-	task.finish(ws, before, "", &r)
+	task.finish(ws, before, nil, &r)
 	assert.Eq(t, []string{"zz_local_verify_test.go"}, r.RemovedTests)
 	assert.Eq(t, 1, len(r.Checks))
 	assert.True(t, r.Checks[0].Passed, r.Checks[0].Output)
@@ -115,7 +115,7 @@ func TestFinishKeepTests(t *testing.T) {
 		{Type: "file_contains", Path: "config_test.go", Text: "package x"},
 	}}
 	var r Result
-	task.finish(ws, before, "", &r)
+	task.finish(ws, before, nil, &r)
 	assert.Eq(t, 0, len(r.RemovedTests))
 	assert.True(t, allPassed(r.Checks))
 }

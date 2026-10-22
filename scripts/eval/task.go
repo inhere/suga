@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -38,6 +39,14 @@ type Task struct {
 	// task whose checks judge that test file on purpose (default: judging only
 	// sees the task's own and the injected acceptance tests).
 	KeepTests bool `yaml:"keep_tests"`
+	// CompactAfter lists 1-based turns after which the runner forces a context
+	// compaction (a new segment) of the session, so a long-session task can
+	// measure whether a constraint, a fact or a conclusion survives it. The
+	// break is `suga compact <session>`, the CLI form of chat's :compact.
+	CompactAfter []int `yaml:"compact_after"`
+	// FakeReply is the text the fake model answers with (fakellm --reply); it
+	// makes a --fake run of the task deterministic. Ignored on a real run.
+	FakeReply string `yaml:"fake_reply"`
 
 	// Repo makes the workspace a snapshot of a git ref of the repository the
 	// eval is started in (exclusive with fixture/). See repo.go.
@@ -64,14 +73,19 @@ type Insert struct {
 }
 
 // Check is one pass/fail assertion. Types: file_contains, file_equals,
-// file_not_contains (use path+text), answer_contains (text only) and command
-// (args [+ timeout]: exec in the workspace without a shell, exit 0 passes).
+// file_not_contains (use path+text), answer_contains, answer_not_contains,
+// answer_matches, answer_not_matches (text only; the last two take a regular
+// expression) and command (args [+ timeout]: exec in the workspace without a
+// shell, exit 0 passes).
 type Check struct {
 	Type    string   `yaml:"type"`
 	Path    string   `yaml:"path"`
 	Text    string   `yaml:"text"`
 	Args    []string `yaml:"args"`
 	Timeout string   `yaml:"timeout"` // command only; default 5m
+	// Turn judges the answer of this 1-based turn of a multi-turn task; 0 (the
+	// default) judges the final answer.
+	Turn int `yaml:"turn"`
 }
 
 // CheckResult is the recorded outcome of one Check.
@@ -81,10 +95,30 @@ type CheckResult struct {
 	Text   string `json:"text"`
 	Passed bool   `json:"passed"`
 	Detail string `json:"detail,omitempty"`
+	// Turn is the turn whose answer an answer check judged (0 for the file and
+	// command checks and for a single-turn task).
+	Turn int `json:"turn,omitempty"`
 	// command checks: exit code (-1 when not started / timed out) and the
 	// tail of the combined output.
 	ExitCode *int   `json:"exit_code,omitempty"`
 	Output   string `json:"output,omitempty"`
+}
+
+// TurnRun is one turn of a multi-turn task: its answer, how long it took and
+// the forced compaction that ran after it (compact_after), if any.
+type TurnRun struct {
+	Turn       int             `json:"turn"`
+	Answer     string          `json:"answer"`
+	DurationMs int64           `json:"duration_ms"`
+	Compacted  *TurnCompaction `json:"compacted,omitempty"`
+}
+
+// TurnCompaction is the segment break the runner forced after a turn
+// (`suga compact <session> --json`).
+type TurnCompaction struct {
+	TokensBefore int `json:"tokens_before"`
+	TokensAfter  int `json:"tokens_after"`
+	Segment      int `json:"segment"`
 }
 
 const (
@@ -132,6 +166,17 @@ func loadTask(dir string) (*Task, error) {
 		}
 	}
 	for _, c := range t.Checks {
+		if c.Turn < 0 || c.Turn > len(t.Turns()) {
+			return nil, fmt.Errorf("%s: check turn %d is outside 1..%d", dir, c.Turn, len(t.Turns()))
+		}
+		if c.Type == "answer_matches" || c.Type == "answer_not_matches" {
+			if c.Text == "" {
+				return nil, fmt.Errorf("%s: %s needs a pattern in text", dir, c.Type)
+			}
+			if _, err := regexp.Compile(c.Text); err != nil {
+				return nil, fmt.Errorf("%s: %s pattern %q: %w", dir, c.Type, c.Text, err)
+			}
+		}
 		if c.Type != "command" {
 			continue
 		}
@@ -152,8 +197,29 @@ func loadTask(dir string) (*Task, error) {
 			return nil, fmt.Errorf("%s: repo and fixture/ are mutually exclusive", dir)
 		}
 	}
+	// compact_after: a 1-based turn index each, in range and without repeats.
+	seen := map[int]bool{}
+	for _, turn := range t.CompactAfter {
+		if turn < 1 || turn > len(t.Turns()) {
+			return nil, fmt.Errorf("%s: compact_after turn %d is outside 1..%d", dir, turn, len(t.Turns()))
+		}
+		if seen[turn] {
+			return nil, fmt.Errorf("%s: compact_after repeats turn %d", dir, turn)
+		}
+		seen[turn] = true
+	}
 	t.dir = dir
 	return &t, nil
+}
+
+// compactsAfter reports whether a forced compaction runs after 1-based turn.
+func (t *Task) compactsAfter(turn int) bool {
+	for _, after := range t.CompactAfter {
+		if after == turn {
+			return true
+		}
+	}
+	return false
 }
 
 // effectiveTimeout is the task timeout, or def when the task sets none.
@@ -178,13 +244,14 @@ func (t *Task) injectAcceptance(ws string) error {
 
 // finish injects the acceptance files, drops the tests the agent wrote itself
 // (judging runs the task's own and the injected ones only) and evaluates the
-// checks. before is the workspace file set from before the agent ran.
-func (t *Task) finish(ws string, before map[string]bool, answer string, r *Result) {
+// checks. before is the workspace file set from before the agent ran and
+// answers holds each turn's answer (the last one is the final answer).
+func (t *Task) finish(ws string, before map[string]bool, answers []string, r *Result) {
 	accErr := t.injectAcceptance(ws)
 	if !t.KeepTests {
 		r.RemovedTests = removeForeignTests(ws, before, t.injectedFiles(ws))
 	}
-	r.Checks = runChecks(ws, answer, t.Checks)
+	r.Checks = runChecks(ws, answers, t.Checks)
 	if accErr != nil { // a task that cannot be judged must not pass
 		r.Checks = append(r.Checks, CheckResult{Type: "acceptance", Text: t.Acceptance, Detail: accErr.Error()})
 	}
@@ -257,13 +324,25 @@ func (g Generate) write(ws string) error {
 	return os.WriteFile(p, []byte(b.String()), 0o644)
 }
 
-// runChecks evaluates every check against the workspace and the final answer.
-func runChecks(ws, answer string, checks []Check) []CheckResult {
+// runChecks evaluates every check against the workspace and the answers. An
+// answer check judges the answer of its turn, or the final one when it names
+// no turn (single-turn tasks and the last answer of a multi-turn task).
+func runChecks(ws string, answers []string, checks []Check) []CheckResult {
 	out := make([]CheckResult, 0, len(checks))
 	for _, c := range checks {
 		r := CheckResult{Type: c.Type, Path: c.Path, Text: c.Text}
-		if c.Type == "answer_contains" {
-			r.Passed = strings.Contains(answer, c.Text)
+		if isAnswerCheck(c.Type) {
+			answer, ok := answerOf(answers, c.Turn)
+			r.Turn = c.Turn
+			if r.Turn == 0 {
+				r.Turn = len(answers)
+			}
+			if !ok {
+				r.Detail = fmt.Sprintf("no answer for turn %d", c.Turn)
+				out = append(out, r)
+				continue
+			}
+			r.Passed = answerCheckPassed(c, answer)
 			out = append(out, r)
 			continue
 		}
@@ -304,6 +383,48 @@ func allPassed(rs []CheckResult) bool {
 		}
 	}
 	return true
+}
+
+// isAnswerCheck reports whether a check type judges an answer instead of a file.
+func isAnswerCheck(typ string) bool {
+	switch typ {
+	case "answer_contains", "answer_not_contains", "answer_matches", "answer_not_matches":
+		return true
+	}
+	return false
+}
+
+// answerOf returns the answer a check judges: the 1-based turn's own, or the
+// final answer (the last one) for turn 0. ok is false when the turn has no
+// answer (the run stopped before it).
+func answerOf(answers []string, turn int) (string, bool) {
+	if len(answers) == 0 {
+		return "", false
+	}
+	if turn <= 0 {
+		return answers[len(answers)-1], true
+	}
+	if turn > len(answers) {
+		return "", false
+	}
+	return answers[turn-1], true
+}
+
+// answerCheckPassed applies one answer check to its answer.
+func answerCheckPassed(c Check, answer string) bool {
+	switch c.Type {
+	case "answer_contains":
+		return strings.Contains(answer, c.Text)
+	case "answer_not_contains":
+		return !strings.Contains(answer, c.Text)
+	case "answer_matches", "answer_not_matches":
+		re, err := regexp.Compile(c.Text)
+		if err != nil {
+			return false
+		}
+		return re.MatchString(answer) == (c.Type == "answer_matches")
+	}
+	return false
 }
 
 // runCommandCheck execs c.Args in ws directly (no shell, so it works on

@@ -61,6 +61,7 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 		newSendCommand(stdin, stderr),
 		newPSCommand(stdout, stderr),
 		newSessionsCommand(ctx, stdout, stderr),
+		newCompactCommand(ctx, stdout, stderr),
 		newUndoCommand(ctx, stdin, stdout, stderr),
 		newConfigCommand(stdout, stderr),
 		newModelsCommand(stdout, stderr),

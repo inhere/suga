@@ -20,6 +20,8 @@
   - 有副作用的工具（`tools.Meta.ReadOnly` 为假的工具；MCP 工具看 `readOnlyHint`，没有声明就当作有副作用）在审批放行之后、真正执行之前写一条 `admit` 记录（调用 ID、工具名、参数摘要），被拒、以及在审批提问处取消回合的调用不写。它是台账不是消息，不进上下文投影。
   - 回合在“已执行、结果未落盘”处中断（取消/失败，或进程死亡后恢复的回合）时，收尾与恢复都会为这类调用补一条“该调用在中断时状态未知（可能已执行），请先核实再决定是否重做”的工具结果，并在 trace 里记 `tool_interrupted` 事件（attrs 含 invocation_id）；下一回合照常回放这次调用与这条结果，不再把它当成未完成的调用截掉，只读工具保持原有回放行为。正常回合的模型请求与改动前一致。
 - 嵌入式 SDK `pkg/sugasdk` 的 `Send` 支持可选幂等请求：`Prompt.RequestID`（调用方生成，建议 UUID，按会话隔离）把一个回合变成可去重的请求——同一会话内已完成的 id 直接重放首次的 `Result`（`Result.Replayed=true`，模型不再被调用）：meta 里每条请求只存一个小记录（turn_id、状态、用量数字与结束时间等摘要，不存输出文本，会话 meta 不随输出长度增长），重放时按 runner 结果的组装方式从该回合的最后一条助手消息重建输出，条目已不在会话日志中时返回明确错误（`ErrRequestOutputGone`）；每个会话只保留最近 200 条请求记录（窗口为断线重连服务），接受新 claim 时删除最旧的已完成记录、running 记录永不删除，超出窗口的 id 等同未声明可重发。正在执行的 id 返回 `ErrRequestRunning`；进程中途崩溃留下的 running 记录读作“投递不确定”（`ErrDeliveryUncertain`，`Session.RequestStatus` 返回 `unknown`），不自动重放，由宿主用新 id 重发。无库迁移；`RequestStatus` 返回 `unknown`/`running`/`done`/`failed`；不带 RequestID 的 `Send` 行为不变（suga-sg0w）。
+- `suga compact <会话>`：chat `:compact` 的命令行形式（`--json` 输出换段前后的 token 估算与新段序号），脚本或 job 可以在两轮之间强制给会话开新段。评测运行器的长会话任务用它实现「第 N 轮后强制压缩」。
+- 评测运行器（`scripts/eval`）的长会话任务：`prompts` 多轮之外支持 `compact_after`（指定轮次后强制换段）、逐轮 checks（`turn: N`）与 `answer_not_contains`/`answer_matches`/`answer_not_matches`（正则形式表达“必须/不要”类约束）、`fake_reply`（假模型固定回答，`--fake` 下结果确定）；results.jsonl 新增 `turns`（每轮回答、耗时、该轮的换段 token 数），报告在主表之后按轮次打印每项检查与压缩点，并给出长会话通过率；新增 4 个任务 `testdata/tasks/longsession-*`（约束跨压缩、切题再切回、原话约束、事实回忆）。
 
 ### 修复
 

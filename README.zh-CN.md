@@ -141,6 +141,7 @@ suga chat                                         # 在当前目录开启交互�
 suga inspect trace <session> [--turn <id>] [--json]            # 时间线：模型调用、工具、拒绝、计划
 suga inspect trace <session> --analyze | --web                 # 循环分析 / 本机网页
 suga sessions [关键词] [--since 7d] [--agents]                    # 会话列表
+suga compact <session> [--json]                                # 立即开新段（相当于 chat 的 :compact）
 suga inspect stats [--session <id>] [--json]                   # 调用次数、耗时、token、缓存、成本
 suga inspect export <session> | suga data gc --older-than 30d  # 导出 / 清理
 suga data gc --retention [--apply]                             # 按来源清理：chat 180 天 / run+ACP 30 天

@@ -1,0 +1,32 @@
+name: longsession-quoted-rules
+mode: allow-write
+fake_mode: text
+# 用户原话里的“必须 / 不要”在多轮后仍要遵守：中间穿插无关工作并强制换段，最后检查格式约束与禁词。
+fake_reply: |-
+  - 必须保持这两条规则：回答用 Markdown 列表，不提主机的部署标识。
+  - 不要改 notes/rules.md 的内容。
+prompts:
+  - |-
+    我原话里有两条规定，你必须一直遵守：
+    “必须用 Markdown 列表回答我”；
+    “不要提到主机名 deploy-prod-7 这个词”。
+    先复述一遍这两条，不用做别的。
+  - 帮我列出 examples/ 目录里有哪些文件，逐个一句话说明用途。
+  - 换题：简述一下 HTTP 缓存里 ETag 与 Last-Modified 的区别。
+  - 最后确认：这两条规则是什么？现在回答“你还遵守着它们吗”，注意格式。
+compact_after: [3]
+checks:
+  # 格式约束：回答必须是 Markdown 列表项。
+  - {type: answer_matches, text: '(?m)^[-*] ', turn: 4}
+  # 禁词约束：从第 2 轮起（含压缩之后）都不许出现该主机名。
+  - {type: answer_not_contains, text: 'deploy-prod-7', turn: 2}
+  - {type: answer_not_contains, text: 'deploy-prod-7', turn: 4}
+  # 指定的规则文件不得被改写。
+  - type: file_equals
+    path: notes/rules.md
+    text: |-
+      # Rules
+
+      1. Answer with a Markdown list.
+      2. Never name the deployment host.
+timeout: 20m

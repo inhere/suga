@@ -1,0 +1,26 @@
+name: longsession-topic-switch-back
+mode: allow-write
+fake_mode: text
+# A 做到一半 → 换 B（并在切题之后强制换段）→ 回到 A 继续，检查 A 的中间结论接得上。
+fake_reply: |-
+  Region north totals 42 units; region south totals 58 units, so the north/south gap is 16 and the session total stays 100.
+prompts:
+  - |-
+    任务 A：读 reports/sales.csv，只回答一个问题——region 为 north 的销售额合计是多少？请把这个中间结果记在心里，后面还会用到。
+  - 任务 B（换个话题）：用一句话说明 TCP 三次握手的目的是什么。
+  - 任务 B 继续：站在客户端角度，三次握手各步客户端在做什么？简短说明即可。
+  - 回到任务 A：按你前面算出的 north 合计，算一下 south 合计与 north/south 的差额，并给出整体总计。
+compact_after: [2]
+checks:
+  # 第 1 轮必须真的读出 north 合计；第 4 轮在换题与压缩之后仍要接上这个中间结果。
+  - {type: answer_contains, text: '42', turn: 1}
+  - {type: answer_contains, text: '42', turn: 4}
+  - {type: answer_matches, text: '(?i)north', turn: 4}
+  # 数据文件是只读输入：不许被改写（改写会让后面的差额失真）。
+  - type: file_equals
+    path: reports/sales.csv
+    text: |-
+      region,units
+      north,42
+      south,58
+timeout: 20m

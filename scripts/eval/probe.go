@@ -53,7 +53,7 @@ func runProbe(o *options, bin, runID string) error {
 	}
 	port := 0
 	if o.fake {
-		stop, p, err := startFake(ctx, "text")
+		stop, p, err := startFake(ctx, "text", "")
 		if err != nil {
 			return err
 		}
