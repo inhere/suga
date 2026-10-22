@@ -17,9 +17,15 @@ import (
 type RetryPolicy struct {
 	MaxAttempts                     int
 	BaseDelay, MaxDelay, ResetAfter time.Duration
+	// MaxElapsed is the wall-clock budget of one request's retries: once the
+	// attempts and waits since the request started pass it, no further attempt is
+	// made and the request fails (the caller's fallback_models then take over).
+	// A provider that keeps failing would otherwise retry away minutes while the
+	// process holds its session. Zero takes the default, NoTimeout disables it.
+	MaxElapsed time.Duration
 }
 
-var DefaultRetryPolicy = RetryPolicy{MaxAttempts: 6, BaseDelay: time.Second, MaxDelay: 60 * time.Second, ResetAfter: 10 * time.Minute}
+var DefaultRetryPolicy = RetryPolicy{MaxAttempts: 6, BaseDelay: time.Second, MaxDelay: 60 * time.Second, ResetAfter: 10 * time.Minute, MaxElapsed: 3 * time.Minute}
 
 func (p RetryPolicy) withDefaults() RetryPolicy {
 	d := DefaultRetryPolicy
@@ -34,6 +40,12 @@ func (p RetryPolicy) withDefaults() RetryPolicy {
 	}
 	if p.ResetAfter > 0 {
 		d.ResetAfter = p.ResetAfter
+	}
+	switch {
+	case p.MaxElapsed > 0:
+		d.MaxElapsed = p.MaxElapsed
+	case p.MaxElapsed < 0:
+		d.MaxElapsed = 0 // off
 	}
 	d.MaxDelay = max(d.MaxDelay, d.BaseDelay)
 	return d
@@ -52,6 +64,40 @@ func newBackoff(p RetryPolicy) *backoff {
 	return &backoff{policy: p.withDefaults(), now: time.Now, jitter: func() float64 { return rand.Float64()*2 - 1 }}
 }
 func (b *backoff) attempts() int { return b.policy.MaxAttempts }
+
+// maxElapsed is the retry budget of one request (RetryPolicy.MaxElapsed); 0
+// means no limit.
+func (b *backoff) maxElapsed() time.Duration { return b.policy.MaxElapsed }
+
+// retryBudget is the wall-clock budget of one request's retries, carried by the
+// request's context: retryStream and the postWithRetry calls inside its attempts
+// share it, so the whole request - not each attempt - is bounded by
+// retry.max_elapsed.
+type retryBudget struct {
+	start time.Time
+	limit time.Duration
+}
+
+type retryBudgetKey struct{}
+
+// ensureRetryBudget installs the request's retry budget unless it is already
+// installed; the first of retryStream/postWithRetry to run marks the start.
+func ensureRetryBudget(ctx context.Context, b *backoff) context.Context {
+	if _, ok := ctx.Value(retryBudgetKey{}).(*retryBudget); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, retryBudgetKey{}, &retryBudget{start: time.Now(), limit: b.maxElapsed()})
+}
+
+// overBudget reports whether waiting wait would pass the request's retry
+// budget, i.e. the next attempt is not worth making.
+func overBudget(ctx context.Context, wait time.Duration) bool {
+	budget, _ := ctx.Value(retryBudgetKey{}).(*retryBudget)
+	if budget == nil || budget.limit <= 0 {
+		return false
+	}
+	return time.Since(budget.start)+wait > budget.limit
+}
 func (b *backoff) next(retryAfter time.Duration) time.Duration {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -239,6 +285,7 @@ func postWithRetry(ctx context.Context, client *http.Client, b *backoff, provide
 		// calls already installed the report used for attempt telemetry.
 		ctx, _ = withRetryReport(ctx)
 	}
+	ctx = ensureRetryBudget(ctx, b)
 	var lastErr error
 	for attempt := 1; ; attempt++ {
 		req, err := build()
@@ -282,10 +329,15 @@ func postWithRetry(ctx context.Context, client *http.Client, b *backoff, provide
 			noteRequestID(ctx, requestIDOf(resp.Header))
 			return resp, nil
 		}
-		if attempt >= b.attempts() {
+		// The budget (retry.max_elapsed) is checked with the wait included: a request
+		// that is out of time fails now instead of sleeping once more.
+		wait := b.next(retryAfter)
+		if attempt >= b.attempts() || overBudget(ctx, wait) {
+			if overBudget(ctx, 0) {
+				slog.Warn("llm request retry budget reached", "provider", provider, "attempt", attempt, "retry_max_elapsed", b.maxElapsed(), "err", lastErr)
+			}
 			return nil, &transientRequestError{withRequestID(ctx, fmt.Errorf("%s request failed after %d attempts: %w", provider, attempt, lastErr))}
 		}
-		wait := b.next(retryAfter)
 		slog.Warn("llm request failed, retrying", "provider", provider, "attempt", attempt, "reason", reason, "wait", wait.Round(time.Millisecond), "err", lastErr)
 		if err := noteRetry(ctx, attempt, wait, reason); err != nil {
 			return nil, err
