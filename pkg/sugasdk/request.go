@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -48,6 +49,14 @@ const (
 // session scopes the id (the same id in another session is a different
 // request).
 const requestMetaPrefix = "sdk_req:"
+
+// requestRecordLimit is how many request records one session's meta keeps.
+// The idempotent window serves reconnects: an id older than the window (its
+// record trimmed) is a new, unclaimed request to Send again. Records are
+// dropped oldest first and only finished ones; a running record always stays
+// (dropping it would lose the audit of an in-flight or crashed send). A var
+// only so a test can shrink the window.
+var requestRecordLimit = 200
 
 // requestRecord is what one claim of a request id stores in the session meta:
 // the running marker (with the turn id once the turn created its row) and,
@@ -189,6 +198,81 @@ func (s *Session) turnOutput(ctx context.Context, repo *store.Store, requestID, 
 	}
 	return "", fmt.Errorf("%w: request %q (turn %q) has no assistant entry with content in session %q",
 		ErrRequestOutputGone, requestID, turnID, s.id)
+}
+
+// trimRequestRecords returns the patch that drops the oldest finished records
+// when a session holds more than requestRecordLimit of them (nil values delete
+// the keys). Running records are never dropped: dropping the audit of an
+// in-flight or crashed send would let a resend replay into a half-written turn.
+// A record whose stored value cannot be decoded is left alone (it still
+// answers its own id correctly).
+func trimRequestRecords(meta map[string]any) (map[string]any, error) {
+	type timed struct {
+		key   string
+		at    time.Time
+		state string
+	}
+	records := make([]timed, 0, len(meta))
+	for key, value := range meta {
+		if !strings.HasPrefix(key, requestMetaPrefix) {
+			continue
+		}
+		raw, _ := value.(string)
+		if raw == "" {
+			continue
+		}
+		var rec requestRecord
+		if err := json.Unmarshal([]byte(raw), &rec); err != nil {
+			continue
+		}
+		records = append(records, timed{key: key, at: rec.At, state: strings.TrimSpace(rec.State)})
+	}
+	if len(records) <= requestRecordLimit {
+		return nil, nil
+	}
+	// Newest first (a zero At sorts oldest: an old record predating the stamp).
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].at.Equal(records[j].at) {
+			return records[i].key > records[j].key
+		}
+		return records[i].at.After(records[j].at)
+	})
+	var drop map[string]any
+	for i, rec := range records {
+		if i < requestRecordLimit {
+			continue
+		}
+		if rec.state == requestStateRunning {
+			continue
+		}
+		if drop == nil {
+			drop = map[string]any{}
+		}
+		drop[rec.key] = nil
+	}
+	return drop, nil
+}
+
+// trimRequestRecordsFor applies the size cap to this session's meta after a
+// fresh claim grew it. Best effort: a failure is logged and never fails the
+// send (the cap catches up on a later claim).
+func (s *Session) trimRequestRecordsFor(ctx context.Context, repo *store.Store) {
+	model, err := repo.GetSession(ctx, s.id)
+	if err != nil {
+		s.engine.logger.Warn("sugasdk: read the meta for the request record trim", "session", s.id, "err", err)
+		return
+	}
+	drop, err := trimRequestRecords(model.Meta)
+	if err != nil {
+		s.engine.logger.Warn("sugasdk: order the request records for the trim", "session", s.id, "err", err)
+		return
+	}
+	if len(drop) == 0 {
+		return
+	}
+	if err := repo.PatchSessionMeta(ctx, s.id, drop); err != nil {
+		s.engine.logger.Warn("sugasdk: trim old request records", "session", s.id, "err", err)
+	}
 }
 
 // claimRequestRecord persists the claim of a fresh id (state running, no turn

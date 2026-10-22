@@ -201,6 +201,9 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 			}
 			return s.dispatchRecord(ctx, repo, requestID, rec)
 		}
+		// The claim grew the session's record registry: apply the size cap (best
+		// effort, so an old finished record gets out of the meta again).
+		s.trimRequestRecordsFor(ctx, repo)
 	}
 	// The turn runs suga's own code (tools, provider): a panic there must not
 	// take the host down, and the session keeps whichever state suga left.

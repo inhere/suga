@@ -38,8 +38,12 @@
 // the usage numbers and the end time; never the answer text, so the meta does
 // not grow with the length of the answers), and the output rebuilt from the
 // turn's own assistant entry. A turn whose entries are gone from the session
-// log no longer replays: Send reports ErrRequestOutputGone. An id whose turn
-// is running errors with ErrRequestRunning; a record left
+// log no longer replays: Send reports ErrRequestOutputGone. Each session keeps
+// only the most recent 200 of these records (requestRecordLimit) - the window
+// serves reconnects, so older finished records (but never a running one) drop
+// from the meta as newer claims arrive, and an id trimmed out of the window is
+// an unclaimed request to Send again.
+// An id whose turn is running errors with ErrRequestRunning; a record left
 // running by a process that died mid-turn (delivery unknown) errors with
 // ErrDeliveryUncertain and reads "unknown" from Session.RequestStatus: the
 // host resends the prompt under a NEW request id, nothing replays on its own.
