@@ -170,6 +170,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 - 文件工具经 `os.OpenRoot` 访问，不会顺着 symlink 跑出工作区。
 - `shell_exec` 超时会终止整个进程树。
+- `shell_exec` 每次运行的内存、进程数与 CPU 时间受 `tools.shell_limits` 限制（见上一节）；它不是沙箱。
 - `web_fetch` 检查实际连接的 IP，跳转也一样受限；`urls` 一次抓 1–5 个（并发，按输入顺序分段，单段失败不影响其他）；User-Agent 由 `tools.web_fetch.user_agent` 配置；所有工具结果都有上限。
 
 ## 大输出外置与输出整理
@@ -193,6 +194,14 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 - 规则语言的符号结果是 approx（按声明行近似，不解析）：注释与字符串里的同名词不算引用，但不会做类型解析。calls 的识别保持"声明行能看出来的才报"——函数体内的局部定义、跨行参数列表等不报，需要精确结果时用 `file_grep` 或装了 universal-ctags 的环境（规则声明了 `ctags` 时优先用 ctags）。
 
 **完整字段表（`languages:` 每条与 `decls` 的写法）与新增语言的完整示例见 `references/rules.md` 的语言规则一节**；查看生效的语言用 `suga inspect rules lang`（名字、扩展名、块风格、来源层与是否用 ctags，以及被跳过的规则文件与原因）。
+
+## 资源限制（`tools.shell_limits`）
+
+- 一次 `shell_exec`（前台、后台任务、watch 的每一轮）和它启动的所有子进程受 `tools.shell_limits` 限制：`memory`（默认 `4GiB`）、`processes`（默认 `256`）、可选的 `cpu_time`（默认不限制）。某一项写 `0`（`memory` 也可写 `off`）关掉该项，`off: true` 整体关掉。
+- Windows 用 Job Object：`memory` 同时是单进程与整棵树的提交上限（`ProcessMemoryLimit`/`JobMemoryLimit`），`processes` 是 `ActiveProcessLimit`（超出时新进程创建失败），`cpu_time` 是单进程用户态 CPU 上限（超出由系统终止）。
+- Unix 用 `setrlimit`：`memory` 是 `RLIMIT_AS`（分配失败），`cpu_time` 是 `RLIMIT_CPU`。`processes` 是 `RLIMIT_NPROC`——它**按用户计数**，所以 suga 取「当前用户已有进程数 + `processes`」，即该命令大致能再开 `processes` 个进程；没有 `/proc` 的 Unix（如 macOS）与 root 不受这一项限制。
+- 超限时的结果与 trace：进程被终止或分配失败时，工具结果末尾有「超出 suga 的资源限制（内存 … / 进程数 …）」一行（元数据 `limits_exceeded: true`）；后台任务把同样的说明写进输出文件；watch 的 `=== exit X ===` 行带上它。Unix 没有「因限制被终止」的计数器，所以按失败输出里的痕迹判断（`out of memory`、`MemoryError`、`cannot allocate memory`、`fork: … Resource temporarily unavailable`、Windows 的配额不足），不是 100% 精确。
+- 这不是沙箱：命令仍能写用户有权限的任何文件、访问网络，危险命令拦截与审批也不因此变强；它只防止一个失控的构建或测试把机器吃光。chat 里以 `!` 输入的本地命令是你自己敲的命令，不套用这些上限。
 
 ## 后台任务
 
