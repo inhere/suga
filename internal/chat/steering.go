@@ -420,15 +420,13 @@ func typedHere(backs []steerReturn) bool {
 }
 
 // steerLines renders inserted messages the way a prompt carries them: one line
-// each, a message from elsewhere labeled with its sender ("[来自 x] ...") and a
-// message typed here as it was typed.
+// each. A message typed here is shown as it was typed; a message from elsewhere
+// already carries its source label in its text (deliveryLineFor labeled it once
+// when it was inserted, steer_send.go), so it is shown as it is and never
+// relabeled (design review F6: the label is added exactly once).
 func steerLines(backs []steerReturn) []string {
 	lines := make([]string, 0, len(backs))
 	for _, b := range backs {
-		if b.sender != "" {
-			lines = append(lines, deliveryLine(b.text, b.sender))
-			continue
-		}
 		lines = append(lines, b.text)
 	}
 	return lines

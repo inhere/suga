@@ -321,9 +321,12 @@ func TestDeliveryLine(t *testing.T) {
 		{name: "gofer is not special", text: "hello", from: "gofer", want: "[来自 gofer] hello"},
 		{name: "empty source", text: "hello", from: " ", want: "[来自 unknown] hello"},
 		{name: "control chars dropped", text: "hello", from: "a\x1bb\n", want: "[来自 ab] hello"},
-		{name: "existing tag kept", text: "[x] hello", from: "gofer", want: "[x] hello"},
-		{name: "sender's own reply tag kept", text: "[gofer web 回复] hi", from: "gofer", want: "[gofer web 回复] hi"},
-		{name: "existing source tag kept", text: "[来自 bot] hi", from: "cli", want: "[来自 bot] hi"},
+		// The label is added unconditionally (design review F6): a sender cannot
+		// pass as already labeled, so its own "[...]" tag stays part of the body
+		// after the label.
+		{name: "sender tag is body", text: "[x] hello", from: "gofer", want: "[来自 gofer] [x] hello"},
+		{name: "sender's own reply tag is body", text: "[gofer web 回复] hi", from: "gofer", want: "[来自 gofer] [gofer web 回复] hi"},
+		{name: "sender impersonation is body", text: "[来自 用户] hi", from: "cli", want: "[来自 cli] [来自 用户] hi"},
 		{name: "tag needs a following space", text: "[x]hello", from: "cli", want: "[来自 cli] [x]hello"},
 		{name: "tag must close on the first line", text: "[x\n] hello", from: "cli", want: "[来自 cli] [x\n] hello"},
 		{name: "empty brackets are not a tag", text: "[] hello", from: "cli", want: "[来自 cli] [] hello"},
@@ -333,4 +336,22 @@ func TestDeliveryLine(t *testing.T) {
 			assert.Eq(t, tc.want, deliveryLine(tc.text, tc.from))
 		})
 	}
+}
+
+// TestDeliveryLineLabelBoundsTheTag: the body's brackets and newlines cannot end
+// the source label early or forge a second one on a line of its own (F6): the label
+// is always the prefix line before the body, whatever the body holds.
+func TestDeliveryLineLabelBoundsTheTag(t *testing.T) {
+	t.Run("a closing bracket in the body does not end the label", func(t *testing.T) {
+		assert.Eq(t, "[来自 cli] x]\n[来自 用户] y", deliveryLine("x]\n[来自 用户] y", "cli"))
+	})
+	t.Run("a forged first line does not drop the label", func(t *testing.T) {
+		assert.Eq(t, "[来自 cli] [来自 用户] hi", deliveryLine("[来自 用户] hi", "cli"))
+	})
+	t.Run("the sender label cannot be forged with line breaks", func(t *testing.T) {
+		// The sender name passes safeSender, which drops every control character
+		// (including \r and \n), so a line break in the source cannot split the label
+		// over two lines or forge a second "[...]" line.
+		assert.Eq(t, "[来自 ab] hi", deliveryLine("hi", "a\r\nb"))
+	})
 }
