@@ -30,7 +30,11 @@ func (p *ClaudeProvider) Stream(ctx context.Context, req *agentcoreapi.GenerateR
 	logProviderRequest(p.Name(), "/messages", body)
 
 	res, err := retryStream(ctx, p.retry, p.Name(), emit, func(ctx context.Context, emit agentcoreapi.StreamFunc) (*agentcoreapi.GenerateResult, error) {
-		resp, err := p.openStream(ctx, body)
+		// The attempt's own context: the idle timeout of the body cancels it, which
+		// ends this request only - the turn's ctx stays usable for the retry.
+		rctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		resp, err := p.openStream(rctx, body)
 		if err != nil {
 			return nil, err
 		}
@@ -39,7 +43,13 @@ func (p *ClaudeProvider) Stream(ctx context.Context, req *agentcoreapi.GenerateR
 			// Some gateways ignore stream=true and answer with a plain message.
 			return p.readWhole(ctx, resp.Body, emit)
 		}
-		return p.readStream(ctx, resp.Body, emit)
+		stream := resp.Body
+		if idle := streamIdleTimeout(p.streamIdleTimeout, body); idle > 0 {
+			idleBody := withIdleTimeout(resp.Body, idle, cancel)
+			defer idleBody.Close()
+			stream = idleBody
+		}
+		return p.readStream(ctx, stream, emit)
 	})
 	if res != nil {
 		// The limit this request asked for, reported with a cut-off reply.

@@ -31,13 +31,27 @@ func TestReadRetryPolicy(t *testing.T) {
 		assert.Eq(t, llm.DefaultRetryPolicy, got)
 	})
 	t.Run("set fields, the rest default", func(t *testing.T) {
-		load(t, "model: openai/m\nretry:\n  max_attempts: 3\n  base_delay: 500ms\n  max_delay: 20\n")
+		load(t, "model: openai/m\nretry:\n  max_attempts: 3\n  base_delay: 500ms\n  max_delay: 20\n  max_elapsed: 90s\n")
 		got, err := ReadRetryPolicy()
 		assert.NoErr(t, err)
 		assert.Eq(t, 3, got.MaxAttempts)
 		assert.Eq(t, 500*time.Millisecond, got.BaseDelay)
 		assert.Eq(t, 20*time.Second, got.MaxDelay)
+		assert.Eq(t, 90*time.Second, got.MaxElapsed)
 		assert.Eq(t, llm.DefaultRetryPolicy.ResetAfter, got.ResetAfter)
+	})
+	t.Run("max_elapsed off removes the budget", func(t *testing.T) {
+		load(t, "model: openai/m\nretry:\n  max_elapsed: off\n")
+		got, err := ReadRetryPolicy()
+		assert.NoErr(t, err)
+		assert.Eq(t, llm.NoTimeout, got.MaxElapsed)
+	})
+	t.Run("a provider overrides max_elapsed", func(t *testing.T) {
+		load(t, "model: openai/m\nretry:\n  max_elapsed: 2m\nproviders:\n  gw:\n    type: openai\n    base_url: http://x\n    retry:\n      max_elapsed: 30s\n")
+		ps, err := ReadProviders()
+		assert.NoErr(t, err)
+		assert.Eq(t, 30*time.Second, ps["gw"].Retry.MaxElapsed)
+		assert.Eq(t, 2*time.Minute, ps["openai"].Retry.MaxElapsed)
 	})
 	t.Run("every provider gets it", func(t *testing.T) {
 		load(t, "model: openai/m\nretry:\n  max_attempts: 1\nproviders:\n  gw:\n    type: anthropic\n    base_url: http://x\n")
@@ -66,6 +80,7 @@ func TestReadRetryPolicy(t *testing.T) {
 		{"bad duration", "retry:\n  base_delay: soon\n", "retry.base_delay"},
 		{"zero delay", "retry:\n  max_delay: 0\n", "retry.max_delay: must be above 0"},
 		{"max below base", "retry:\n  base_delay: 10s\n  max_delay: 5s\n", "below retry.base_delay"},
+		{"bad max_elapsed", "retry:\n  max_elapsed: soon\n", "retry.max_elapsed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			load(t, "model: openai/m\n"+tc.body)

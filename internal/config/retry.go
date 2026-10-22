@@ -14,10 +14,11 @@ import (
 // ReadRetryPolicy reads the top-level retry: section (how every provider
 // retries a model request that failed for a transient reason, see
 // llm.RetryPolicy): max_attempts (>= 1, the first attempt included; 1 turns
-// retries off), and the durations base_delay, max_delay and reset_after ("2s",
-// "1m", or seconds). Unset keys take llm.DefaultRetryPolicy; an invalid value is
-// an error. A provider may override every field with providers.<id>.retry (same
-// fields), see applyRetryPolicy.
+// retries off), max_elapsed (the wall-clock budget of one request's retries;
+// "off" removes it) and the durations base_delay, max_delay and reset_after
+// ("2s", "1m", or seconds). Unset keys take llm.DefaultRetryPolicy; an invalid
+// value is an error. A provider may override every field with
+// providers.<id>.retry (same fields), see applyRetryPolicy.
 func ReadRetryPolicy() (llm.RetryPolicy, error) {
 	return applyRetryPolicy(llm.DefaultRetryPolicy, mapValue(gkconfig.Get("retry")), "retry")
 }
@@ -52,6 +53,18 @@ func applyRetryPolicy(base llm.RetryPolicy, section map[string]any, prefix strin
 			return llm.RetryPolicy{}, fmt.Errorf("%s.%s: %w", prefix, key, err)
 		}
 		*field = d
+	}
+	if raw, ok := section["max_elapsed"]; ok {
+		// The whole request's retry budget: unlike the delays above an explicit
+		// off turns it off, while an unset key keeps the default.
+		d, err := parseTimeoutValue(raw)
+		if err != nil {
+			return llm.RetryPolicy{}, fmt.Errorf("%s.max_elapsed: %w", prefix, err)
+		}
+		if d == 0 {
+			d = llm.NoTimeout
+		}
+		out.MaxElapsed = d
 	}
 	if out.MaxDelay < out.BaseDelay {
 		return llm.RetryPolicy{}, fmt.Errorf("%s.max_delay (%s) is below %s.base_delay (%s)",

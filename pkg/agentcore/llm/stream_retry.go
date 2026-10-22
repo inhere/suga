@@ -46,10 +46,16 @@ func streamTruncatedError(provider, detail string) error {
 	return &streamReadError{fmt.Errorf("read %s stream: stream truncated, %s: %w", provider, detail, io.ErrUnexpectedEOF)}
 }
 
-// streamBodyError wraps the error of reading an event-stream body: a body that
-// ended early (io.ErrUnexpectedEOF, which a dropped chunked connection reports
-// too) is a truncated stream, any other read failure is reported as it is.
+// streamBodyError wraps the error of reading an event-stream body: an idle
+// stream keeps its own error (streamIdleError, which already says how long it
+// was silent), a body that ended early (io.ErrUnexpectedEOF, which a dropped
+// chunked connection reports too) is a truncated stream, any other read failure
+// is reported as it is.
 func streamBodyError(provider string, err error) error {
+	var idle *streamIdleError
+	if errors.As(err, &idle) {
+		return idle
+	}
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return streamTruncatedError(provider, "the connection closed before the answer was complete")
 	}
@@ -94,6 +100,7 @@ func retryStream(ctx context.Context, b *backoff, provider string, emit agentcor
 			}})
 		})
 	}
+	ctx = ensureRetryBudget(ctx, b)
 	for n := 1; ; n++ {
 		sent = false
 		res, err := attempt(ctx, tracked)
@@ -102,13 +109,18 @@ func retryStream(ctx context.Context, b *backoff, provider string, emit agentcor
 		if err == nil || !errors.As(err, &retryErr) || ctx.Err() != nil {
 			return res, err
 		}
-		if n >= b.attempts() {
-			return nil, withRequestID(ctx, retryErr.giveUp(provider, n))
-		}
 		// Both kinds of failure wait the same backoff: a Retry-After the server
 		// sent was already honoured by postWithRetry (which retries 408/429/5xx
-		// before the body is read).
+		// before the body is read). The budget (retry.max_elapsed) is checked with
+		// that wait included, so a broken provider fails within the configured time
+		// instead of retrying its way to minutes.
 		wait := b.next(0)
+		if n >= b.attempts() || overBudget(ctx, wait) {
+			if overBudget(ctx, 0) {
+				slog.Warn("llm stream retry budget reached", "provider", provider, "attempt", n, "retry_max_elapsed", b.maxElapsed(), "err", err)
+			}
+			return nil, withRequestID(ctx, retryErr.giveUp(provider, n))
+		}
 		reason := retryErr.retryReason()
 		slog.Warn("llm stream failed, requesting again", "provider", provider, "attempt", n, "reason", reason, "text_shown", sent, "wait", wait.Round(time.Millisecond), "err", err)
 		if err := noteRetry(ctx, n, wait, reason); err != nil {

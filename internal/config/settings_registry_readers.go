@@ -167,7 +167,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.NoticeRatio, true, nil
 		}
 
-	case "retry.max_attempts", "retry.base_delay", "retry.max_delay", "retry.reset_after":
+	case "retry.max_attempts", "retry.base_delay", "retry.max_delay", "retry.reset_after", "retry.max_elapsed":
 		policy, err := ReadRetryPolicy()
 		if err != nil {
 			return nil, false, err
@@ -179,16 +179,21 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return policy.BaseDelay, true, nil
 		case "retry.max_delay":
 			return policy.MaxDelay, true, nil
+		case "retry.max_elapsed":
+			return durationForDisplay(policy.MaxElapsed), true, nil
 		default:
 			return policy.ResetAfter, true, nil
 		}
-	case "timeouts.request", "timeouts.response_header":
+	case "timeouts.request", "timeouts.response_header", "timeouts.stream_idle":
 		settings, err := ReadRequestTimeouts()
 		if err != nil {
 			return nil, false, err
 		}
-		if key == "timeouts.request" {
+		switch key {
+		case "timeouts.request":
 			return settings.Request, true, nil
+		case "timeouts.stream_idle":
+			return durationForDisplay(settings.StreamIdle), true, nil
 		}
 		return settings.ResponseHeader, true, nil
 	case "context.idle_after", "context.idle_min_ratio":
@@ -461,10 +466,16 @@ func effectiveProviderValue(key string) (any, bool, error) {
 			if field == "retry.max_delay" {
 				return provider.Retry.MaxDelay, true, nil
 			}
+			if field == "retry.max_elapsed" {
+				return durationForDisplay(provider.Retry.MaxElapsed), true, nil
+			}
 			return provider.Retry.ResetAfter, true, nil
 		}
 		if field == "timeouts.request" {
 			return provider.RequestTimeout, true, nil
+		}
+		if field == "timeouts.stream_idle" {
+			return durationForDisplay(provider.StreamIdleTimeout), true, nil
 		}
 		return provider.ResponseHeaderTimeout, true, nil
 	}
@@ -490,6 +501,16 @@ func effectiveProviderValue(key string) (any, bool, error) {
 	default:
 		return nil, false, fmt.Errorf("unknown provider configuration key %q", key)
 	}
+}
+
+// durationForDisplay maps the "no limit" convention of the timeout and retry
+// keys (a negative duration) onto 0, which is what the other duration keys
+// report for off.
+func durationForDisplay(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 func matchProviderConfigKey(key string) (ConfigKey, bool) {

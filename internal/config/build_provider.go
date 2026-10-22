@@ -42,7 +42,10 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
-			Proxy:                 proxy,
+			// StreamIdleTimeout keeps its own convention: 0 = the provider's
+			// default, negative ("off") = no bound.
+			StreamIdleTimeout: p.StreamIdleTimeout,
+			Proxy:             proxy,
 		}), nil
 	case ProviderTypeOpenAIResponses:
 		return llm.NewResponsesProvider(llm.ResponsesConfig{
@@ -60,7 +63,10 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 				// Request bounds: timeouts.*, providers.<id>.timeouts.
 				RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 				ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
-				Proxy:                 proxy,
+				// StreamIdleTimeout keeps its own convention: 0 = the provider's
+				// default, negative ("off") = no bound.
+				StreamIdleTimeout: p.StreamIdleTimeout,
+				Proxy:             proxy,
 			},
 			Compat: p.Compat,
 		}), nil
@@ -79,7 +85,10 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 			// Request bounds: timeouts.*, providers.<id>.timeouts.
 			RequestTimeout:        llmRequestTimeout(p.RequestTimeout),
 			ResponseHeaderTimeout: llmRequestTimeout(p.ResponseHeaderTimeout),
-			Proxy:                 proxy,
+			// StreamIdleTimeout keeps its own convention: 0 = the provider's
+			// default, negative ("off") = no bound.
+			StreamIdleTimeout: p.StreamIdleTimeout,
+			Proxy:             proxy,
 		}), nil
 	default:
 		return nil, fmt.Errorf("providers.%s: unsupported type %q (want openai|openai-responses|anthropic)", p.ID, p.Type)

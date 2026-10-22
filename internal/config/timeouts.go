@@ -24,13 +24,19 @@ const (
 //   - ResponseHeader bounds the wait for a streamed request's response headers;
 //     the streamed body itself is not bounded (a long answer may stream for
 //     minutes).
+//   - StreamIdle bounds the silence between two reads of a streamed body: a
+//     provider that stops sending data mid-answer fails the request instead of
+//     hanging the turn (see llm.stream_idle.go).
 //
-// A zero field means "no limit" ("off" in the config). The values come from the
-// top-level `timeouts:` section, overridden per provider by
-// `providers.<id>.timeouts`.
+// A zero field means "no limit" ("off" in the config). StreamIdle is the one
+// exception: left unset it takes the provider's default (llm.DefaultStreamIdleTimeout,
+// or the longer reasoning one), and only an explicit "off" disables it.
+// The values come from the top-level `timeouts:` section, overridden per
+// provider by `providers.<id>.timeouts`.
 type RequestTimeouts struct {
 	Request        time.Duration
 	ResponseHeader time.Duration
+	StreamIdle     time.Duration
 }
 
 // DefaultRequestTimeouts is what an unconfigured `timeouts:` section resolves to.
@@ -48,8 +54,8 @@ func ReadRequestTimeouts() (RequestTimeouts, error) {
 	return applyTimeouts(out, mapValue(gkconfig.Get("timeouts")), "timeouts")
 }
 
-// applyTimeouts overlays a `timeouts:` map (request, response_header) onto base;
-// prefix names the section in errors ("timeouts",
+// applyTimeouts overlays a `timeouts:` map (request, response_header,
+// stream_idle) onto base; prefix names the section in errors ("timeouts",
 // "providers.<id>.timeouts").
 func applyTimeouts(base RequestTimeouts, section map[string]any, prefix string) (RequestTimeouts, error) {
 	for key, raw := range section {
@@ -59,8 +65,20 @@ func applyTimeouts(base RequestTimeouts, section map[string]any, prefix string) 
 			field = &base.Request
 		case "response_header":
 			field = &base.ResponseHeader
+		case "stream_idle":
+			// Unset means "the provider's default" here, so an explicit off has to
+			// be told apart from it (see RequestTimeouts).
+			d, err := parseTimeoutValue(raw)
+			if err != nil {
+				return RequestTimeouts{}, fmt.Errorf("%s.%s: %w", prefix, key, err)
+			}
+			if d == 0 {
+				d = llm.NoTimeout
+			}
+			base.StreamIdle = d
+			continue
 		default:
-			return RequestTimeouts{}, fmt.Errorf("%s.%s: unknown key (want request or response_header)", prefix, key)
+			return RequestTimeouts{}, fmt.Errorf("%s.%s: unknown key (want request, response_header or stream_idle)", prefix, key)
 		}
 		d, err := parseTimeoutValue(raw)
 		if err != nil {

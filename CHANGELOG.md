@@ -12,6 +12,7 @@
   - `wiring.Options.HostContext`（`personal.Config.HostContextSource`）允许宿主每回合提供一段文本（人物设定、主题索引、原话约束等）与其 hash：段开始时冻结进段上下文，作为 `## Host context` 一节放在附加提示之后；段内每回合按 hash 比较，变化时以现有的“上下文更新”消息追加新版本，不变则不写；交接/压缩后的新段重新读取最新内容；空内容等同于没有（不输出空节）；`suga inspect manifest` 的常驻上下文新增 `host_context` 一项。
   - 未设置这两个选项时，段上下文、上下文更新消息与工具列表与之前逐字节一致。
 - 会话来源 `xhen`：宿主应用（xhen）通过 `wiring.Options.SessionOrigin` 声明来源，创建的会话带 `origin=xhen`；`suga sessions` 默认不列这类会话（结果为空时提示被隐藏的数量），新增 `--origin <name>` 过滤（`--origin all` 列出全部来源，`--all` 仍只表示所有目录），`--json` 行新增 `origin` 字段；`suga data gc --retention` 不再按期清理它们（报告单列「由宿主管理，未清理 N 个」，生命周期由宿主决定），`--older-than` 显式清理仍可删除。
+- 流式响应的空闲超时：流式正文（chat、Anthropic、Responses）两次收到数据（文本、工具参数、心跳都算）之间的静默超过 `timeouts.stream_idle` 时，取消这次 HTTP 请求并作为可重试错误重新流式请求（`retry` 事件与 stderr 提示写 `stream idle for Ns`，已流出的文本作废重来）；默认普通请求 `120s`、请求带思考参数（`thinking`/`reasoning_effort`/`reasoning`）时 `300s`，`off` 关闭，可用 `providers.<id>.timeouts.stream_idle` 按 provider 覆盖。网关或上游连接中途静默不再把回合挂到外层取消。
 
 ### 修复
 
@@ -33,6 +34,7 @@
 
 ### 修复
 
+- provider 持续失败时进程退出慢：一次请求的全部重试现在受 `retry.max_elapsed`（默认 `3m`，`off` 关闭）限制，到点不再重试、直接失败（配了 `fallback_models` 则交给下一个模型），不再按“尝试次数 × 单次超时”拖到 3–4 分钟；失败回合的收尾本来只做有时限的记账（收工检查、`--verify`、后台任务收尾在出错时都跳过），所以进程数秒内退出并释放会话锁，紧跟着的 `--resume` 不再撞 `session is locked`。
 - chat：Ctrl-C 结束本地命令时，输入行上已输入的内容（半行）随中断事件归还，不再依赖编辑器缓冲的时序，任何时序下都能回到下一次提示（suga-l7u2）
 - 循环调用检测（`tools.loop_guard`）改为按“动作 + 结果”判定，不再把正常迭代当成死循环：重复调用的键现在包含结果摘要（是否出错 + 追加提示前结果正文的哈希），结果变了就不算重复；同一条成功写入类工具（`file_edit`/`file_write`/`file_remove`）之后 R1/R2 的计数清零，`改代码 → go test → 再改 → 再 go test` 这样累计 4 次不再提示。新增 R3：同一条 `shell_exec` 命令在一个回合内失败 3 次（中间有编辑也计数，改了还失败才是死路）时提示“这条命令已失败 N 次”，trace 的 `loop_guard` 事件 `rule` 新增 `R3`，chat 显示 `↻ shell_exec 已失败 ×N，已提醒模型`。提示语按规则如实描述：R1/R2 说“第 N 次相同调用且结果没有变化”，R3 说“第 N 次失败”；每组每回合最多提醒 2 次与排除工具（`update_plan`/`session_message`/`agent`）不变。
 

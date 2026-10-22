@@ -33,6 +33,9 @@ type OpenAIProvider struct {
 	retry *backoff
 	// streamRequired sends every request as a streamed one (OpenAIConfig).
 	streamRequired bool
+	// streamIdleTimeout bounds the silence between two reads of a streamed body
+	// (OpenAIConfig.StreamIdleTimeout); 0 takes the default of the request kind.
+	streamIdleTimeout time.Duration
 	// noImages marks a provider or model without vision: images become a text
 	// note (OpenAIConfig.NoImages).
 	noImages bool
@@ -67,6 +70,11 @@ type OpenAIConfig struct {
 	// headers; zero takes DefaultResponseHeaderTimeout and NoTimeout disables
 	// the bound.
 	ResponseHeaderTimeout time.Duration
+	// StreamIdleTimeout bounds the silence between two reads of a streamed body
+	// (see stream_idle.go). Zero takes DefaultStreamIdleTimeout - or
+	// DefaultReasoningStreamIdleTimeout for a request that asks the model to
+	// think first - and NoTimeout disables the bound.
+	StreamIdleTimeout time.Duration
 	// Proxy routes requests through the global network.proxy selector; nil keeps
 	// the default transport, which follows the environment proxies.
 	Proxy netproxy.ProxyFunc
@@ -92,10 +100,11 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 		name:         cfg.Name,
 		headers:      cfg.Headers,
 
-		reasoningEffort: cfg.ReasoningEffort,
-		retry:           newBackoff(cfg.Retry),
-		streamRequired:  cfg.StreamRequired,
-		noImages:        cfg.NoImages,
+		reasoningEffort:   cfg.ReasoningEffort,
+		retry:             newBackoff(cfg.Retry),
+		streamRequired:    cfg.StreamRequired,
+		noImages:          cfg.NoImages,
+		streamIdleTimeout: cfg.StreamIdleTimeout,
 	}
 }
 

@@ -109,8 +109,10 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "retry.base_delay", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
 	{Pattern: "retry.max_delay", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
 	{Pattern: "retry.reset_after", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
+	{Pattern: "retry.max_elapsed", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
 	{Pattern: "timeouts.request", Type: ConfigTypeDuration, Writable: true, Reader: "timeouts"},
 	{Pattern: "timeouts.response_header", Type: ConfigTypeDuration, Writable: true, Reader: "timeouts"},
+	{Pattern: "timeouts.stream_idle", Type: ConfigTypeDuration, Writable: true, Reader: "timeouts"},
 	{Pattern: "context.idle_after", Type: ConfigTypeDuration, Writable: true, Reader: "idle"},
 	{Pattern: "context.idle_min_ratio", Type: ConfigTypeFloat, Writable: true, Reader: "idle"},
 	{Pattern: "context.fold_every", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
@@ -285,8 +287,10 @@ var providerNestedDescriptors = map[string]ConfigKey{
 	"retry.base_delay":         {Pattern: "providers.<id>.retry.base_delay", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
 	"retry.max_delay":          {Pattern: "providers.<id>.retry.max_delay", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
 	"retry.reset_after":        {Pattern: "providers.<id>.retry.reset_after", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
+	"retry.max_elapsed":        {Pattern: "providers.<id>.retry.max_elapsed", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
 	"timeouts.request":         {Pattern: "providers.<id>.timeouts.request", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
 	"timeouts.response_header": {Pattern: "providers.<id>.timeouts.response_header", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
+	"timeouts.stream_idle":     {Pattern: "providers.<id>.timeouts.stream_idle", Type: ConfigTypeDuration, Writable: true, Reader: "providers"},
 }
 
 // KnownConfigKeys returns a copy of the fixed key descriptors. Provider and
