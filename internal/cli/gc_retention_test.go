@@ -43,6 +43,9 @@ func TestGCRetentionCommand(t *testing.T) {
 	mk("gc-run-old", 40*day, map[string]any{store.MetaOrigin: store.OriginRun})
 	mk("gc-chat-new", 10*day, map[string]any{store.MetaOrigin: store.OriginChat})
 	mk("gc-run-new", 10*day, map[string]any{store.MetaOrigin: store.OriginRun})
+	// A host application's session (origin xhen) outlives every retention
+	// period: `--retention` names it but leaves it alone.
+	mk("gc-xhen-old", 400*day, map[string]any{store.MetaOrigin: store.OriginXhen})
 	assert.Require(t, assert.NoErr(t, repo.Close()))
 
 	exists := func(id string) bool {
@@ -58,10 +61,12 @@ func TestGCRetentionCommand(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "交互会话（保留 180d）：2 个会话")
 		assert.StrContains(t, out, "非交互会话（保留 30d）：1 个会话")
+		assert.StrContains(t, out, "由宿主管理（origin=xhen）：未清理 1 个会话")
 		assert.StrContains(t, out, "将删除 3 个会话")
 		assert.StrContains(t, out, "加 --apply 执行")
 		assert.True(t, exists("gc-chat-old"))
 		assert.True(t, exists("gc-run-old"))
+		assert.True(t, exists("gc-xhen-old"))
 	})
 
 	t.Run("both selection rules at once are refused", func(t *testing.T) {
@@ -80,6 +85,17 @@ func TestGCRetentionCommand(t *testing.T) {
 		assert.False(t, exists("gc-run-old"))
 		assert.True(t, exists("gc-chat-new"))
 		assert.True(t, exists("gc-run-new"))
+		assert.True(t, exists("gc-xhen-old"), "a host-managed session survives the retention pass")
+	})
+
+	// An explicit age rule is a direct request, so it still removes a
+	// host-managed session: only the periodic retention pass keeps it.
+	t.Run("--older-than still removes a host-managed session", func(t *testing.T) {
+		out, err := runCLI(t, ctx, "data", "gc", "--older-than", "365d", "--apply")
+		assert.NoErr(t, err)
+		assert.StrContains(t, out, "已删除")
+		assert.False(t, exists("gc-xhen-old"))
+		assert.True(t, exists("gc-chat-new"))
 	})
 }
 

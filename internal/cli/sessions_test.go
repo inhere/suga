@@ -215,6 +215,71 @@ func seedOnlyHomeSessions(t *testing.T, n int) context.Context {
 	return ctx
 }
 
+// TestSessionsCommandHostManaged: the default list leaves out the sessions of a
+// host application (origin xhen); --origin names one entry point, --origin all
+// every one of them, and the empty hint counts the hidden ones.
+func TestSessionsCommandHostManaged(t *testing.T) {
+	t.Setenv("SUGA_HOME", shortCLIHome(t))
+	t.Setenv("SUGA_HOOKS", "off")
+	homeCwd, err := os.Getwd()
+	assert.Require(t, assert.NoErr(t, err))
+	dbPath, err := appconfig.ResolveCoreStorePath()
+	assert.Require(t, assert.NoErr(t, err))
+	repo, err := store.Open(dbPath)
+	assert.Require(t, assert.NoErr(t, err))
+	ctx := context.Background()
+	now := time.Now()
+	mk := func(id, cwd, origin string, ago time.Duration) {
+		at := now.Add(-ago)
+		assert.NoErr(t, repo.CreateSession(ctx, store.Session{ID: id, Title: id, Cwd: cwd,
+			CreatedAt: at, UpdatedAt: at, Meta: map[string]any{store.MetaOrigin: origin}}))
+	}
+	mk("chat-home", homeCwd, store.OriginChat, time.Hour)
+	mk("xhen-home", homeCwd, store.OriginXhen, 2*time.Hour)
+	// A directory only a host-managed session works in (absolute, so it holds on
+	// every platform).
+	xhenDir := t.TempDir()
+	mk("xhen-other", xhenDir, store.OriginXhen, 3*time.Hour)
+	assert.Require(t, assert.NoErr(t, repo.Close()))
+
+	t.Run("default hides the host-managed sessions", func(t *testing.T) {
+		assert.Eq(t, []string{"chat-home"}, listed(t, ctx, "-n", "0"))
+		assert.Eq(t, []string{"chat-home"}, listed(t, ctx, "-n", "0", "--all"))
+	})
+	t.Run("--origin xhen lists them", func(t *testing.T) {
+		assert.Eq(t, []string{"xhen-home"}, listed(t, ctx, "-n", "0", "--origin", "xhen"))
+		assert.Eq(t, []string{"xhen-home", "xhen-other"}, listed(t, ctx, "-n", "0", "--origin", "xhen", "--all"))
+	})
+	t.Run("--origin names one entry point and all keeps every one", func(t *testing.T) {
+		assert.Eq(t, []string{"chat-home"}, listed(t, ctx, "-n", "0", "--origin", "chat", "--all"))
+		assert.Eq(t, []string{"chat-home", "xhen-home", "xhen-other"}, listed(t, ctx, "-n", "0", "--origin", "all", "--all"))
+		// --all keeps meaning every directory, not every origin.
+		assert.Eq(t, 3, len(listed(t, ctx, "-n", "0", "--origin", "all", "--all")))
+	})
+	t.Run("the JSON row carries the origin", func(t *testing.T) {
+		out, _, err := runCLIAll(t, ctx, "sessions", "--json", "-n", "0", "--origin", "xhen")
+		assert.Require(t, assert.NoErr(t, err))
+		var rows []sessionRow
+		assert.Require(t, assert.NoErr(t, json.Unmarshal([]byte(out), &rows)))
+		assert.Require(t, assert.Len(t, rows, 1))
+		assert.Eq(t, store.OriginXhen, rows[0].Origin)
+	})
+	t.Run("an empty result names the hidden host-managed sessions", func(t *testing.T) {
+		// From the directory of the host-managed session only, the default view is
+		// empty and the hint names the hidden session with the flag that lists it.
+		t.Chdir(xhenDir)
+		out, errOut, err := runCLIAll(t, ctx, "sessions")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, "", out)
+		assert.StrContains(t, errOut, "另有 1 个 origin=xhen 的会话未列出")
+		assert.StrContains(t, errOut, "--origin xhen")
+		// With --origin xhen the list is not empty and no note is printed.
+		_, errOut, err = runCLIAll(t, ctx, "sessions", "--origin", "xhen")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.False(t, strings.Contains(errOut, "origin=xhen 的会话未列出"))
+	})
+}
+
 func TestSessionsCommandAgentSessions(t *testing.T) {
 	t.Setenv("SUGA_HOME", shortCLIHome(t))
 	t.Setenv("SUGA_HOOKS", "off")

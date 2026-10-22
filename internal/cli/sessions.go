@@ -28,6 +28,11 @@ type sessionsOptions struct {
 	// agents lists sub-agent sessions too (kept out by default: they belong
 	// to the session that started them).
 	agents bool
+	// origin keeps only the sessions of one entry point (chat, run, acp, agent,
+	// xhen); "all" lists every origin. The default leaves out the host-managed
+	// sessions (origin xhen), which belong to the host application (design
+	// 2026-10-20, 会话来源).
+	origin string
 }
 
 func newSessionsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
@@ -54,6 +59,7 @@ func newSessionsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd
 	cmd.BoolVar(&opts.all, "all", false, "list sessions of every directory (default: the current directory only)")
 	cmd.BoolVar(&opts.asJSON, "json", false, "write a JSON array")
 	cmd.BoolVar(&opts.agents, "agents", false, "list sub-agent sessions too (each names its parent session)")
+	cmd.StringVar(&opts.origin, "origin", "", "only sessions this entry point created: chat, run, acp, agent or xhen; 'all' lists every origin (default: all but xhen)")
 	cmd.AddArg("keywords", "keywords, like --query", false, nil, true)
 	return cmd
 }
@@ -73,6 +79,9 @@ type sessionRow struct {
 	Match string `json:"match,omitempty"`
 	// Parent is the session that started this sub-agent session (--agents).
 	Parent string `json:"parent,omitempty"`
+	// Origin is the entry point that created the session (meta.origin); empty
+	// for a session from before the key existed.
+	Origin string `json:"origin,omitempty"`
 }
 
 func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOptions, now time.Time) error {
@@ -129,15 +138,40 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		}
 	}
 	var rows []sessionRow
+	// inScope reports whether a session falls into the directory scope of this
+	// call (the current directory by default, a path prefix or everything).
+	inScope := func(s store.Session) bool {
+		switch {
+		case sameDirScope:
+			// No recorded directory (older sessions) stays out of the default list
+			// as well: --all is the way to see them.
+			return s.Cwd != "" && personal.SameDir(s.Cwd, here)
+		case cwd != "":
+			return pathHasPrefix(s.Cwd, cwd)
+		}
+		return true
+	}
 	// otherDirs counts the sessions the default scope hides: an empty result
-	// names their number, so a person notices the directory may be wrong.
+	// names their number, so a person notices the directory may be wrong. The
+	// host-managed ones are named separately instead of twice.
 	otherDirs := 0
 	if sameDirScope {
 		for _, s := range all {
-			if s.Cwd == "" || store.IsAgentSession(s) || personal.SameDir(s.Cwd, here) {
+			if s.Cwd == "" || store.IsAgentSession(s) || store.HostManagedSession(s) || personal.SameDir(s.Cwd, here) {
 				continue
 			}
 			otherDirs++
+		}
+	}
+	// hiddenXhen counts the host-managed sessions (origin xhen) the default
+	// origin filter leaves out of this call's scope: an empty result names their
+	// number too, with the way to list them.
+	hiddenXhen := 0
+	if opts.origin == "" {
+		for _, s := range all {
+			if store.HostManagedSession(s) && !store.IsAgentSession(s) && inScope(s) {
+				hiddenXhen++
+			}
 		}
 	}
 	for _, s := range all {
@@ -147,20 +181,22 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		if store.IsAgentSession(s) && !opts.agents {
 			continue
 		}
-		switch {
-		case sameDirScope:
-			// No recorded directory (older sessions) stays out of the default list
-			// as well: --all is the way to see them.
-			if s.Cwd == "" || !personal.SameDir(s.Cwd, here) {
+		if !inScope(s) {
+			continue
+		}
+		// Origin: the default leaves out the host-managed sessions (origin
+		// xhen), which the host application lists and keeps on its own terms;
+		// --origin names one entry point, --origin all every one of them.
+		origin := store.SessionOrigin(s)
+		if opts.origin == "" {
+			if store.HostManagedSession(s) {
 				continue
 			}
-		case cwd != "":
-			if !pathHasPrefix(s.Cwd, cwd) {
-				continue
-			}
+		} else if opts.origin != "all" && origin != opts.origin {
+			continue
 		}
 		// Older sessions stored the whole first prompt as the title.
-		row := sessionRow{ID: s.ID, Title: personal.SessionTitle(s.Title), Cwd: s.Cwd, Status: s.Status, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt}
+		row := sessionRow{ID: s.ID, Title: personal.SessionTitle(s.Title), Cwd: s.Cwd, Status: s.Status, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Origin: origin}
 		row.Provider, _ = s.Meta["provider"].(string)
 		row.Model, _ = s.Meta["model"].(string)
 		row.SugaVersion, _ = s.Meta["suga_version"].(string)
@@ -188,10 +224,10 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		if rows == nil {
 			rows = []sessionRow{}
 		}
-		writeEmptyHint(errOut, sameDirScope, here, otherDirs, rows)
+		writeEmptyHint(errOut, sameDirScope, here, otherDirs, hiddenXhen, rows)
 		return json.NewEncoder(out).Encode(rows)
 	}
-	writeEmptyHint(errOut, sameDirScope, here, otherDirs, rows)
+	writeEmptyHint(errOut, sameDirScope, here, otherDirs, hiddenXhen, rows)
 	if len(rows) == 0 {
 		return nil
 	}
@@ -208,9 +244,17 @@ func emptyScopeHint(dir string, otherDirs int) string {
 // writeEmptyHint prints the empty-scope hint on stderr — also for --json, so
 // stdout stays machine data. Only the plain default view hints: an empty
 // filtered (--cwd, --since, --query) result reports the filters, not the scope.
-func writeEmptyHint(errOut io.Writer, sameDirScope bool, here string, otherDirs int, rows []sessionRow) {
-	if sameDirScope && len(rows) == 0 {
+// An empty result also names the host-managed sessions the default origin
+// filter hid, when there are any.
+func writeEmptyHint(errOut io.Writer, sameDirScope bool, here string, otherDirs, hiddenXhen int, rows []sessionRow) {
+	if len(rows) > 0 {
+		return
+	}
+	if sameDirScope {
 		fmt.Fprintln(errOut, emptyScopeHint(here, otherDirs))
+	}
+	if hiddenXhen > 0 {
+		fmt.Fprintf(errOut, "另有 %d 个 origin=xhen 的会话未列出（--origin xhen 查看，--origin all 列出全部来源）\n", hiddenXhen)
 	}
 }
 

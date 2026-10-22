@@ -8,12 +8,17 @@ const (
 	// MetaOrigin is the session meta key holding the entry point.
 	MetaOrigin = "origin"
 	// OriginChat is an interactive `suga chat`, OriginRun a one-shot
-	// `suga run`, OriginACP a session an editor created over ACP and
-	// OriginAgent a sub-agent session.
+	// `suga run`, OriginACP a session an editor created over ACP,
+	// OriginAgent a sub-agent session and OriginXhen a topic session a host
+	// application (xhen) created in the shared home.
 	OriginChat  = "chat"
 	OriginRun   = "run"
 	OriginACP   = "acp"
 	OriginAgent = "agent"
+	// OriginXhen names a session of a host application that embeds suga
+	// (xhen). Its lifecycle belongs to the host: the default `suga sessions`
+	// listing leaves it out and `suga data gc --retention` never removes it.
+	OriginXhen = "xhen"
 	// MetaUsedInteractively marks a session created by a non-interactive entry
 	// point that a chat continued afterwards: from then on it counts as
 	// interactive.
@@ -43,9 +48,18 @@ func InteractiveSession(sess Session) bool {
 		return true
 	}
 	switch SessionOrigin(sess) {
-	case OriginRun, OriginACP, OriginAgent:
+	case OriginRun, OriginACP, OriginAgent, OriginXhen:
 		return false
 	default:
 		return true // chat, and any session from before the key existed
 	}
+}
+
+// HostManagedSession reports whether a session belongs to a host application
+// that embeds suga (origin xhen). Such a session is kept out of the default
+// `suga sessions` listing and out of the age-based retention pass of
+// `suga data gc --retention`: the host decides how long it lives, while an
+// explicit `--older-than` still removes it.
+func HostManagedSession(sess Session) bool {
+	return SessionOrigin(sess) == OriginXhen
 }

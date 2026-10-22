@@ -17,7 +17,20 @@ const (
 	OriginRun   = store.OriginRun
 	OriginACP   = store.OriginACP
 	OriginAgent = store.OriginAgent
+	// OriginXhen is the origin of a session a host application (xhen) created
+	// in the shared home: the host owns its lifecycle.
+	OriginXhen = store.OriginXhen
 )
+
+// SessionOrigin returns the origin to record on a session this runner creates:
+// an embedded host declares its own through wiring.Options.Origin; a front end
+// without one keeps its entry-point default (fallback).
+func (r *Runner) SessionOrigin(fallback string) string {
+	if r.cfg.SessionOrigin != "" {
+		return r.cfg.SessionOrigin
+	}
+	return fallback
+}
 
 // NewSessionFor is NewSession for a caller that knows the entry point it runs
 // as: origin is stored as meta.origin (an empty origin stores nothing, for a

@@ -161,7 +161,7 @@
 | `gc.retention.interactive` | `180d` | `suga data gc --retention` 对交互会话的保留期：chat 创建、被 chat 接续过（`used_interactively`）以及没有 `meta.origin` 的历史会话。`0` 表示该类不清理 |
 | `gc.retention.noninteractive` | `30d` | 同上，适用于非交互入口（`meta.origin` 为 `run`、`acp`、`agent`）创建的会话。`0` 表示该类不清理 |
 
-时长接受天数（`180d`、`30d`）、Go 时长（`4320h`）或秒数。`suga data gc --retention` 默认只报告（每类的会话数、条目数、预计字节），`--apply` 才删除；活跃会话、run 登记与持锁会话始终跳过，删除本身不 VACUUM（要回收磁盘空间再跑 `suga data vacuum`）。
+时长接受天数（`180d`、`30d`）、Go 时长（`4320h`）或秒数。`suga data gc --retention` 默认只报告（每类的会话数、条目数、预计字节），`--apply` 才删除；活跃会话、run 登记与持锁会话始终跳过，删除本身不 VACUUM（要回收磁盘空间再跑 `suga data vacuum`）。`meta.origin` 为 `xhen` 的会话（宿主应用 xhen 创建的，它通过 `wiring.Options.SessionOrigin` 声明）不参与按期清理：生命周期由宿主决定，报告单列“由宿主管理，未清理 N 个”，`suga data gc --older-than` 显式清理仍会删除。
 
 ## `mcp.*`
 
@@ -367,7 +367,7 @@ suga run --prompt "..."   # 单轮；[--allow-write] [--read-only] [--model] [--
 suga acp                                      # 以 ACP stdio 服务（供 gofer 等客户端接入）
 suga send --session <id|短名称|前缀> --text <文本>   # 给正在运行的 chat 送话（--wait 等真正开始）
 suga ps                                       # 正在运行的 chat 进程（第二列是短名称）
-suga sessions [关键词] [-n 10] [--since 7d] [--cwd .] [--agents] [--json]
+suga sessions [关键词] [-n 10] [--since 7d] [--cwd .] [--agents] [--origin <name>] [--json]
 suga inspect trace <session> [--turn <id>] [--json] [--analyze] [--web]
 suga undo <session> --list [--json]
 suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]

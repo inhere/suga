@@ -53,6 +53,9 @@ type GCRetentionClassReport struct {
 type GCRetentionReport struct {
 	Interactive    GCRetentionClassReport
 	NonInteractive GCRetentionClassReport
+	// HostManaged lists the sessions a host application owns (origin xhen):
+	// they belong to neither class and this pass never removes them.
+	HostManaged []Session
 	// Applied is false for a dry run.
 	Applied bool
 }
@@ -83,7 +86,19 @@ func (s *Store) CollectGarbageByRetention(ctx context.Context, now time.Time, po
 		Interactive:    GCRetentionClassReport{Interactive: true, Retention: policy.Interactive},
 		NonInteractive: GCRetentionClassReport{Retention: policy.NonInteractive},
 	}
+	// Sessions of a host application (origin xhen) belong to that host: this
+	// pass neither removes nor counts them, so a topic the host put aside
+	// survives any retention period. A sub-agent of such a session follows it.
+	managed := hostManagedSessions(sessions)
+	for _, session := range sessions {
+		if managed[session.ID] {
+			report.HostManaged = append(report.HostManaged, session)
+		}
+	}
 	expired := func(session Session) bool {
+		if managed[session.ID] {
+			return false
+		}
 		ttl, _ := retentionTTL(session, byID, policy)
 		if ttl <= 0 {
 			return false // this class is off
@@ -114,6 +129,32 @@ func (s *Store) CollectGarbageByRetention(ctx context.Context, now time.Time, po
 	}
 	report.Applied = true
 	return report, nil
+}
+
+// hostManagedSessions returns the ids of the sessions a host application owns
+// (origin xhen), including the sub-agent sessions whose parent is one: they are
+// outside the retention classes and outlive every period.
+func hostManagedSessions(sessions []Session) map[string]bool {
+	managed := make(map[string]bool)
+	for _, session := range sessions {
+		if HostManagedSession(session) {
+			managed[session.ID] = true
+		}
+	}
+	// Parents and children come in any order from ListSessions, so a child of a
+	// managed session is marked in a second pass (nested agents included).
+	for changed := true; changed; {
+		changed = false
+		for _, session := range sessions {
+			if managed[session.ID] || !IsAgentSession(session) {
+				continue
+			}
+			if managed[ParentSession(session)] {
+				managed[session.ID], changed = true, true
+			}
+		}
+	}
+	return managed
 }
 
 // retentionTTL returns the retention period that applies to a session and

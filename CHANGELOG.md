@@ -10,6 +10,7 @@
   - `wiring.Options.ExtraTools` 允许宿主把自己的 Go 工具注册进主会话工具表：它们出现在工具列表、`tool_search` 与 `suga_manifest` 的工具清单里，和内置工具一样受 `tools.disabled` 控制；与内置/MCP 工具或运行时自身注册的工具（`task`、`agent`、`update_plan` 等）重名时 `Open` 返回错误，而不是静默覆盖；子 agent 默认不获得这些工具。
   - `wiring.Options.HostContext`（`personal.Config.HostContextSource`）允许宿主每回合提供一段文本（人物设定、主题索引、原话约束等）与其 hash：段开始时冻结进段上下文，作为 `## Host context` 一节放在附加提示之后；段内每回合按 hash 比较，变化时以现有的“上下文更新”消息追加新版本，不变则不写；交接/压缩后的新段重新读取最新内容；空内容等同于没有（不输出空节）；`suga inspect manifest` 的常驻上下文新增 `host_context` 一项。
   - 未设置这两个选项时，段上下文、上下文更新消息与工具列表与之前逐字节一致。
+- 会话来源 `xhen`：宿主应用（xhen）通过 `wiring.Options.SessionOrigin` 声明来源，创建的会话带 `origin=xhen`；`suga sessions` 默认不列这类会话（结果为空时提示被隐藏的数量），新增 `--origin <name>` 过滤（`--origin all` 列出全部来源，`--all` 仍只表示所有目录），`--json` 行新增 `origin` 字段；`suga data gc --retention` 不再按期清理它们（报告单列「由宿主管理，未清理 N 个」，生命周期由宿主决定），`--older-than` 显式清理仍可删除。
 
 ## [0.44.0] - 2026-10-22
 

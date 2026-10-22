@@ -42,6 +42,12 @@ func TestCollectGarbageByRetention(t *testing.T) {
 		mk("agent-child", 40*day, map[string]any{
 			MetaKind: KindAgent, MetaParentSession: "chat-old", MetaOrigin: OriginAgent,
 		})
+		// Host-managed sessions (origin xhen) are never removed by period, and a
+		// sub-agent of one follows it.
+		mk("xhen-old", 400*day, map[string]any{MetaOrigin: OriginXhen})
+		mk("xhen-agent", 400*day, map[string]any{
+			MetaKind: KindAgent, MetaParentSession: "xhen-old", MetaOrigin: OriginAgent,
+		})
 		return s
 	}
 
@@ -61,7 +67,8 @@ func TestCollectGarbageByRetention(t *testing.T) {
 		assert.Eq(t, 180*day, report.Interactive.Retention)
 		assert.Eq(t, 30*day, report.NonInteractive.Retention)
 		assert.Eq(t, 4, len(report.Sessions()))
-		assert.Eq(t, int64(7), gcCount(t, s, `SELECT COUNT(*) FROM sessions`), "a dry run writes nothing")
+		assert.Eq(t, 2, len(report.HostManaged), "the xhen session and its sub-agent stay outside both classes")
+		assert.Eq(t, int64(9), gcCount(t, s, `SELECT COUNT(*) FROM sessions`), "a dry run writes nothing")
 	})
 
 	t.Run("apply removes the expired classes and their old orphan events", func(t *testing.T) {
@@ -82,11 +89,11 @@ func TestCollectGarbageByRetention(t *testing.T) {
 			_, err := s.GetSession(ctx, id)
 			assert.ErrIs(t, err, ErrSessionNotFound)
 		}
-		for _, id := range []string{"run-fresh", "chat-fresh", "acp-old-used"} {
+		for _, id := range []string{"run-fresh", "chat-fresh", "acp-old-used", "xhen-old", "xhen-agent"} {
 			_, err := s.GetSession(ctx, id)
 			assert.NoErr(t, err)
 		}
-		assert.Eq(t, int64(3), gcCount(t, s, `SELECT COUNT(*) FROM sessions`))
+		assert.Eq(t, int64(5), gcCount(t, s, `SELECT COUNT(*) FROM sessions`))
 		assert.Eq(t, int64(1), gcCount(t, s, `SELECT COUNT(*) FROM events`), "only the recent orphan event stays")
 		assert.Eq(t, int64(0), gcCount(t, s, `SELECT COUNT(*) FROM entries_fts WHERE session_id NOT IN (SELECT id FROM sessions)`))
 	})
@@ -155,5 +162,14 @@ func TestSessionOriginHelpers(t *testing.T) {
 	t.Run("a historical session is interactive", func(t *testing.T) {
 		assert.Eq(t, "", SessionOrigin(Session{}))
 		assert.True(t, InteractiveSession(Session{}), "a session from before meta.origin is kept longer")
+	})
+
+	t.Run("a host-managed session is not interactive", func(t *testing.T) {
+		xhen := Session{Meta: map[string]any{MetaOrigin: OriginXhen}}
+		assert.Eq(t, OriginXhen, SessionOrigin(xhen))
+		assert.False(t, InteractiveSession(xhen))
+		assert.True(t, HostManagedSession(xhen))
+		assert.False(t, HostManagedSession(Session{Meta: map[string]any{MetaOrigin: OriginChat}}))
+		assert.False(t, HostManagedSession(Session{}), "a session from before meta.origin is not host-managed")
 	})
 }
