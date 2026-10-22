@@ -363,6 +363,9 @@ type mcpTool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
+	// Annotations carries the optional hints of tools/list (readOnlyHint and
+	// the other spec fields); a server without them leaves it empty.
+	Annotations Annotations `json:"annotations"`
 }
 
 // mcpToolAdapter exposes one MCP tool as an api.Tool. Its client is the
@@ -386,6 +389,10 @@ func (a *mcpToolAdapter) MCPServer() string   { return a.client.serverName() }
 func (a *mcpToolAdapter) Name() string        { return a.def.Name }
 func (a *mcpToolAdapter) Description() string { return a.def.Description }
 func (a *mcpToolAdapter) Kind() tools.Kind    { return tools.KindMCP }
+
+// MCPAnnotations returns the hints the server declared for this tool; hosts read
+// them through AnnotationsOf. They never grant an approval by themselves.
+func (a *mcpToolAdapter) MCPAnnotations() Annotations { return a.def.Annotations }
 
 // mcpPlaceholderArg is the optional argument a tool without parameters gets in
 // its schema: some OpenAI-compatible gateways turn an empty properties object
