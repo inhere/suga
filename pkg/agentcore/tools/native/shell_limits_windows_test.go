@@ -37,3 +37,11 @@ func TestShellLimitsCPUTimeLimit(t *testing.T) {
 	assert.StrContains(t, content, "超出 suga 的资源限制")
 	assert.StrContains(t, content, "CPU 时间 5s")
 }
+
+// busyCommand is the helper command line that burns CPU instead of allocating
+// (only the Windows CPU-time test uses it).
+func busyCommand(t *testing.T) string {
+	t.Helper()
+	t.Setenv(busyEnv, "1")
+	return helperLine()
+}

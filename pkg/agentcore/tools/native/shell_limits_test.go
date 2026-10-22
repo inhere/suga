@@ -70,13 +70,6 @@ func helperCommand(t *testing.T, mb int) string {
 	return helperLine()
 }
 
-// busyCommand is the helper command line that burns CPU instead of allocating.
-func busyCommand(t *testing.T) string {
-	t.Helper()
-	t.Setenv(busyEnv, "1")
-	return helperLine()
-}
-
 // helperLine is the helper's command line with the environment of the test.
 func helperLine() string {
 	flag := " '-test.run=^TestShellLimitsHelperProcess$'"
