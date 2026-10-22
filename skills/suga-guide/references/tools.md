@@ -231,7 +231,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 ```
 
 - `permissionDecision` 为 `deny` 时拒绝该调用，理由作为工具错误交给模型；缺省（或 `allow`/`ask`）只表示“没有异议”。
-- `updatedInput` 替换这次调用的参数。`tool_input` 是完整原始参数（不改写就无关变更），因为改写需要原值；把 hook 命令配成可信的程序。
+- `updatedInput` 替换这次调用的参数。`tool_input` 是未脱敏的完整原始参数（改写需要原值）；因此 `hooks.command` 必须是可信的程序。
 
 三条硬规则（内置 hook、外部命令 hook、宿主注入的 hook 都一样，代码里各有生效点与测试）：
 
