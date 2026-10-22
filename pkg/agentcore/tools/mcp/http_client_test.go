@@ -39,6 +39,9 @@ type httpFixture struct {
 	token          string
 	slowCall       time.Duration
 	callError      bool
+	// toolAnnotations, when set, is the annotations object of the single
+	// tool the fake server returns from tools/list.
+	toolAnnotations map[string]any
 }
 
 func newHTTPFixture(t *testing.T) (*httpFixture, ServerConfig) {
@@ -98,10 +101,14 @@ func (f *httpFixture) handle(w http.ResponseWriter, r *http.Request) {
 	var result any = map[string]any{}
 	switch req.Method {
 	case "tools/list":
-		result = map[string]any{"tools": []map[string]any{{
+		tool := map[string]any{
 			"name": "echo", "description": "echo text",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string"}}},
-		}}}
+		}
+		if f.toolAnnotations != nil {
+			tool["annotations"] = f.toolAnnotations
+		}
+		result = map[string]any{"tools": []map[string]any{tool}}
 	case "tools/call":
 		if f.slowCall > 0 {
 			time.Sleep(f.slowCall)

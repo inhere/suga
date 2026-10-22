@@ -226,6 +226,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 - 用 `--mcp-config <file>`（Claude 风格的 `mcpServers` JSON）或配置里的 `mcp.servers` 接入。
 - MCP 调用默认一律拒绝，需在 `tools.auto_allow`（`--read-only` 时用 `tools.read_only_allow`）中放行，条目形如 `server/工具glob`；两者都为空时所有 MCP 调用被拒绝。
+- 服务器在 `tools/list` 里声明的 `annotations.readOnlyHint` 只用于上报：ACP 里这类工具的 `tool_call` 与 `session/request_permission` 报 `kind=read`（客户端可据此自动放行；声明 `destructiveHint: true` 的仍报 `other`），suga 自己从不因该声明放行——权限请求照发，`--read-only` 与上面的放行规则不变。
 - 工具很多时会延迟加载，模型通过 `tool_search` 取用。
 
 ## 子 agent

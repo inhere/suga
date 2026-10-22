@@ -7,9 +7,7 @@
 ### 新增
 
 - 语言规则文件 `lang-rules.yaml`：`file_symbols`/`file_refs` 的语言识别和 trace 分析的测试命令识别改由语言注册表描述，内置 → `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml` 三层（同名整条替换、新名追加、`enabled: false` 关闭）；一门语言只需一段 YAML（扩展名、遮蔽语法、块风格 `brace`/`indent`/`end_keyword`、声明行正则、ctags 语言名、测试命令）。内置 JavaScript/TypeScript、Python、Java 迁到内嵌规则且符号与引用的输出逐字节不变；新增 C#（Allman 花括号）、Kotlin、Ruby（`end_keyword`）、C 与 C++（`.h` 的 ctags 映射 C++）四门语言的符号与引用遮蔽，`dotnet test`/`rspec`/`ctest`/`make test` 的识别迁入对应语言规则后结果不变。内置 `maskBraces`/`maskPython` 换成等价的通用遮蔽 `maskSpec`；规则文件出错（语法、未知字段、坏正则、未知 `blocks`、扩展名冲突）时整份跳过并写日志，`suga inspect manifest` 新增 `Language rules` 一节列出生效语言（名字、扩展名、块风格、来源层、ctags）与被跳过的文件及原因，工具描述里的语言列表由注册表生成。Go/PHP/YAML/TOML 的实现在代码里且扩展名受保护。
-
 - 收工检查（`agents.nudge`，默认 `on`）：回合正常结束后按两条规则判断“模型是不是提前收工”——N1 改动后没有验证（本回合最后一次成功的 `file_edit`/`file_write`/`file_remove` 之后没有任何 `shell_exec` 调用，或会话计划里还有 pending/in_progress 的项）、N2 说了要继续却停下（最后一条助手消息无工具调用，且其末尾约 300 字符命中“接下来我…”“让我先运行…”“I'll now run…”“Let me check…”等承诺句式；以问句结尾、征求同意的不算）。`run` 命中时注入一条 `[收工检查]` 回合，如实列出命中的规则与证据（改了哪些文件、未完成的计划项、结尾那句话），要求继续完成或说明为什么不需要；N2 每次 `run` 最多推回 2 次、N1 最多 1 次，用了 `--verify` 时跳过 N1；文本模式在 stderr 打一行 `nudge: N2 结尾说…`，stream-json 新增 `{"type":"nudge",…}` 行，trace 记 `nudge` 事件（`rule`、`action`、`evidence`）。`chat` 只提示不推回：回合结束后显示一行灰色提示（`⚠ 最后修改 a.txt 之后没有运行 shell_exec；结尾说接下来我去跑测试`），不自动开回合；ACP 只写 trace（`action=recorded`）。回合出错、yield、取消、收尾（WrapUp）时不检查。规则可配置（`nudge-rules.yaml`）：内置规则拆为按语言命名的 promise 规则（`promise-zh`、`promise-en`，原 N2）与 `unverified-write`/`plan-open`（原 N1 拆开，各自可关），按层加载——内置 → `$SUGA_HOME/nudge-rules.yaml` → `<workspace>/.suga/nudge-rules.yaml`（同名整条替换、新名追加、`enabled: false` 关闭；同类替换规则缺 kind 时沿用内置种类）；种类固定三种（`promise`：`patterns` 句式；`unverified_write`：`write_tools`/`check_tools`/`check_command`，内置 `check_command` 只认常见测试/构建/检查命令，改完随手的 `ls` 不再算验证；`plan_open`：无字段），坏正则、未知 kind、新规则缺 kind 带文件路径与规则名启动报错并跳过该文件；推回次数按种类（promise 2 次，未验证/未完成合计 1 次）；trace 与 stream-json 的 `nudge` 事件改写规则名并新增 `kind` 字段；`suga inspect manifest` 列出生效规则（名字、种类、来源层）。
-
 - 新命令 `suga inspect rules <approval|output|nudge|lang> [--builtin] [--json]`（只读，不写 SUGA_HOME）：打印生效规则与来源层（builtin / 文件路径）、被跳过的文件与原因；`--builtin` 打印内置规则的原始 YAML（output/lang 逐份内嵌文件、nudge 为可直接写进规则文件的形态、approval 无内置则说明默认行为），供模型或用户照写规则文件。`suga inspect manifest` 新增 `Output rules` 一节（输出规则按名字、来源层列出，被跳过的文件列在 `output_rule_skips`），与 nudge/lang 汇总一致。
 - skills 的 suga-guide 新增 `references/rules.md`：四种规则文件（审批/输出整理/收工检查/语言）的统一参考——用途、文件位置与三层顺序、同名替换/新增/关闭语义、完整字段表（以代码为准）、每类一个完整示例、核对命令，以及受保护路径说明（`$SUGA_HOME` 与 `<workspace>/.suga/` 的写入在 chat/ACP 先询问、run/子 agent 被拒，规则内容应先给用户看、用户同意再写）；`tools.md`/`config.md` 对应段落改为简述并指向它，SKILL.md 的 description 与正文加"写规则"入口；rules.md 的 yaml 示例有测试守护（用与实现相同的 loader 逐个解析）。
 
@@ -17,6 +15,10 @@
 
 - chat：Ctrl-C 结束本地命令时，输入行上已输入的内容（半行）随中断事件归还，不再依赖编辑器缓冲的时序，任何时序下都能回到下一次提示（suga-l7u2）
 - 循环调用检测（`tools.loop_guard`）改为按“动作 + 结果”判定，不再把正常迭代当成死循环：重复调用的键现在包含结果摘要（是否出错 + 追加提示前结果正文的哈希），结果变了就不算重复；同一条成功写入类工具（`file_edit`/`file_write`/`file_remove`）之后 R1/R2 的计数清零，`改代码 → go test → 再改 → 再 go test` 这样累计 4 次不再提示。新增 R3：同一条 `shell_exec` 命令在一个回合内失败 3 次（中间有编辑也计数，改了还失败才是死路）时提示“这条命令已失败 N 次”，trace 的 `loop_guard` 事件 `rule` 新增 `R3`，chat 显示 `↻ shell_exec 已失败 ×N，已提醒模型`。提示语按规则如实描述：R1/R2 说“第 N 次相同调用且结果没有变化”，R3 说“第 N 次失败”；每组每回合最多提醒 2 次与排除工具（`update_plan`/`session_message`/`agent`）不变。
+
+### 变更
+
+- ACP 的 MCP 工具按服务器声明上报 kind（配合 gofer-o49v）：`tools/list` 的 `annotations`（`readOnlyHint`、`destructiveHint`、`idempotentHint`、`openWorldHint`、`title`）现在由 MCP 客户端解析；ACP 里 `readOnlyHint: true`（且未声明 `destructiveHint: true`）的 MCP 工具，`tool_call` 与 `session/request_permission` 都报 `kind=read`，客户端（gofer）据此自动放行只读工具。suga 自己不因该声明放行：权限请求照发，`read_only` 模式仍拒绝，chat/run/子 agent 的 MCP 审批规则不变；`destructiveHint: true` 或无 annotations 的仍是 `kind=other`。
 
 ## [0.43.0] - 2026-10-21
 

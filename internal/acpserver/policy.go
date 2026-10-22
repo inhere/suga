@@ -198,7 +198,11 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 	}
 	kind, readTool := pending.kind, pending.readTool
 	if tools.IsMCP(tool) {
-		kind, readTool = acp.ToolKindOther, false
+		// MCP: the announced kind follows the server's readOnlyHint, but never the
+		// read fast path — the declaration is the server's claim, so the permission
+		// request is still sent and read_only mode still refuses the call.
+		kind, _ = toolKind(tool) // the kind only; the read fast path stays off
+		readTool = false
 	} else if tools.MetaOf(tool).AgentState {
 		// Agent-state tools pass even in read_only mode: the tool decides
 		// itself whether the write is allowed. Checked before the read-only
@@ -444,7 +448,10 @@ var acpKinds = map[tools.Category]acp.ToolKind{
 
 // toolKind returns the ACP kind of tool and whether it is read-only (runs
 // without a permission request, also in read_only mode). Unknown tools, MCP
-// tools and tools that declare nothing are Other and require permission.
+// tools and tools that declare nothing are Other and require permission; an MCP
+// tool is announced as Read when its server declares annotations.readOnlyHint
+// (a destructive claim wins and keeps Other), but it is never a read-only tool
+// for the approval layer.
 // callTitle is the title of a tool call in the client: the tool name, or for
 // the agent tool its task description ("agent: find callers of Foo").
 func callTitle(call agentcore.ToolCall) string {
@@ -457,6 +464,15 @@ func callTitle(call agentcore.ToolCall) string {
 }
 
 func toolKind(tool agentcore.Tool) (acp.ToolKind, bool) {
+	if tools.IsMCP(tool) {
+		// A server-declared readOnlyHint is reported to the client (gofer
+		// auto-allows kind=read); the second result stays false so the permission
+		// request is still sent and suga's own approval layers never skip it.
+		if annotations, ok := mcp.AnnotationsOf(tool); ok && annotations.SafeReadOnly() {
+			return acp.ToolKindRead, false
+		}
+		return acp.ToolKindOther, false
+	}
 	meta := tools.MetaOf(tool)
 	kind, ok := acpKinds[meta.Category]
 	if !ok {
