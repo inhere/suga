@@ -15,6 +15,7 @@ import (
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/mcp"
@@ -42,7 +43,19 @@ type Options struct {
 	PreferredTools []PreferredToolStatus
 	// MCPConfigs are Claude-style config files read by OpenCLI into Servers.
 	MCPConfigs []string
-	Hooks      []agentcore.Hook
+	// ExtraTools are the host's in-process tools (a program embedding suga, e.g.
+	// xhen): Open registers them next to the built-in ones of the main session,
+	// so they are in the tool table, the manifest and tool_search, and
+	// tools.disabled removes them like any other tool. A name a built-in or MCP
+	// tool already has (or one the runtime registers itself, see
+	// runtimeToolNames) is a startup error. Sub-agents never get them.
+	ExtraTools []api.Tool
+	// HostContext returns the host's context text (persona, topic index, verbatim
+	// constraints) and a hash of it; nil = no host context. The segment start
+	// freezes it in the segment context and every turn compares the hash: a
+	// change inside a segment appends a context update. An empty text means none.
+	HostContext func() (content, hash string)
+	Hooks       []agentcore.Hook
 	// Approver is the permission policy of the approval layer (run: MCP
 	// allowlist; chat: chat approver set by OpenCLI; ACP: RequestPermission);
 	// nil denies every tool call (fail closed).
@@ -270,6 +283,9 @@ func toolsAllowWrite() (bool, error) {
 
 // Open assembles one runtime.
 func Open(ctx context.Context, opts Options) (*Runtime, error) {
+	if err := validateExtraToolNames(opts.ExtraTools); err != nil {
+		return nil, err
+	}
 	workspace, ruleCWD, allowWrite, servers := opts.Workspace, opts.RuleCWD, opts.AllowWrite, opts.Servers
 	approval := approvalPolicy{}
 	if opts.approvalPolicy != nil {
@@ -352,9 +368,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	sessionEnv := newSessionEnvProvider()
 	var capabilities defaultCapabilities
 	if opts.CLIMode {
-		capabilities, err = buildPersonalCLICapabilitiesWithSnapshot(ctx, workspace, dirs, allowWrite, servers, snapshotter)
+		capabilities, err = buildPersonalCLICapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools)
 	} else {
-		capabilities, err = buildPersonalCapabilitiesWithServersAndSnapshot(ctx, workspace, dirs, allowWrite, servers, snapshotter)
+		capabilities, err = buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools)
 	}
 	if err != nil {
 		return nil, err
@@ -507,6 +523,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			MemoryIndexNote: indexNote,
 			Skills:          skillsText,
 			AppendPrompt:    appendSystemPrompt(opts.AppendSystemPrompt),
+			HostContext:     hostContextText(opts.HostContext),
 			DeferredTools:   vis.PromptSection(),
 		}, skillReg)
 	}
@@ -637,6 +654,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		},
 		AppendSystemPrompt:    appendSystemPrompt(opts.AppendSystemPrompt),
 		AppendSystemPromptSet: opts.ClearAppendSystemPrompt,
+		HostContextSource:     opts.HostContext,
 		TranscriptDir:         transcriptDir,
 		LockRoot:              lockRoot,
 		ProcessRoot:           processRoot,

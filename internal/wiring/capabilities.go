@@ -16,6 +16,7 @@ import (
 	axconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/netproxy"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	toolsmcp "github.com/inhere/suga/pkg/agentcore/tools/mcp"
@@ -85,6 +86,15 @@ func buildDefaultCapabilitiesWithServers(ctx context.Context, workspace string, 
 }
 
 func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, additional []toolsmcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
+	return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, additional, snapshotter, nil)
+}
+
+// buildDefaultCapabilitiesWithExtras is buildDefaultCapabilitiesWithServersAndSnapshot
+// plus extra, the host's in-process tools (Options.ExtraTools) of an embedding
+// caller. They are ordinary tools of the main session: registered after the MCP
+// ones (so a name collision is reported instead of shadowing), and tools.disabled
+// applies to them like to every other tool.
+func buildDefaultCapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, additional []toolsmcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
 	// The language rules shape the symbol and reference tools and the test
 	// command recognition, so they are loaded before the tools are built.
 	loadLangRuleFiles(workspace)
@@ -112,6 +122,12 @@ func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspa
 		built.recordConflicts(provider)
 		built.closers = append(built.closers, provider)
 	}
+	// The host's own tools are registered before tools.disabled is applied, so a
+	// disabled host tool (or MCP/server name) is validated and removed here too.
+	if err := registerHostTools(registry, extra); err != nil {
+		_ = built.Close()
+		return defaultCapabilities{}, err
+	}
 	// tools.disabled: a listed tool is not registered, so it is absent from the
 	// schemas (and from tool_search and the manifest) instead of failing on call.
 	if err := applyDisabledTools(registry); err != nil {
@@ -132,6 +148,57 @@ func (c defaultCapabilities) Close() error {
 		}
 	}
 	return firstErr
+}
+
+// lateToolNames are the tools Open registers itself after the capability
+// build. A host tool with one of these names would be replaced by its own
+// (tool_search) or panic at registration, so Options.ExtraTools rejects them
+// up front instead of failing halfway through a runtime.
+var lateToolNames = []string{
+	"agent", "memory", "recall", "session_search", "skill", "suga_manifest", "task", "tool_search", "update_plan",
+}
+
+// validateExtraToolNames rejects a host tool whose name the runtime registers
+// later or another host tool already uses. A nil tool or an empty name is
+// reported by registerHostTools, where the registry is at hand.
+func validateExtraToolNames(extra []api.Tool) error {
+	seen := make(map[string]bool, len(extra))
+	for i, t := range extra {
+		if t == nil {
+			continue
+		}
+		name := strings.TrimSpace(t.Name())
+		for _, reserved := range lateToolNames {
+			if name == reserved {
+				return fmt.Errorf("extra tool %q (Options.ExtraTools): the name is reserved by the runtime", name)
+			}
+		}
+		if seen[name] {
+			return fmt.Errorf("extra tool #%d (Options.ExtraTools): duplicate name %q", i, name)
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
+// registerHostTools adds the host's in-process tools to reg. A name a built-in
+// or MCP tool already owns, or an empty name, is a startup error: the host must
+// not silently shadow a suga tool (and a duplicate registration would panic).
+func registerHostTools(reg *tools.Registry, extra []api.Tool) error {
+	for i, t := range extra {
+		if t == nil {
+			return fmt.Errorf("extra tool #%d (Options.ExtraTools): nil tool", i)
+		}
+		name := strings.TrimSpace(t.Name())
+		if name == "" {
+			return fmt.Errorf("extra tool #%d (Options.ExtraTools): empty name", i)
+		}
+		if _, err := reg.Get(name); err == nil {
+			return fmt.Errorf("extra tool %q: a built-in or MCP tool already has that name", name)
+		}
+		reg.Register(t)
+	}
+	return nil
 }
 
 // inlineOutputBytes is tools.max_output_bytes: the largest tool result kept

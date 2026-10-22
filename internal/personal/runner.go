@@ -86,8 +86,14 @@ type Config struct {
 	// AppendSystemPromptSet marks AppendSystemPrompt as explicitly supplied by
 	// the caller, so an empty value clears the saved prompt instead of keeping it.
 	AppendSystemPromptSet bool
-	Hooks                 []agentcore.Hook
-	TranscriptDir         string
+	// HostContextSource returns the embedding host's context text (persona, topic
+	// index, verbatim constraints) and a hash of it; nil = the host has none. The
+	// text is frozen in the segment snapshot at every segment start and compared
+	// by hash at each turn start: a change inside a segment appends a context
+	// update. Empty content is the same as no host context (no empty section).
+	HostContextSource func() (content, hash string)
+	Hooks             []agentcore.Hook
+	TranscriptDir     string
 	// SessionsDir is the per-session file root ($SUGA_HOME/sessions). Message
 	// images are stored below <SessionsDir>/<session_id>/images and read back
 	// from there when a request is assembled; empty disables both.
