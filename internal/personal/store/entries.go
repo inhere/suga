@@ -261,6 +261,72 @@ func (s *Store) LatestEntry(ctx context.Context, sessionID, typ string) (*Entry,
 	return &out[0], nil
 }
 
+// RecentEntries returns the newest entries of the given types, newest first, at
+// most limit of them (nil when the session has none). It walks the
+// (session_id, seq) primary key backwards and stops after limit rows, so a
+// session with a very long log still answers from a few index reads.
+func (s *Store) RecentEntries(ctx context.Context, sessionID string, types []string, limit int) ([]Entry, error) {
+	if len(types) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	q := `SELECT ` + entryCols + ` FROM entries WHERE session_id = ? AND type IN (` + placeholders(len(types)) + `)
+		ORDER BY seq DESC LIMIT ?`
+	args := make([]any, 0, len(types)+2)
+	args = append(args, sessionID)
+	for _, t := range types {
+		args = append(args, t)
+	}
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list recent entries: %w", err)
+	}
+	defer rows.Close()
+	out := []Entry{}
+	for rows.Next() {
+		e, err := scanEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.restoreToolBodies(sessionID, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CountEntriesByType counts a session's entries of one type. The query is a
+// range scan of that session's primary-key rows with the type filter, never a
+// walk of the whole entries table.
+func (s *Store) CountEntriesByType(ctx context.Context, sessionID, typ string) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM entries WHERE session_id = ? AND type = ?`,
+		sessionID, typ).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count %s entries: %w", typ, err)
+	}
+	return n, nil
+}
+
+// LastEntryAt is the time of a session's newest entry (the zero time when the
+// session has none). The primary key makes this a single index read plus the
+// row it points at.
+func (s *Store) LastEntryAt(ctx context.Context, sessionID string) (time.Time, error) {
+	var created string
+	err := s.db.QueryRowContext(ctx, `SELECT created_at FROM entries WHERE session_id = ? ORDER BY seq DESC LIMIT 1`,
+		sessionID).Scan(&created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read last entry time: %w", err)
+	}
+	return parseTime(created), nil
+}
+
 func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
