@@ -153,6 +153,9 @@ func TestCheckNudgePromise(t *testing.T) {
 	}{
 		{name: "chinese promise", text: "文件已经改好。接下来我去跑测试。", plain: true, want: true},
 		{name: "chinese next step", text: "下一步我会补上测试。", plain: true, want: true},
+		// The reply script chat_nudge.py's fake model sends (make smoke-chat): it has
+		// to keep hitting promise-zh after the patterns were tightened.
+		{name: "chinese promise of the nudge smoke", text: "文件已写入。接下来我去跑测试。", plain: true, want: true},
 		{name: "chinese let me", text: "让我先运行一下单元测试", plain: true, want: true},
 		{name: "chinese first person will", text: "改动都做完了，我会去跑集成测试。", plain: true, want: true},
 		{name: "chinese first person 先", text: "我先运行一遍单元测试，再看结果。", plain: true, want: true},
