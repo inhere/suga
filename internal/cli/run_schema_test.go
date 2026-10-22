@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -169,6 +171,39 @@ func TestRunOutputSchemaEndToEnd(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, 1, *calls)
 		assert.Eq(t, true, resultSchemaField(t, out.Bytes())["passed"])
+	})
+
+	t.Run("schema from a file", func(t *testing.T) {
+		verifyRunDir(t)
+		calls, url := schemaServer(t, func(int) string { return `{"status":"ok"}` })
+		setTestProvider(t, url)
+		path := filepath.Join(t.TempDir(), "review.json")
+		assert.Require(t, assert.NoErr(t, os.WriteFile(path, []byte(schema), 0o600)))
+
+		var out, diag bytes.Buffer
+		err := RunPersonalCLI(context.Background(), "run", []string{
+			"--prompt", "summarise", "--output-format", "stream-json", "--session-id", "schema-file",
+			"--output-schema", path,
+		}, strings.NewReader(""), &out, &diag)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 1, *calls)
+		assert.Eq(t, true, resultSchemaField(t, out.Bytes())["passed"])
+	})
+
+	t.Run("an unknown draft is a usage error", func(t *testing.T) {
+		verifyRunDir(t)
+		calls, url := schemaServer(t, func(int) string { return `{}` })
+		setTestProvider(t, url)
+
+		var out, diag bytes.Buffer
+		err := RunPersonalCLI(context.Background(), "run", []string{
+			"--prompt", "summarise", "--session-id", "schema-draft",
+			"--output-schema", `{"$schema":"https://json-schema.org/draft/2030-01/schema","type":"object"}`,
+		}, strings.NewReader(""), &out, &diag)
+		assert.Require(t, assert.Err(t, err))
+		assert.Eq(t, 2, ExitCode(err))
+		assert.StrContains(t, err.Error(), "不受支持")
+		assert.Eq(t, 0, *calls)
 	})
 
 	t.Run("chat refuses the flag", func(t *testing.T) {
