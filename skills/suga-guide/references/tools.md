@@ -177,8 +177,8 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 - 工具结果超过 `tools.max_output_bytes` 时，脱敏后的原文存到 `$SUGA_HOME/sessions/<id>/outputs/`，上下文只留头尾（各 2000 字节）和 ref（形如 `out:<session>:<hex>`）；用 `recall` 读取，用 `session_search` 检索。
 - 在此之前，shell 结果会先整理（`tools.minimize_output`，默认开）：去掉颜色码与进度重绘，折叠连续相同的行，测试与构建输出按输出规则裁剪——全部通过时只留各包结果和一行汇总，有失败时只留失败用例及其信息与日志；原文保存为 ref，结果中注明。
 - 内置规则覆盖 `go test`、`cargo test`、jest/vitest/mocha 与 `npm|pnpm|yarn|bun test`、pytest、Maven、Gradle、`git log`/`git diff`/`git status` 与 `rg`/`grep` 的命中。
-- 一条规则可以丢行、折叠重复噪声、改写整理结果（`replace`）、按捕获的键分组（`group_by`）、保留首尾 N 行，并给自己设更低的门槛（字段与格式见仓库 `pkg/agentcore/tools/native/rules/`）。
-- `$SUGA_HOME/output-rules.yaml` 与其后的 `<workspace>/.suga/output-rules.yaml` 可按名字替换规则、新增规则，或用 `enabled: false` 关掉某条。
+- 一条规则可以丢行、折叠重复噪声、改写整理结果（`replace`）、按捕获的键分组（`group_by`）、保留首尾 N 行，并给自己设更低的门槛；`suga inspect rules output --builtin` 可以打印内置规则的原始 YAML 作为照写模板。
+- `$SUGA_HOME/output-rules.yaml` 与其后的 `<workspace>/.suga/output-rules.yaml` 可按名字替换规则、新增规则，或用 `enabled: false` 关掉某条。完整字段表与完整示例见 `references/rules.md` 的输出整理一节；改完用 `suga inspect rules output` 核对（生效规则与来源层、被跳过的文件）。
 - 命令本身用管道过滤了输出（`| grep`、`| Select-String`、`| tail` 等）时不套用这些规则，保留它筛出的内容。
 - `file_read` 自己分页（每个文件一页最多 `tools.read_page_bytes`，默认 32 KiB；`paths` 一次最多四页），不会被外置。
 
@@ -186,55 +186,13 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 `file_symbols`、`file_refs` 的语言识别和 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里，其余语言（内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++ 与用户新增的）都由规则文件描述。
 
-- 分层与输出规则一致：内置 → `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml`；同名替换整条规则，新名字追加，`enabled: false` 关掉某门（包括内置的）。
+- 分层与输出规则一致：内置 → `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml`；同名替换整条规则，新名字追加，`enabled: false` 关掉某门（包括内置的）。`suga inspect rules lang --builtin` 可打印内置规则原文（每语言一份）。
 - 后加载的规则抢同名的扩展名时后者生效并在日志里警告；`.go`、`.php`、`.yaml`/`.yml`、`.toml` 属于代码里实现的语言，规则文件不能抢，写了会让该文件整体报错跳过。
 - 文件出错（YAML 语法、未知字段、坏正则、`kind` 与 `kind_group` 同时出现、未知 `blocks`、`name` 组不存在）时整份文件跳过并写日志，`suga inspect manifest` 的 `Language rules` 一节会列出跳过的文件与原因。
 - 规则只有正则与固定枚举，不能执行命令；依赖源码根探测和基础提示里的依赖 API 子句仍留在代码里（属于提示缓存前缀），规则改不了。
+- 规则语言的符号结果是 approx（按声明行近似，不解析）：注释与字符串里的同名词不算引用，但不会做类型解析。calls 的识别保持"声明行能看出来的才报"——函数体内的局部定义、跨行参数列表等不报，需要精确结果时用 `file_grep` 或装了 universal-ctags 的环境（规则声明了 `ctags` 时优先用 ctags）。
 
-字段：
-
-| 字段 | 说明 |
-|---|---|
-| `name` | 唯一键，同名替换；也是工具描述里显示的名字 |
-| `enabled` | 省略即 true，`false` 关掉该名字的语言 |
-| `exts` | 小写、含点的扩展名列表 |
-| `markers` | 项目标记文件（声明用） |
-| `test_commands` | 识别“跑测试”的完整正则（trace 分析） |
-| `focused_flags` | 只跑部分测试的参数（正则片段） |
-| `ctags` | universal-ctags 的语言名；或按扩展名映射，如 `{.h: C++}` |
-| `syntax` | 遮蔽：`line_comment`、`block_comment`（成对）、`strings`（单行引号）、`multiline_strings`（跨行定界符）、`line_start`（只在行首生效的块注释开头，如 Ruby 的 `=begin`） |
-| `blocks` | `brace`（花括号，默认）/ `indent`（缩进，Python）/ `end_keyword`（关键字收尾，Ruby） |
-| `body_brace_next_line` | 花括号风格：类型体的 `{` 写在下一行（C# 的 Allman、PHP 的 PSR-12） |
-| `end_keyword` | `blocks: end_keyword` 时用：`open` 开块行正则，`close` 收尾关键字正则 |
-| `decls` | 声明行规则列表，见下 |
-
-`decls` 每条：`pattern`（Go 正则，匹配去掉首尾空白后的整行）、`kind` 或 `kind_group`（二选一，后者是捕获组号，用于 `class|interface|enum` 这种一行多关键字）、`name`（名字所在捕获组号）、`member`（只在类型体内生效：类成员而不是函数体里的语句）、`body`（该行打开一个类型体）。
-
-新增一门语言（Lua）的完整写法：
-
-```yaml
-# <workspace>/.suga/lang-rules.yaml
-languages:
-  - name: Lua
-    exts: [.lua]
-    test_commands: '\bbusted\b'
-    ctags: Lua
-    syntax:
-      line_comment: ['--']
-      block_comment: [['--[[', ']]']]
-      strings: ['"', "'"]
-    blocks: end_keyword
-    end_keyword:
-      open: '^\s*(function|if|for|while|do)\b'
-      close: '^\s*end\b'
-    decls:
-      - {pattern: '^\s*function\s+([A-Za-z_][\w.:]*)', kind: func, name: 1}
-      - {pattern: '^\s*local\s+function\s+([A-Za-z_]\w*)', kind: func, name: 1}
-```
-
-规则语言的符号结果是 approx（按声明行近似，不解析）：注释与字符串里的同名词不算引用，但不会做类型解析。calls 的识别保持“声明行能看出来的才报”——函数体内的局部定义、跨行参数列表等不报，需要精确结果时用 `file_grep` 或装了 universal-ctags 的环境（规则声明了 `ctags` 时优先用 ctags）。
-
-查看生效的语言：`suga inspect manifest` 的 `Language rules` 一节列出名字、扩展名、块风格、来源层与是否用 ctags，以及被跳过的规则文件与原因。
+**完整字段表（`languages:` 每条与 `decls` 的写法）与新增语言的完整示例见 `references/rules.md` 的语言规则一节**；查看生效的语言用 `suga inspect rules lang`（名字、扩展名、块风格、来源层与是否用 ctags，以及被跳过的规则文件与原因）。
 
 ## 后台任务
 
