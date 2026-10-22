@@ -105,11 +105,16 @@ func builtinNudgeRules() []NudgeRule {
 	return []NudgeRule{
 		{
 			Name: NudgeRulePromiseZh, Kind: NudgeKindPromise, Source: RuleSourceBuiltin,
+			// Each phrasing needs a first-person future marker (我(会|将|要|来|去|先|再)
+			// 接下来 / 下一步 / 马上 / 这就): a plain description of what was done
+			// ("先读接口，再跑只读接口") must not read as a promise to continue.
 			Patterns: []string{
-				`接下来(我)?(会|将|来|去|先|再)`,
-				`(我)?(先|再|现在|马上|这就)(去)?(运行|执行|跑|检查|验证|测试|修改|更新|修复|继续)`,
+				`我(会|将|要|来|去|先|再)(去)?(运行|执行|跑|检查|验证|测试|修改|更新|修复|继续|补上)`,
+				`接下来(我)?(会|将|要|来|去|先|再|就)`,
+				`下一步(我)?(会|将|要|来|去|就)`,
+				`马上(我)?(就|去|来|再)?(运行|执行|跑|检查|验证|测试|修改|更新|修复|继续)`,
+				`这就(去)?(运行|执行|跑|检查|验证|测试|修改|更新|修复|继续|开始)`,
 				`让我(先|再)?(运行|执行|跑|检查|验证|测试|修改|更新|修复)`,
-				`下一步(我)?(将|会|来|要)`,
 			},
 		},
 		{
