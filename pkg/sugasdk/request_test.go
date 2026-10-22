@@ -285,6 +285,54 @@ func TestSendRequestIDUncertain(t *testing.T) {
 	})
 }
 
+// TestSendRequestRecordWindow covers the size cap of one session's request
+// records: oldest finished records drop as newer claims arrive, running
+// records are never dropped.
+func TestSendRequestRecordWindow(t *testing.T) {
+	ctx := context.Background()
+	var bodies int32
+	server := plainChatServer(t, "done-w", &bodies, nil)
+	_, session := openTestSession(t, ctx, server.URL)
+	repo := openTestStore(t)
+
+	// A small window so the test can cross it without 200 records.
+	requestRecordLimit = 3
+	t.Cleanup(func() { requestRecordLimit = 200 })
+
+	// Four claimed records, oldest first; the second one stayed running (a
+	// crashed send) and must survive any trim.
+	base := time.Now().UTC().Add(-2 * time.Hour)
+	writeTestRecord(t, ctx, repo, session.ID(), "old-1",
+		requestRecord{TurnID: "t1", State: requestStateDone, At: base.Add(1*time.Minute),
+			Summary: &requestSummary{State: "COMPLETED"}})
+	writeTestRecord(t, ctx, repo, session.ID(), "old-2",
+		requestRecord{TurnID: "t2", State: requestStateRunning, At: base.Add(2*time.Minute)})
+	writeTestRecord(t, ctx, repo, session.ID(), "old-3",
+		requestRecord{TurnID: "t3", State: requestStateDone, At: base.Add(3*time.Minute),
+			Summary: &requestSummary{State: "COMPLETED"}})
+	writeTestRecord(t, ctx, repo, session.ID(), "old-4",
+		requestRecord{TurnID: "t4", State: requestStateDone, At: base.Add(4*time.Minute),
+			Summary: &requestSummary{State: "COMPLETED"}})
+
+	// A fresh claim grows the registry past the window: the oldest finished
+	// record (old-1) drops, the older running one (old-2) stays.
+	res, err := session.Send(ctx, Prompt{Text: "hi", RequestID: "new-1"}, nil)
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, "COMPLETED", res.State)
+	meta, err := repo.GetSession(ctx, session.ID())
+	assert.Require(t, assert.NoErr(t, err))
+	_, gone := meta.Meta[requestMetaKey("old-1")]
+	assert.False(t, gone, "the oldest finished record is trimmed")
+	for _, kept := range []string{"old-2", "old-3", "old-4", "new-1"} {
+		_, ok := meta.Meta[requestMetaKey(kept)]
+		assert.True(t, ok, "record stays: "+kept)
+	}
+	// The kept stale running record still reads unknown, never replayed.
+	status, err := session.RequestStatus(ctx, "old-2")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, RequestStatusUnknown, status)
+}
+
 // TestSendRequestStoresSummary covers that the record registry holds no answer
 // text: the meta of a session does not grow with the length of the outputs.
 func TestSendRequestStoresSummary(t *testing.T) {
