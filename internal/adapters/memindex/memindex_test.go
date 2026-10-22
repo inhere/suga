@@ -119,6 +119,33 @@ func hitIDs(hits []memory.Hit) []string {
 	return ids
 }
 
+// TestEntriesForwardsToFiles keeps the optional Enumerator capability visible
+// through the index wrapper: the read-only memory lint report enumerates a
+// scope once instead of calling Get for every entry.
+func TestEntriesForwardsToFiles(t *testing.T) {
+	ctx := context.Background()
+	scope := memory.UserScope()
+	base, err := files.New(map[memory.Scope]files.Layout{scope: files.DirLayout{Dir: t.TempDir()}})
+	assert.Require(t, assert.NoErr(t, err))
+	indexed := New(base)
+	for _, title := range []string{"Use tabs", "Reply in Chinese"} {
+		_, werr := indexed.Write(ctx, scope, memory.Op{Action: memory.ActionAdd, Kind: memory.KindFeedback,
+			Title: title, Body: "Body of " + title})
+		assert.Require(t, assert.NoErr(t, werr))
+	}
+
+	entries, err := indexed.Entries(ctx, scope)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Len(t, entries, 2)
+
+	t.Run("backend without enumeration is reported", func(t *testing.T) {
+		wrapped := New(plainStore{Store: base})
+		_, err := wrapped.Entries(ctx, scope)
+		assert.Err(t, err)
+		assert.StrContains(t, err.Error(), "cannot enumerate entries")
+	})
+}
+
 // plainStore hides the optional memory.Summarizer capability of its base.
 type plainStore struct{ memory.Store }
 

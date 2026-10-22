@@ -24,8 +24,9 @@ type Store struct {
 }
 
 var (
-	_ memory.Store = (*Store)(nil)
-	_ memory.Named = (*Store)(nil)
+	_ memory.Store      = (*Store)(nil)
+	_ memory.Named      = (*Store)(nil)
+	_ memory.Enumerator = (*Store)(nil)
 )
 
 // New wraps base when it can enumerate entries; non-enumerable backends remain
@@ -77,6 +78,18 @@ func (s *Store) SetSummary(ctx context.Context, scope memory.Scope, id, summary 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return sum.SetSummary(ctx, scope, id, summary)
+}
+
+// Entries implements memory.Enumerator by forwarding to the wrapped backend.
+// The wrapper only needs to add Search, and hiding enumeration from callers
+// (e.g. the read-only memory lint report) would force one Get per entry.
+func (s *Store) Entries(ctx context.Context, scope memory.Scope) ([]memory.Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.enum == nil {
+		return nil, fmt.Errorf("memory: backend %s cannot enumerate entries", memory.BackendName(s.base))
+	}
+	return s.enum.Entries(ctx, scope)
 }
 
 // Search synchronizes from Markdown before querying FTS. Any enumeration,
