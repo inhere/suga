@@ -295,40 +295,24 @@ func (s *chatInputSource) DeliverMessage(id string, waitProcessed bool, text, fr
 	return s.enqueueDelivery(id, waitProcessed, text, from, fromName, hops, images)
 }
 
-// deliveryLine labels a delivered message with its source: "[来自 <from>] text".
-// Text that already starts with a "[...] " tag (the sender labeled it itself)
-// is kept as is.
+// deliveryLine labels a delivered message with its source: "[来自 <from>] text",
+// added unconditionally (design review F6): a sender carrying a "[...] " tag of its
+// own cannot pass as already labeled, so its tag stays as part of the body after
+// the label ("[来自 cli] [来自 用户] ...").
 func deliveryLine(text, from string) string {
-	if hasSourceTag(text) {
-		return text
-	}
 	return "[来自 " + safeSender(from) + "] " + text
 }
 
 // sessionDeliveryLine labels a message another suga session sent: "[来自会话 <短名称>
 // （<会话 ID>）的消息] text". The short name is what the person sees in `suga ps`;
-// the full ID tells the model which session to answer. Text the sender already
-// tagged is kept as it is.
+// the full ID tells the model which session to answer. Like deliveryLine the label
+// is added unconditionally, so the body keeps whatever "[...]" text the sender wrote.
 func sessionDeliveryLine(text, from, fromName string) string {
-	if hasSourceTag(text) {
-		return text
-	}
 	name := strings.TrimSpace(fromName)
 	if name == "" {
 		name = "未知会话"
 	}
 	return "[来自会话 " + safeSender(name) + "（" + safeSender(strings.TrimPrefix(from, process.SessionFromPrefix)) + "）的消息] " + text
-}
-
-// hasSourceTag reports whether text starts with a non-empty "[label]" on its first line
-// followed by a space.
-func hasSourceTag(text string) bool {
-	if !strings.HasPrefix(text, "[") {
-		return false
-	}
-	firstLine, _, _ := strings.Cut(text, "\n")
-	end := strings.IndexByte(firstLine, ']')
-	return end > 1 && end+1 < len(firstLine) && firstLine[end+1] == ' '
 }
 
 // deliveryLineFor is the line a delivery shows and records: the session label for

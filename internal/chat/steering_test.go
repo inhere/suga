@@ -332,7 +332,9 @@ func TestTurnInputStaleKeys(t *testing.T) {
 // a turn injected only when nothing was typed here (design m1).
 func TestSteerReturns(t *testing.T) {
 	keyboard := personal.Steer{ID: "k1", Text: "只改 README", Source: personal.SteerSourceKeyboard}
-	fromElsewhere := personal.Steer{ID: "k2", Text: "还有一句", Source: "send:gofer"}
+	// A message from elsewhere is labeled once when it is inserted (steer_send.go),
+	// so its text already carries the label here.
+	fromElsewhere := personal.Steer{ID: "k2", Text: "[来自 gofer] 还有一句", Source: "send:gofer"}
 
 	t.Run("nothing to settle", func(t *testing.T) {
 		assert.Empty(t, steerReturns(nil, nil))
@@ -343,11 +345,13 @@ func TestSteerReturns(t *testing.T) {
 		assert.Eq(t, 2, len(got))
 		assert.Eq(t, "只改 README", got[0].text)
 		assert.Eq(t, "", got[0].sender)
-		assert.Eq(t, "还有一句", got[1].text)
+		assert.Eq(t, "[来自 gofer] 还有一句", got[1].text)
 		assert.Eq(t, "gofer", got[1].sender)
 	})
 
 	t.Run("a message from elsewhere keeps its label in a prompt", func(t *testing.T) {
+		// The label was added when the message was inserted; showing it back must
+		// not add a second one (design review F6).
 		assert.Eq(t, []string{"只改 README", "[来自 gofer] 还有一句"},
 			steerLines(steerReturns([]personal.Steer{keyboard, fromElsewhere}, nil)))
 	})
@@ -507,7 +511,9 @@ func TestPutSteersBackKeepsTheHalfLine(t *testing.T) {
 
 	h.state.putSteersBack(steerReturns(
 		[]personal.Steer{{ID: "k1", Text: "键盘说的", Source: personal.SteerSourceKeyboard},
-			{ID: "k2", Text: "别处说的", Source: "send:cli"}}, nil))
+			// The text of a message from elsewhere carries the label inserted with
+			// it (insertSendSteer), so the put-back shows it once.
+			{ID: "k2", Text: "[来自 cli] 别处说的", Source: "send:cli"}}, nil))
 	assert.Eq(t, "键盘说的\n[来自 cli] 别处说的\n半行", h.turnInputLine(t))
 }
 
