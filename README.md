@@ -161,10 +161,10 @@ Details: [references/observability.md](skills/suga-guide/references/observabilit
 suga inspect trace <session> [--turn <id>] [--json]            # timeline: model calls, tools, denials, plans
 suga inspect trace <session> --analyze | --web                 # loop analysis / local web page
 suga inspect trace <session> --transcript [--turn <id>] [-o <file>]  # model-readable transcript (see below)
-suga sessions [keywords] [--since 7d] [--agents] [--all | --cwd <path>]  # session list; default: the current directory only (empty result -> stderr hint naming --all)
+suga sessions [keywords] [--since 7d] [--agents] [--all | --cwd <path>] [--origin <name>]  # session list; default: the current directory only, without origin=xhen sessions (empty result -> stderr hint naming --all and the hidden xhen count); --origin all lists every origin
 suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
-suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP
+suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP; origin=xhen sessions follow their host and are only reported
 suga data bodies [--status|--move|--undo|--check|--remove-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (the v0.36 name tool-bodies, --slim, --rename-files and the one-time migrations shrink-fts / dedupe-tool-results were removed in v0.41.0: a pre-v0.36 ledger needs suga v0.40 for them)
 suga data vacuum                                               # rewrite the db file, truncate the WAL
 suga data usage [--json] [--top N]                             # read-only: where the db file, entries, events, FTS and session dirs hold their bytes
