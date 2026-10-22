@@ -32,6 +32,13 @@ func newCompactCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 		if sessionID == "" {
 			return errors.New("compact: a session id is required")
 		}
+		// Without --model the summary is written by the model the session already
+		// uses (as a resumed chat does), not by the config default.
+		if model == "" {
+			if ref, err := wiring.SessionModelReference(ctx, sessionID); err == nil {
+				model = ref
+			}
+		}
 		// The runtime is needed for the model that writes the handoff summary;
 		// no turn runs, so no tool of the session is called.
 		runtime, err := wiring.OpenCLI(ctx, wiring.Options{Model: model, Thinking: thinking})
