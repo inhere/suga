@@ -112,6 +112,12 @@ type Spec struct {
 	// Cmd is ready to Start (path, args, dir, env); its Stdout, Stderr and
 	// SysProcAttr are set by the manager.
 	Cmd *exec.Cmd
+	// Limits caps the memory, process count and CPU time of Cmd and its whole
+	// process tree (tools.shell_limits); the zero value is no limit.
+	Limits proctree.Limits
+	// LimitNotice, when set, is written to the task output when a limit ended a
+	// process of the tree, so the model reading the output knows why it failed.
+	LimitNotice string
 	// Run is a function task, instead of Cmd.
 	Run RunFunc
 	// NoEndNotice: the task reports what matters through Reporter.Notify,
@@ -169,6 +175,8 @@ type ProcessTree interface {
 	Kill() error
 	Close()
 	Started()
+	// Exceeded reports whether a resource limit ended a process of the tree.
+	Exceeded() bool
 }
 
 // RunningCommand is a command that has already been started by its caller.
@@ -295,7 +303,8 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (Info, error) {
 	// A leftover child holding the pipe must not keep the task "running"
 	// after the command itself ended.
 	cmd.WaitDelay = 2 * time.Second
-	t.tree = proctree.New(cmd)
+	t.tree = proctree.NewLimited(cmd, spec.Limits)
+	t.limitNotice = spec.LimitNotice
 	if err := cmd.Start(); err != nil {
 		_ = file.Close()
 		return Info{}, fmt.Errorf("start: %w", err)
@@ -414,6 +423,11 @@ func waitCommand(cmd *exec.Cmd) <-chan error {
 func (m *Manager) waitResult(s *session, t *task, cmd *exec.Cmd, done <-chan error) {
 	err := <-done
 	t.tree.Close() // also ends children left running in the background
+	// A limit that ended a process of the tree is named in the output: the exit
+	// code alone would read like the command's own failure.
+	if t.limitNotice != "" && t.tree.Exceeded() {
+		fmt.Fprintf(t.out, "=== %s ===\n", t.limitNotice)
+	}
 	code := cmd.ProcessState.ExitCode()
 	status := Exited
 	if err != nil && code < 0 {
@@ -777,6 +791,8 @@ type task struct {
 	seen   bool               // the model saw the end (Wait, Kill or a notice)
 	tree   ProcessTree        // a command's process tree
 	cancel context.CancelFunc // a function's context
+	// limitNotice is written to the output when a limit ended the command.
+	limitNotice string
 	// updated is closed (and replaced) when a function task reports.
 	updated chan struct{}
 	out     *lineWriter

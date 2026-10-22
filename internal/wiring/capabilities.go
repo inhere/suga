@@ -208,6 +208,50 @@ func inlineOutputBytes() int {
 	return gkconfig.Int("tools.max_output_bytes", native.DefaultMaxOutputBytes)
 }
 
+// shellLimits reads tools.shell_limits: the memory, process count and CPU time
+// cap of one shell_exec run and its process tree. memory defaults to 4GiB and
+// processes to 256; an explicit 0 (or "off") turns that one limit off and
+// tools.shell_limits.off turns all of them off. An unreadable value keeps the
+// default (Open validates the section at startup).
+func shellLimits() native.ShellLimits {
+	if gkconfig.Bool("tools.shell_limits.off") {
+		return native.ShellLimits{}
+	}
+	limits := native.ShellLimits{
+		MemoryBytes: native.DefaultShellLimitMemory,
+		Processes:   native.DefaultShellLimitProcesses,
+	}
+	if raw := strings.TrimSpace(gkconfig.String("tools.shell_limits.memory")); raw != "" {
+		memory, err := native.ParseMemorySize(raw)
+		if err != nil {
+			slog.Warn("skip tools.shell_limits.memory", "err", err)
+		} else {
+			limits.MemoryBytes = memory
+		}
+	}
+	if n := gkconfig.Int("tools.shell_limits.processes", -1); n >= 0 {
+		limits.Processes = n
+	}
+	limits.CPUTime = shellLimitCPUTime()
+	return limits
+}
+
+// shellLimitCPUTime is tools.shell_limits.cpu_time: a duration ("10m") or a
+// bare number of seconds; empty or 0 means no CPU time limit.
+func shellLimitCPUTime() time.Duration {
+	raw := strings.TrimSpace(gkconfig.String("tools.shell_limits.cpu_time"))
+	if raw == "" {
+		return 0
+	}
+	if secs, err := strconv.ParseFloat(raw, 64); err == nil && secs > 0 {
+		return time.Duration(secs * float64(time.Second))
+	}
+	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+		return d
+	}
+	return 0
+}
+
 // rawOutputBytes is tools.max_spill_bytes: the raw output cap of one tool call
 // (native and MCP), i.e. the most the output layer saves to a session file.
 func rawOutputBytes() int {
@@ -419,6 +463,7 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		ShellTimeoutMax: time.Duration(gkconfig.Int("tools.shell_timeout_max",
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,
 		ShellBackgroundAfter: shellBackgroundAfter(),
+		ShellLimits:          shellLimits(),
 		ImageMaxSide:         imageMaxSide(),
 		// session_message: the tool that messages the other chat sessions of this
 		// SUGA_HOME; nil when it is turned off.

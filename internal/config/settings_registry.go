@@ -184,6 +184,12 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.shell", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.shell_timeout_max", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.shell_background_after", Type: ConfigTypeDuration, Writable: true},
+	// tools.shell_limits: the memory, process count and CPU time a shell_exec run
+	// and its process tree may use (0 = that limit off, off = all off).
+	{Pattern: "tools.shell_limits.memory", Type: ConfigTypeString, Writable: true},
+	{Pattern: "tools.shell_limits.processes", Type: ConfigTypeInt, Writable: true},
+	{Pattern: "tools.shell_limits.cpu_time", Type: ConfigTypeDuration, Writable: true},
+	{Pattern: "tools.shell_limits.off", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.web_fetch.allow_private", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.web_fetch.proxy", Type: ConfigTypeString, Sensitive: true},
 	// tools.web_fetch.user_agent is the User-Agent the tool sends; empty keeps the
