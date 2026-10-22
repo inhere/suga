@@ -19,8 +19,9 @@ import (
 
 // seedListSessions creates the sessions a list test needs, through the real
 // SUGA_HOME store: `here` sessions in the current directory, one in another
-// directory, one archived, one sub-agent (under a parent here) and one without
-// a recorded cwd. Returns the ids of the sessions the default view shows.
+// directory, one archived, one sub-agent (under a parent here), one without
+// a recorded cwd and one host-managed session (origin xhen). Returns the ids
+// of the sessions the default view shows.
 func seedListSessions(t *testing.T) (here []string) {
 	t.Helper()
 	// A fresh store per test/subtest: sessions belongs to one SUGA_HOME.
@@ -46,6 +47,9 @@ func seedListSessions(t *testing.T) (here []string) {
 	create("agent", wd, store.SessionOpen, map[string]any{store.MetaKind: store.KindAgent, store.MetaParentSession: "h1"})
 	// Sessions without a recorded cwd stay out of the default view too.
 	assert.NoErr(t, repo.CreateSession(ctx, store.Session{ID: "nocwd", Title: "legacy"}))
+	// A host-managed session (origin xhen) belongs to the host application and
+	// stays out of the default view, even in this very directory.
+	create("xhen1", wd, store.SessionOpen, map[string]any{store.MetaOrigin: store.OriginXhen})
 	return []string{"h1", "h2"}
 }
 
@@ -75,9 +79,61 @@ func TestACPListSessions(t *testing.T) {
 		assert.StrContains(t, resp.Meta["suga/hint"].(string), "suga sessions --all")
 		resp, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Meta: map[string]any{"suga/all": true}})
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, 4, len(resp.Sessions)) // h1, h2, other, nocwd — agent and archived stay hidden
+		assert.Eq(t, 4, len(resp.Sessions)) // h1, h2, other, nocwd — agent, archived and xhen stay hidden
 		// here keeps the ids of the current-directory sessions on this store.
 		_ = here
+	})
+	t.Run("host-managed sessions stay hidden unless suga/xhen asks for them", func(t *testing.T) {
+		wd, err := os.Getwd()
+		assert.Require(t, assert.NoErr(t, err))
+		seedListSessions(t)
+		conn := connectPersonalACP(t, testACPRuntime(t, mock.NewProvider(mock.Final("x")), nil), &testACPClient{})
+		ctx := context.Background()
+		resp, err := conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: strPtr(wd)})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 2, len(resp.Sessions))
+		assert.Eq(t, float64(1), resp.Meta["suga/hiddenXhen"])
+		// suga/xhen: true includes the host-managed session (the CLI's
+		// --origin xhen); its own count then drops to zero.
+		resp, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: strPtr(wd), Meta: map[string]any{"suga/xhen": true}})
+		assert.Require(t, assert.NoErr(t, err))
+		ids := make([]string, 0, len(resp.Sessions))
+		for _, s := range resp.Sessions {
+			ids = append(ids, string(s.SessionId))
+		}
+		assert.Contains(t, ids, "xhen1")
+		assert.Eq(t, 3, len(resp.Sessions))
+		assert.Eq(t, float64(0), resp.Meta["suga/hiddenXhen"])
+	})
+	t.Run("an empty view names the hidden host-managed sessions", func(t *testing.T) {
+		// A fresh store whose only session in the requested directory is
+		// host-managed: the default view is empty and must say why.
+		t.Setenv("SUGA_HOME", testutil.Dir(t))
+		dir := t.TempDir()
+		dbPath, err := appconfig.ResolveCoreStorePath()
+		assert.Require(t, assert.NoErr(t, err))
+		repo, err := store.Open(dbPath)
+		assert.Require(t, assert.NoErr(t, err))
+		at := time.Now()
+		assert.NoErr(t, repo.CreateSession(context.Background(), store.Session{ID: "xhen-only", Title: "host topic",
+			Cwd: filepath.ToSlash(dir), CreatedAt: at, UpdatedAt: at,
+			Meta: map[string]any{store.MetaOrigin: store.OriginXhen}}))
+		assert.NoErr(t, repo.Close())
+		conn := connectPersonalACP(t, testACPRuntime(t, mock.NewProvider(mock.Final("x")), nil), &testACPClient{})
+		ctx := context.Background()
+		resp, err := conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: strPtr(filepath.ToSlash(dir))})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 0, len(resp.Sessions))
+		assert.Eq(t, float64(1), resp.Meta["suga/hiddenXhen"])
+		hint, _ := resp.Meta["suga/hint"].(string)
+		assert.StrContains(t, hint, "origin=xhen")
+		assert.StrContains(t, hint, "suga/xhen")
+		// The extension includes it, so the view is no longer empty nor hinted.
+		resp, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: strPtr(filepath.ToSlash(dir)), Meta: map[string]any{"suga/xhen": true}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 1, len(resp.Sessions))
+		_, hasHint := resp.Meta["suga/hint"]
+		assert.Eq(t, false, hasHint)
 	})
 	t.Run("request cwd filters, archived and agent sessions stay out", func(t *testing.T) {
 		wd, err := os.Getwd()

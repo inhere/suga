@@ -5,6 +5,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -153,10 +154,27 @@ func TestCheckNudgePromise(t *testing.T) {
 	}{
 		{name: "chinese promise", text: "文件已经改好。接下来我去跑测试。", plain: true, want: true},
 		{name: "chinese next step", text: "下一步我会补上测试。", plain: true, want: true},
+		// The reply script chat_nudge.py's fake model sends (make smoke-chat): it has
+		// to keep hitting promise-zh after the patterns were tightened.
+		{name: "chinese promise of the nudge smoke", text: "文件已写入。接下来我去跑测试。", plain: true, want: true},
 		{name: "chinese let me", text: "让我先运行一下单元测试", plain: true, want: true},
+		{name: "chinese first person will", text: "改动都做完了，我会去跑集成测试。", plain: true, want: true},
+		{name: "chinese first person 先", text: "我先运行一遍单元测试，再看结果。", plain: true, want: true},
+		{name: "chinese first person 来", text: "我来检查一下构建。", plain: true, want: true},
+		{name: "chinese 马上", text: "马上跑一遍完整测试。", plain: true, want: true},
+		{name: "chinese 这就", text: "我这就去修改配置。", plain: true, want: true},
+		{name: "chinese 接下来就", text: "接下来就开始补测试。", plain: true, want: true},
 		{name: "english i will", text: "The file is written. I'll now run the tests.", plain: true, want: true},
 		{name: "english next i will", text: "Done with the edit. Next, I'll check the build.", plain: true, want: true},
 		{name: "english let me", text: "Let me run the test suite first", plain: true, want: true},
+		// The report of 2026-10-22 (第三十一批 S3): a sub-agent described its test
+		// procedure and the old (我)?(先|再...)-verb pattern read it as a promise.
+		{name: "a described procedure is not a promise", text: "验证手法：先读取只读接口的 schema，再跑一遍只读接口，最后对比输出。", plain: true, want: false},
+		{name: "a bare 再跑 is a description", text: "再跑一次测试就能通过。", plain: true, want: false},
+		{name: "a described two-step test", text: "测试分两步：先运行单元测试，再跑集成测试。", plain: true, want: false},
+		{name: "no first person marker", text: "这段代码先检查长度再解析。", plain: true, want: false},
+		{name: "first person, past tense", text: "我跑了一遍测试，结果都通过。", plain: true, want: false},
+		{name: "english past tense", text: "I ran the tests and they passed.", plain: true, want: false},
 		{name: "a question is the person's decision", text: "要我接着跑测试吗？", plain: true, want: false},
 		{name: "a trailing question mark", text: "接下来我去跑测试？", plain: true, want: false},
 		{name: "a promise followed by a summary", text: "接下来我会跑测试。\n\n总结：本次只改了文档，测试未运行。", plain: true, want: false},
@@ -297,4 +315,13 @@ func TestShellCommandAttrIsRedacted(t *testing.T) {
 	command, _ := attrs["command"].(string)
 	assert.StrContains(t, command, "curl")
 	assert.NotContains(t, command, "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789")
+}
+
+// TestPromiseEvidenceQuotesFromTheEarliestMatch: overlapping patterns quote
+// the whole promise, whatever their order.
+func TestPromiseEvidenceQuotesFromTheEarliestMatch(t *testing.T) {
+	late := regexp.MustCompile(`我(会|将|要|来|去)`)
+	early := regexp.MustCompile(`接下来(我)?(会|将|要|来|去)`)
+	got := promiseEvidence([]*regexp.Regexp{late, early}, "文件已写入。接下来我去跑测试。")
+	assert.Eq(t, "结尾说接下来我去跑测试。", got)
 }

@@ -26,6 +26,13 @@ const (
 	metaAll       = "suga/all"
 	metaOtherDirs = "suga/otherDirs"
 	metaHint      = "suga/hint"
+	// metaXhen asks for the host-managed sessions (origin xhen) too; the
+	// default view keeps them out, like `suga sessions` does (design 2026-10-20,
+	// 会话来源).
+	metaXhen = "suga/xhen"
+	// metaHiddenXhen reports how many host-managed sessions the default view
+	// leaves out, so an empty list names why (the CLI's hiddenXhen count).
+	metaHiddenXhen = "suga/hiddenXhen"
 )
 
 // closeWaitTimeout bounds how long session/close waits for a running turn to
@@ -38,14 +45,22 @@ var closeWaitTimeout = 30 * time.Second
 // (the request's cwd, else this process's working directory — the directory
 // the client started suga in; design 2026-10-20 会话列表默认当前目录), newest
 // first, listPageSize per page. Sub-agent sessions and archived ones stay
-// hidden. _meta.suga/all lists every directory instead; the response's _meta
-// always reports how many sessions the other directories hold, and names the
-// way out on an empty result (suga/hint). Only metadata is returned — never
-// the conversation content of another directory's session.
+// hidden, and so do the host-managed ones (origin xhen, which belong to the
+// host application; _meta.suga/xhen: true includes them like `suga sessions
+// --origin xhen`). _meta.suga/all lists every directory instead; the response's
+// _meta always reports how many sessions the other directories (and the host
+// application) hold, and names the way out on an empty result (suga/hint). Only
+// metadata is returned — never the conversation content of another directory's
+// session.
 func (a *Agent) ListSessions(ctx context.Context, req acp.ListSessionsRequest) (acp.ListSessionsResponse, error) {
 	all := false
 	if v, ok := req.Meta[metaAll].(bool); ok && v {
 		all = true
+	}
+	// The host-managed sessions ask: the CLI's --origin xhen / --origin all.
+	includeXhen := false
+	if v, ok := req.Meta[metaXhen].(bool); ok && v {
+		includeXhen = true
 	}
 	// The directory scope: the request's cwd when given (absolute, like
 	// session/new's), else the process working directory.
@@ -74,9 +89,16 @@ func (a *Agent) ListSessions(ctx context.Context, req acp.ListSessionsRequest) (
 		return acp.ListSessionsResponse{}, fmt.Errorf("list sessions: %w", err)
 	}
 	filtered := make([]store.Session, 0, len(sessions))
-	otherDirs := 0
+	otherDirs, hiddenXhen := 0, 0
 	for _, s := range sessions {
 		if store.IsAgentSession(s) || s.Status == store.SessionArchived {
+			continue
+		}
+		// A host-managed session (origin xhen) belongs to the host
+		// application, which lists and keeps it on its own terms; it is counted
+		// so an empty view can name it instead of hiding it silently.
+		if store.HostManagedSession(s) && !includeXhen {
+			hiddenXhen++
 			continue
 		}
 		if scope == "" {
@@ -117,11 +139,22 @@ func (a *Agent) ListSessions(ctx context.Context, req acp.ListSessionsRequest) (
 		}
 		infos = append(infos, info)
 	}
-	meta := map[string]any{metaOtherDirs: otherDirs}
-	// The hint only rides on a genuinely empty default view: with suga/all the
-	// client itself asked for everything, so no directory needs naming.
-	if len(infos) == 0 && !all && otherDirs > 0 {
-		meta[metaHint] = personal.EmptyScopeHint(scope, otherDirs)
+	meta := map[string]any{metaOtherDirs: otherDirs, metaHiddenXhen: hiddenXhen}
+	// The hint only rides on a genuinely empty view: with suga/all the client
+	// itself asked for every directory, so no directory needs naming. The
+	// host-managed sessions get their own line, naming the extension that
+	// includes them (suga/xhen), like `suga sessions` names --origin xhen.
+	if len(infos) == 0 {
+		var hints []string
+		if !all && otherDirs > 0 {
+			hints = append(hints, personal.EmptyScopeHint(scope, otherDirs))
+		}
+		if hiddenXhen > 0 {
+			hints = append(hints, fmt.Sprintf("另有 %d 个 origin=xhen 的会话未列出（_meta 里 %s 为 true 可包含）", hiddenXhen, metaXhen))
+		}
+		if len(hints) > 0 {
+			meta[metaHint] = strings.Join(hints, "\n")
+		}
 	}
 	return acp.ListSessionsResponse{Sessions: infos, NextCursor: next, Meta: meta}, nil
 }
