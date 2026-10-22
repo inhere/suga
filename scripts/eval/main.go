@@ -77,6 +77,9 @@ type Result struct {
 	Spilled       int            `json:"tool_spilled"`
 	Answer        string         `json:"answer"`
 	Checks        []CheckResult  `json:"checks"`
+	// Turns holds each turn of a multi-turn task in order: its answer, its
+	// duration and the forced compaction after it (compact_after).
+	Turns []TurnRun `json:"turns,omitempty"`
 	// RemovedTests are the test files the agent wrote itself and the runner
 	// deleted before the checks ran (judging sees the task's own and the
 	// injected acceptance tests).
@@ -228,6 +231,7 @@ func runTaskSet(o *options, bin, runID string, tasks []*Task, variants []*Varian
 		}
 	}
 	printTable(os.Stdout, results, o.repeat > 1)
+	printTurnDetail(os.Stdout, results)
 	printWebNote(os.Stdout, results)
 	if len(variants) > 0 {
 		if err := writeCompare(o.out, variants, results); err != nil {
@@ -284,7 +288,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	// general tools.disabled setting), so no change to suga itself is needed to
 	// keep scoring tasks off the network.
 	sets := append(append([]string{}, o.sugaSet...), webSets(r.Web)...)
-	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, v, sets)
+	model, stop, err := setupSugaHome(ctx, o, home, t.FakeMode, t.FakeReply, v, sets)
 	if err != nil {
 		return r, err
 	}
@@ -292,23 +296,46 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	before := snapshotWorkspace(ws)
 
 	env := withVariantEnv(isolatedEnv(home), v)
+	if len(t.CompactAfter) > 0 && o.agent != "suga" {
+		return r, errors.New("compact_after works only with --agent suga (the forced break is `suga compact`)")
+	}
 	// A multi-turn task sends its prompts in order to the same session; the
-	// run stops at the first failing turn and checks judge the last answer.
+	// run stops at the first failing turn. Every turn's answer is judged by the
+	// checks that name it, and compact_after forces a segment break between two
+	// turns to measure what survives it.
 	start := time.Now()
-	var stdout []byte
+	answers := make([]string, 0, len(t.Turns()))
+	turns := make([]TurnRun, 0, len(t.Turns()))
 	var runErr error
-	for _, prompt := range t.Turns() {
-		stdout, runErr = runCmd(ctx, bin, sugaRunArgs(sid, prompt, model, t.Mode == "allow-write", splitArgs(o.sugaArgs)), ws, env)
-		if runErr != nil {
+	for i, prompt := range t.Turns() {
+		turnStart := time.Now()
+		stdout, err := runCmd(ctx, bin, sugaRunArgs(sid, prompt, model, t.Mode == "allow-write", splitArgs(o.sugaArgs)), ws, env)
+		answer := finalAnswer(stdout)
+		answers = append(answers, answer)
+		turns = append(turns, TurnRun{Turn: i + 1, Answer: answer, DurationMs: time.Since(turnStart).Milliseconds()})
+		if err != nil {
+			runErr = err
 			break
 		}
+		if !t.compactsAfter(i + 1) {
+			continue
+		}
+		comp, err := forceCompact(ctx, bin, sid, ws, env)
+		if err != nil {
+			runErr = err
+			break
+		}
+		turns[len(turns)-1].Compacted = &comp
 	}
 	r.DurationMs = time.Since(start).Milliseconds()
 	if runErr != nil {
 		r.Error = runErr.Error()
 	}
-	r.Answer = finalAnswer(stdout)
-	t.finish(ws, before, r.Answer, &r)
+	r.Turns = turns
+	if len(answers) > 0 {
+		r.Answer = answers[len(answers)-1]
+	}
+	t.finish(ws, before, answers, &r)
 	r.Passed = runErr == nil && allPassed(r.Checks)
 
 	sout, err := runCmd(context.Background(), bin, []string{"inspect", "stats", "--session", sid, "--json"}, ws, env)
@@ -345,8 +372,9 @@ func sugaRunArgs(sid, prompt, model string, allowWrite bool, extra []string) []s
 // setupSugaHome creates home with an isolated config (fake provider with a
 // fresh fakellm, or a copy of --config-from, then the variant overlay) and
 // returns the model to pass (empty = config default) and a stop func for the
-// fake server. sets are the dotted.key=value overrides applied to that config.
-func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Variant, sets []string) (string, func(), error) {
+// fake server. fakeReply is the fake model's answer text (task.yaml
+// fake_reply). sets are the dotted.key=value overrides applied to that config.
+func setupSugaHome(ctx context.Context, o *options, home, fakeMode, fakeReply string, v *Variant, sets []string) (string, func(), error) {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return "", nil, err
 	}
@@ -354,7 +382,7 @@ func setupSugaHome(ctx context.Context, o *options, home, fakeMode string, v *Va
 		model, stop, err := o.model, func() {}, writeConfig(home, o.configFrom, 0, sets)
 		return model, stop, firstErr(err, applyVariantConfig(home, v))
 	}
-	stop, port, err := startFake(ctx, fakeMode)
+	stop, port, err := startFake(ctx, fakeMode, fakeReply)
 	if err != nil {
 		return "", nil, err
 	}
@@ -572,7 +600,8 @@ func setConfigKey(cfg map[string]any, kv string) error {
 }
 
 // startFake launches fakellm.py on a free port and returns a stop func.
-func startFake(ctx context.Context, mode string) (func(), int, error) {
+// reply overrides the fake model's answer text when it is not empty.
+func startFake(ctx context.Context, mode, reply string) (func(), int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, 0, err
@@ -582,7 +611,11 @@ func startFake(ctx context.Context, mode string) (func(), int, error) {
 	script := filepath.Join("scripts", "ptysmoke", "fakellm.py")
 	var lastErr error
 	for _, py := range []string{"python3", "python"} {
-		cmd := exec.CommandContext(ctx, py, "-I", script, "--port", fmt.Sprint(port), "--mode", mode, "--delay", "0.05")
+		fakeArgs := []string{"-I", script, "--port", fmt.Sprint(port), "--mode", mode, "--delay", "0.05"}
+		if reply != "" {
+			fakeArgs = append(fakeArgs, "--reply", reply)
+		}
+		cmd := exec.CommandContext(ctx, py, fakeArgs...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return nil, 0, err

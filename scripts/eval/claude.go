@@ -69,7 +69,7 @@ func runClaude(ctx context.Context, o *options, t *Task, timeout time.Duration, 
 	// The raw event stream, for analysis (no settings or token in it).
 	_ = os.WriteFile(filepath.Join(filepath.Dir(configDir), "claude-events.jsonl"), allOut, 0o644)
 	parseClaudeEvents(allOut, r)
-	t.finish(ws, before, r.Answer, r)
+	t.finish(ws, before, answersOf(r.Answer), r)
 	r.Passed = err == nil && allPassed(r.Checks)
 }
 

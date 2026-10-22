@@ -33,10 +33,12 @@ go run ./scripts/eval --model opencode-go/deepseek-v4.1-flash --config-from ~/.s
 name: fix-failing-test
 mode: allow-write        # read-only（默认，suga run 默认模式）| allow-write（加 --allow-write）
 fake_mode: edit          # 可选，fakellm 的 tool|text|edit，默认 text
+fake_reply: "..."        # 可选，--fake 时假模型固定的回答（fakellm --reply），让假模型跑法结果确定
 prompt: ...              # 单轮；多轮改用 prompts（二选一）
 prompts:                 # 多轮：同一会话按顺序发送；answer_contains 判定最后一轮的回答
   - 第一轮 ...
   - 第二轮 ...
+compact_after: [2]       # 可选：第 2 轮之后强制换段（`suga compact <会话>`），见“长会话任务”
 generate:                # 可选：运行时生成文件，避免提交大文件
   - path: logs/app.log
     count: 6000
@@ -47,6 +49,10 @@ checks:
   - {type: file_not_contains, path: a.go, text: "..."}
   - {type: file_equals, path: a.txt, text: "..."}   # 忽略末尾换行
   - {type: answer_contains, text: "..."}            # 在最终回答中查找
+  - {type: answer_not_contains, text: "..."}        # 最终回答中不得出现
+  - {type: answer_matches, text: '^[-*] '}          # 最终回答匹配该正则
+  - {type: answer_not_matches, text: '[\p{Han}]'}   # 最终回答不得匹配该正则
+  - {type: answer_contains, text: "...", turn: 2}  # 判定第 2 轮的回答（turn 省略=最终回答）
   - {type: command, args: [go, test, -count=1, ./...], timeout: 5m}   # 在工作区内执行，退出码 0 为通过
 timeout: 25m             # 可选：任务级超时，覆盖全局 --timeout（omp 的 --max-time 同步使用）
 repo: {ref: 202bfa0}     # 可选：仓库模式（与 fixture/ 二选一），见“仓库模式”
@@ -92,6 +98,39 @@ task.yaml 写 `keep_tests: true`，本题不做清理。
 多轮任务：suga 用同一个 `--session-id` 依次 `suga run`；omp 用临时 `--session-dir <out>/<task>/omp-sessions`，
 第二轮起加 `--continue`（单轮任务也用临时 session-dir，不再用 `--no-session`）。用量按各轮累加，任一轮失败即停止。
 现有多轮任务：`read-then-edit`（先读代码回答，再据此改文件）、`config-two-step`（先找隐患，再修复并补测试）。
+
+## 长会话任务（多轮 + 强制换段）
+
+衡量“长时间持续会话、切换主题也能跟上、不混乱”：任务开头给约束或事实，中间穿插无关工作，
+在指定轮次之后**强制压缩**，再切回原题；检查只看确定性证据（回答文本的正则/包含、工作区文件状态、命令退出码），
+不依赖模型评判。
+
+- `compact_after: [2]`：第 2 轮结束后运行 `suga compact <会话> --json`（chat `:compact` 的命令行形式，
+  由 `internal/cli/compact.go` 实现），把上下文强制换到新段；结果（`tokens_before`/`tokens_after`/`segment`）
+  记入 results.jsonl 的 `turns[].compacted`。仅 `--agent suga` 支持（omp/claude 有该字段的任务直接报错）。
+- 每轮回答都保留：results.jsonl 的 `turns` 数组逐轮记录 `turn`/`answer`/`duration_ms`/`compacted`；
+  顶层 `answer` 仍是最后一轮。suga 的 checks 用 `turn: N`（1 起）判定第 N 轮回答，不写 `turn` 则判定最终回答（末轮）。
+  没有逐轮记录的 agent（omp、claude）只有一条最终回答可用，`turn: 1` 之外的轮次判定会失败。
+- 检查类型：`answer_contains` / `answer_not_contains` / `answer_matches` / `answer_not_matches`
+  （后两个是正则，用来表达确定性的约束，如“不许出现中文”`[\p{Han}]`、“必须是 Markdown 列表”`(?m)^[-*] `）；
+  文件与命令检查照旧，它们只跑一次，算作最后一轮的检查。
+- 报告：主表之后按任务打印 `long sessions (per turn; ...)`：每轮一行（PASS/FAIL、该轮的检查、
+  该轮的换段 `[compacted ~A -> ~B tokens, segment N]`、耗时），最后给出 `long sessions: passed N/M` 的长会话通过率。
+- 运行：`go run ./scripts/eval --fake --bin tmp/smoke/suga --task 'longsession-*'`
+  （任务的 `fake_reply` 让假模型给出确定回答，`--fake` 用来验证多轮、换段、逐轮检查的管线；
+  真实模型的通过率另跑）。
+
+任务（`testdata/tasks/`）：
+
+| 任务 | 设计 | 关键检查 |
+|---|---|---|
+| `longsession-constraint-compact` | 开头给“全英文回答 / 不改 RULES.md”约束 → 两轮无关工作 → 第 2 轮后换段 → 最后重申 | 第 1、4 轮回答都不含中文；`RULES.md` 未被改 |
+| `longsession-topic-switch-back` | A（读 `reports/sales.csv` 算 north 合计）做到一半 → 换 B（TCP 握手两轮）→ 第 2 轮后换段 → 回 A 继续算差额 | 第 1、4 轮都答出 42；第 4 轮提到 north；csv 未被改 |
+| `longsession-quoted-rules` | 用户原话“必须 Markdown 列表 / 不要提到 deploy-prod-7” → 两轮无关工作 → 第 3 轮后换段 → 最后确认 | 第 4 轮回答是列表项；第 2、4 轮都不含禁词；`notes/rules.md` 未被改 |
+| `longsession-fact-recall` | 早期三条事实（端口 7311 / 构建号 BUILD-1187 / 团队 heron）→ 两轮无关工作 → 第 3 轮后换段 → 再问 | 第 4 轮三个事实都对；不把 `archive/old-release.txt` 的旧值（BUILD-0002）当当前值 |
+
+`--fake` 下这四个任务都 PASS（假模型按 `fake_reply` 回答且不动文件），用于验证框架本身；真实模型的分数另跑，
+换段后失败才是这类任务要暴露的信号。
 
 ## 长编码任务
 

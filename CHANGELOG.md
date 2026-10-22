@@ -6,6 +6,8 @@
 
 ### 新增
 
+- `suga compact <会话>`：chat `:compact` 的命令行形式（`--json` 输出换段前后的 token 估算与新段序号），脚本或 job 可以在两轮之间强制给会话开新段。评测运行器的长会话任务用它实现「第 N 轮后强制压缩」。
+- 评测运行器（`scripts/eval`）的长会话任务：`prompts` 多轮之外支持 `compact_after`（指定轮次后强制换段）、逐轮 checks（`turn: N`）与 `answer_not_contains`/`answer_matches`/`answer_not_matches`（正则形式表达“必须/不要”类约束）、`fake_reply`（假模型固定回答，`--fake` 下结果确定）；results.jsonl 新增 `turns`（每轮回答、耗时、该轮的换段 token 数），报告在主表之后按轮次打印每项检查与压缩点，并给出长会话通过率；新增 4 个任务 `testdata/tasks/longsession-*`（约束跨压缩、切题再切回、原话约束、事实回忆）。
 - 进程内嵌入式 SDK `pkg/sugasdk`（实验性，对外 API 可能在小版本间调整）：同级仓库 xhen 这类宿主程序可以直接在自己的进程里驱动 suga——`Open` 打开引擎（`SUGA_HOME` 守卫：未加载则设置并加载、同目录复用、不同目录返回 `ErrSugaHomeMismatch`；一个进程同时只允许一个引擎，`Close` 后可再 `Open`）、`OpenSession` 按会话工作区装配运行时（可传宿主自带工具、`HostContext`、`agentcore.Hook`、审批器与记忆写入确认），`Send` 跑一个回合并接收 `Event`（文本增量、工具调用/结果的摘要、用量、错误），并可用 `Steer` 在回合中插话、`Card`、`Compact`、`Search`、`Sessions`、`Memory` 读改同一份会话库与记忆。导出的 API 不出现任何 `internal` 类型；会话默认记 `origin=xhen`（`suga sessions` 默认不列出），同一会话同时只跑一个回合（第二个 `Send` 返回忙错误而不排队），回合内 panic 转成错误返回而不传给宿主。用法见 `README.md` 的“Embedding”一节。
 - 面向嵌入方（进程内驱动 suga 的程序）的两个扩展点，普通用户无变化：
   - `wiring.Options.ExtraTools` 允许宿主把自己的 Go 工具注册进主会话工具表：它们出现在工具列表、`tool_search` 与 `suga_manifest` 的工具清单里，和内置工具一样受 `tools.disabled` 控制；与内置/MCP 工具或运行时自身注册的工具（`task`、`agent`、`update_plan` 等）重名时 `Open` 返回错误，而不是静默覆盖；子 agent 默认不获得这些工具。

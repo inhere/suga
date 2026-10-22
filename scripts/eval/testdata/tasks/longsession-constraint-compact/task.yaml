@@ -1,0 +1,30 @@
+name: longsession-constraint-compact
+mode: allow-write
+fake_mode: text
+# 用户开头给的约束（全英文回答、不改 RULES.md）→ 两轮无关工作 → 强制压缩 → 再做事，
+# 检查约束在压缩后仍被遵守。第 2 轮后强制换段（compact_after）。
+fake_reply: |-
+  - Answering in English only.
+  - RULES.md was read, never modified.
+prompts:
+  - |-
+    记住这次会话的两条硬性约束：
+    1) 从现在起你所有回答都用英文，不要出现中文；
+    2) 不要修改工作区里的 RULES.md。
+    先确认你记住了。
+  - 读一下 data.txt，告诉我它一共有多少行、第 3 行是什么内容。
+  - 换个话题：用两句话解释一下二分查找的时间复杂度。
+  - 回到最开始的两条约束：逐条用英文说明你现在是怎样遵守它们的，并确认 RULES.md 没有被改动过。
+compact_after: [2]
+checks:
+  # 第 1 轮之后每次都只能用英文：第 4 轮是压缩与切题之后的回合。
+  - {type: answer_not_matches, text: '[\p{Han}]', turn: 1}
+  - {type: answer_not_matches, text: '[\p{Han}]', turn: 4}
+  - type: file_equals
+    path: RULES.md
+    text: |-
+      # Rules
+
+      - Never edit this file.
+      - It documents the promise the session must keep.
+timeout: 20m
