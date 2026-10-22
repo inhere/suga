@@ -1,0 +1,6 @@
+Analyzing store...
+   info • Use 'const' with the constructor to improve performance • lib/main.dart:12:10 • prefer_const_constructors
+warning • Unused import: 'dart:io' • lib/store.dart:3:8 • unused_import
+  error • The name 'counter' isn't defined • lib/store.dart:9:3 • undefined_identifier
+  error • Undefined name 'retries' • lib/store.dart:10:3 • undefined_identifier
+4 issues found. (ran in 1.2s)

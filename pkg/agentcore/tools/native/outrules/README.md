@@ -25,6 +25,7 @@ order listed there:
 | `make.yaml` | `make` |
 | `gh.yaml` | `gh-readonly` |
 | `php.yaml` | `phpunit`, `pest` |
+| `dart.yaml` | `flutter-test` (flutter test and dart test), `dart-analyze`, `flutter-build`, `dart-pub-get` |
 
 The order matters: every rule whose `match` matches the command is applied in
 turn, so it is kept as it was when all rules lived in one `output_rules.yaml`

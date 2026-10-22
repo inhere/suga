@@ -40,6 +40,7 @@ var builtinRuleFileOrder = []string{
 	"outrules/make.yaml",
 	"outrules/gh.yaml",
 	"outrules/php.yaml",
+	"outrules/dart.yaml",
 }
 
 // OutputRule tidies the output of the shell commands it matches; see

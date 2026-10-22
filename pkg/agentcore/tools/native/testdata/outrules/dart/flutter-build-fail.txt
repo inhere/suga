@@ -1,0 +1,16 @@
+Running Gradle task 'assembleRelease'...                            ⣽
+Running Gradle task 'assembleRelease'...                            ⣾
+lib/main.dart:12:10: Error: Undefined name 'counter'.
+    return counter;
+           ^^^^^^^
+Target aot_android_asset_bundle failed: Exception: Failed to compile the Dart code of the app.
+FAILURE: Build failed with an exception.
+
+* Where:
+Script '/opt/flutter/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt' line: 1
+
+* What went wrong:
+Execution failed for task ':app:compileFlutterBuildRelease'.
+> Process 'command 'flutter'' finished with non-zero exit value 1
+
+BUILD FAILED in 24s

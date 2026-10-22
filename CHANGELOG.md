@@ -15,6 +15,8 @@
 
 - Dart（含 Flutter）语言规则：新增内置 `langrules/dart.yaml`，`file_symbols`/`file_refs` 因此认得 `.dart`（class/abstract class/mixin/enum/extension/extension type/typedef、顶层函数、成员方法与 getter/setter、factory 与命名构造函数、`final`/`const`/`var`/`late` 字段；`///` 行注释与 `'''`/`"""` 文本块遮蔽），项目标记 `pubspec.yaml`/`pubspec.lock`/`analysis_options.yaml`，ctags 映射 Dart；trace 分析新增对 `dart test`、`flutter test`（含 `fvm flutter test`、`flutter.bat test`）的识别与 `--name`/`-n`/`--plain-name`/`--tags` 聚焦参数。已知漏报：可嵌套的 `/* */`、raw 字符串、无修饰词的隐式类型字段、字符串插值内的调用。
 
+- Dart/Flutter 输出规则（内置 `outrules/dart.yaml`）：`flutter test`/`dart test` 的默认 compact reporter 与 `--reporter expanded` 进度行（`00:03 +12 -1: …`）折叠，全部通过只留 `All tests passed!` 与计数，失败时保留失败用例名、错误与项目自身堆栈帧，去掉 `package:flutter/`、`dart:` 等框架帧；`flutter analyze`/`dart analyze` 去掉 `Analyzing …` 进度，无问题只留 `No issues found!`，有问题保留每条问题行并按严重度分组（`group_by`）；`flutter build apk|appbundle|ios|web` 去掉 Gradle/Xcode 的下载、百分比与 spinner 刷屏，成功留 `✓ Built …` 产物行与耗时，失败留 `FAILURE:`/`What went wrong`/`Error:` 与 `lib/*.dart:line:col: Error:` 编译错误；`flutter pub get`/`dart pub get` 去掉进度与逐包列表，成功留 `Got dependencies!` 与变化包数，保留版本求解失败信息。命令匹配兼容 `fvm flutter` 与 `flutter.bat`。
+
 ### 变更
 
 - 内置输出规则目录改名为 `outrules`（`pkg/agentcore/tools/native/outrules/`，原 `rules/`）：只影响源码位置与 `suga inspect rules output --builtin` 打印的内嵌文件名（现在是 `# outrules/go.yaml`），用户的 `output-rules.yaml` 与规则名不变。

@@ -91,7 +91,7 @@ rules:
 
 **用途**：`shell_exec` 结果在交给模型前的整理规则（`tools.minimize_output`，默认开）：丢行、折叠重复噪声、改写、分组、首尾保留，并给测试/构建输出生成一行汇总。原文永远保存为 ref，整理只是让上下文少占地方；命令自己带了管道过滤（`| grep` 等）时不套用。
 
-**位置与内置文件**：内置规则按语言/工具族一份文件嵌进二进制，读取顺序即 `go, rust, js, python, java, git, grep, docker, make, gh, php`（`suga inspect rules output --builtin` 逐份打印原文，每份是独立文档）。之后依次读 `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。
+**位置与内置文件**：内置规则按语言/工具族一份文件嵌进二进制，读取顺序即 `go, rust, js, python, java, git, grep, docker, make, gh, php, dart`（`suga inspect rules output --builtin` 逐份打印原文，每份是独立文档）。之后依次读 `$SUGA_HOME/output-rules.yaml` → `<workspace>/.suga/output-rules.yaml`（同名替换、新名追加、`enabled: false` 关闭）。
 
 **字段表**（`rules:` 列表，正则都是 Go regexp；`drop`/`failure`/`count`/`sum`/`fold` 按单行匹配，`match_output`/`replace` 看整段输出）：
 
