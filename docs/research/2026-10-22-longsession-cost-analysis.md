@@ -7,13 +7,13 @@
 
 1. **249 万输入 token 里 2,142,848（86%）是缓存命中**，真正全价的新输入只有 348,134。开销的形状是「调用次数 × 上下文体积」，不是单次工具输出过大：88 次工具调用一共只产出 180 KB（176 KiB），最大的一次 64.9 KB 还被压到 8.0 KB 内联。
 2. **每次调用都重复发送约 8.5k token 的固定前缀**（工具 schema 27,383 字符 ≈ 7.0k token + system 3,391 字符 ≈ 0.9k token，按实测 3.9 字符/token 折算）。84 次 turn 内调用 × 8.5k ≈ **711k prompt token，占全部 prompt 的 29%**。
-3. **最贵的一轮是 t12（评测第 9 轮，`sort.Slice` vs `sort.SliceStable`）**：11 次调用、382,560 prompt、57,184 新输入、20,737 输出、135 s，占全价等价开销的 18%。原因是模型自选策略——它读了 Go 标准库 `sort/sort.go`（11.5 KB）、`sort/slice.go`、`slices/sort.go`（grep 13.7 KB），写了 3 个 demo 文件并反复改、跑（5 次 write/edit + 5 次 shell）。
+3. **最贵的一轮是 t12（评测第 9 轮，`sort.Slice` vs `sort.SliceStable`）**：11 次调用、382,560 prompt、57,184 新输入、20,737 输出、135 s，占全价等价开销的 18%。原因是模型自选策略——它读了 Go 标准库 `sort/sort.go`（11.5 KB）、`sort/slice.go`、`slices/sort.go`（grep 13.7 KB），写了 2 个脚本、5 次 write/edit，又 4 次改跑 demo。
 4. **t10 那 456 s（占总墙钟 31%）不是任务成本**：command-code 的 443 端口两次 dial timeout，重试 4 次 / 2 次（178 s + 178 s）后降级到 `opencode-go`；降级后缓存是冷的（37,714 新输入）。日志见 `home/logs/suga-20261022.log`。
-5. **5 次 nudge（`unverified-write`）全部是误报**：规则的内置 `check_command` 只认 `go test|vet|build`、`pytest`、`npm test` 这类命令，不认这次实际用的 `python tmp/xxx.py`、`go run xxx.go`、`gofmt`。代价：11 次额外调用、361k prompt（15%）、5.2k 输出、66 s。
+5. **5 次 nudge（`unverified-write`）里有 4 次是误报**：规则的内置 `check_command` 只认 `go test|vet|build`、`pytest`、`npm test` 这类命令，不认这次实际用的 `python tmp/xxx.py`、`go run xxx.go`。按 trace 重放（见第五节）：4 次误报的代价是 8 次额外调用、298k prompt（12%）、48 s；第 5 次（t18 写 `notes_index.md` 后只列了目录）算真缺口。
 6. **3 次换段（compaction）花掉 68,752 新输入 + 37,663 输出（占总输出 25%）+ 187 s（13% 墙钟）**。交接包 4,747 → 7,793 → 16,018 字符单调增长；第三份 ≈16 KB ≈ 5.8k token，此后 19 次调用每次都带着它（≈110k prompt token）。
 7. **换段没有让模型丢掉需要的信息**：三份交接包都原文保留了第 1 轮的两条约束（「小写下划线」「vendor/ 只读」）和 `src/` 的符号/行号表；换段后首轮重读文件只有 2 次、每次 1.5–3.2 KB（≈400–900 token），不是开销主因。
 8. **与另三项的差异主要来自任务设计 + 模型自选策略**：naming 用 14 轮里有 12 轮要求开放式长答、还要"给出行号依据"，把模型推成「读标准库源码 + 写 demo 反复验证」；rule-update/distractor 同样 13–14 轮却只有 5/13 次工具调用。suga 侧的放大项是固定前缀、nudge 误报、换段成本。
-9. **另三项的耗时也不全是任务工作**：rule-update 的 273 s 里 100 s（37%）是 3 次换段，14 轮本身只 171 s；而且它 65% 的输入 token 是固定前缀（18 次调用 × 8.4k）。
+9. **另三项的耗时也不全是任务工作**：rule-update 的 273 s 里 100 s（37%）是 3 次换段，14 轮本身只 171 s；而且它 61% 的输入 token 是固定前缀（18 次 turn 调用 × 8.4k）。
 
 ## 一、口径与数据来源
 
@@ -86,6 +86,16 @@ turn 内 84 次调用：prompt 2,422,230 = 新输入 279,382 + 缓存 2,142,848
 - **t18（p14，45,683 billed-eq）**：只有 3 次调用，但首调 38,680 prompt 只命中 8,448 缓存（22%），30,232 个新输入。前后没有换段、t17 结束时 prompt 已经是 38k，所以这是 **provider 侧缓存失效**（DeepSeek 的自动前缀缓存是按节点/窗口的，suga 感知不到），不是 suga 主动丢弃了什么。
 - **t2 / t8（读大文件）**：t2 里 `python tmp/analyze_orders.py` 一次吐出 64,952 B，被内联截到 7,960 B（占 12%），工具输出体积控制是有效的；t8 读 `data/orders.log` 只取了 7,194 B。
 
+### 五个常见假设，逐个对账
+
+| 假设 | 结论 | 证据 |
+| --- | --- | --- |
+| 工具输出过大 | **不是主因** | 88 次调用共 180,389 B（176 KiB），内联后 113,926 B；最大的一次 `python tmp/analyze_orders.py` 64,952 B 被截到 7,960 B，只有 1 次 spill（`file_grep` 13,744→4,273 B）。 |
+| 反复读同一个文件 | **存在但很便宜** | `src/order.go` 被读 5 次（t4/t5/t7/t12/t15），单次 1,550 B；重复读取总量 <20 KB，不到全部工具输出的 11%。 |
+| 换段后又把内容读回来 | **只有 2 次，≈1.3k token** | t5 重读 `order.go`（1,550 B）、t15 重读三个 src 文件（3,176 B）；交接包里已有符号/行号表（第三节）。 |
+| 任务本身要求多 | **是主要成本来源之一** | 14 个 prompt 里 12 个要求读文件/给行号/写两段以上；仅 p2/p6/p9 三个"读+统计"轮（t2/t8/t12）就贡献 24 次工具调用。 |
+| 模型来回试错 | **是主要成本来源之一** | 19 次写工具调用 = 9 个 tmp 脚本 + 2 个交付文件（`notes/*.md`），34 次 shell；t12 一轮就 4 次"改 demo→跑"，t15/t16/t18 各 2–3 次。每次试错都是一次全量上下文重发。 |
+
 ## 三、换段是否让模型丢了信息、从而重读
 
 ### 三次换段的实际开销
@@ -126,7 +136,7 @@ turn 内 84 次调用：prompt 2,422,230 = 新输入 279,382 + 缓存 2,142,848
 **任务设计造成的差异（大头）**
 
 1. **工具调用的数量级**：naming 88 次 vs rule-update 5 次。naming 的 12 个中间轮是"读 3000 行日志给行号依据""读三个 .go 文件每个至少两段""完整读取 log 1000–1100 行统计"这类**要求可核验证据**的任务，模型自然会去读文件、写脚本；rule-update 的中间轮几乎全是纯论述（"解释指数退避""说明 mutex 与 channel"），不需要碰工作区。
-2. **模型自选策略放大**：naming 里同一批文件被读了 5 次（`src/order.go` 在 t4/t5/t7/t12/t15），还额外读了 Go 标准库（`sort`、`slices`、`time`）+ 写了 6 个 demo 程序（t5/t12/t13/t15/t16/t18）。这既不是任务要求的，也不是 suga 要求的——是"给依据"这种要求 + 模型偏好"实测证明"的结果。rule-update 一次都没写文件，所以也没触发 tool 输出。
+2. **模型自选策略放大**：naming 里同一批文件被读了 5 次（`src/order.go` 在 t4/t5/t7/t12/t15），还额外读了 Go 标准库（`sort`、`slices`、`time`）+ 写了 9 个 tmp 脚本并反复改、跑（t2/t5/t8/t12/t13/t15/t16 七个 turn）。这既不是任务要求的，也不是 suga 要求的——是"给依据"这种要求 + 模型偏好"实测证明"的结果。rule-update 一次都没写文件，所以也没触发 tool 输出。
 3. **输出量**：naming 150,638 输出 token，是 distractor（36,937）的 4 倍。三个任务的平均回答篇幅其实相近，多出来的是 5 个 nudge turn 的自我辩解（"这是误报"）+ 3 次换段摘要（37,663）。
 4. **强制换段的相对成本**：rule-update 的 3 次换段要 100 s，比它 14 轮本身（171 s）的一半还多，因为它 `tokens_before` 只有 10–14k，摘要却要"整篇重写并折叠上一份包"——**换段成本几乎与段长无关，短会话里换段就是纯开销**。更直观的一组数：rule-update 的 30,846 输出 token 里有 16,720（54%）是换段摘要，topic-cycles 是 22,163/44,545（50%）。
 
@@ -140,7 +150,7 @@ turn 内 84 次调用：prompt 2,422,230 = 新输入 279,382 + 缓存 2,142,848
 
 | # | 归属 | 改哪里 | 预期节省 | 风险 | 怎么验证 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | suga | `internal/personal/nudge_rules.go:58` `builtinCheckCommand` + `internal/personal/nudge.go:110` `uncheckedWrite` | 11 次调用 / 361k prompt（15%）/ 66 s | 低：把"写后有任何**成功**的 shell_exec"也算验证，或把 `python <script>`、`go run`、`gofmt`、`pwsh` 加进白名单；严格模式保留为可选 `check_command` | 同一任务 `nudge` 事件从 5 → ≤1，`calls` 87 → ~76；`scripts/eval --task longsession-hard-naming-rules` 的检查项仍全过 |
+| 1 | suga | `internal/personal/nudge_rules.go:58` `builtinCheckCommand` + `internal/personal/nudge.go:110` `uncheckedWrite` | 4 次误报 → 8 次调用 / 298k prompt（12%）/ 48 s | 低：把 `python <脚本>`、`go run`、`node <脚本>`、`pwsh -File` 加进白名单（不要放宽成"任意 shell"，否则 t18 那个真缺口也不再提醒） | 同一任务 `nudge` 事件 5 → 1，`calls` 87 → ~79；`scripts/eval --task longsession-hard-naming-rules` 检查项仍全过 |
 | 2 | suga | `internal/personal/compact.go:515 summarize` / `:546`（"No MaxTokens on purpose"）/ `:379` 折叠上一份包 | 换段输出 37.7k → ~20k；常驻交接包 5.8k → ~3k token/次，后 19 次调用省 ≈55k prompt | 中：摘要变短可能丢约束（本任务检查的就是约束），必须保留「采纳与否决/硬约束」章节原文，并对四个 hard 任务回归 | 换段事件的 `tokens_after`（8.1k/9.3k/12.4k → 全 <8k）、换段 model 事件输出 token、t15–t19 的 prompt 之和；四项通过率不得下降 |
 | 3 | 评测 | `scripts/eval/testdata/tasks/longsession-hard-naming-rules/task.yaml` 的 p4/p9/p10/p11/p12 | calls 87 → ~45、新输入 348k → ~200k、墙钟 1460 s → ~600 s（去掉 t12 那类自选验证） | 中：降低"给依据"的要求会削弱"长会话上下文压力"，应保留 2 个读大文件的轮次（p2/p6）撑上下文 | 同任务 `calls`/`uncached`/`duration_ms` 下降，且 14 轮检查项（含第 13/14 轮的约束记忆）仍全过 |
 | 4 | suga | 工具装配（`context` 事件的 `tools` 27,383 字符；`deferred_tools` 这次恒为 0） | 固定前缀 8.5k → 5k 量级，84 次调用省 ≈290k prompt（多为缓存命中，billed 侧省 ≈30k） | 中高：工具集变化会重建前缀缓存，必须只在换段边界改；模型可能"不知道有某工具" | `context` 事件的 `tools` 字符数、`uncached` 总量；四项评测 + `tool-schema-nonempty-properties` 类测试 |
@@ -160,9 +170,9 @@ turn 内 84 次调用：prompt 2,422,230 = 新输入 279,382 + 缓存 2,142,848
 | t5 后 | `tmp/mono_clock_demo.go` | `go run .\tmp\mono_clock_demo.go`（不匹配白名单；nudge 后 t6 才补跑 `gofmt; go vet; go run`） | 误报 |
 | t8 后 | `tmp/check_orders_1000_1100.py` | `python tmp/check_orders_1000_1100.py` | 误报 |
 | t16 后 | `tmp/verify_vendor_baseline.py` | `python .\tmp\verify_vendor_baseline.py`（还跑了两次） | 误报 |
-| t18 后 | `notes_index.md` | `Get-ChildItem` / `Get-Content` / `Get-FileHash` | 有争议（读了回来看，算不算验证可以商量） |
+| t18 后 | `notes_index.md` | `Get-ChildItem` / `Get-Content`（真正的内容校验是 nudge 之后的 t19 才跑的 `Get-FileHash`） | 真缺口（不算误报） |
 
-模型每次都得出"这是误报"的结论，然后花一整轮去重新验证——这 5 轮里 4 轮纯属浪费，而且模型在 t18 之后的回答里已经明确说"检查器大概是按'写操作之后同一轮内没有 shell_exec'判定的"（实际是因为命令不匹配）。
+**这条表是把 trace 按内置规则重放出来的**（脚本用同一份 `builtinCheckCommand` 正则匹配"最后一次成功写入之后"的每条成功 `shell_exec`）：5 次全部命中 `FIRES`；若把判据放宽成"写之后有任何成功 shell"，5 次全部不再触发——包括 t18 那个真缺口。所以正确改法是**扩展白名单**（解释器跑工作区脚本算验证），而不是取消命令匹配。
 
 **2. 交接包该有输出预算。** 现状：`tokens_after` 8,121 → 9,313 → 12,418（越换越大），摘要 4.7 → 7.8 → 16.0 KB，第三次输出 21,676 token。任何"长期会话"都会撞上这个单调增长：每次折叠都把上一份包整篇带进来。建议 `summarize` 给模板各章节一个预算（如「坐标」≤2 KB、「背景与结论」≤4 KB），并在折叠时按 `refs` 去重旧坐标；硬约束/规则章节保持原文不动（这正是评测的检查项）。
 
