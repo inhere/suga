@@ -55,6 +55,9 @@ type ClaudeProvider struct {
 	noImages bool
 	// retry is the provider's shared retry state (ClaudeConfig.Retry).
 	retry *backoff
+	// streamIdleTimeout bounds the silence between two reads of a streamed body
+	// (ClaudeConfig.StreamIdleTimeout); 0 takes the default of the request kind.
+	streamIdleTimeout time.Duration
 }
 
 // SegmentContextMetaKey is the Message.Metadata key (bool true) that marks the
@@ -119,6 +122,11 @@ type ClaudeConfig struct {
 	// headers; zero takes DefaultResponseHeaderTimeout and NoTimeout disables
 	// the bound.
 	ResponseHeaderTimeout time.Duration
+	// StreamIdleTimeout bounds the silence between two reads of a streamed body
+	// (see stream_idle.go). Zero takes DefaultStreamIdleTimeout - or
+	// DefaultReasoningStreamIdleTimeout for a request that asks the model to
+	// think first - and NoTimeout disables the bound.
+	StreamIdleTimeout time.Duration
 	// Proxy routes requests through the global network.proxy selector; nil keeps
 	// the default transport, which follows the environment proxies.
 	Proxy netproxy.ProxyFunc
@@ -133,19 +141,20 @@ func NewClaudeProvider(cfg ClaudeConfig) *ClaudeProvider {
 		cfg.Name = "anthropic"
 	}
 	return &ClaudeProvider{
-		name:           cfg.Name,
-		apiKey:         cfg.APIKey,
-		model:          cfg.Model,
-		messagesURL:    claudeMessagesURL(cfg.BaseURL),
-		client:         newProviderClient(requestTimeout(cfg.RequestTimeout), proxyTransport(cfg.Proxy)),
-		streamClient:   newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout), cfg.Proxy),
-		headers:        cfg.Headers,
-		promptCache:    cfg.PromptCache,
-		thinking:       cfg.Thinking,
-		thinkingStyle:  cfg.ThinkingStyle,
-		streamRequired: cfg.StreamRequired,
-		noImages:       cfg.NoImages,
-		retry:          newBackoff(cfg.Retry),
+		name:              cfg.Name,
+		apiKey:            cfg.APIKey,
+		model:             cfg.Model,
+		messagesURL:       claudeMessagesURL(cfg.BaseURL),
+		client:            newProviderClient(requestTimeout(cfg.RequestTimeout), proxyTransport(cfg.Proxy)),
+		streamClient:      newStreamClient(responseHeaderTimeout(cfg.ResponseHeaderTimeout), cfg.Proxy),
+		headers:           cfg.Headers,
+		promptCache:       cfg.PromptCache,
+		thinking:          cfg.Thinking,
+		thinkingStyle:     cfg.ThinkingStyle,
+		streamRequired:    cfg.StreamRequired,
+		noImages:          cfg.NoImages,
+		retry:             newBackoff(cfg.Retry),
+		streamIdleTimeout: cfg.StreamIdleTimeout,
 	}
 }
 

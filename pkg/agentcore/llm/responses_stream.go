@@ -25,7 +25,11 @@ func (p *ResponsesProvider) Stream(ctx context.Context, req *agentcoreapi.Genera
 	body := p.buildResponsesBody(ctx, req, true)
 	logProviderRequest(p.Name(), responsesPath, body)
 	res, err := retryStream(ctx, p.retry, p.Name(), emit, func(ctx context.Context, emit agentcoreapi.StreamFunc) (*agentcoreapi.GenerateResult, error) {
-		resp, err := p.openStream(ctx, responsesPath, body)
+		// The attempt's own context: the idle timeout of the body cancels it, which
+		// ends this request only - the turn's ctx stays usable for the retry.
+		rctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		resp, err := p.openStream(rctx, responsesPath, body)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +47,13 @@ func (p *ResponsesProvider) Stream(ctx context.Context, req *agentcoreapi.Genera
 			}
 			return res, err
 		}
-		return p.readResponsesStream(ctx, resp.Body, emit)
+		stream := resp.Body
+		if idle := streamIdleTimeout(p.streamIdleTimeout, body); idle > 0 {
+			idleBody := withIdleTimeout(resp.Body, idle, cancel)
+			defer idleBody.Close()
+			stream = idleBody
+		}
+		return p.readResponsesStream(ctx, stream, emit)
 	})
 	if res != nil {
 		// The limit this request asked for; 0 = the API's own default.

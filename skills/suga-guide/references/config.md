@@ -42,6 +42,7 @@
 | `retry.base_delay` | `1s` | 退避起始等待（每次翻倍，±20% 抖动） |
 | `retry.max_delay` | `60s` | 退避等待上限（服务端 `Retry-After` 同样受此限制） |
 | `retry.reset_after` | `10m` | 连续这么久没有失败就把等待档位回到 `base_delay` |
+| `retry.max_elapsed` | `3m` | 一次请求**全部重试的总时长上限**：到点不再重试、直接失败（配了 `fallback_models` 则交给下一个模型）；`off` 不限制 |
 | `context.fold_every` | `0`（关） | 每 N 步前移一次历史折叠点（如 `10`） |
 | `context.fold_keep` | `5`（≥1） | 最近多少步保持完整 |
 | `context.fold_at` | `0`（关；0..1，建议 `0.5`） | 折叠加前估算体积超过压缩阈值的这个比例时，本段开始折叠（之后本段保持）；`0` 时只按 `context.fold_every` 从第一步折叠 |
@@ -56,11 +57,17 @@
 | 键 | 默认 | 含义 |
 |---|---|---|
 | `timeouts.request` | `120s` | 单次**非流式**模型请求的总超时（连接、TLS、响应头与读正文）；`off`/`0` 不限制 |
-| `timeouts.response_header` | `60s` | **流式**请求等待响应头的时间；正文不设超时（长回答可以流很久）；`off`/`0` 不限制 |
+| `timeouts.response_header` | `60s` | **流式**请求等待响应头的时间；`off`/`0` 不限制 |
+| `timeouts.stream_idle` | 普通 `120s` / 思考模型 `300s` | **流式正文**两次收到数据（文本、工具参数、心跳都算）之间的最长静默；超时取消本次请求并按可重试错误重新请求（`retry` 事件写明 `stream idle for Ns`）；`off`/`0` 关闭 |
 | `providers.<id>.timeouts.request` | 继承 `timeouts.request` | 该 provider 的请求总超时，覆盖全局 |
 | `providers.<id>.timeouts.response_header` | 继承 `timeouts.response_header` | 该 provider 的响应头等待，覆盖全局 |
+| `providers.<id>.timeouts.stream_idle` | 继承 `timeouts.stream_idle` | 该 provider 的流空闲上限，覆盖全局 |
 
 超时后由 `retry` 决定是否重试：一次请求最多 `retry.max_attempts` 次尝试，每次都可能等满上面的超时，所以一次卡住的时长约为“超时 × 尝试次数 + 退避”。默认值下（响应头 60s、`reset_after` 10m）连续超时会正常退避（1s→2s→4s→8s→16s），最坏约 6×60s + 31s ≈ 6.5 分钟。注意两个值的相对大小：如果某个超时大于 `retry.reset_after`，退避档位会在每次尝试前被重置（表现为每次重试只等约 `base_delay`）。
+
+`retry.max_elapsed` 是这套组合的总闸：不管尝试次数用没用完，一次请求的重试总耗时到点就结束（默认 3 分钟），进程随即收尾退出、释放会话锁，而不是继续持有几分钟。provider 持续连不上、网关一直 5xx 时最明显；配了 `fallback_models` 时由下一个模型接手。
+
+流式正文没有整体超时（长回答可以流很久），但 `timeouts.stream_idle` 守着“两次收到数据之间”的静默：超过就取消这次 HTTP 请求，按可重试错误重新流式请求（已流出的文本作废、重来）。普通请求默认 `120s`，请求里带思考参数（`thinking` / `reasoning_effort` / `reasoning`）时默认 `300s`，因为这些请求在首个可见增量前可能只想不说。
 
 ## 其它顶层键
 

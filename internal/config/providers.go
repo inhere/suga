@@ -121,6 +121,10 @@ type ProviderConfig struct {
 	// default (see config/timeouts.go).
 	RequestTimeout        time.Duration
 	ResponseHeaderTimeout time.Duration
+	// StreamIdleTimeout bounds the silence between two reads of a streamed body
+	// (timeouts.stream_idle, overridden by providers.<id>.timeouts.stream_idle).
+	// Zero keeps the provider default, a negative value ("off") disables it.
+	StreamIdleTimeout time.Duration
 }
 
 // ModelSpec is a model bound to the provider that serves it.
@@ -182,7 +186,7 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 		return nil, err
 	}
 	for id, p := range providers {
-		p.RequestTimeout, p.ResponseHeaderTimeout = timeouts.Request, timeouts.ResponseHeader
+		p.RequestTimeout, p.ResponseHeaderTimeout, p.StreamIdleTimeout = timeouts.Request, timeouts.ResponseHeader, timeouts.StreamIdle
 		providers[id] = p
 	}
 	// Every provider retries with the global policy until providers.<id>.retry
@@ -266,7 +270,7 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 		if err != nil {
 			return nil, err
 		}
-		merged.RequestTimeout, merged.ResponseHeaderTimeout = mergedTimeouts.Request, mergedTimeouts.ResponseHeader
+		merged.RequestTimeout, merged.ResponseHeaderTimeout, merged.StreamIdleTimeout = mergedTimeouts.Request, mergedTimeouts.ResponseHeader, mergedTimeouts.StreamIdle
 		if merged.Type == "" {
 			return nil, fmt.Errorf("providers.%s: type is required for a non-preset provider (openai|openai-responses|anthropic)", id)
 		}

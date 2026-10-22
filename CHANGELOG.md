@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 流式响应的空闲超时：流式正文（chat、Anthropic、Responses）两次收到数据（文本、工具参数、心跳都算）之间的静默超过 `timeouts.stream_idle` 时，取消这次 HTTP 请求并作为可重试错误重新流式请求（`retry` 事件与 stderr 提示写 `stream idle for Ns`，已流出的文本作废重来）；默认普通请求 `120s`、请求带思考参数（`thinking`/`reasoning_effort`/`reasoning`）时 `300s`，`off` 关闭，可用 `providers.<id>.timeouts.stream_idle` 按 provider 覆盖。网关或上游连接中途静默不再把回合挂到外层取消。
 - 进程内嵌入式 SDK `pkg/sugasdk`（实验性，对外 API 可能在小版本间调整）：同级仓库 xhen 这类宿主程序可以直接在自己的进程里驱动 suga——`Open` 打开引擎（`SUGA_HOME` 守卫：未加载则设置并加载、同目录复用、不同目录返回 `ErrSugaHomeMismatch`；一个进程同时只允许一个引擎，`Close` 后可再 `Open`）、`OpenSession` 按会话工作区装配运行时（可传宿主自带工具、`HostContext`、`agentcore.Hook`、审批器与记忆写入确认），`Send` 跑一个回合并接收 `Event`（文本增量、工具调用/结果的摘要、用量、错误），并可用 `Steer` 在回合中插话、`Card`、`Compact`、`Search`、`Sessions`、`Memory` 读改同一份会话库与记忆。导出的 API 不出现任何 `internal` 类型；会话默认记 `origin=xhen`（`suga sessions` 默认不列出），同一会话同时只跑一个回合（第二个 `Send` 返回忙错误而不排队），回合内 panic 转成错误返回而不传给宿主。用法见 `README.md` 的“Embedding”一节。
 - 面向嵌入方（进程内驱动 suga 的程序）的两个扩展点，普通用户无变化：
   - `wiring.Options.ExtraTools` 允许宿主把自己的 Go 工具注册进主会话工具表：它们出现在工具列表、`tool_search` 与 `suga_manifest` 的工具清单里，和内置工具一样受 `tools.disabled` 控制；与内置/MCP 工具或运行时自身注册的工具（`task`、`agent`、`update_plan` 等）重名时 `Open` 返回错误，而不是静默覆盖；子 agent 默认不获得这些工具。
@@ -28,6 +29,7 @@
 
 ### 修复
 
+- provider 持续失败时进程退出慢：一次请求的全部重试现在受 `retry.max_elapsed`（默认 `3m`，`off` 关闭）限制，到点不再重试、直接失败（配了 `fallback_models` 则交给下一个模型），不再按“尝试次数 × 单次超时”拖到 3–4 分钟；失败回合的收尾本来只做有时限的记账（收工检查、`--verify`、后台任务收尾在出错时都跳过），所以进程数秒内退出并释放会话锁，紧跟着的 `--resume` 不再撞 `session is locked`。
 - chat：Ctrl-C 结束本地命令时，输入行上已输入的内容（半行）随中断事件归还，不再依赖编辑器缓冲的时序，任何时序下都能回到下一次提示（suga-l7u2）
 - 循环调用检测（`tools.loop_guard`）改为按“动作 + 结果”判定，不再把正常迭代当成死循环：重复调用的键现在包含结果摘要（是否出错 + 追加提示前结果正文的哈希），结果变了就不算重复；同一条成功写入类工具（`file_edit`/`file_write`/`file_remove`）之后 R1/R2 的计数清零，`改代码 → go test → 再改 → 再 go test` 这样累计 4 次不再提示。新增 R3：同一条 `shell_exec` 命令在一个回合内失败 3 次（中间有编辑也计数，改了还失败才是死路）时提示“这条命令已失败 N 次”，trace 的 `loop_guard` 事件 `rule` 新增 `R3`，chat 显示 `↻ shell_exec 已失败 ×N，已提醒模型`。提示语按规则如实描述：R1/R2 说“第 N 次相同调用且结果没有变化”，R3 说“第 N 次失败”；每组每回合最多提醒 2 次与排除工具（`update_plan`/`session_message`/`agent`）不变。
 
