@@ -61,7 +61,7 @@ end
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, res.Content, "store.lua:1 func helper")
 	assert.StrContains(t, res.Content, "store.lua:5 func Store.reload")
-	assert.StrContains(t, tool.Description(), "C/C++, Lua, PHP and TOML")
+	assert.StrContains(t, tool.Description(), "C/C++, Dart, Lua, PHP and TOML")
 
 	// The reference search masks Lua's comment the same way.
 	refs := &FileRefsTool{workspace: ws}

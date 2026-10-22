@@ -35,6 +35,7 @@ var builtinLangRuleOrder = []string{
 	"langrules/kotlin.yaml",
 	"langrules/ruby.yaml",
 	"langrules/cpp.yaml",
+	"langrules/dart.yaml",
 }
 
 // codeLanguageExts are the extensions of the languages whose extractor stays in

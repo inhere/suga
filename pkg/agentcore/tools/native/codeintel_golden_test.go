@@ -45,6 +45,7 @@ var sampleFiles = []string{
 	"yaml/config.yaml", "toml/config.toml",
 	"rs/lib.rs", "docs/guide.md",
 	"csharp/Store.cs", "kotlin/Store.kt", "ruby/store.rb", "cpp/store.cpp",
+	"dart/store.dart",
 }
 
 // goldenCases records one symbols and two references calls per language, the two
@@ -79,6 +80,7 @@ func goldenCases() []goldenCase {
 		{"kotlin", "kotlin/Store.kt", "reload"},
 		{"ruby", "ruby/store.rb", "reload"},
 		{"cpp", "cpp/store.cpp", "reload"},
+		{"dart", "dart/store.dart", "reload"},
 	} {
 		cases = append(cases,
 			goldenCase{name: "refs-" + c.name, tool: "file_refs", args: map[string]any{"name": c.ident, "path": c.file}},
@@ -116,7 +118,9 @@ func TestCharacterizationLanguageRegistry(t *testing.T) {
 		"gradle --tests Foo test", "cargo test", "cargo test --test integration",
 		"npm test", "pnpm run test", "yarn test", "npx jest -t foo", "vitest run",
 		"pytest -q", "python3 -m pytest tests -k foo", "vendor/bin/phpunit --filter Foo", "pest",
-		"make test", "ctest", "rspec spec/models", "dotnet test", "ls -la", "go build ./...",
+		"make test", "ctest", "rspec spec/models", "dotnet test",
+		"dart test", "flutter test", "fvm flutter test", "flutter.bat test", "flutter test --name reload",
+		"ls -la", "go build ./...",
 	} {
 		fmt.Fprintf(&b, "  %-40s test=%v focused=%v\n", cmd, codeintel.TestCommandPattern().MatchString(cmd), codeintel.FocusedTestPattern().MatchString(cmd))
 	}

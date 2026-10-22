@@ -7,4 +7,4 @@ csharp/Store.cs:17 ref public void Reload()
 csharp/Store.cs-18- {
 csharp/Store.cs-19- string label = "Reload in a string is no reference";
 [no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
-[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, Dart, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]

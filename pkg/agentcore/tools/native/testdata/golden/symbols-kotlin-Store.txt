@@ -7,4 +7,4 @@ kotlin/Store.kt:24 interface Loader interface Loader {
 kotlin/Store.kt:25 method load fun load(path: String): Int
 kotlin/Store.kt:28 class Registry object Registry {
 kotlin/Store.kt:29 var store val store: Store = Store(Loader())
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

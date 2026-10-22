@@ -7,4 +7,4 @@ csharp/Store.cs:28 var ready private bool ready { get; set; }
 csharp/Store.cs:31 interface ILoader public interface ILoader
 csharp/Store.cs:33 method Load void Load(string path);
 csharp/Store.cs:36 enum Mode public enum Mode
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]

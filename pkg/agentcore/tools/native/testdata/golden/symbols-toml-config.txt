@@ -10,5 +10,5 @@ toml/config.toml:13 key features.flags […]
 toml/config.toml:15 section services[] […] ×2
 toml/config.toml:16 key services[].name "api" ×2
 toml/config.toml:17 key services[].port 8081 ×2
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
 [toml: 3 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]

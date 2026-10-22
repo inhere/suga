@@ -1,7 +1,7 @@
 ts/loader.ts:31 ref loader.reload();
-[qualified by "loader": kept the definitions of type/package loader and the sel/call uses whose qualifier text is loader or ends with loader (case-insensitive); dropped 18 use(s) of "reload" with another qualifier (18 unqualified or text matches) - a variable among them may still refer to loader, so check the names you do not recognise, or search without the qualifier for all of them]
+[qualified by "loader": kept the definitions of type/package loader and the sel/call uses whose qualifier text is loader or ends with loader (case-insensitive); dropped 21 use(s) of "reload" with another qualifier (21 unqualified or text matches) - a variable among them may still refer to loader, so check the names you do not recognise, or search without the qualifier for all of them]
 [no type resolution: a match may be another object with the same name (a local, a field, another package's symbol); the shown line decides]
-[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, PHP, C#, Kotlin, Ruby, C/C++, Dart, YAML and TOML matches come from word-boundary text matching with comments masked (a config file's string values stay visible: that is how a config names things), not a parser; confirm with file_grep]
 [approx: other text files have no parser; matches use word-boundary text matching, with comments and strings unmasked; inspect each line]
 [skipped 5 test file(s); pass include_tests: true to search them]
 [skipped 1 documentation file(s) (.md, .txt, .rst)]

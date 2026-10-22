@@ -13,6 +13,8 @@
 - 新命令 `suga inspect rules <approval|output|nudge|lang> [--builtin] [--json]`（只读，不写 SUGA_HOME）：打印生效规则与来源层（builtin / 文件路径）、被跳过的文件与原因；`--builtin` 打印内置规则的原始 YAML（output/lang 逐份内嵌文件、nudge 为可直接写进规则文件的形态、approval 无内置则说明默认行为），供模型或用户照写规则文件。`suga inspect manifest` 新增 `Output rules` 一节（输出规则按名字、来源层列出，被跳过的文件列在 `output_rule_skips`），与 nudge/lang 汇总一致。
 - skills 的 suga-guide 新增 `references/rules.md`：四种规则文件（审批/输出整理/收工检查/语言）的统一参考——用途、文件位置与三层顺序、同名替换/新增/关闭语义、完整字段表（以代码为准）、每类一个完整示例、核对命令，以及受保护路径说明（`$SUGA_HOME` 与 `<workspace>/.suga/` 的写入在 chat/ACP 先询问、run/子 agent 被拒，规则内容应先给用户看、用户同意再写）；`tools.md`/`config.md` 对应段落改为简述并指向它，SKILL.md 的 description 与正文加"写规则"入口；rules.md 的 yaml 示例有测试守护（用与实现相同的 loader 逐个解析）。
 
+- Dart（含 Flutter）语言规则：新增内置 `langrules/dart.yaml`，`file_symbols`/`file_refs` 因此认得 `.dart`（class/abstract class/mixin/enum/extension/extension type/typedef、顶层函数、成员方法与 getter/setter、factory 与命名构造函数、`final`/`const`/`var`/`late` 字段；`///` 行注释与 `'''`/`"""` 文本块遮蔽），项目标记 `pubspec.yaml`/`pubspec.lock`/`analysis_options.yaml`，ctags 映射 Dart；trace 分析新增对 `dart test`、`flutter test`（含 `fvm flutter test`、`flutter.bat test`）的识别与 `--name`/`-n`/`--plain-name`/`--tags` 聚焦参数。已知漏报：可嵌套的 `/* */`、raw 字符串、无修饰词的隐式类型字段、字符串插值内的调用。
+
 ### 变更
 
 - 内置输出规则目录改名为 `outrules`（`pkg/agentcore/tools/native/outrules/`，原 `rules/`）：只影响源码位置与 `suga inspect rules output --builtin` 打印的内嵌文件名（现在是 `# outrules/go.yaml`），用户的 `output-rules.yaml` 与规则名不变。

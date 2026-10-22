@@ -184,7 +184,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 ## 语言规则（`lang-rules.yaml`）
 
-`file_symbols`、`file_refs` 的语言识别和 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里，其余语言（内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++ 与用户新增的）都由规则文件描述。
+`file_symbols`、`file_refs` 的语言识别和 trace 分析的测试命令识别由语言注册表决定：内置 Go/PHP/YAML/TOML 的实现在代码里，其余语言（内置 JavaScript/TypeScript、Python、Java、C#、Kotlin、Ruby、C/C++、Dart（含 Flutter）与用户新增的）都由规则文件描述。
 
 - 分层与输出规则一致：内置 → `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml`；同名替换整条规则，新名字追加，`enabled: false` 关掉某门（包括内置的）。`suga inspect rules lang --builtin` 可打印内置规则原文（每语言一份）。
 - 后加载的规则抢同名的扩展名时后者生效并在日志里警告；`.go`、`.php`、`.yaml`/`.yml`、`.toml` 属于代码里实现的语言，规则文件不能抢，写了会让该文件整体报错跳过。

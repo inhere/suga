@@ -1,4 +1,6 @@
 csharp/Store.cs:17 method Reload public void Reload()
+dart/store.dart:16 method reload Future<int> reload() => load('reload');
+dart/store.dart:41 method reload Future<int> reload() async {
 go/store.go:35 method Reload func (s *Store) Reload() error {
 java/Store.java:15 method reload public void reload() {
 java/Store.java:21 method reload void reload() {
@@ -10,7 +12,7 @@ py/loader.py:21 method reload def reload(self):
 ruby/store.rb:11 method reload def reload
 ruby/store.rb:21 method reload_nested def reload_nested
 ts/loader.ts:13 method reload reload(): void {
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
 [toml: 3 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
 [yaml: 2 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
 [skipped 5 test file(s); pass include_tests: true to include them]

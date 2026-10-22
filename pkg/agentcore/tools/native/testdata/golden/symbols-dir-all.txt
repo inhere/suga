@@ -12,6 +12,31 @@ csharp/Store.cs:28 var ready private bool ready { get; set; }
 csharp/Store.cs:31 interface ILoader public interface ILoader
 csharp/Store.cs:33 method Load void Load(string path);
 csharp/Store.cs:36 enum Mode public enum Mode
+dart/store.dart:5 class Loader abstract class Loader {
+dart/store.dart:6 method load Future<int> load(String path);
+dart/store.dart:9 class LoaderState enum LoaderState { idle, loading, failed }
+dart/store.dart:11 class Retryable mixin Retryable {
+dart/store.dart:15 type LoaderExt extension LoaderExt on Loader {
+dart/store.dart:16 method reload Future<int> reload() => load('reload');
+dart/store.dart:19 type LoaderId extension type LoaderId(int value) {}
+dart/store.dart:21 type LoaderFactory typedef LoaderFactory = Loader Function();
+dart/store.dart:23 class Store class Store {
+dart/store.dart:24 method Store Store(this.loader);
+dart/store.dart:26 method Store.memory Store.memory() : loader = MemoryLoader();
+dart/store.dart:28 method Store.create factory Store.create(Loader loader) => Store(loader);
+dart/store.dart:30 var maxItems static const int maxItems = 10;
+dart/store.dart:31 var loader final Loader loader;
+dart/store.dart:32 var items late final List<String> items = <String>[];
+dart/store.dart:34 method usage double get usage => items.length / maxItems;
+dart/store.dart:36 method capacity set capacity(int value) {
+dart/store.dart:41 method reload Future<int> reload() async {
+dart/store.dart:46 class StoreWidget class StoreWidget extends StatefulWidget {
+dart/store.dart:47 method StoreWidget const StoreWidget({super.key, required this.store});
+dart/store.dart:49 var store final Store store;
+dart/store.dart:52 method createState State<StoreWidget> createState() => _StoreWidgetState();
+dart/store.dart:55 class _StoreWidgetState class _StoreWidgetState extends State<StoreWidget> {
+dart/store.dart:57 method build Widget build(BuildContext context) {
+dart/store.dart:62 func openStore Future<Store> openStore() async {
 go/store.go:6 type Store type Store struct {
 go/store.go:11 type Item type Item struct {
 go/store.go:17 const maxItems maxItems = 10
@@ -92,7 +117,7 @@ yaml/config.yaml:12 section features {…}
 yaml/config.yaml:13 key features.reload true
 yaml/config.yaml:14 key features.flags […]
 yaml/config.yaml:17 key quoted.key kept
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
 [toml: 3 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
 [yaml: 2 key path(s) repeat - the entries of a sequence (or an array of tables) share one path; each path is listed once, at its first line, with its count (xN) in the signature]
 [skipped 5 test file(s); pass include_tests: true to include them]

@@ -6,4 +6,4 @@ java/Store.java:21 method reload void reload() {
 java/Store.java:25 interface Finder public interface Finder {
 java/Store.java:26 method find String find(String name);
 java/Store.java:29 enum Mode public enum Mode {
-[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
+[approx: JavaScript/TypeScript, Python, Java, C#, Kotlin, Ruby, C/C++, Dart, PHP and TOML declarations come from declaration-line detection, not a parser; YAML is parsed (a file the parser rejects falls back to indentation lines); confirm a name with file_grep]
