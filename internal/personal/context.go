@@ -126,7 +126,7 @@ func (r *Runner) loadHistory(ctx context.Context, sessionID string) (historyView
 		}
 	}
 	entries, err := r.cfg.Repository.ListEntries(ctx, sessionID, store.EntryFilter{
-		Types: []string{store.EntryUser, store.EntryAssistant, store.EntryTool, store.EntryCompaction, store.EntryHandoff, store.EntryContextUpdate},
+		Types: []string{store.EntryUser, store.EntryAssistant, store.EntryTool, store.EntryCompaction, store.EntryHandoff, store.EntryContextUpdate, store.EntryAdmit},
 		// The bodies of the entries before the current segment are never sent: they
 		// are read back for the items only, once the view is known (below).
 		NoHydrate: true,
@@ -193,6 +193,12 @@ func (r *Runner) loadHistory(ctx context.Context, sessionID string) (historyView
 	var pendingAt []int
 	for _, e := range entries {
 		if e.Type == store.EntryCompaction || e.Type == store.EntryHandoff || e.Seq < firstKept {
+			continue
+		}
+		// An admitted record is a ledger row of a tool call with side effects, not
+		// a message: it is read for the interrupted-turn replay only and never
+		// reaches the model's context (issue suga-r72b).
+		if e.Type == store.EntryAdmit {
 			continue
 		}
 		if e.Type == store.EntryContextUpdate {

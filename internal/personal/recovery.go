@@ -105,6 +105,12 @@ func (r *Runner) recoverStaleSession(ctx context.Context, model Session, lockHel
 				return model, fmt.Errorf("recover session %q: cancel turn %q: %w", model.ID, turnID, err)
 			}
 			turnStatus = store.TurnCancelled
+			// A tool call with side effects that the dead process admitted but never
+			// answered is marked interrupted (issue suga-r72b): the next turn gets a
+			// result saying the effects are unknown instead of rerunning the call.
+			if err := r.markInterruptedToolCalls(ctx, model.ID, turnID); err != nil {
+				slog.Warn("mark interrupted tool calls", "session_id", model.ID, "turn_id", turnID, "err", err)
+			}
 		}
 	}
 	attrs := map[string]any{"previous_status": store.SessionRunning}

@@ -53,7 +53,10 @@ type Options struct {
 	// so they are in the tool table, the manifest and tool_search, and
 	// tools.disabled removes them like any other tool. A name a built-in or MCP
 	// tool already has (or one the runtime registers itself, see
-	// runtimeToolNames) is a startup error. Sub-agents never get them.
+	// runtimeToolNames) is a startup error. Sub-agents never get them. Execute
+	// reads tools.InvocationID(ctx) - the id of the call, stable across the
+	// hooks and unique within the session - so a host can key its own
+	// side-effect ledger on it.
 	ExtraTools []api.Tool
 	// HostContext returns the host's context text (persona, topic index, verbatim
 	// constraints) and a hash of it; nil = no host context. The segment start

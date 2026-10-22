@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 // Runtime executes agent runs using the public agentcore contracts.
@@ -521,12 +522,27 @@ func (r *DefaultRuntime) executeToolCalls(ctx context.Context, state *RunState, 
 		if i == 0 {
 			callLead = lead
 		}
-		result, err, handled := r.executeSingleTool(ctx, state, call, callLead)
+		// Every call runs with its own invocation id, set before the hooks: the
+		// hooks, the tool and a host's side-effect ledger read the same value
+		// (tools.InvocationID).
+		callCtx := tools.WithInvocationID(ctx, toolInvocationID(state, call, i))
+		result, err, handled := r.executeSingleTool(callCtx, state, call, callLead)
 		if handled {
 			return result, err, true
 		}
 	}
 	return nil, nil, false
+}
+
+// toolInvocationID derives the id of one tool call: the run id plus the
+// provider's call id, and the call's position when the provider sent none, so
+// every call of a turn has an id of its own.
+func toolInvocationID(state *RunState, call ToolCall, index int) string {
+	id := call.CallID
+	if id == "" {
+		id = fmt.Sprintf("call-%d-%d", state.Step, index)
+	}
+	return state.RunID + "/" + id
 }
 
 func (r *DefaultRuntime) executeSingleTool(ctx context.Context, state *RunState, call ToolCall, lead leadOutput) (*RunResult, error, bool) {

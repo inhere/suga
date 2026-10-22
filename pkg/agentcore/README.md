@@ -90,6 +90,7 @@ runtime := agentcore.New(agentcore.Config{
   - `tools.Kinded`（`Kind()`），缺省 native；读取用 `tools.KindOf(tool)`。
   - `tools.Describer`（`ToolMeta()`），声明中性类别（read/edit/execute/search/fetch/think）与只读标记；读取用 `tools.MetaOf(tool)`。
 - MCP 工具：`tools.IsMCP(tool)`、`tools.MCPServerOf(tool)`。`MetaOf` 对 MCP 工具一律返回“其他、非只读”，同名冒充内置工具也不会走只读快速路径。
+- 每次工具调用都有一个调用 ID：runtime 在 `BeforeTool` 之前放进 ctx，钩子与工具执行里用 `tools.InvocationID(ctx)` 读到的都是同一个值，同一回合内不同调用各不相同（`<run_id>/<call_id>`）。宿主工具可以拿它当自己副作用账本的幂等键。
 - 分层顺序：observe（宿主）→ `tools.Output`（输出治理）→ `tools.Visibility`（延迟加载 MCP schema）→ `tools.Approval`（审批）→ `tools.Registry`。
 - `tools.Output`：结果不超过 `InlineBytes` 原样通过；更大的结果交给宿主实现的 `tools.Spiller` 存下全文，上下文换成 ref 行加头尾片段（未配置 Spiller 时只截断）。错误结果不改写；`Meta.Rereadable` 的工具（自带分页，如 `file_read`、`recall`）不经外置。`Meta.External` 标记结果含外部内容（如 `web_fetch`、MCP 工具），宿主据此做污染标记；`Meta.AgentState` 标记写的是 agent 自身状态而非工作区（如 `memory`）。
 - `native.Env` 的 `InlineBytes`（内联阈值）与 `RawBytes`（单次原始输出上限）取代原 `MaxOutputBytes`。

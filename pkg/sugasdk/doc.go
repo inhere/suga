@@ -56,6 +56,18 @@
 // hidden by the default `suga sessions` list, which the host then filters with
 // Engine.Sessions(SessionFilter{Origin: "xhen"}).
 //
+// # Tool invocations
+//
+// The runtime gives every tool call an invocation id and puts it in the
+// context the tool runs with: tools.InvocationID(ctx). It is the same for the
+// hooks around that call (BeforeTool, AfterTool) and different for every call
+// of a session, so a host tool can use it as the idempotency key of its own
+// side-effect ledger. suga keeps the same guarantee on its side: a call with
+// side effects is written down before it runs, and a turn that was interrupted
+// between running the call and storing its result replays it as "state unknown"
+// instead of running it again - the host can answer an id it has seen the same
+// way (see the tool_invocation ledger in the trace).
+//
 // # Thread safety
 //
 // Open, Close and OpenSession are safe to call from several goroutines, as are
