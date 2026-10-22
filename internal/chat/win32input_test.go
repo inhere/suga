@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 )
@@ -163,10 +164,16 @@ func TestChatInputSource_Win32Pause(t *testing.T) {
 	source.SetWin32InputMode(true)
 	assert.True(t, source.Request("> "))
 	waitTTY(t, tty, true)
+	// The read turns the mode on and draws the prompt on its own goroutine:
+	// count only once that output has settled, or a late "on" sequence lands
+	// after the count (seen once in fifteen -race runs).
+	waitOutputSettled(t, out, win32ModeOnSeq)
 	before := strings.Count(out.String(), win32ModeOnSeq)
 	source.PauseWin32Input()
 	assert.False(t, source.win32Records())
-	assert.True(t, strings.HasSuffix(out.String(), win32ModeOffSeq))
+	// The last mode switch written is "off" (the prompt may follow it).
+	got := out.String()
+	assert.True(t, strings.LastIndex(got, win32ModeOffSeq) > strings.LastIndex(got, win32ModeOnSeq))
 	// A read that starts while the command runs must not turn it back on.
 	source.mu.Lock()
 	source.setWin32InputLocked(true)
@@ -175,4 +182,23 @@ func TestChatInputSource_Win32Pause(t *testing.T) {
 	source.ResumeWin32Input()
 	assert.True(t, source.win32Records())
 	assert.Eq(t, before+1, strings.Count(out.String(), win32ModeOnSeq))
+}
+
+// waitOutputSettled waits until out holds want and has not changed for a short
+// while: the input source writes the mode switch and the prompt from its own
+// goroutine, after the tty already went raw.
+func waitOutputSettled(t *testing.T, out *lockedBuffer, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	last, stableSince := "", time.Now()
+	for time.Now().Before(deadline) {
+		cur := out.String()
+		if cur != last {
+			last, stableSince = cur, time.Now()
+		} else if strings.Contains(cur, want) && time.Since(stableSince) >= 50*time.Millisecond {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("output did not settle with %q: %q", want, last)
 }
