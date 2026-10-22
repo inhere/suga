@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 会话消息可靠投递 设计
 
-> 状态：Draft 0.2 / 待人工计划批准
+> 状态：Approved 0.2（2026-10-22 用户：“批准消息设计”）/ 一期进入规划
 
 ## 修订记录
 
