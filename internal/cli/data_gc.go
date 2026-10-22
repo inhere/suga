@@ -48,7 +48,7 @@ func newDataGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	cmd.SetOutput(stderr)
 	cmd.StringVar(&olderThan, "older-than", "", "remove sessions not updated within this age, e.g. 30d or 12h")
 	cmd.BoolVar(&apply, "apply", false, "delete for real (default: only list what would be removed)")
-	cmd.BoolVar(&retention, "retention", false, "remove by origin class: gc.retention.interactive for chats, gc.retention.noninteractive for run/ACP sessions")
+	cmd.BoolVar(&retention, "retention", false, "remove by origin class: gc.retention.interactive for chats, gc.retention.noninteractive for run/ACP sessions (sessions of a host application keep their own lifecycle)")
 	return cmd
 }
 
@@ -300,6 +300,11 @@ func writeRetentionReport(out io.Writer, report store.GCRetentionReport) {
 		}
 		fmt.Fprintf(out, "%s（保留 %s）：%d 个会话，%d 条条目，预计 %s\n",
 			name, humanDuration(class.Retention), len(class.Sessions), class.Entries, humanBytes(class.EstimatedBytes))
+	}
+	if n := len(report.HostManaged); n > 0 {
+		// Host-managed sessions (origin xhen) are not cleaned by period: the host
+		// decides how long a topic lives. An explicit --older-than still removes one.
+		fmt.Fprintf(out, "由宿主管理（origin=xhen）：未清理 %d 个会话（生命周期由宿主决定；--older-than 显式清理仍会删除）\n", n)
 	}
 	verb := "将删除"
 	if report.Applied {
