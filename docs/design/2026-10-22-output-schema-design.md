@@ -1,7 +1,7 @@
 # 输出契约（OutputSchema）设计
 
 日期：2026-10-22
-状态：**Draft 0.1 / 待用户批准**
+状态：**Draft 0.2 / 待用户批准**（0.2 按评审 `docs/review/2026-10-22-output-schema-design-review.md` 的 F1–F3 修订）
 参考：whip（context-labs/whip）的输出契约（`docs/rlm-runtime.md:470-489`、`internal/daemon/output_contract.go`），见 `local/analysis/2026-10-22-whip-vs-suga.md` 的 B4；现有 `--verify`（`docs/design/2026-10-21-run-verify-design.md`）与收工检查 nudge（`docs/design/2026-10-22-nudge-design.md`）的注入式推回机制。
 本文件只做设计，不含实现；实施等本设计获批后另出计划。
 
@@ -12,7 +12,7 @@
 3. **回答里的 JSON 按固定顺序提取**：整段 → ```` ```json ````/无标记围栏块（从后往前）→ 平衡括号子串（从后往前）；命中的来源写进报告（`whole|fenced|substring`），没有找到时报 `no_json`。
 4. **纠正只做一次**；纠正回合是**新回合**（新 `turn_id`，`injected=true`），与 `--verify`／nudge 的推回同构。一次 `suga run`／一次 SDK `Send`／一次 ACP prompt 共用这 1 次预算。
 5. **流水线位置：最后一步**——`Run → 后台任务收尾 → nudge → verify → 输出契约`。契约判定的是“最终返回给调用方的答复”，前面几步都可能换掉答复。`suga run` 不接 hooks 的 Stop（Stop 只在 chat），chat 一期不支持契约。
-6. **首轮就把 schema 给模型**（本次调用追加到系统提示末尾，不落库、resume 不继承）：不给 schema 首轮几乎必错，等于每次白烧一次纠正。schema 在纠正消息里再出现一次，带具体校验错误。
+6. **首轮就把 schema 给模型**，放在**本次请求末尾的临时上下文**里（追加在本轮用户消息之后，只进入这次模型请求，不写会话记录、resume 不继承；**不碰系统提示词**，以免整段会话的前缀缓存失效）：不给 schema 首轮几乎必错，等于每次白烧一次纠正。纠正回合同样带这块临时上下文，纠正消息本身只写校验错误。
 7. **失败退出码新增 6**（`ErrOutputContract`），现有 1/2/3/4/5/130 语义全不变。stream-json 的 result 行新增 `output_schema` 字段（`passed/rounds/source/errors/value`），`result` 字段仍是答复文本。
 8. **SDK 失败不新增 `State`**：`Result.State` 仍为 `COMPLETED`，新增 `Result.OutputValue`（`json.RawMessage`）与 `Result.OutputContract`，同时返回 `ErrOutputContract`（`Send` 现状即“Result + error 一起给”）。
 9. **provider 原生结构化输出一期不做**：现有 `pkg/agentcore/llm` 没有 `response_format`，只有 `tool_choice`（`api/provider.go:49-58`、`llm/openai.go:289`）。二期按 `api.ToolChooser` 的形状加一个可选 `StructuredOutput` 能力接口，不支持就退回“提示词 + 校验”。
@@ -99,7 +99,7 @@ type Prompt struct {
 
 默认 draft：`DefaultDraft(jsonschema.Draft2020)`，schema 自带 `$schema` 时按它。`AssertFormat()` **不开启**（format 严格度各库不一致，结果会因库版本漂移；需要约束就写 `pattern`/`enum`，文档里会写明这一点）。
 
-校验对象：`json.Unmarshal` 成 `any` 后交给 `Schema.Validate(any)`；错误是 `*jsonschema.ValidationError`，`Causes[].InstanceLocation`（`[]string`，根是空切片）加 `Causes[].ErrorKind.LocalizedString(printer)` 拼出 `{path, message}`。
+校验对象：用 `json.Decoder` + `UseNumber()` 解码（保留数字原文，避免超过 2^53 的整数被 `float64` 改值；计划阶段用探针确认 v6 对 `json.Number` 的校验行为，若库自带保留数字的解码函数则用它）后交给 `Schema.Validate`；错误是 `*jsonschema.ValidationError`，`Causes[].InstanceLocation`（`[]string`，根是空切片）加 `Causes[].ErrorKind.LocalizedString(printer)` 拼出 `{path, message}`。
 
 已用一次性探针实测（`tmp/schemacheck`，一个临时 module，验证完删除；suga 的 go.mod 未动）：
 
@@ -134,7 +134,7 @@ schema 是**数据，不是代码**，但“编译”这一步本身会去取资
 
 从后往前的原因：模型习惯“先说结论再给 JSON”或“解释 + 最终块”，whip 只做“容忍外层代码块”，我们多走一步但仍保持确定性——同一回答永远得到同一结果，无随机、无“猜”。一个回答里有多个候选时，**先命中的合法值优先**，不是“最大的块优先”；这个顺序会写进用户文档，调用方不必猜。
 
-值的形态：校验通过后把该 JSON 值重新 `marshal` 成**紧凑文本**（`json.Marshal`，键序按 Go 的 map 排序规则），作为 `OutputValue`。原回答文本不动。
+值的形态：`OutputValue` 是**提取出来的原始 JSON 片段**经 `json.Compact` 后的文本——不经过 `any` 重新编码，所以数字精度与键序都与模型输出一致（不替模型改值，与 6.4 第 2 条一致）。原回答文本不动。单测：`{"id": 9007199254740993}` 原样返回。
 
 ### 3.4 provider 原生结构化输出（一期不做，二期预留）
 
@@ -168,17 +168,15 @@ Run → 后台任务收尾 → nudge（收工检查）→ verify（--verify）�
 - $: missing property "status"
 - $.items[0].id: expected number, got string
 解析问题：回答里没有找到 JSON 值（或：未闭合的字符串 ...）     ← 仅在该类错误时出现
-请只重新给出最终回答：一个符合下面 JSON Schema 的 JSON 值。
+请只重新给出最终回答：一个符合本次请求末尾给出的 JSON Schema 的 JSON 值。
 不要执行新的工具调用，不要解释，不要加代码围栏。
-JSON Schema：
-<schema 原文，≤32 KiB>
 ```
 
 要点：
 - 错误列表**最多 8 条**、每条 ≤200 字符（`ValidationError` 可能很长，截断并注明“还有 N 条”），防止小 schema 产生大纠正消息。
 - 明确“不要执行新的工具调用”：纠正回合是纯文本回合；若模型仍调用了工具，照常执行（正常审批与规则照旧），但**不再重跑 verify**（已在它之前跑过），这一点写进文档作为已知限制。
-- 提示里不重复整段原回答（模型上下文里本来就有），只给错误。
-- 首轮的系统提示后缀（本次调用专用，不落库）：
+- 提示里不重复整段原回答（模型上下文里本来就有），也不重复 schema 原文（它在本次请求的临时上下文里），只给错误；所以落库的纠正消息只有几百字节。
+- 本次请求末尾的临时上下文（首轮与纠正回合都带，不落库）：
 
 ```
 [输出契约] 这一轮的最终回答必须是一个 JSON 值，符合下面的 JSON Schema。
@@ -186,7 +184,7 @@ JSON Schema：
 <schema 原文>
 ```
 
-  怎么带进去（实现要点）：现有两条路都不合用——`personal.RunRequest.SystemContext` 是**注入的 user 消息并落库**（`runner.go:639`、`runner.go:689-693`），`wiring.Options.HostContext` 是**会话分段快照里的稳定上下文**（`internal/wiring/context.go:52-54`、`host_context_test.go:56-57`），两者都会在 resume 后继续生效，而契约明确不继承。因此计划新增 `personal.RunRequest.SystemSuffix`（可选：为空时提示词生成逐字节不变），由 prompt builder 在本轮系统提示**末尾**追加。若实现起来侵入面偏大，**次选**才是 `SystemContext`，但那会把旧 schema 永久留在会话历史里（与“resume 不继承”相矛盾），不作为默认方案。
+  怎么带进去（实现要点）：现有两条路都不合用——`personal.RunRequest.SystemContext` 是**注入的 user 消息并落库**（`runner.go:639`、`runner.go:689-693`），`wiring.Options.HostContext` 是**会话分段快照里的稳定上下文**（`internal/wiring/context.go:52-54`、`host_context_test.go:56-57`），两者都会在 resume 后继续生效，而契约明确不继承。系统提示词也不能用：它由 runner 原样发送（`runner.go:58-60`，分段设计 D1/W1），末尾一变，后面全部历史都失去前缀缓存，带契约与不带契约的调用还会互相冲掉缓存。因此计划新增一个**只作用于本次模型请求的临时上下文**（例如 `personal.RunRequest.EphemeralContext`）：在请求投影的最后、本轮用户消息之后追加，不写入会话记录；为空时投影逐字节不变（测试守护）。system、tools 与历史前缀不变，缓存只在最后一段失效。
 
 ### 4.3 次数、回合、开销
 
@@ -235,7 +233,7 @@ JSON Schema：
 ## 5. 会话与记录
 
 - **不写进会话设置**：`--output-schema` 与 `--verify`、`--max-steps`、`--budget-*` 同类（`internal/cli/run.go:469-504` 只加载会话，不持久化这些参数）→ **resume 后不自动生效**，要再给一次。若将来要“会话级契约”，那是另一个设计（要考虑多客户端冲突），一期明确不做。
-- **会话里留下的东西**：首轮 prompt（不变）、答复原文（不变，仍是被 FTS 索引的 assistant entry）、纠正回合的两条 entry（injected user + assistant）。历史检索（`session_search`/`recall`）因此能搜到 schema 提示与答复里出现的字段名——这是“可检索”的自然结果，不额外建索引。
+- **会话里留下的东西**：首轮 prompt（不变）、答复原文（不变，仍是被 FTS 索引的 assistant entry）、纠正回合的两条 entry（injected user：只有校验错误与重答要求，不含 schema 原文；assistant）。schema 本身只出现在本次请求的临时上下文里，不进会话记录与检索索引。
 - **trace**：新增事件类型 `store.EventOutputSchema = "output_schema"`（`internal/personal/store/types.go:50-129` 的事件表），name `check`，status `ok|failed`，attrs：
   - `passed`、`rounds`、`source`（`whole|fenced|substring|no_json`）、
   - `errors`（最多 5 条 `path: message`）、
@@ -256,7 +254,7 @@ JSON Schema：
 
 ### 6.2 大 schema 的上下文成本
 
-- schema 每轮都进系统提示（最多 2 轮），32 KiB 上限 ≈ 数 k token/轮。缓解：上限 32 KiB、纠正消息只带错误不带原回答、schema 文本放系统提示**末尾**（同一次调用内稳定，不破坏该调用的前缀缓存）。
+- schema 每轮都进本次请求末尾的临时上下文（最多 2 轮），32 KiB 上限 ≈ 数 k token/轮。缓解：上限 32 KiB、纠正消息只带错误不带原回答与 schema、schema 放在请求**最后**（system、tools 与历史前缀不变，前缀缓存照常命中，只有最后一段不命中）。
 - 若调用方确实需要更大的契约，正确做法是把 schema 拆小（`$defs` 引用不需要远程 `$ref`，内联即可……但总量仍受 32 KiB 限制），或者用原生结构化输出（二期），而不是把上限调大。
 - 报告与 trace 只存 hash/size，不存原文（5. 第三点）。
 
@@ -286,7 +284,7 @@ suga 没有 `suga run --json`；机器可读输出只有 `--output-format stream
 |---|---|
 | 契约编译/提取/校验/报告/提示词（纯函数，无 store 依赖） | 新包 `internal/personal/outschema`（`contract.go`/`extract.go`/`report.go`） |
 | 共用执行：`Run` 一次 → 判定 → 必要时一次纠正 → 终判 | `internal/personal/contract.go` 的 `RunWithContract(ctx, req, contract, hooks) (RunResult, ContractReport, error)`；hooks 用于宿主在纠正前收尾流式输出、写 trace |
-| 本次调用专用的系统提示后缀（不落库） | `personal.RunRequest.SystemSuffix`（或 `wiring.Options` 同名项）：为空时提示词逐字节不变 |
+| 本次请求专用的临时上下文（不落库、不改系统提示词） | `personal.RunRequest.EphemeralContext`（名称由计划定）：在请求投影最后追加；为空时投影逐字节不变 |
 | `--output-schema` 解析、编译、结果行、退出码 6 | `internal/cli/run.go`（解析与流水线）+ 新 `internal/cli/schema.go`（报告 → stderr/stream-json）；`internal/cli/errors.go:5-6` 的退出码注释同步补上 6 |
 | `WithOutputSchema` | `internal/output/streamjson.go` |
 | `Prompt.OutputSchema`、`ErrOutputContract`、`Result.OutputValue/OutputContract` | `pkg/sugasdk/types.go`、`session.go`、`engine.go` |
@@ -319,7 +317,7 @@ suga 没有 `suga run --json`；机器可读输出只有 `--output-format stream
 ## 8. 待用户批准的具体决策
 
 1. 新增退出码 **6**（契约未满足），而不是复用 5。（4.4）
-2. **首轮就把 schema 注入系统提示**（本次调用专用、不落库），换取少一次纠正。（4.2）
+2. **首轮就把 schema 给模型**，放在本次请求末尾的临时上下文（不落库、不改系统提示词），换取少一次纠正。（4.2）
 3. 在 run 里契约排在 **verify 之后**、是流水线最后一步；nudge/verify 的推回不消耗契约预算。（4.1）
 4. 纠正回合是**新 turn**（`injected=true`），不是塞进同一回合。（4.3）
 5. SDK 把契约放在 **`Prompt.OutputSchema`**（每轮），不是 `SessionOptions`。（2.2）
