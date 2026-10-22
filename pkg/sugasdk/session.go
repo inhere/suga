@@ -172,8 +172,7 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		if rec != nil {
 			// An existing claim answers the send: replay it, or report running /
 			// uncertain, without taking the turn slot.
-			dres, derr := s.dispatchRecord(requestID, rec)
-			return dres, derr
+			return s.dispatchRecord(ctx, repo, requestID, rec)
 		}
 	}
 	if err := s.claimRequest(requestID); err != nil {
@@ -200,8 +199,7 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 				// a nil record must never reach dispatchRecord.
 				return Result{}, fmt.Errorf("sugasdk: claim of request %q vanished", requestID)
 			}
-			dres, derr := s.dispatchRecord(requestID, rec)
-			return dres, derr
+			return s.dispatchRecord(ctx, repo, requestID, rec)
 		}
 	}
 	// The turn runs suga's own code (tools, provider): a panic there must not

@@ -6,9 +6,11 @@ package sugasdk
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal/store"
+	"github.com/inhere/suga/pkg/agentcore"
 )
 
 // plainChatServer answers every model request with finalText. gate (nil =
@@ -55,6 +58,26 @@ func writeTestRecord(t *testing.T, ctx context.Context, repo *store.Store, sessi
 	value, err := encodeRequestRecord(rec)
 	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, repo.PatchSessionMeta(ctx, sessionID, map[string]any{requestMetaKey(requestID): value}))
+}
+
+// writeTestAssistantEntry plants one assistant entry of a turn with content,
+// the way the runner stores a model reply (an agentcore.Message JSON).
+func writeTestAssistantEntry(t *testing.T, ctx context.Context, repo *store.Store, sessionID, turnID, content string) {
+	t.Helper()
+	body, err := json.Marshal(agentcore.Message{Role: "assistant", Content: content})
+	assert.Require(t, assert.NoErr(t, err))
+	_, err = repo.AppendEntries(ctx, sessionID, store.NewEntry{TurnID: turnID, Type: store.EntryAssistant, JSON: body})
+	assert.Require(t, assert.NoErr(t, err))
+}
+
+// sessionMetaJSON reads the session's whole meta back as one JSON document.
+func sessionMetaJSON(t *testing.T, ctx context.Context, repo *store.Store, sessionID string) string {
+	t.Helper()
+	model, err := repo.GetSession(ctx, sessionID)
+	assert.Require(t, assert.NoErr(t, err))
+	raw, err := json.Marshal(model.Meta)
+	assert.Require(t, assert.NoErr(t, err))
+	return string(raw)
 }
 
 // openTestSession is one engine and one session the tests share; url is the
@@ -212,26 +235,45 @@ func TestSendRequestIDUncertain(t *testing.T) {
 		assert.Eq(t, int32(1), atomic.LoadInt32(&bodies))
 	})
 	t.Run("a stored done record replays without the model", func(t *testing.T) {
+		// The record holds the small summary; the answer text lives in the
+		// turn's entries and the replay rebuilds it there.
+		writeTestAssistantEntry(t, ctx, repo, session.ID(), "turn-done", "stored")
 		writeTestRecord(t, ctx, repo, session.ID(), "req-done",
 			requestRecord{TurnID: "turn-done", State: requestStateDone,
-				Result: &Result{SessionID: session.ID(), TurnID: "turn-done", State: "COMPLETED", Output: "stored"}})
+				Summary: &requestSummary{State: "COMPLETED", Usage: Usage{InputTokens: 11, TotalTokens: 11}}})
 		res, err := session.Send(ctx, Prompt{Text: "hi", RequestID: "req-done"}, nil)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, "stored", res.Output)
 		assert.Eq(t, "COMPLETED", res.State)
 		assert.True(t, res.Replayed)
+		assert.Eq(t, 11, res.Usage.InputTokens)
 		status, err := session.RequestStatus(ctx, "req-done")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, RequestStatusDone, status)
 		assert.Eq(t, int32(1), atomic.LoadInt32(&bodies))
 	})
+	t.Run("a record whose entries are gone replays nothing", func(t *testing.T) {
+		// A finished record whose turn's answer is no longer in the session log
+		// cannot be rebuilt: a clear error instead of a silent empty answer.
+		writeTestRecord(t, ctx, repo, session.ID(), "req-gone",
+			requestRecord{TurnID: "no-such-turn", State: requestStateDone,
+				Summary: &requestSummary{State: "COMPLETED"}})
+		_, err := session.Send(ctx, Prompt{Text: "hi", RequestID: "req-gone"}, nil)
+		assert.Require(t, assert.ErrIs(t, err, ErrRequestOutputGone))
+		status, err := session.RequestStatus(ctx, "req-gone")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, RequestStatusDone, status)
+		assert.Eq(t, int32(1), atomic.LoadInt32(&bodies))
+	})
 	t.Run("a stored failed record replays the failure", func(t *testing.T) {
+		writeTestAssistantEntry(t, ctx, repo, session.ID(), "turn-fail", "cut off mid-call")
 		writeTestRecord(t, ctx, repo, session.ID(), "req-fail",
 			requestRecord{TurnID: "turn-fail", State: requestStateFailed,
-				Result: &Result{SessionID: session.ID(), TurnID: "turn-fail", State: "FAILED"}})
+				Summary: &requestSummary{State: "FAILED"}})
 		res, err := session.Send(ctx, Prompt{Text: "hi", RequestID: "req-fail"}, nil)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, "FAILED", res.State)
+		assert.Eq(t, "cut off mid-call", res.Output)
 		assert.True(t, res.Replayed)
 		status, err := session.RequestStatus(ctx, "req-fail")
 		assert.Require(t, assert.NoErr(t, err))
@@ -241,4 +283,38 @@ func TestSendRequestIDUncertain(t *testing.T) {
 		_, err := session.RequestStatus(ctx, "  ")
 		assert.Err(t, err)
 	})
+}
+
+// TestSendRequestStoresSummary covers that the record registry holds no answer
+// text: the meta of a session does not grow with the length of the outputs.
+func TestSendRequestStoresSummary(t *testing.T) {
+	ctx := context.Background()
+	var bodies int32
+	longOutput := strings.Repeat("answer ", 800)
+	server := plainChatServer(t, longOutput, &bodies, nil)
+	_, session := openTestSession(t, ctx, server.URL)
+	repo := openTestStore(t)
+
+	first, err := session.Send(ctx, Prompt{Text: "hi", RequestID: "req-long"}, nil)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, longOutput, first.Output)
+
+	// The record stores turn id, state and numbers only: the whole meta of the
+	// session contains none of the answer text, whatever its length was.
+	metaJSON := sessionMetaJSON(t, ctx, repo, session.ID())
+	assert.StrNotContains(t, metaJSON, longOutput)
+	assert.True(t, len(metaJSON) < 4096, "the session meta stays small, got %d bytes", len(metaJSON))
+	rec, err := session.readRequestRecord(ctx, repo, "req-long")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Require(t, rec != nil)
+	assert.Require(t, rec.Summary != nil)
+	assert.True(t, rec.Summary.Usage.InputTokens > 0)
+	assert.True(t, rec.At.After(time.Now().Add(-time.Hour)))
+
+	// The replay rebuilds the full output of the same length from the entries.
+	again, err := session.Send(ctx, Prompt{Text: "hi", RequestID: "req-long"}, nil)
+	assert.Require(t, assert.NoError(t, err))
+	assert.True(t, again.Replayed)
+	assert.Eq(t, first.Output, again.Output)
+	assert.Eq(t, int32(1), atomic.LoadInt32(&bodies))
 }

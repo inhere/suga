@@ -33,15 +33,20 @@
 // Prompt.RequestID (recommended: a UUID the caller generates, scoped to one
 // session) makes a Send deduplicated instead of always running: with an id this
 // session already finished, Send replays the stored first result with
-// Result.Replayed set and the model is not called again; an id whose turn is
-// running errors with ErrRequestRunning; a record left running by a process
-// that died mid-turn (delivery unknown) errors with ErrDeliveryUncertain and
-// reads "unknown" from Session.RequestStatus: the host resends the prompt
-// under a NEW request id, nothing replays on its own. The id-to-turn mapping
-// and the finished outcomes are stored in the session's meta, so they survive
-// restarts and a reopened session handle answers the same way. A Prompt
-// without a RequestID keeps the plain behaviour. Missing or blank ids in place
-// of RequestID (a Prompt with a whitespace-only id) are refused.
+// Result.Replayed set and the model is not called again. The replay comes from
+// storage: a small record in the session meta (turn id, state, a summary with
+// the usage numbers and the end time; never the answer text, so the meta does
+// not grow with the length of the answers), and the output rebuilt from the
+// turn's own assistant entry. A turn whose entries are gone from the session
+// log no longer replays: Send reports ErrRequestOutputGone. An id whose turn
+// is running errors with ErrRequestRunning; a record left
+// running by a process that died mid-turn (delivery unknown) errors with
+// ErrDeliveryUncertain and reads "unknown" from Session.RequestStatus: the
+// host resends the prompt under a NEW request id, nothing replays on its own.
+// The mapping and outcomes survive restarts and a reopened session handle
+// answers the same way. A Prompt without a RequestID keeps the plain
+// behaviour. Missing or blank ids in place of RequestID (a Prompt with a
+// whitespace-only id) are refused.
 //
 // Sessions opened without SessionOptions.Origin record origin "xhen" and are
 // hidden by the default `suga sessions` list, which the host then filters with
