@@ -149,6 +149,9 @@ type Runtime struct {
 	// questions; chat binds its terminal input to it. Unbound, every tool that
 	// needs a confirmation is refused.
 	Asker *tools.BindableAsker
+	// approvalLayer is the approval stage of the tool registry stack: chat hands
+	// it the PreToolUse hook through SetCallRewriter.
+	approvalLayer *tools.Approval
 	// WriteTools reports whether workspace write and shell tools are exposed.
 	WriteTools bool
 	// AddDirs is the session's additional-directory set (--add-dir): the tools
@@ -682,7 +685,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		}
 	}
 	rt := &Runtime{Runner: runner, Registry: capabilities.Registry, PreferredTools: preferredTools,
-		Resident: resident,
+		Resident:      resident,
+		approvalLayer: approvalLayer,
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string) {
 			policyAction, hit := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
 			if hit != nil {

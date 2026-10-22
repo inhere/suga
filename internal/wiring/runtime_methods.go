@@ -82,6 +82,17 @@ func (p *Runtime) SessionAddDirs() *SessionAddDirs {
 	return p.sessionDirs
 }
 
+// SetCallRewriter installs the rewriter the approval layer runs before its own
+// decision (chat's PreToolUse hook, see internal/chat/hooks_gate.go): the policy
+// decides on the rewritten call and a failing rewriter refuses the call. It has
+// to be set before the first turn runs.
+func (p *Runtime) SetCallRewriter(rewriter tools.CallRewriter) {
+	if p == nil || p.approvalLayer == nil {
+		return
+	}
+	p.approvalLayer.SetRewriter(rewriter)
+}
+
 // Close releases the session store and tool providers.
 func (p *Runtime) Close() error {
 	if p == nil {

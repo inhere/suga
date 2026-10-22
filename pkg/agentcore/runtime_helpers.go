@@ -408,7 +408,7 @@ func newRuntimeHookChain(hooks ...Hook) runtimeHookChain {
 
 func (c runtimeHookChain) runStage(call func(Hook) error, ctrl *Control) error {
 	for _, hook := range c.hooks {
-		if err := call(hook); err != nil {
+		if err := callHookSafe(hook, func() error { return call(hook) }); err != nil {
 			return err
 		}
 		if ctrl != nil && (ctrl.ShouldShortCircuit() || ctrl.ShouldYield()) {
@@ -420,11 +420,24 @@ func (c runtimeHookChain) runStage(call func(Hook) error, ctrl *Control) error {
 
 func (c runtimeHookChain) runStageWithoutControlStop(call func(Hook) error) error {
 	for _, hook := range c.hooks {
-		if err := call(hook); err != nil {
+		if err := callHookSafe(hook, func() error { return call(hook) }); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// callHookSafe runs one hook call and turns a panic of the hook into an error.
+// A host hook is foreign code: a panic must not take the run down, and every
+// stage that decides whether something may run (BeforeTool) treats the error as
+// a refusal, so a broken hook fails closed.
+func callHookSafe(hook Hook, call func() error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("hook %T panicked: %v", hook, recovered)
+		}
+	}()
+	return call()
 }
 
 func (c runtimeHookChain) BeforeRun(ctx context.Context, event *RunEvent, ctrl *Control) error {

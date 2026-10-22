@@ -164,6 +164,11 @@ type Options struct {
 	// workspace and output limits shell_exec uses; nil leaves the prefix an
 	// ordinary message (run, ACP, a chat without one).
 	Local *native.LocalCommand
+	// SetCallRewriter installs the pre-decision rewriter of the runtime's approval
+	// layer. Run hands it the PreToolUse hook (hooks.pre_tool_use.tools) once the
+	// hook client is recorded, so a rewritten call is approved on its new
+	// arguments and a failing hook refuses the call. nil leaves tool calls alone.
+	SetCallRewriter func(tools.CallRewriter)
 	// ContextNotices are the resident context warnings of this chat (rules
 	// truncated, a soft threshold crossed, skipped or shadowed skills). Run
 	// prints each once, on stderr, when the session is open; they never change
@@ -183,6 +188,13 @@ func markInteractivelyUsed(stderr io.Writer, runner *personal.Runner, sessionID 
 
 // Run drives the interactive chat REPL on top of runner; hooks may be nil.
 func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Reader, stdout, stderr io.Writer, hooks sugahooks.Client) error {
+	// The PreToolUse hook gates tool calls through the approval layer, which runs
+	// it before its own decision (see hooks_gate.go). Take the gate from the
+	// client itself: the recording wrapper below only forwards Client, so
+	// GateOf on it would find no gate (the gate records its own trace events).
+	if gate := sugahooks.GateOf(hooks); gate != nil && opts.SetCallRewriter != nil {
+		opts.SetCallRewriter(newToolGate(gate, runner))
+	}
 	hooks = recordHooks(hooks, runner)
 	sessionID := ""
 	// startupTitle is the stored title of a session this chat continues ("" for a

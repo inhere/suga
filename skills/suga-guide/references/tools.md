@@ -222,6 +222,23 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 - 设了 `hooks.stop_wait_sec` 时 hook 超时为它加 2 秒，否则由 `tasks.max_duration` 限制；没有空闲任务槽位时退回原来的等待。
 - `hooks.command` 以 stdin 上的 JSON 接收 chat 的生命周期事件；其它 hooks 键见 `references/config.md`。
 
+## 调用前 hook（PreToolUse）与三条硬规则
+
+外部命令 hook 只想看某些工具的调用时，配 `hooks.pre_tool_use.tools`（glob，`path.Match`）——不配则完全不发 PreToolUse。事件带 `tool_name` 与 `tool_input`（完整参数），回答按 Claude Code 的形状：
+
+```json
+{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"不要写 go.mod","updatedInput":{"path":"docs/ok.txt"}}}
+```
+
+- `permissionDecision` 为 `deny` 时拒绝该调用，理由作为工具错误交给模型；缺省（或 `allow`/`ask`）只表示“没有异议”。
+- `updatedInput` 替换这次调用的参数。`tool_input` 是未脱敏的完整原始参数（改写需要原值）；因此 `hooks.command` 必须是可信的程序。
+
+三条硬规则（内置 hook、外部命令 hook、宿主注入的 hook 都一样，代码里各有生效点与测试）：
+
+1. **改写后的参数重走审批**：改写发生在审批层的决定之前（`pkg/agentcore/tools.Approval.ExecuteTool` 先跑 `CallRewriter`，再对改写后的调用 `Decide`），所以审批模式、approval rules、受保护路径看到的是改写后的参数；不可能用旧参数通过审批、再执行新参数。
+2. **超时或 panic 按拒绝**：PreToolUse 命令超时、非零退出、回答不可解析，或宿主 hook panic，一律当作拒绝执行该调用（fail closed），理由写进 trace 的 `hook` 事件与工具错误；只做观察的 hook（如 PostToolUse）失败只记录，不改变结果。
+3. **hook 的 allow 不绕过审批模式**：`allow` 只表示 hook 没有异议，approval 层之后照常判定，`read_only`、approval rules 的 deny、受保护路径照旧生效；hook 只能收窄，不能放宽。
+
 ## MCP
 
 - 用 `--mcp-config <file>`（Claude 风格的 `mcpServers` JSON）或配置里的 `mcp.servers` 接入。

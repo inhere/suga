@@ -38,11 +38,12 @@ type Event struct {
 	Prompt         string `json:"prompt,omitempty"`
 	// Injected marks a UserPromptSubmit whose input did not come from terminal typing
 	// (Stop-block reply/notification or a local-socket delivery). Omitted when false.
-	Injected       bool   `json:"injected,omitempty"`
-	LastAssistant  string `json:"last_assistant_message,omitempty"`
-	StopHookActive bool   `json:"stop_hook_active"`
-	ToolName       string `json:"tool_name,omitempty"`
-	ToolOutput     string `json:"tool_output,omitempty"`
+	Injected       bool           `json:"injected,omitempty"`
+	LastAssistant  string         `json:"last_assistant_message,omitempty"`
+	StopHookActive bool           `json:"stop_hook_active"`
+	ToolName       string         `json:"tool_name,omitempty"`
+	ToolInput      map[string]any `json:"tool_input,omitempty"`
+	ToolOutput     string         `json:"tool_output,omitempty"`
 }
 
 // Response is the decoded hook answer.
@@ -54,6 +55,8 @@ type Response struct {
 	// terminal to see (e.g. the session was taken over elsewhere). The command
 	// prints it on its stderr, so the client captures that stream.
 	Notice string
+	// UpdatedInput replaces the arguments of the call (PreToolUse); nil keeps them.
+	UpdatedInput map[string]any
 }
 
 // Result is the outcome of a Stop wait.
@@ -79,6 +82,24 @@ type Client interface {
 	PostToolName(tool string) (string, bool)
 }
 
+// ToolGate is the pre-run part of a Client: the PreToolUse event, whose answer
+// can refuse the call or replace its arguments. PreTool reports a failure of the
+// command (a timeout, a non-zero exit, an unreadable answer) as an error instead
+// of swallowing it like Call does: the answer decides whether a call runs, so a
+// broken hook has to fail closed.
+type ToolGate interface {
+	PreTool(ctx context.Context, event Event) (Response, error)
+	// PreToolName reports whether a PreToolUse event is sent for the tool, and
+	// the tool name to put in it.
+	PreToolName(tool string) (string, bool)
+}
+
+// GateOf returns the PreToolUse part of client; nil when it has none.
+func GateOf(client Client) ToolGate {
+	gate, _ := client.(ToolGate)
+	return gate
+}
+
 const defaultTimeoutMS = 3000
 
 // backgroundStopTimeout is the hook's own bound on a background Stop: longer
@@ -98,6 +119,7 @@ type commandClient struct {
 	// stopTimeout bounds the local wait for a Stop call.
 	stopTimeout time.Duration
 	postTool    PostToolFilter
+	preTool     PreToolFilter
 	// extraEnv adds the variables suga exports to the hook command (the session
 	// and turn of the call); nil leaves the inherited environment alone.
 	extraEnv func(context.Context) []string
@@ -119,6 +141,20 @@ type PostToolFilter struct {
 	Tools []string
 	// Name replaces the tool name in the event; empty keeps the original.
 	Name string
+}
+
+// PreToolFilter selects the tools that are announced with PreToolUse (the same
+// shape as PostToolFilter).
+type PreToolFilter struct {
+	// Tools are tool name globs (path.Match); empty sends no PreToolUse at all.
+	Tools []string
+	// Name replaces the tool name in the event; empty keeps the original.
+	Name string
+}
+
+// Match reports whether tool sends PreToolUse and the name to send.
+func (f PreToolFilter) Match(tool string) (string, bool) {
+	return PostToolFilter(f).Match(tool)
 }
 
 // Match reports whether tool sends PostToolUse and the name to send.
@@ -170,7 +206,11 @@ func New(opts ...Option) (Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, pattern := range tools {
+	preTools, err := stringList("hooks.pre_tool_use.tools")
+	if err != nil {
+		return nil, err
+	}
+	for _, pattern := range append(append([]string(nil), tools...), preTools...) {
 		if strings.TrimSpace(pattern) == "" {
 			return nil, fmt.Errorf("hooks.post_tool_use.tools contains an empty glob")
 		}
@@ -195,6 +235,7 @@ func New(opts ...Option) (Client, error) {
 	client := &commandClient{
 		argv: argv, stopArgs: stopArgs, timeout: timeout, stopTimeout: stopTimeout,
 		postTool: PostToolFilter{Tools: tools, Name: strings.TrimSpace(gkconfig.String("hooks.post_tool_use.name"))},
+		preTool:  PreToolFilter{Tools: preTools, Name: strings.TrimSpace(gkconfig.String("hooks.pre_tool_use.name"))},
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -227,6 +268,15 @@ func stringList(key string) ([]string, error) {
 }
 
 func (h *commandClient) PostToolName(tool string) (string, bool) { return h.postTool.Match(tool) }
+
+func (h *commandClient) PreToolName(tool string) (string, bool) { return h.preTool.Match(tool) }
+
+// PreTool asks the command about one call before it runs. A timeout, a failed
+// command or an unreadable answer is returned as an error (never as an empty
+// allow), so the caller refuses the call.
+func (h *commandClient) PreTool(ctx context.Context, event Event) (Response, error) {
+	return h.call(ctx, event, false)
+}
 
 func (h *commandClient) Call(ctx context.Context, event Event) Response {
 	response, err := h.call(ctx, event, false)
@@ -285,13 +335,22 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			// The command outlived its bound (hooks.timeout_ms or the caller's own):
+			// a PreToolUse answer that never arrives has to be named as a timeout,
+			// because the caller refuses the call on it.
+			return Response{}, fmt.Errorf("hook command timed out after %s: %w", timeout, ctx.Err())
+		}
 		return Response{}, err
 	}
 	var wire struct {
 		Decision           string `json:"decision"`
 		Reason             string `json:"reason"`
 		HookSpecificOutput struct {
-			AdditionalContext string `json:"additionalContext"`
+			AdditionalContext  string         `json:"additionalContext"`
+			PermissionDecision string         `json:"permissionDecision"`
+			PermissionReason   string         `json:"permissionDecisionReason"`
+			UpdatedInput       map[string]any `json:"updatedInput"`
 		} `json:"hookSpecificOutput"`
 	}
 	if len(bytes.TrimSpace(output)) != 0 {
@@ -299,7 +358,19 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 			return Response{}, err
 		}
 	}
-	return Response{Decision: wire.Decision, Reason: wire.Reason, AdditionalContext: wire.HookSpecificOutput.AdditionalContext, Notice: strings.TrimSpace(stderr.String())}, nil
+	decision, reason := wire.Decision, wire.Reason
+	// A PreToolUse answer follows the Claude Code shape: the permission decision
+	// and its reason sit in hookSpecificOutput. "deny" is the only decision that
+	// matters here; "allow" and "ask" only say the hook has no objection and the
+	// ordinary approval still decides.
+	if wire.HookSpecificOutput.PermissionDecision == "deny" {
+		decision = "deny"
+	}
+	if wire.HookSpecificOutput.PermissionReason != "" {
+		reason = wire.HookSpecificOutput.PermissionReason
+	}
+	return Response{Decision: decision, Reason: reason, AdditionalContext: wire.HookSpecificOutput.AdditionalContext,
+		Notice: strings.TrimSpace(stderr.String()), UpdatedInput: wire.HookSpecificOutput.UpdatedInput}, nil
 }
 
 type stopWait struct {

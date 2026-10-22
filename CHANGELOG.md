@@ -13,11 +13,13 @@
   - 未设置这两个选项时，段上下文、上下文更新消息与工具列表与之前逐字节一致。
 - 会话来源 `xhen`：宿主应用（xhen）通过 `wiring.Options.SessionOrigin` 声明来源，创建的会话带 `origin=xhen`；`suga sessions` 默认不列这类会话（结果为空时提示被隐藏的数量），新增 `--origin <name>` 过滤（`--origin all` 列出全部来源，`--all` 仍只表示所有目录），`--json` 行新增 `origin` 字段；`suga data gc --retention` 不再按期清理它们（报告单列「由宿主管理，未清理 N 个」，生命周期由宿主决定），`--older-than` 显式清理仍可删除。
 - 流式响应的空闲超时：流式正文（chat、Anthropic、Responses）两次收到数据（文本、工具参数、心跳都算）之间的静默超过 `timeouts.stream_idle` 时，取消这次 HTTP 请求并作为可重试错误重新流式请求（`retry` 事件与 stderr 提示写 `stream idle for Ns`，已流出的文本作废重来）；默认普通请求 `120s`、请求带思考参数（`thinking`/`reasoning_effort`/`reasoning`）时 `300s`，`off` 关闭，可用 `providers.<id>.timeouts.stream_idle` 按 provider 覆盖。网关或上游连接中途静默不再把回合挂到外层取消。
+- 调用前 hook（`hooks.pre_tool_use.tools` / `.name`，仅 chat）：在工具执行前发送 `PreToolUse` 事件（`tool_name`、`tool_input` 完整参数），回答可用 `hookSpecificOutput.permissionDecision: "deny"` 拒绝该调用，或用 `updatedInput` 改写参数。三条硬规则：改写后的参数重走审批（改写发生在审批层的决定之前，审批模式、approval rules、受保护路径看到的都是新参数）；hook 超时、非零退出、回答不可解析或宿主 hook panic 一律按拒绝执行（fail closed），理由记进 trace 与工具错误；hook 的 `allow` 不绕过审批模式，只能收窄不能放宽。实现：审批层新增 `tools.CallRewriter`（`Approval.SetRewriter`），「PreToolUse → 审批」的接入在 `internal/chat/hooks_gate.go`；未配置 `hooks.pre_tool_use.tools` 时行为不变。
 
 ### 修复
 
 - ACP `session/list` 与 `suga sessions` 口径一致：默认不返回宿主会话（`origin=xhen`），隐藏的数量在响应 `_meta.suga/hiddenXhen` 里，结果为空时提示中点名；ACP 客户端需要时可用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 CLI 的 `--origin xhen`）（suga-kz0r）。
 - 收工检查的 `promise-zh` 内置句式收紧，不再把描述测试手法的句子（如“先读取接口，再跑一遍只读接口”）当成“承诺继续”：每条句式都要求带第一人称将来时标记（`我(会|将|要|来|去|先|再)`、`接下来`、`下一步`、`马上`、`这就`、`让我`），单独的“再跑/先运行”不算（2026-10-22 第三十一批 S3 误报）。用户自己写的 `nudge-rules.yaml` 句式不受影响；删除了原来未带主语的 `(我)?(先|再|现在|马上|这就)…` 句式。
+- 宿主注入的 hook（`agentcore.Hook`）panic 不再把整个进程/回合拖倒：hook 链每个阶段都把 panic 换成错误（`hook %T panicked: ...`），判定“是否允许执行”的 `BeforeTool` 阶段因此拒绝该调用并留下错误事件，只做观察的 `AfterTool` 阶段已跑完的工具结果照常进会话记录。`pkg/sugasdk` 的回合级 panic 兜底不变。
 
 ## [0.44.0] - 2026-10-22
 

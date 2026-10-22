@@ -154,9 +154,11 @@ hooks:
   # stop_wait_sec: 7140
   # stop_background: true           # Stop 作为后台任务跑，不被打字打断
   # post_tool_use: {tools: ["*shell*", "*exec*"], name: shell}
+  # pre_tool_use: {tools: [shell_exec, file_edit]}   # 执行前发 PreToolUse，可拒绝或改写参数
 ```
 
-- 事件在 stdin 上一行一个 JSON；`hooks.post_tool_use.tools` 不配则不发送 PostToolUse。
+- 事件在 stdin 上一行一个 JSON；`hooks.post_tool_use.tools` 不配则不发送 PostToolUse，`hooks.pre_tool_use.tools` 不配则不发送 PreToolUse。
+- PreToolUse 的三条硬规则：hook 改写参数后重走审批（审批看到的是新参数）；hook 超时、失败、回答不可解析或宿主 hook panic 一律按拒绝执行（fail closed，理由进 trace）；hook 的 allow 不绕过审批模式（read_only、规则 deny、受保护路径照旧）。详见 `references/tools.md`。
 
 ### 子 agent 与后台任务
 
