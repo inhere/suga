@@ -98,7 +98,14 @@ func TestOneEnginePerProcess(t *testing.T) {
 	assert.NoErr(t, first.Close())
 	second, err := Open(ctx, EngineOptions{SugaHome: home})
 	assert.Require(t, assert.NoErr(t, err), "a closed engine can be reopened")
+
+	// Closing the engine closes the sessions it opened.
+	session, err := second.OpenSession(ctx, "", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
+	assert.Require(t, assert.NoErr(t, err))
 	assert.NoErr(t, second.Close())
+	_, err = session.Send(ctx, Prompt{Text: "after the engine closed"}, nil)
+	assert.True(t, errors.Is(err, ErrSessionClosed), "want ErrSessionClosed, got %v", err)
+	assert.NoErr(t, session.Close())
 
 	// A closed engine and its sessions refuse further use.
 	_, err = second.OpenSession(ctx, "", SessionOptions{Workspace: t.TempDir()})
