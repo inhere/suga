@@ -260,6 +260,11 @@ type contextBuilder struct {
 	// message for this turn only (never role=system), right before the turn.
 	hookContext string
 
+	// ephemeral is the per-request context (EphemeralContext): the output contract
+	// of this call. It is rendered as the view's last message and is never stored,
+	// so it disappears with the request (design 2026-10-22 4.2).
+	ephemeral string
+
 	summary     string // current segment's handoff package ("" = none)
 	fromHandoff bool   // summary is a --from handoff (segment 0)
 	// seg is the current segment's snapshot (rendered as the segment context
@@ -324,6 +329,17 @@ func (r *Runner) newContextBuilder(sessionID, turnID string, hist historyView, p
 		summary: hist.summary, fromHandoff: hist.fromHandoff, prev: hist.items, seg: hist.segment, eff: hist.eff,
 		window: window, reserve: reserve, foldAt: r.cfg.FoldAt,
 	}
+}
+
+// withEphemeral appends this request's ephemeral context (the output contract,
+// design 2026-10-22 4.2) as the view's last message: it is part of this model
+// request only - not of items(), not of the stored turn, not of a fold - so the
+// system prompt, the tools and the history prefix stay as they were.
+func (b *contextBuilder) withEphemeral(view []agentcore.Message) []agentcore.Message {
+	if b.ephemeral == "" {
+		return view
+	}
+	return append(view, agentcore.Message{Role: "user", Content: b.ephemeral})
 }
 
 // threshold is the estimated size above which compaction triggers.
@@ -418,7 +434,7 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 	b.foldPending = nil
 	boundary, steps := foldBoundary(out, every, keep)
 	if boundary == 0 {
-		return out
+		return b.withEphemeral(out)
 	}
 	folded := foldHistory(out, every, keep)
 	// Old results of re-runnable read-only tools are replaced by a note at the
@@ -430,7 +446,7 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 			toolResults: toolStats.results, toolCharsBefore: toolStats.charsBefore,
 			toolCharsAfter: toolStats.charsAfter}
 	}
-	return folded
+	return b.withEphemeral(folded)
 }
 
 // limited returns a tool message with its content truncated to truncLimit; the

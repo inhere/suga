@@ -298,7 +298,13 @@ type RunRequest struct {
 	// message carries them and the store writes their files (no bytes in the DB).
 	Images        []agentcore.ImagePart
 	SystemContext string
-	Injected      bool
+	// EphemeralContext goes into this model request only: it is appended at the
+	// very end of the projection and never stored in the session, so it does not
+	// survive a resume and does not touch the system prompt or the tools (the
+	// output contract travels this way, design 2026-10-22 4.2). Empty leaves the
+	// projection byte for byte as it was.
+	EphemeralContext string
+	Injected         bool
 	// Hops is the automatic-reply depth of this turn (personal.TurnHops): how many
 	// session messages it is away from the person. 0 for a turn a person started
 	// (a typed line, `suga send`), h for a turn a hops-h session message started
@@ -636,8 +642,10 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 		storage = &injectedStorage{Storage: storage}
 	}
 	promptBuilder := stablePromptBuilder{base: r.cfg.PromptBuilder}
-	// The hook context (req.SystemContext) is a user message of this turn.
+	// The hook context (req.SystemContext) is a user message of this turn; the
+	// ephemeral context (req.EphemeralContext) is not stored at all.
 	contextBuilder := r.newContextBuilder(model.ID, turnID, history, promptBuilder, usage, req.SystemContext)
+	contextBuilder.ephemeral = req.EphemeralContext
 	// Fold events already recorded in this segment (an earlier turn's builder),
 	// and whether the size trigger already turned folding on for it.
 	contextBuilder.foldBase = metaCount(model.Meta[metaFoldBoundary])
