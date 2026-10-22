@@ -6,6 +6,7 @@ package sugasdk
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -82,6 +83,12 @@ type Prompt struct {
 	// "unknown" from RequestStatus): resend under a NEW id, nothing is replayed
 	// on its own.
 	RequestID string
+	// OutputSchema is the JSON Schema this turn's final answer must satisfy (a
+	// caller parameter of this send, not a session setting: empty means no
+	// contract, and the next Send starts without one). A failing answer gets one
+	// correction round, then Send returns ErrOutputContract with
+	// Result.OutputContract.Passed=false (design 2026-10-22 2.2).
+	OutputSchema json.RawMessage
 }
 
 // Event is one update of a running turn. Only stable fields are carried: the
@@ -147,6 +154,42 @@ type Result struct {
 	// Replayed marks a result returned from the stored record of an earlier
 	// Send with the same RequestID (the model was not called again).
 	Replayed bool `json:"replayed,omitempty"`
+	// OutputValue is the value that satisfied Prompt.OutputSchema: the extracted
+	// JSON text, compacted (numbers keep their literal text). Empty without a
+	// contract or when the contract failed.
+	OutputValue json.RawMessage `json:"output_value,omitempty"`
+	// OutputContract reports the output contract check; nil when the send had no
+	// Prompt.OutputSchema.
+	OutputContract *OutputContract `json:"output_contract,omitempty"`
+}
+
+// OutputContract is the outcome of judging one send's answer against
+// Prompt.OutputSchema. It is defined here (not taken from an internal package)
+// so a host compiles against public types only.
+type OutputContract struct {
+	// Checked is false when the turn's end left nothing to judge (a failed,
+	// yielded, wrapped-up or truncated turn, or an empty answer).
+	Checked bool `json:"checked"`
+	// Passed is the final check's outcome (meaningful only when Checked).
+	Passed bool `json:"passed"`
+	// Rounds counts the checks: 1 when the first answer was fine, 2 when the one
+	// correction round was needed.
+	Rounds int `json:"rounds"`
+	// Source says where the checked JSON came from: whole, fenced, substring or
+	// no_json.
+	Source string `json:"source,omitempty"`
+	// Reason says why the answer was not checked (Checked=false only).
+	Reason string `json:"reason,omitempty"`
+	// Errors are the last check's validation problems.
+	Errors []ContractError `json:"errors,omitempty"`
+}
+
+// ContractError is one validation problem of a checked answer.
+type ContractError struct {
+	// Path is the JSON path of the offending value, e.g. $ or $.items[0].id.
+	Path string `json:"path"`
+	// Message is the one-line reason.
+	Message string `json:"message"`
 }
 
 // Card is a read-only snapshot of where a session stands.
@@ -264,6 +307,17 @@ func convertResult(res personal.RunResult) Result {
 	out.Usage.ModelCalls = res.ModelCalls
 	for _, s := range res.ReturnedSteers {
 		out.ReturnedSteers = append(out.ReturnedSteers, s.Text)
+	}
+	return out
+}
+
+// convertContractReport maps the internal output contract report to the public
+// one: no internal type crosses the SDK's surface.
+func convertContractReport(rep personal.ContractReport) *OutputContract {
+	out := &OutputContract{Checked: rep.Checked, Passed: rep.Passed, Rounds: rep.Rounds,
+		Source: rep.Source, Reason: rep.Reason}
+	for _, err := range rep.Errors {
+		out.Errors = append(out.Errors, ContractError{Path: err.Path, Message: err.Message})
 	}
 	return out
 }

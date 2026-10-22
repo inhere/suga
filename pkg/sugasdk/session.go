@@ -5,6 +5,7 @@ package sugasdk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/internal/personal/outschema"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -232,6 +234,18 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 	if err != nil {
 		return Result{}, err
 	}
+	// The output contract is a parameter of this send: it compiles before the turn
+	// starts (a bad schema asks the model nothing), its text travels in the turn's
+	// per-request context, and it is judged after the turn finished (design
+	// 2026-10-22 2.2).
+	contract, schema, err := s.outputContract(prompt.OutputSchema)
+	if err != nil {
+		return Result{}, err
+	}
+	ephemeral := ""
+	if contract != nil {
+		ephemeral = outschema.PromptBlock(schema)
+	}
 	events := func(_ context.Context, ev personal.Event) error {
 		if requestID != "" && ev.TurnID != "" {
 			turnMu.Lock()
@@ -253,7 +267,8 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		}
 		return nil
 	}
-	runResult, runErr := s.rt.Runner.Run(ctx, personal.RunRequest{SessionID: s.id, Prompt: prompt.Text, Images: images, Emit: events})
+	runResult, runErr := s.rt.Runner.Run(ctx, personal.RunRequest{SessionID: s.id, Prompt: prompt.Text, Images: images,
+		EphemeralContext: ephemeral, Emit: events})
 	if runResult.TurnID != "" {
 		turnMu.Lock()
 		if turnID == "" {
@@ -261,7 +276,35 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		}
 		turnMu.Unlock()
 	}
-	return convertResult(runResult), runErr
+	res = convertResult(runResult)
+	if contract != nil && runErr == nil {
+		// Judge the answer the caller finally gets; a failing one costs one
+		// correction round. The request ledger keeps pointing at the first turn.
+		var rep personal.ContractReport
+		runResult, rep, runErr = s.rt.Runner.RunWithContract(ctx, personal.RunRequest{SessionID: s.id},
+			contract, schema, runResult, personal.ContractHooks{Emit: events})
+		res = convertResult(runResult)
+		res.OutputContract = convertContractReport(rep)
+		if rep.Checked && rep.Passed {
+			res.OutputValue = rep.Value
+		} else if rep.Checked && runErr == nil {
+			runErr = fmt.Errorf("%w: %d 条校验错误", ErrOutputContract, len(rep.Errors))
+		}
+	}
+	return res, runErr
+}
+
+// outputContract compiles Prompt.OutputSchema; a send without one returns nil.
+// A schema that does not compile fails before any turn starts.
+func (s *Session) outputContract(raw json.RawMessage) (*outschema.Contract, []byte, error) {
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return nil, nil, nil
+	}
+	contract, err := outschema.Compile(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidOutputSchema, err)
+	}
+	return contract, contract.Raw(), nil
 }
 
 // claimRequest takes the session's single turn slot. requestID (empty for a
