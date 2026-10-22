@@ -3,7 +3,8 @@ package cli
 import "errors"
 
 // processExitError carries a specific process exit code through the command
-// tree (send: 2 ambiguous, 3 offline, 4 too large).
+// tree (send: 2 ambiguous, 3 offline, 4 too large; run: 2 bad usage, 5 --verify
+// not passed, 6 --output-schema not satisfied).
 type processExitError struct {
 	code int
 	err  error

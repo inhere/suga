@@ -18,6 +18,7 @@ import (
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/internal/personal/outschema"
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
@@ -59,6 +60,14 @@ type personalOptions struct {
 	// VerifyTimeout bounds one run of the verify command; a timeout is a
 	// failure.
 	VerifyTimeout time.Duration
+	// OutputSchema is the --output-schema value (run only): "-" reads stdin, a
+	// value starting with { or [ is inline JSON, anything else is a file path
+	// (design 2026-10-22 2.1).
+	OutputSchema string
+	// contract and schemaText hold the compiled --output-schema (nil without it):
+	// they travel in memory only and are never written to the session.
+	contract   *outschema.Contract
+	schemaText []byte
 	// MaxOutputTokens overrides the config's max_output_tokens for this
 	// invocation (--max-output-tokens); 0 uses SUGA_MAX_OUTPUT_TOKENS, then
 	// models.<m>.max_output_tokens, then providers.<id>.max_output_tokens.
@@ -197,6 +206,15 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 		return err
 	}
 	opts.Images = images
+	// The output contract is compiled before the session exists: a bad schema
+	// creates nothing and asks the model nothing (exit code 2).
+	if value := strings.TrimSpace(opts.OutputSchema); value != "" {
+		contract, schema, err := compileOutputSchema(value, stdin)
+		if err != nil {
+			return err
+		}
+		opts.contract, opts.schemaText = contract, schema
+	}
 	return executePersonalRun(ctx, runtime.Runner, opts, stdout, stderr)
 }
 
@@ -238,6 +256,9 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	cmd.Var((*cflag.Strings)(&opts.AddDirs), "add-dir", "extra absolute directory for this session as \"<directory>[:ro|:rw]\" (default :ro), repeatable; SUGA_ADD_DIRS adds more")
 	cmd.BoolVar(&opts.AllowCwdChange, "allow-cwd-change", false, "continue a resumed session in the current directory even if it was created in another one")
 	cmd.Var((*cflag.Strings)(&opts.ImagePaths), "image", "image file attached to this prompt (same checks, scaling and storage as chat :image)")
+	// Registered for both modes like --image, and refused by chat in
+	// validatePersonalOptions, so the error says why instead of "flag not defined".
+	cmd.StringVar(&opts.OutputSchema, "output-schema", "", "JSON Schema the final answer must satisfy: a file path, inline JSON, or - for stdin; an answer that does not satisfy it is corrected once, then the run ends with exit code 6")
 	if !isChatMode {
 		cmd.StringVar(&opts.Prompt, "prompt", "", "task prompt for run mode;;p")
 		cmd.BoolVar(&opts.Injected, "injected", false, "mark this turn's prompt as not typed by a person")
@@ -286,6 +307,9 @@ func validatePersonalOptions(mode string, opts personalOptions) error {
 	}
 	if mode == "chat" && len(opts.ImagePaths) > 0 {
 		return fmt.Errorf("--image is only supported in run mode")
+	}
+	if mode == "chat" && strings.TrimSpace(opts.OutputSchema) != "" {
+		return fmt.Errorf("--output-schema is only supported in run mode")
 	}
 	if mode == "chat" && opts.OutputFormat != "text" {
 		return fmt.Errorf("chat mode requires text output")
@@ -405,6 +429,21 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		// tail of its last output; stdout stays the answer only.
 		fmt.Fprintln(stderr, verifySummary(opts.Verify, verifyRep))
 	}
+	// The output contract is the pipeline's last step (design 2026-10-22 4.1): it
+	// judges the answer the caller finally gets, after nudge and --verify had their
+	// pushes. A failing answer gets one injected correction round, then a final
+	// check; nothing earlier in the run consumed the contract's budget.
+	var contractRep *personal.ContractReport
+	if opts.contract != nil && err == nil {
+		var rep personal.ContractReport
+		result, rep, err = runner.RunWithContract(ctx, personal.RunRequest{SessionID: sessionID},
+			opts.contract, opts.schemaText, result, personal.ContractHooks{
+				// End the streamed answer line before the correction round streams its own.
+				BeforeCorrection: func() { live.Finish() },
+				Emit:             emit,
+			})
+		contractRep = &rep
+	}
 	streamed := live.Finish() // end the streamed line before any error or status output
 	_, _, window, _ := runner.ModelSettings()
 	if encoder == nil {
@@ -422,6 +461,11 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		}
 		// Text mode: a usage summary on stderr (stdout stays the answer only).
 		fmt.Fprintln(stderr, runSummary(runner, result, time.Since(runStart), budget))
+		if contractRep != nil && contractRep.Checked && !contractRep.Passed {
+			// The answer that did not satisfy the caller's schema is named on stderr;
+			// stdout still carries it, so a script can read what the model said.
+			fmt.Fprintln(stderr, contractSummary(*contractRep))
+		}
 	}
 	if err != nil {
 		if encoder != nil {
@@ -451,6 +495,9 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		if verifyRep != nil {
 			line = output.WithVerify(line, verifyRep.Passed, verifyRep.Rounds)
 		}
+		if contractRep != nil {
+			line = output.WithOutputSchema(line, *contractRep)
+		}
 		if err := encoder.Encode(output.WithModel(line, runModelRef(runner))); err != nil {
 			return err
 		}
@@ -462,6 +509,11 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	if failedVerify {
 		return processExitError{code: 5, err: fmt.Errorf("%w: %s → exit %d（已回灌 %d 轮）", ErrVerifyFailed,
 			oneLineText(termtext.Clean(opts.Verify)), verifyRep.Last.ExitCode, max(verifyRep.Rounds-1, 0))}
+	}
+	if contractRep != nil && contractRep.Checked && !contractRep.Passed {
+		// Exit code 6: the turn finished, but its answer does not have the shape the
+		// caller asked for, even after one correction (design 4.4).
+		return processExitError{code: 6, err: fmt.Errorf("%w: %s", ErrOutputContract, contractSummary(*contractRep))}
 	}
 	return nil
 }

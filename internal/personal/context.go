@@ -260,6 +260,14 @@ type contextBuilder struct {
 	// message for this turn only (never role=system), right before the turn.
 	hookContext string
 
+	// ephemeral is the per-request context (EphemeralContext): the output contract
+	// of this call. It is rendered right after the hook context - after the kept
+	// history, before this turn's messages - and is never stored, so it disappears
+	// with the request (design 2026-10-22 4.2, plan T2). In that place it stays a
+	// cached prefix for every step of the turn; at the very end it would be billed
+	// again at each tool step.
+	ephemeral string
+
 	summary     string // current segment's handoff package ("" = none)
 	fromHandoff bool   // summary is a --from handoff (segment 0)
 	// seg is the current segment's snapshot (rendered as the segment context
@@ -400,6 +408,12 @@ func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message 
 	}
 	if b.hookContext != "" {
 		out = append(out, agentcore.Message{Role: "user", Content: b.hookContext})
+	}
+	// This request's ephemeral context (the output contract): part of this model
+	// request only - not of items(), not of the stored turn - so the system
+	// prompt, the tools and the history prefix stay as they were.
+	if b.ephemeral != "" {
+		out = append(out, agentcore.Message{Role: "user", Content: b.ephemeral})
 	}
 	// The injected entries gone from the list were cut away by a segment break
 	// of this turn (see keptInjected); every remaining one is in the view, at its

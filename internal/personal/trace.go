@@ -203,6 +203,9 @@ func traceLine(e store.Event) string {
 	if e.Kind == store.EventNudge {
 		parts = append(parts, nudgeTraceParts(e)...)
 	}
+	if e.Kind == store.EventOutputSchema {
+		parts = append(parts, outputSchemaTraceParts(e)...)
+	}
 	if e.Kind == store.EventSession {
 		parts = append(parts, sessionTraceParts(e)...)
 	}
@@ -562,6 +565,32 @@ func nudgeTraceParts(e store.Event) []string {
 	}
 	if evidence, _ := e.Attrs["evidence"].(string); evidence != "" {
 		parts = append(parts, "evidence="+evidence)
+	}
+	return parts
+}
+
+// outputSchemaTraceParts renders one output contract check: the round, what the
+// host did about it (ok/corrected/failed), where the JSON came from, the errors,
+// and the schema's hash and size - the schema's text is never in the event.
+func outputSchemaTraceParts(e store.Event) []string {
+	var parts []string
+	if round, ok := e.Attrs["round"]; ok {
+		parts = append(parts, fmt.Sprintf("round=%v", round))
+	}
+	if action, _ := e.Attrs["action"].(string); action != "" {
+		parts = append(parts, "action="+action)
+	}
+	if source, _ := e.Attrs["source"].(string); source != "" {
+		parts = append(parts, "source="+source)
+	}
+	if size, ok := e.Attrs["schema_bytes"]; ok {
+		parts = append(parts, fmt.Sprintf("schema_bytes=%v", size))
+	}
+	if sha, _ := e.Attrs["schema_sha256"].(string); sha != "" {
+		parts = append(parts, "schema_sha256="+sha)
+	}
+	if errs, ok := e.Attrs["errors"].([]string); ok && len(errs) > 0 {
+		parts = append(parts, "errors="+strings.Join(errs, " | "))
 	}
 	return parts
 }

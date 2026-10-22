@@ -52,6 +52,14 @@ var (
 	ErrRequestOutputGone = errors.New("sugasdk: the stored answer of the request is gone from the session log")
 	// ErrSessionClosed reports a use of a session after Close.
 	ErrSessionClosed = errors.New("sugasdk: session is closed")
+	// ErrOutputContract reports a send whose final answer does not satisfy
+	// Prompt.OutputSchema, even after the one correction round: the turn itself
+	// completed (Result.State stays COMPLETED), the answer's shape did not meet the
+	// caller's contract. Result.OutputContract carries the report.
+	ErrOutputContract = errors.New("sugasdk: the answer does not satisfy the output schema")
+	// ErrInvalidOutputSchema reports a Prompt.OutputSchema that does not compile:
+	// the send fails before any turn starts.
+	ErrInvalidOutputSchema = errors.New("sugasdk: the output schema is invalid")
 )
 
 // engineMu guards openEngine, the one engine of this process.
