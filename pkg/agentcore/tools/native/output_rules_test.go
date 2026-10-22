@@ -289,15 +289,15 @@ rules:
 }
 
 // TestBuiltinRuleFiles: the built-in rules come from the embedded files under
-// rules/, and builtinRuleFileOrder lists every one of them (a new file that is
+// outrules/, and builtinRuleFileOrder lists every one of them (a new file that is
 // not listed there would be silently ignored) exactly once.
 func TestBuiltinRuleFiles(t *testing.T) {
-	entries, err := builtinRuleFiles.ReadDir("rules")
+	entries, err := builtinRuleFiles.ReadDir("outrules")
 	assert.NoErr(t, err)
 	var embedded []string
 	for _, entry := range entries {
 		if strings.HasSuffix(entry.Name(), ".yaml") {
-			embedded = append(embedded, "rules/"+entry.Name())
+			embedded = append(embedded, "outrules/"+entry.Name())
 		}
 	}
 	// ReadDir reports sorted names, so the listed order must be a permutation of
@@ -306,11 +306,11 @@ func TestBuiltinRuleFiles(t *testing.T) {
 	listed := append([]string(nil), builtinRuleFileOrder...)
 	sort.Strings(listed)
 	assert.Eq(t, embedded, listed)
-	assert.Eq(t, []string{"rules/go.yaml", "rules/rust.yaml", "rules/js.yaml", "rules/python.yaml", "rules/java.yaml", "rules/git.yaml", "rules/grep.yaml", "rules/docker.yaml", "rules/make.yaml", "rules/gh.yaml", "rules/php.yaml"}, builtinRuleFileOrder)
+	assert.Eq(t, []string{"outrules/go.yaml", "outrules/rust.yaml", "outrules/js.yaml", "outrules/python.yaml", "outrules/java.yaml", "outrules/git.yaml", "outrules/grep.yaml", "outrules/docker.yaml", "outrules/make.yaml", "outrules/gh.yaml", "outrules/php.yaml"}, builtinRuleFileOrder)
 }
 
 // TestDefaultOutputRuleFields locks the built-in rules' names, their match
-// regexes and their summaries: splitting the rules into rules/ (suga-xt0o) keeps
+// regexes and their summaries: splitting the rules into outrules/ (suga-xt0o) keeps
 // every field as it was.
 func TestDefaultOutputRuleFields(t *testing.T) {
 	var got []string
