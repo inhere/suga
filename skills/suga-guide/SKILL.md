@@ -1,6 +1,6 @@
 ---
 name: suga-guide
-description: suga 的安装、配置与使用向导——首次配置（SUGA_HOME、config.yaml、.env 密钥、验证、常见报错）、完整配置项参考、provider 与模型细节、常用任务（写权限与审批、记忆、MCP、hooks、子 agent、后台任务、skills）、接入 gofer。用户问 suga 怎么配/怎么用、要改 suga 的 config.yaml 或排查启动报错时读它。
+description: suga 的安装、配置与使用向导——首次配置（SUGA_HOME、config.yaml、.env 密钥、验证、常见报错）、完整配置项参考、编写或修改 suga 的四种规则文件（审批/输出整理/收工检查/语言，见 references/rules.md）、provider 与模型细节、常用任务（写权限与审批、记忆、MCP、hooks、子 agent、后台任务、skills）、接入 gofer。用户问 suga 怎么配/怎么用、要改 suga 的 config.yaml 或规则文件、排查启动报错时读它。
 ---
 
 # suga 配置与使用向导
@@ -11,7 +11,7 @@ description: suga 的安装、配置与使用向导——首次配置（SUGA_HOM
 
 - suga **只读** `$SUGA_HOME/config.yaml` 和 `$SUGA_HOME/.env`，`SUGA_HOME` 默认 `~/.suga`。工作目录里的 `config.yaml` / `.env` 属于用户的项目，suga 从不读取——要改配置就改 `$SUGA_HOME` 下的那两个文件，不要在项目目录里放一份。
 - 密钥只写在 `$SUGA_HOME/.env`（或进程环境变量）里，配置文件用 `${VAR}` 引用。**不要把密钥值读出来贴进对话**：不要 `file_read` `.env` 后回显内容，也不要让用户把密钥发给你；只说变量名。密钥由用户自己填时，让他在自己终端里填（例如 `file_write` 写出变量名+占位符，或告诉他用编辑器补上）。
-- 改配置前先确认真实情况，别凭印象：`suga inspect manifest`（生效的模型、思考档位、工具、skills、记忆后端与选择原因、输出上限）、`suga run --help`、`suga inspect manifest --json`。本文件里的键名与命令都与当前代码一致；仍拿不准时读 `references/config.md`。
+- 改配置前先确认真实情况，别凭印象：`suga inspect manifest`（生效的模型、思考档位、工具、skills、记忆后端与选择原因、输出上限）、`suga run --help`、`suga inspect manifest --json`。要写或改规则文件时，先读 `references/rules.md` 并用 `suga inspect rules <kind> --builtin` 对照内置模板。本文件里的键名与命令都与当前代码一致；仍拿不准时读 `references/config.md`。
 - 写配置**只增改需要的那几个键**，不要整份重写：用户可能有本文件没列出的配置与注释。
 - 值写错时 suga 是启动失败（不是悄悄用默认值），所以让用户看到真实报错，别猜一个值蒙过去。
 
@@ -164,6 +164,12 @@ hooks:
 - 后台任务：`shell_exec` 传 `background: true`（写模式）或 `agent` 传 `background: true`（任何模式）；`tasks.max_running`(4)、`tasks.max_duration`(2h)、`tasks.max_output_bytes`(64MiB)、`tasks.wake_on_exit`(true，chat 里任务结束会唤醒空闲提示符)。
 - 前台 `shell_exec` 默认运行超过 `tools.shell_background_after`（默认 `120s`）会转成后台任务，已产生的输出会随工具结果返回，并明确给出任务 id；任务完成后通过现有通知机制唤醒模型。设置为 `0` 可关闭，`tools.shell_timeout_max` 仍会终止超过硬上限的任务。
 
+### 修改 suga 的规则文件（审批/输出整理/收工检查/语言）
+
+- 四种规则文件（`approval-rules.yaml`、`output-rules.yaml`、`nudge-rules.yaml`、`lang-rules.yaml`）的完整字段表、三层顺序与替换语义、完整示例与核对命令都在 `references/rules.md`；被要求加/改规则时先读它，不要凭印象写字段。
+- 模板：`suga inspect rules <kind> --builtin` 打印内置规则原文（照着改最接近的内置条目）；改完用 `suga inspect rules <kind>` 核对生效与来源层（坏文件会出现在 skipped，务必确认为空）。
+- 受保护路径：`$SUGA_HOME` 与 `<workspace>/.suga/` 的写入在 chat/ACP 会先询问、在 run/子 agent 被拒（有意行为）——先把规则内容给用户看，用户同意后再写。
+
 ### skills 与规则文件
 
 - 加载顺序：`<工作区>/.agents/skills`、`<工作区>/skills` > `$SUGA_HOME/skills` > `~/.agents/skills`，同名先到者胜。
@@ -187,6 +193,7 @@ hooks:
 - `references/gofer.md`：接入 gofer：`agents.yaml` 配置、只读/可写、审批与拒绝语义、chat 送话、观测命令、升级迁移要点。
 - `references/chat.md`：chat 交互：`:` 本地命令（`:diff`、`:model`、`:add-dir`/`:dirs`、`:help`/`:usage`/`:tasks`）、输入历史与多行输入、插话（steering）与 Esc/Ctrl-C 语义、`!`/`!!` 本地命令、续接预览与崩溃恢复、`suga send` 投递。用户问 chat 里某个按键或命令怎么用时读。
 - `references/tools.md`：工具与权限：工具清单、写权限与审批、`--add-dir` 与越界授权、只读根（依赖/idev-std）、危险删除拦截、大输出外置与输出规则、后台/监听任务、后台 Stop hook、MCP、子 agent。用户问某个工具能做什么、为什么被拒、怎么放行时读。
+- `references/rules.md`：suga 的四种规则文件（审批、输出整理、收工检查、语言）的完整参考：文件位置与分层、替换语义、逐字段表、每种一个完整示例、核对命令与受保护路径（先给用户看再写）。用户或你要加/改规则文件时读它。
 - `references/sessions.md`：会话、记忆与 skills：续接与交接、换目录续接、分段压缩、中断回合、历史折叠、空闲整理、提示词结构、记忆后端与污染确认、skills 扫描与加载。用户问会话/记忆/skill 行为时读。
 - `references/observability.md`：观测：`suga inspect trace`（各类行、`--analyze` 字段、`--transcript` 的纯文本轨迹与截断规则）、`sessions`/`stats`/`export`/`gc`、stream-json 的 `usage`/`retry`/`wrap_up`、进程日志与 `SUGA_DEBUG`。排查一次运行、看用量成本时读。
 
