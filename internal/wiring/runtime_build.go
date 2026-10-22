@@ -156,12 +156,9 @@ func buildPersonalCapabilitiesWithExtras(ctx context.Context, workspace string, 
 	return defaultCapabilities{Registry: registry}, nil
 }
 
-func buildPersonalCLICapabilitiesWithSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
-	return buildPersonalCLICapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, nil)
-}
-
-// buildPersonalCLICapabilitiesWithExtras is buildPersonalCLICapabilitiesWithSnapshot
-// with extra, the host's in-process tools (Options.ExtraTools).
+// buildPersonalCLICapabilitiesWithExtras is the CLI capability build with
+// extra, the host's in-process tools (Options.ExtraTools); nil builds the
+// historical tool set. Open passes them in.
 func buildPersonalCLICapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
 	if allowWrite {
 		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra)
