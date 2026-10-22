@@ -376,6 +376,10 @@ type Runner struct {
 	// toolLookup resolves a call's tool for the admit ledger, whose Meta decides
 	// whether the call has side effects; nil counts every call as one.
 	toolLookup tools.Lookup
+	// withoutAdmitLedger keeps the admit hook out of the turn hooks. Only the
+	// test that pins the model request to be identical with and without the
+	// ledger sets it (issue suga-r72b); production paths never do.
+	withoutAdmitLedger bool
 	// deadline is the run's job-deadline state (nil-equivalent when
 	// DeadlineEnv is empty); the deadline hint hook shares it across turns.
 	deadline *deadlineState
@@ -728,8 +732,10 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 	// The admit ledger writes the call down before it runs (issue suga-r72b), so
 	// an interrupted turn can answer it as "state unknown" instead of replaying
 	// it. It never fails a tool: the ledger is best-effort.
-	hooks = append(hooks, admitHook{repo: r.cfg.Repository, lookup: r.toolLookup,
-		sessionID: result.SessionID, turnID: result.TurnID})
+	if !r.withoutAdmitLedger {
+		hooks = append(hooks, admitHook{repo: r.cfg.Repository, lookup: r.toolLookup,
+			sessionID: result.SessionID, turnID: result.TurnID})
+	}
 	// The loop guard goes last so its remark (appended to the repeated call's
 	// result event below) stays out of the tool_result line chat and the other
 	// callers show; AfterTool mutations persist into the stored message.

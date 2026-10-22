@@ -271,6 +271,51 @@ func TestMarkInterruptedToolCallsKeepsAStoredCall(t *testing.T) {
 	assert.Eq(t, 1, results)
 }
 
+// TestAdmitLedgerKeepsTheNextModelRequestIdentical: the ledger changes the
+// transcript only, never what the model receives. The same two-turn scenario
+// runs twice - one runner with the admit hook, one without it (test seam
+// withoutAdmitLedger) - and the second turn's messages are compared byte for
+// byte.
+func TestAdmitLedgerKeepsTheNextModelRequestIdentical(t *testing.T) {
+	const sessionID = "sess-ledger-compare"
+	workspace := t.TempDir()
+	run := func(t *testing.T, ledger bool) ([]byte, int) {
+		repo := openObserveRepo(t)
+		reg := tools.NewRegistry()
+		// No Describer: the default is "may have side effects", i.e. admitted.
+		reg.Register(&ctxTool{name: "write"})
+		provider := &captureProvider{steps: []*agentcore.GenerateResult{
+			{ToolCalls: []agentcore.ToolCall{{CallID: "c1", Name: "write", Arguments: map[string]any{"path": "work.txt"}}},
+				FinishReason: agentcore.FinishToolCalls},
+			{Content: "done", FinishReason: agentcore.FinishFinal},
+			{Content: "下一回合完成", FinishReason: agentcore.FinishFinal},
+		}}
+		runner, err := New(Config{Repository: repo, Provider: provider, Tools: reg, Workspace: workspace})
+		assert.NoErr(t, err)
+		runner.withoutAdmitLedger = !ledger
+		first, err := runner.Run(context.Background(), RunRequest{SessionID: sessionID, CreateIfMissing: true, Prompt: "写一下"})
+		assert.NoErr(t, err)
+		_, err = runner.Run(context.Background(), RunRequest{SessionID: sessionID, Prompt: "继续"})
+		assert.NoErr(t, err)
+		assert.Require(t, assert.Eq(t, 3, len(provider.requests)))
+		raw, err := json.Marshal(provider.requests[2].Messages)
+		assert.NoErr(t, err)
+		return raw, len(admitEntries(t, repo, sessionID, first.TurnID))
+	}
+
+	withLedger, admittedOn := run(t, true)
+	withoutLedger, admittedOff := run(t, false)
+
+	// The two universes really differ in the ledger...
+	assert.Eq(t, 1, admittedOn)
+	assert.Eq(t, 0, admittedOff)
+	// ...but the next turn's model request is byte-for-byte the same: the
+	// admitted rows are not projected into the context.
+	if string(withLedger) != string(withoutLedger) {
+		t.Fatalf("the next turn's messages differ with the ledger:\nwith:\n%s\nwithout:\n%s", withLedger, withoutLedger)
+	}
+}
+
 // blockingTool has a side effect and never returns on its own: a cancelled turn
 // leaves exactly the state of a process that died while the tool ran (the
 // assistant message and the result were never persisted).
