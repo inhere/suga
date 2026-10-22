@@ -60,7 +60,7 @@ type segmentPackage struct {
 // the current segment's package; turnID ("" between turns) lets the current
 // turn's request count before the turn completes - and lets the package name
 // the steering messages of that turn, which are not requests of it (D10).
-func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous string, items []ctxItem, cut, threshold int) (segmentPackage, error) {
+func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous string, items []ctxItem, cut, threshold int, scenario string) (segmentPackage, error) {
 	requests, err := r.recentRequests(ctx, sessionID, turnID, recentRequestCount)
 	if err != nil {
 		return segmentPackage{}, err
@@ -71,7 +71,7 @@ func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous s
 	}
 	plan := r.latestPlan(ctx, sessionID)
 	cands := refCandidates(sessionID, items, cut)
-	body, err := r.summarize(ctx, packageInput{previous: previous, dropped: items[:cut], plan: plan, requests: requests, candidates: cands}, threshold)
+	body, err := r.summarize(ctx, scenario, packageInput{previous: previous, dropped: items[:cut], plan: plan, requests: requests, candidates: cands}, threshold)
 	if err != nil {
 		return segmentPackage{}, err
 	}
