@@ -151,6 +151,28 @@ func TestHostContextNewSegmentReadsLatest(t *testing.T) {
 	assert.StrContains(t, records[len(records)-1].Context.HostContext, "CTX-NEW")
 }
 
+// TestHostContextHandoffReadsLatest: a --from handoff creates a new session, so
+// its first segment freezes the host text as it is now (not the source's).
+func TestHostContextHandoffReadsLatest(t *testing.T) {
+	repo := openObserveRepo(t)
+	host := &hostSource{content: "CTX-OLD", hash: "h1"}
+	prov := okProvider()
+	runner := compactRunner(t, repo, prov, nil, func(c *Config) { c.HostContextSource = host.source })
+	ctx := context.Background()
+	src, err := runner.Run(ctx, RunRequest{Prompt: "one"})
+	assert.Require(t, assert.NoErr(t, err))
+
+	host.content, host.hash = "CTX-NEW", "h2"
+	handed, err := runner.Handoff(ctx, HandoffRequest{SourceID: src.SessionID})
+	assert.Require(t, assert.NoErr(t, err))
+	_, err = runner.Run(ctx, RunRequest{SessionID: handed.ID, Prompt: "continue"})
+	assert.NoErr(t, err)
+	req := lastRequest(prov)
+	assert.Eq(t, 0, countUpdates(req.Messages))
+	assert.StrContains(t, segmentText(req), "CTX-NEW")
+	assert.Eq(t, "CTX-NEW", effectiveOf(t, runner, handed.ID).HostContext)
+}
+
 // TestHostContextUnsetKeepsRendering: no source, and a source with empty content,
 // render exactly the same segment context - the option changes nothing when the
 // host provides no text (no empty section, no update entry).
