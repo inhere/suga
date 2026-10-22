@@ -59,6 +59,18 @@ class _StoreWidgetState extends State<StoreWidget> {
   }
 }
 
+/// A stateless badge: its build method is a rebuild-free `const` one.
+class StoreBadge extends StatelessWidget {
+  const StoreBadge({super.key, required this.count});
+
+  static const String label = 'store badge';
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Text('$label: $count');
+}
+
 Future<Store> openStore() async {
   final store = Store(MemoryLoader());
   await store.reload();
