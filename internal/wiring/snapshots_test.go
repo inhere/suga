@@ -3,10 +3,15 @@ package wiring
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/gookit/goutil/x/assert"
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
@@ -56,4 +61,45 @@ func TestSnapshotContinueMakesUnavailableWriteExplicit(t *testing.T) {
 	policy.onError = "deny"
 	_, err = policy.BeforeCall(ctx, native.SnapshotRequest{CallID: "call"})
 	assert.ErrMsgContains(t, err, "not writable")
+}
+
+// TestSnapshotCleanupFailureIsRetriedOnTheNextCall covers the 2026-10-22
+// incident: a snapshot tree that fails to scan once (a directory removed by a
+// concurrent cleanup here) used to disable snapshots for the rest of the
+// session. The failure now only degrades the calls that hit it.
+func TestSnapshotCleanupFailureIsRetriedOnTheNextCall(t *testing.T) {
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+	t.Setenv("SUGA_HOME", t.TempDir())
+	assert.NoErr(t, gkconfig.Set("tools.snapshots.enabled", true))
+	sessionsDir, err := appconfig.ResolveSessionsDir()
+	assert.Require(t, assert.NoErr(t, err))
+	// A session directory whose name is not a valid id makes CleanupAll fail.
+	assert.NoErr(t, os.MkdirAll(filepath.Join(sessionsDir, "bad name"), 0o700))
+
+	policy, ok := configuredSnapshotter().(*policySnapshotter)
+	assert.Require(t, assert.True(t, ok))
+	ctx := api.WithSessionID(context.Background(), "session-retry")
+	_, err = policy.BeforeCall(ctx, native.SnapshotRequest{CallID: "call"})
+	assert.ErrMsgContains(t, err, "snapshot cleanup")
+	assert.NotNil(t, policy.lastErr)
+
+	// Repairing the tree is enough: the next call retries the scan instead of
+	// replaying the failure for the whole session.
+	assert.NoErr(t, os.Remove(filepath.Join(sessionsDir, "bad name")))
+	store, err := policy.ensureStore()
+	assert.Require(t, assert.NoErr(t, err))
+	assert.NotNil(t, store)
+	assert.True(t, policy.ready)
+	assert.Nil(t, policy.lastErr)
+	// The call reaches the store again (which rejects the turnless context).
+	_, err = policy.BeforeCall(ctx, native.SnapshotRequest{CallID: "call"})
+	assert.ErrMsgContains(t, err, "snapshots: invalid session id")
+}
+
+// TestSnapshotPermanentFailureClassification keeps a permanently unusable store
+// (a directory this process may not write) from being retried on every call.
+func TestSnapshotPermanentFailureClassification(t *testing.T) {
+	assert.True(t, snapshotPermanentFailure(fmt.Errorf("snapshot cleanup: %w", fs.ErrPermission)))
+	assert.False(t, snapshotPermanentFailure(fmt.Errorf("snapshot cleanup: %w", fs.ErrNotExist)))
 }

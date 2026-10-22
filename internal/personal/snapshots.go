@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,6 +30,17 @@ const (
 
 	snapshotStatusPending = "pending"
 	snapshotSourceCall    = "call"
+
+	// snapshotPartialPrefix names the in-progress directory of one call record.
+	// It is renamed to its final "<seq>-<hash>" name once meta.json is on disk,
+	// so a reader never sees a call directory without metadata.
+	snapshotPartialPrefix = ".partial-"
+	// snapshotPartialStaleAfter is how old an in-progress directory must be before
+	// cleanup treats it as a leftover of a writer that crashed or was killed.
+	snapshotPartialStaleAfter = 30 * time.Minute
+	// snapshotPublishAttempts bounds the retries of a publish that lost a
+	// sequence number to a writer in another process.
+	snapshotPublishAttempts = 5
 )
 
 // SnapshotLimits controls the amount of before-image data retained by a
@@ -164,51 +176,20 @@ func (s *SessionSnapshots) BeforeCall(ctx context.Context, req native.SnapshotRe
 		return native.SnapshotBefore{}, fmt.Errorf("snapshots: cleanup before call: %w", err)
 	}
 
-	root, turnRel, turnDir, err := s.openTurnRoot(sid, tid)
+	root, turnRel, _, err := s.openTurnRoot(sid, tid)
 	if err != nil {
 		return native.SnapshotBefore{}, err
 	}
 	defer root.Close()
 
-	seq, err := nextSnapshotSeq(turnDir)
-	if err != nil {
-		return native.SnapshotBefore{}, fmt.Errorf("snapshots: choose call sequence: %w", err)
-	}
-	name := fmt.Sprintf("%03d-%s", seq, snapshotCallHash(req.CallID))
-	callRel := filepath.Join(turnRel, name)
-	callDir := filepath.Join(turnDir, name)
-	if err := root.MkdirAll(callRel, 0o700); err != nil {
-		return native.SnapshotBefore{}, fmt.Errorf("snapshots: create call directory: %w", err)
-	}
-
-	meta := SnapshotMeta{
-		SessionID: sid, TurnID: tid, CallID: req.CallID, Seq: seq, Tool: req.Tool,
-		Root: req.Root, Rel: filepath.ToSlash(req.Rel), RealRel: filepath.ToSlash(req.RealRel),
-		Kind: req.Kind, Size: int64(len(req.Before)), Status: snapshotStatusPending,
-		Mode: snapshotMode(req), CreatedAt: s.nowTime().UTC(), Source: snapshotSourceCall,
-	}
-	if req.Kind == native.SnapshotKindFile {
-		meta.SHA256Before = nativeSHA256(req.Before)
-		meta.File = "before"
-	}
-
 	unrecoverable := ""
 	if int64(len(req.Before)) > s.limits.MaxFileBytes {
 		unrecoverable = native.SnapshotUnrecoverableOversize
 	} else if err := s.checkCapacity(sid, int64(len(req.Before))); err != nil {
-		_ = os.RemoveAll(callDir)
 		return native.SnapshotBefore{}, err
 	}
-	meta.Unrecoverable = unrecoverable
-	if unrecoverable == "" && req.Kind == native.SnapshotKindFile {
-		if err := writeSnapshotBytes(root, filepath.Join(callRel, "before"), req.Before); err != nil {
-			_ = os.RemoveAll(callDir)
-			return native.SnapshotBefore{}, fmt.Errorf("snapshots: write before: %w", err)
-		}
-	}
-	if err := writeSnapshotMeta(root, filepath.Join(callRel, "meta.json"), meta); err != nil {
-		_ = os.RemoveAll(callDir)
-		return native.SnapshotBefore{}, fmt.Errorf("snapshots: write metadata: %w", err)
+	if err := s.writeCallRecord(root, turnRel, sid, tid, req, unrecoverable); err != nil {
+		return native.SnapshotBefore{}, err
 	}
 	if unrecoverable != "" {
 		return native.SnapshotBefore{
@@ -217,6 +198,57 @@ func (s *SessionSnapshots) BeforeCall(ctx context.Context, req native.SnapshotRe
 		}, nil
 	}
 	return native.SnapshotBefore{}, nil
+}
+
+// writeCallRecord publishes one call record: the before image and meta.json are
+// written into a hidden partial directory which is renamed to its final
+// "<seq>-<hash>" name only once both files are on disk. The rename is the single
+// step that makes a record visible, so a concurrent reader or cleanup never
+// observes a call directory without metadata.
+func (s *SessionSnapshots) writeCallRecord(root *os.Root, turnRel, sessionID, turnID string, req native.SnapshotRequest, unrecoverable string) error {
+	turnDir := filepath.Join(s.dir, turnRel)
+	var lastErr error
+	for attempt := 0; attempt < snapshotPublishAttempts; attempt++ {
+		seq, err := nextSnapshotSeq(turnDir)
+		if err != nil {
+			return fmt.Errorf("snapshots: choose call sequence: %w", err)
+		}
+		name := fmt.Sprintf("%03d-%s", seq, snapshotCallHash(req.CallID))
+		meta := SnapshotMeta{
+			SessionID: sessionID, TurnID: turnID, CallID: req.CallID, Seq: seq, Tool: req.Tool,
+			Root: req.Root, Rel: filepath.ToSlash(req.Rel), RealRel: filepath.ToSlash(req.RealRel),
+			Kind: req.Kind, Size: int64(len(req.Before)), Status: snapshotStatusPending,
+			Mode: snapshotMode(req), CreatedAt: s.nowTime().UTC(), Source: snapshotSourceCall,
+			Unrecoverable: unrecoverable,
+		}
+		if req.Kind == native.SnapshotKindFile {
+			meta.SHA256Before = nativeSHA256(req.Before)
+			meta.File = "before"
+		}
+		partialRel := filepath.Join(turnRel, snapshotPartialDirName(name))
+		if err := root.Mkdir(partialRel, 0o700); err != nil {
+			return fmt.Errorf("snapshots: create call directory: %w", err)
+		}
+		if unrecoverable == "" && req.Kind == native.SnapshotKindFile {
+			if err := writeSnapshotBytes(root, filepath.Join(partialRel, "before"), req.Before); err != nil {
+				_ = root.RemoveAll(partialRel)
+				return fmt.Errorf("snapshots: write before: %w", err)
+			}
+		}
+		if err := writeSnapshotMeta(root, filepath.Join(partialRel, "meta.json"), meta); err != nil {
+			_ = root.RemoveAll(partialRel)
+			return fmt.Errorf("snapshots: write metadata: %w", err)
+		}
+		if err := root.Rename(partialRel, filepath.Join(turnRel, name)); err != nil {
+			_ = root.RemoveAll(partialRel)
+			// A writer in another process may have published this sequence first;
+			// retry with the next free one instead of failing the write.
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("snapshots: publish call record: %w", lastErr)
 }
 
 // AfterCall fills the pending record belonging to the current session/turn and
@@ -307,7 +339,11 @@ func (s *SessionSnapshots) LoadTurn(sessionID, turnID string) ([]SnapshotMeta, e
 	if err := validateSnapshotID(turnID, "turn"); err != nil {
 		return nil, err
 	}
-	return loadTurn(filepath.Join(s.dir, sessionID, "snapshots", turnID))
+	loaded, err := loadTurn(filepath.Join(s.dir, sessionID, "snapshots", turnID))
+	if err != nil {
+		return nil, err
+	}
+	return loaded.Metas, nil
 }
 
 func (s *SessionSnapshots) scopeIDs(ctx context.Context) (string, string, error) {
@@ -474,10 +510,11 @@ func writeSnapshotMeta(root *os.Root, rel string, meta SnapshotMeta) error {
 }
 
 func findPendingSnapshot(turnDir, callID string) (string, SnapshotMeta, error) {
-	metas, err := loadTurn(turnDir)
+	loaded, err := loadTurn(turnDir)
 	if err != nil {
 		return "", SnapshotMeta{}, err
 	}
+	metas := loaded.Metas
 	for i := len(metas) - 1; i >= 0; i-- {
 		meta := metas[i]
 		if meta.CallID == callID && meta.Status == snapshotStatusPending {
@@ -488,31 +525,60 @@ func findPendingSnapshot(turnDir, callID string) (string, SnapshotMeta, error) {
 	return "", SnapshotMeta{}, fmt.Errorf("snapshots: pending call %q not found", callID)
 }
 
-func loadTurn(turnDir string) ([]SnapshotMeta, error) {
+// turnLoad is the outcome of reading one turn directory: the readable call
+// records in sequence order plus the subdirectories skipped because their
+// meta.json was missing or unreadable (a half-written record, or one removed by
+// a concurrent cleanup after ReadDir).
+type turnLoad struct {
+	Metas   []SnapshotMeta
+	Skipped []string
+}
+
+// loadTurn reads the call records of one turn. A damaged record is skipped and
+// reported instead of failing the whole turn: one directory without metadata
+// must not disable every later snapshot of the session.
+func loadTurn(turnDir string) (turnLoad, error) {
 	entries, err := os.ReadDir(turnDir)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return turnLoad{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return turnLoad{}, err
 	}
-	var metas []SnapshotMeta
+	var out turnLoad
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == snapshotPreUndoDir {
+		if !entry.IsDir() || entry.Name() == snapshotPreUndoDir || strings.HasPrefix(entry.Name(), snapshotPartialPrefix) {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(turnDir, entry.Name(), "meta.json"))
+		meta, err := readSnapshotMeta(filepath.Join(turnDir, entry.Name(), "meta.json"))
 		if err != nil {
-			return nil, err
+			out.Skipped = append(out.Skipped, entry.Name())
+			slog.Warn("snapshots: skip unreadable call record", "turn_dir", turnDir, "record", entry.Name(), "err", err)
+			continue
 		}
-		var meta SnapshotMeta
-		if err := json.Unmarshal(data, &meta); err != nil {
-			return nil, fmt.Errorf("read %s: %w", filepath.Join(entry.Name(), "meta.json"), err)
-		}
-		metas = append(metas, meta)
+		out.Metas = append(out.Metas, meta)
 	}
-	sort.Slice(metas, func(i, j int) bool { return metas[i].Seq < metas[j].Seq })
-	return metas, nil
+	sort.Slice(out.Metas, func(i, j int) bool { return out.Metas[i].Seq < out.Metas[j].Seq })
+	return out, nil
+}
+
+// readSnapshotMeta decodes one meta.json file.
+func readSnapshotMeta(path string) (SnapshotMeta, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return SnapshotMeta{}, err
+	}
+	var meta SnapshotMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return SnapshotMeta{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	return meta, nil
+}
+
+// snapshotPartialDirName returns the hidden in-progress name of one call
+// record. The pid and timestamp keep two writers of the same sequence apart.
+func snapshotPartialDirName(name string) string {
+	return fmt.Sprintf("%s%s-%d-%d", snapshotPartialPrefix, name, os.Getpid(), time.Now().UnixNano())
 }
 
 func cloneStrings(values []string) []string {

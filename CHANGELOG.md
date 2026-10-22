@@ -25,6 +25,7 @@
 - ACP `session/list` 与 `suga sessions` 口径一致：默认不返回宿主会话（`origin=xhen`），隐藏的数量在响应 `_meta.suga/hiddenXhen` 里，结果为空时提示中点名；ACP 客户端需要时可用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 CLI 的 `--origin xhen`）（suga-kz0r）。
 - 收工检查的 `promise-zh` 内置句式收紧，不再把描述测试手法的句子（如“先读取接口，再跑一遍只读接口”）当成“承诺继续”：每条句式都要求带第一人称将来时标记（`我(会|将|要|来|去|先|再)`、`接下来`、`下一步`、`马上`、`这就`、`让我`），单独的“再跑/先运行”不算（2026-10-22 第三十一批 S3 误报）。用户自己写的 `nudge-rules.yaml` 句式不受影响；删除了原来未带主语的 `(我)?(先|再|现在|马上|这就)…` 句式。
 - 宿主注入的 hook（`agentcore.Hook`）panic 不再把整个进程/回合拖倒：hook 链每个阶段都把 panic 换成错误（`hook %T panicked: ...`），判定“是否允许执行”的 `BeforeTool` 阶段因此拒绝该调用并留下错误事件，只做观察的 `AfterTool` 阶段已跑完的工具结果照常进会话记录。`pkg/sugasdk` 的回合级 panic 兜底不变。
+- 快照层（`file_edit`/`file_write`/`file_remove` 的前镜像）不再因为一个损坏的记录让整个会话不可用（suga-m870）：读取 turn 目录时，缺 `meta.json` 或 JSON 损坏的子目录被跳过并记 `slog` 警告，其他快照照常可用（`suga data gc` 报告跳过的记录数）；快照记录改为先写进隐藏的 `.partial-` 临时目录、`meta.json` 落盘后再 rename 成正式目录，读者与清理都不会看到半成品；清理会删掉早于 30 分钟的半成品目录（含缺 `meta.json` 的旧记录目录，`suga data gc` 报告清理数量），别人正在写的目录保留；初始化扫描失败不再被永久缓存为“不可用”，下一次调用重试，只有配置错误或目录无写权限才视为永久不可用，单次失败只让这一次调用降级（`tools.snapshots.on_error=continue` 时照旧提示“本次写入不可撤销”）。
 
 ## [0.44.0] - 2026-10-22
 
