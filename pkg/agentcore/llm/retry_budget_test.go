@@ -70,3 +70,32 @@ func TestRetryMaxElapsedBoundsOneRequest(t *testing.T) {
 		assert.Eq(t, int32(3), hits.Load())
 	})
 }
+
+// A provider that used up its own budget still leaves the fallback its full
+// chance: the budget belongs to one request of one provider, not to the turn.
+func TestRetryMaxElapsedLeavesTheFallbackItsTurn(t *testing.T) {
+	var primaryHits atomic.Int32
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryHits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(primary.Close)
+	var fallbackHits atomic.Int32
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"from the fallback"},"finish_reason":"stop"}]}`))
+	}))
+	t.Cleanup(fallback.Close)
+
+	pool := NewPool([]Provider{
+		NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: primary.URL, Model: "m", Name: "gw1", Retry: budgetRetry}),
+		NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: fallback.URL, Model: "m", Name: "gw2", Retry: fastRetry}),
+	})
+	res, err := pool.Generate(context.Background(), &agentcoreapi.GenerateRequest{
+		Messages: []agentcoreapi.Message{{Role: "user", Content: "hi"}}})
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "from the fallback", res.Content)
+	assert.Eq(t, int32(1), fallbackHits.Load())
+	assert.True(t, int(primaryHits.Load()) < budgetRetry.MaxAttempts, "%d primary attempts", primaryHits.Load())
+}
