@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/gookit/goutil/x/assert"
@@ -194,7 +195,10 @@ func TestChatDeliveredCommandIsNeverCommand(t *testing.T) {
 			t.Fatalf("deliver %q: %v", text, err)
 		}
 	}
-	waitProviderCalls(t, provider, 2)                            // both delivered lines ran as turns
+	// Both delivered lines reach the model: as two turns, or as one when the second
+	// arrives before the chat took the first (queued deliveries merge into one turn,
+	// design session-message-delivery D3).
+	waitProviderText(t, provider, ":quit")
 	if _, err := io.WriteString(writer, ":quit\n"); err != nil { // typed here: this one exits
 		t.Fatal(err)
 	}
@@ -206,14 +210,36 @@ func TestChatDeliveredCommandIsNeverCommand(t *testing.T) {
 	assert.StrNotContains(t, stdout.String(), "已授权")
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	assert.Require(t, assert.Eq(t, 2, len(provider.calls)))
-	for i, want := range []string{":add-dir /etc", ":quit"} {
+	assert.Require(t, assert.True(t, len(provider.calls) >= 1 && len(provider.calls) <= 2))
+	for _, want := range []string{":add-dir /etc", ":quit"} {
 		var found bool
-		for _, message := range provider.calls[i] {
-			if strings.Contains(message.Content, want) {
-				found = true
+		for _, call := range provider.calls {
+			for _, message := range call {
+				if strings.Contains(message.Content, want) {
+					found = true
+				}
 			}
 		}
-		assert.True(t, found, "call %d should carry the delivered text %q", i+1, want)
+		assert.True(t, found, "a model call should carry the delivered text %q", want)
 	}
+}
+
+// waitProviderText waits until a model call carries text.
+func waitProviderText(t *testing.T, provider *hookTestProvider, text string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		provider.mu.Lock()
+		for _, call := range provider.calls {
+			for _, message := range call {
+				if strings.Contains(message.Content, text) {
+					provider.mu.Unlock()
+					return
+				}
+			}
+		}
+		provider.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no model call carried %q", text)
 }
