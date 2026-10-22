@@ -152,8 +152,8 @@ type Config struct {
 	// IdleProvider/IdleModel serve the idle consolidation (models.idle); nil
 	// means the compact provider is used. HandoffProvider/HandoffModel serve
 	// the --from handoff package (models.handoff) the same way.
-	IdleProvider agentcore.Provider
-	IdleModel    string
+	IdleProvider    agentcore.Provider
+	IdleModel       string
 	HandoffProvider agentcore.Provider
 	HandoffModel    string
 	// Plans is the update_plan sink handed to the tool at build time; New binds

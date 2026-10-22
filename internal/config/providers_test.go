@@ -604,8 +604,8 @@ providers:
 
 func TestReadModelSettingsScenarioModels(t *testing.T) {
 	t.Run("models.compact wins over compact_model", func(t *testing.T) {
-		loadYAML(t, "model: deepseek/deepseek-chat\n" +
-			"compact_model: deepseek-lite\n" +
+		loadYAML(t, "model: deepseek/deepseek-chat\n"+
+			"compact_model: deepseek-lite\n"+
 			"models:\n  compact: openai/gpt-4o-mini\n")
 		s, err := ReadModelSettings("")
 		assert.NoErr(t, err)
@@ -624,7 +624,7 @@ func TestReadModelSettingsScenarioModels(t *testing.T) {
 	})
 
 	t.Run("models.idle and models.handoff resolve", func(t *testing.T) {
-		loadYAML(t, "model: deepseek/deepseek-chat\n" +
+		loadYAML(t, "model: deepseek/deepseek-chat\n"+
 			"models:\n  idle: gpt-4o-mini\n  handoff: openai/gpt-4o-mini\n")
 		s, err := ReadModelSettings("")
 		assert.NoErr(t, err)
@@ -636,7 +636,7 @@ func TestReadModelSettingsScenarioModels(t *testing.T) {
 	})
 
 	t.Run("effective values via the config registry", func(t *testing.T) {
-		loadYAML(t, "model: deepseek/deepseek-chat\n" +
+		loadYAML(t, "model: deepseek/deepseek-chat\n"+
 			"models:\n  idle: openai/gpt-4o-mini\n")
 		v, err := ReadConfigValue("models.idle")
 		assert.NoErr(t, err)

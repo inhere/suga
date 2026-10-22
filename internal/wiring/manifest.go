@@ -78,8 +78,8 @@ type ManifestModel struct {
 
 // ManifestModels is the effective model selection.
 type ManifestModels struct {
-	Main      ManifestModel   `json:"main"`
-	Compact   *ManifestModel  `json:"compact,omitempty"`
+	Main    ManifestModel  `json:"main"`
+	Compact *ManifestModel `json:"compact,omitempty"`
 	// Idle/Handoff are the per-scenario overrides (models.idle / models.handoff);
 	// nil means the scenario falls back to the compact model, then the main one.
 	Idle      *ManifestModel  `json:"idle,omitempty"`
