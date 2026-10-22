@@ -22,6 +22,7 @@ func newMemoryCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	group := capp.NewCmd("memory", "Maintain long-term memory: summaries (the index description of each entry)")
 	group.SetOutput(stderr)
 	group.Add(newMemorySummariesCommand(ctx, stdout, stderr))
+	group.Add(newMemoryLintCommand(ctx, stdout, stderr))
 	group.Add(newMemoryGoferTitlesCommand(ctx, stdout, stderr))
 	return group
 }
