@@ -224,7 +224,7 @@ func (w *watcher) once(ctx context.Context, out io.Writer, n int, trigger string
 	var buf bytes.Buffer
 	both := io.MultiWriter(out, &capWriter{buf: &buf, max: maxWatchCompareBytes})
 	cmd.Stdout, cmd.Stderr = both, both // one value: exec uses a single pipe
-	tree := proctree.New(cmd)
+	tree := proctree.NewLimited(cmd, w.tool.limits.tree())
 	cmd.Cancel = tree.Kill
 	cmd.WaitDelay = shellWaitDelay
 	if err := cmd.Start(); err != nil {
@@ -244,6 +244,11 @@ func (w *watcher) once(ctx context.Context, out io.Writer, n int, trigger string
 		status = "timeout after " + w.spec.timeout.String()
 	case errors.Is(err, exec.ErrWaitDelay):
 		status += "; a background process kept the output open and was killed"
+	}
+	// A run the limits stopped says so in the run's header line and therefore
+	// in the change comparison as well.
+	if w.tool.limits.limitHit(tree.Exceeded(), res.exit, buf.String()) {
+		status += "; " + w.tool.limits.notice()
 	}
 	fmt.Fprintf(out, "=== %s ===\n", status)
 	for line := range strings.SplitSeq(strings.TrimRight(buf.String(), "\n"), "\n") {

@@ -49,6 +49,9 @@ type Env struct {
 	// ShellBackgroundAfter is the foreground grace period before a shell is
 	// transferred to the task manager; zero disables transfer.
 	ShellBackgroundAfter time.Duration
+	// ShellLimits caps the memory, process count and CPU time of a command and
+	// its process tree (tools.shell_limits); the zero value is no limit.
+	ShellLimits ShellLimits
 	// FetchAllowPrivate lets web_fetch reach private and local addresses
 	// (tools.web_fetch.allow_private).
 	FetchAllowPrivate bool
@@ -158,6 +161,7 @@ func Catalog() []Spec {
 				t.maxTimeout = env.ShellTimeoutMax
 				t.timeout = min(t.timeout, t.maxTimeout)
 			}
+			t.limits = env.ShellLimits
 			t.extraEnv = env.ExtraEnv
 			return t
 		}},

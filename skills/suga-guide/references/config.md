@@ -141,6 +141,10 @@
 | `tools.interpreters` | 自动探测 | 启动时探测 PATH 上的脚本解释器（默认候选 `python3`、`python`、`node`）：每进程探测一次并缓存（`--version`，2 秒超时），命中的写进环境段（可写模式）并提示优先写脚本执行。`false`（或 `off`）关闭；也可给名称或绝对路径列表，如 `[python, C:\Python312\python.exe]`（绝对路径按你的选择只校验 `--version`）。Windows 上自动探测会跳过 `%LOCALAPPDATA%\Microsoft\WindowsApps` 下的应用商店别名（运行只会跳商店或不出输出版本），商店包自身的安装目录（`C:\Program Files\WindowsApps\...`）不受影响 |
 | `tools.shell_timeout_max` | `600` | `shell_exec` 单次 `timeout` 的上限秒数（单次默认 120） |
 | `tools.shell_background_after` | `120s` | 前台 `shell_exec` 超过此时长后转为后台任务并保留已输出；`0` 关闭转后台；`tools.shell_timeout_max` 仍是硬上限 |
+| `tools.shell_limits.memory` | `4GiB` | 一次 `shell_exec` 与它整棵进程树的内存上限（`2GiB`、`512MiB` 或字节数）；`0`/`off` 不限。Windows 为 Job Object 的单进程与整树提交上限，Unix 为 `RLIMIT_DATA` |
+| `tools.shell_limits.processes` | `256` | 进程树同时可有的进程数（Windows `ActiveProcessLimit`）；`0` 不限。Unix 为 `RLIMIT_NPROC`，按用户计数，suga 取「当前用户进程数 + 该值」，无 `/proc` 的 Unix 不生效 |
+| `tools.shell_limits.cpu_time` | 不限 | 单进程 CPU 时间上限（如 `10m` 或秒数，Windows `PerProcessUserTimeLimit`、Unix `RLIMIT_CPU`）；`0` 不限。Unix 上被它杀死时通常没有输出痕迹，结果里可能只有退出码（见 `references/tools.md`） |
+| `tools.shell_limits.off` | `false` | `true` 时以上三项全部关闭，命令不受资源限制（详见 `references/tools.md` 的资源限制一节；这不是沙箱） |
 | `tools.dependency_roots` | `true` | 自动识别工作区外的只读目录（Go 模块缓存、`GOROOT/src`、Rust crate 源码） |
 | `tools.standards_roots` | `true` | 自动识别 idev-std 发行目录（`IDEV_STD_RELEASES_ROOT` / `INHERE_DEV_STANDARDS_ROOT`）与绑定工作空间的 `tmp/idev-std` 加载产物目录；`false` 关闭 |
 | `tools.read_roots` | `[]` | 额外只读目录列表（绝对路径，支持 `~`）。只影响 file_read/list/grep/find。只想对某个会话生效时用 `--add-dir <目录>` 或 `SUGA_ADD_DIRS`（`:rw` 可写） |

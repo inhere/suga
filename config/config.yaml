@@ -319,6 +319,15 @@ tools:
   # shell: ""                # shell_exec shell; default pwsh/powershell on Windows, sh elsewhere
   # shell_timeout_max: 600   # max seconds a shell_exec call may ask for (default 120 per call)
   # shell_background_after: 120s # foreground grace period; 0 disables handoff
+  # Resource caps of one shell_exec run and every process it starts (not a sandbox:
+  # it only stops a runaway build or test run). memory and processes default to
+  # 4GiB and 256; 0 (or "off" for memory) turns one limit off, off: true all of
+  # them. Unix sets them with setrlimit, where the process count is per user.
+  # shell_limits:
+  #   memory: 4GiB         # e.g. 2GiB, 512MiB, 1073741824; 0 = no limit
+  #   processes: 256       # processes the tree may have at once; 0 = no limit
+  #   cpu_time: 0          # CPU time of one process, e.g. 10m; 0 = no limit
+  #   off: false           # true runs commands without any of the caps above
   # Read-only directories outside the workspace (file_read/file_list/file_grep/file_find,
   # absolute paths). Writes stay in the workspace.
   # dependency_roots: true   # detect Go module cache, GOROOT/src, ~/.cargo/registry/src

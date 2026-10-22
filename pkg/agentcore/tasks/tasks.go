@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -112,6 +113,14 @@ type Spec struct {
 	// Cmd is ready to Start (path, args, dir, env); its Stdout, Stderr and
 	// SysProcAttr are set by the manager.
 	Cmd *exec.Cmd
+	// Limits caps the memory, process count and CPU time of Cmd and its whole
+	// process tree (tools.shell_limits); the zero value is no limit.
+	Limits proctree.Limits
+	// LimitNotice, when set, is asked for the line to write to the task output
+	// when the command ended after a limit: it gets whether the system ended a
+	// process of the tree, the exit code and the last lines of the output (what a
+	// refused allocation printed). An empty answer writes nothing.
+	LimitNotice func(terminated bool, exitCode int, output string) string
 	// Run is a function task, instead of Cmd.
 	Run RunFunc
 	// NoEndNotice: the task reports what matters through Reporter.Notify,
@@ -169,6 +178,8 @@ type ProcessTree interface {
 	Kill() error
 	Close()
 	Started()
+	// Exceeded reports whether a resource limit ended a process of the tree.
+	Exceeded() bool
 }
 
 // RunningCommand is a command that has already been started by its caller.
@@ -295,7 +306,8 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (Info, error) {
 	// A leftover child holding the pipe must not keep the task "running"
 	// after the command itself ended.
 	cmd.WaitDelay = 2 * time.Second
-	t.tree = proctree.New(cmd)
+	t.tree = proctree.NewLimited(cmd, spec.Limits)
+	t.limitNotice = spec.LimitNotice
 	if err := cmd.Start(); err != nil {
 		_ = file.Close()
 		return Info{}, fmt.Errorf("start: %w", err)
@@ -414,7 +426,16 @@ func waitCommand(cmd *exec.Cmd) <-chan error {
 func (m *Manager) waitResult(s *session, t *task, cmd *exec.Cmd, done <-chan error) {
 	err := <-done
 	t.tree.Close() // also ends children left running in the background
+	// A limit that ended a process of the tree, or that made the command fail its
+	// allocation, is named in the output: the exit code alone would read like the
+	// command's own failure.
 	code := cmd.ProcessState.ExitCode()
+	if t.limitNotice != nil {
+		_, _, _, tail := t.out.stats()
+		if note := t.limitNotice(t.tree.Exceeded(), code, strings.Join(tail, "\n")); note != "" {
+			fmt.Fprintf(t.out, "=== %s ===\n", note)
+		}
+	}
 	status := Exited
 	if err != nil && code < 0 {
 		status = Failed
@@ -777,6 +798,8 @@ type task struct {
 	seen   bool               // the model saw the end (Wait, Kill or a notice)
 	tree   ProcessTree        // a command's process tree
 	cancel context.CancelFunc // a function's context
+	// limitNotice is asked for the line a limit leaves in the output.
+	limitNotice func(terminated bool, exitCode int, output string) string
 	// updated is closed (and replaced) when a function task reports.
 	updated chan struct{}
 	out     *lineWriter

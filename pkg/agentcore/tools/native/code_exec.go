@@ -135,6 +135,9 @@ type ShellExecTool struct {
 	// turn). It is read at every run, so a session switch, a sub-agent's own
 	// session and another ACP session of the same process are all seen.
 	extraEnv func(context.Context) []string
+	// limits caps the memory, process count and CPU time of a run and of every
+	// process it starts (tools.shell_limits); the zero value is no limit at all.
+	limits ShellLimits
 }
 
 // SetTasks enables background: true (the host owns m and its lifetime).
@@ -179,6 +182,10 @@ func (t *ShellExecTool) Description() string {
 	}
 	if t.tasks != nil && t.backgroundAfter > 0 {
 		desc += fmt.Sprintf(" Foreground commands running longer than %s are transferred to a background task instead of being killed; tools.shell_timeout_max (%s) remains the hard limit.", t.backgroundAfter, t.maxTimeout)
+	}
+	if !t.limits.Empty() {
+		desc += fmt.Sprintf(" Every run is capped (%s, tools.shell_limits): a process over the memory limit fails its allocation, "+
+			"one over the process or CPU time limit is ended; the result says so.", t.limits.describe())
 	}
 	if t.tasks != nil {
 		desc += fmt.Sprintf(" With background: true it starts the command in the background and returns a task id at once "+
@@ -275,9 +282,10 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	output := newHandoffOutput()
 	cmd.Stdout, cmd.Stderr = output.stdout, output.stderr // stdin stays nil: the null device
 	// The tree is created before Start so Unix gets a process group and Windows
-	// puts the shell in a kill-on-close job object. Adopt preserves this same
-	// owner when the foreground call becomes a task.
-	tree := proctree.New(cmd)
+	// puts the shell in a kill-on-close job object (with the resource limits on
+	// it). Adopt preserves this same owner when the foreground call becomes a
+	// task.
+	tree := proctree.NewLimited(cmd, t.limits.tree())
 	// WaitDelay forces Wait to return when a leftover child keeps a pipe open.
 	cmd.WaitDelay = shellWaitDelay
 	if err := cmd.Start(); err != nil {
@@ -361,15 +369,25 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	default:
 		status = fmt.Sprintf("[exit code: %d]", exitCode)
 	}
+	// A run the limits stopped says so: the exit code alone would read like the
+	// program's own failure.
+	limitHit := t.limits.limitHit(tree.Exceeded(), exitCode, content)
+	if limitHit {
+		status += "\n" + t.limits.notice()
+	}
 	if content != "" {
 		content += "\n"
 	}
-	return &api.ToolResult{
+	result := &api.ToolResult{
 		CallID:   call.CallID,
 		Name:     t.Name(),
 		Content:  content + status,
 		Metadata: map[string]any{"exit_code": exitCode},
-	}, nil
+	}
+	if limitHit {
+		result.Metadata["limits_exceeded"] = true
+	}
+	return result, nil
 }
 
 // handoffWriter buffers foreground output until the manager owns the command,
@@ -461,7 +479,8 @@ func (t *ShellExecTool) startBackground(ctx context.Context, call api.ToolCall, 
 	argv := t.shell.argv(command)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir, cmd.Env = t.workspace, shellEnv(ctx, t.extraEnv)
-	info, err := t.tasks.Start(ctx, tasks.Spec{Kind: "shell", Summary: taskSummary(command), Cmd: cmd, Clean: cleanTaskLine})
+	info, err := t.tasks.Start(ctx, tasks.Spec{Kind: "shell", Summary: taskSummary(command), Cmd: cmd, Clean: cleanTaskLine,
+		Limits: t.limits.tree(), LimitNotice: t.limits.taskLimitNotice})
 	if err != nil {
 		return nil, fmt.Errorf("shell_exec: background: %w", err)
 	}
