@@ -7,6 +7,9 @@ import (
 	"github.com/gookit/goutil/x/assert"
 )
 
+// nestedKey is a test-only context key.
+type nestedKey struct{}
+
 func TestInvocationID(t *testing.T) {
 	t.Run("round trip", func(t *testing.T) {
 		ctx := WithInvocationID(context.Background(), "turn-1/call-1")
@@ -17,6 +20,6 @@ func TestInvocationID(t *testing.T) {
 	})
 	t.Run("nested context keeps the id", func(t *testing.T) {
 		ctx := WithInvocationID(context.Background(), "turn-1/call-1")
-		assert.Eq(t, "turn-1/call-1", InvocationID(context.WithValue(ctx, struct{}{}, 1)))
+		assert.Eq(t, "turn-1/call-1", InvocationID(context.WithValue(ctx, nestedKey{}, 1)))
 	})
 }
