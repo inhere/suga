@@ -40,6 +40,7 @@ suga config set model deepseek/deepseek-chat      # pick a model (<provider>/<mo
 suga config set tools.allow_write true            # let chat write files and run commands (it asks first)
 suga config set tools.web_fetch.user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"  # send a browser UA when fetching pages (empty = suga-web-fetch/1.0)
 suga models                                       # list usable models offline; suga config get <key> shows value and source
+suga inspect rules output --builtin               # print a rule-file kind's built-in YAML (approval/output/nudge/lang) as a writing template; without --builtin the effective rules, sources and skipped files
 suga chat                                         # interactive chat in the current directory
 ```
 
