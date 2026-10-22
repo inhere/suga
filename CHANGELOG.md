@@ -12,6 +12,11 @@
   - `wiring.Options.HostContext`（`personal.Config.HostContextSource`）允许宿主每回合提供一段文本（人物设定、主题索引、原话约束等）与其 hash：段开始时冻结进段上下文，作为 `## Host context` 一节放在附加提示之后；段内每回合按 hash 比较，变化时以现有的“上下文更新”消息追加新版本，不变则不写；交接/压缩后的新段重新读取最新内容；空内容等同于没有（不输出空节）；`suga inspect manifest` 的常驻上下文新增 `host_context` 一项。
   - 未设置这两个选项时，段上下文、上下文更新消息与工具列表与之前逐字节一致。
 - 会话来源 `xhen`：宿主应用（xhen）通过 `wiring.Options.SessionOrigin` 声明来源，创建的会话带 `origin=xhen`；`suga sessions` 默认不列这类会话（结果为空时提示被隐藏的数量），新增 `--origin <name>` 过滤（`--origin all` 列出全部来源，`--all` 仍只表示所有目录），`--json` 行新增 `origin` 字段；`suga data gc --retention` 不再按期清理它们（报告单列「由宿主管理，未清理 N 个」，生命周期由宿主决定），`--older-than` 显式清理仍可删除。
+- 调用前 hook（`hooks.pre_tool_use.tools` / `.name`，仅 chat）：在工具执行前发送 `PreToolUse` 事件（`tool_name`、`tool_input` 完整参数），回答可用 `hookSpecificOutput.permissionDecision: "deny"` 拒绝该调用，或用 `updatedInput` 改写参数。三条硬规则：改写后的参数重走审批（改写发生在审批层的决定之前，审批模式、approval rules、受保护路径看到的都是新参数）；hook 超时、非零退出、回答不可解析或宿主 hook panic 一律按拒绝执行（fail closed），理由记进 trace 与工具错误；hook 的 `allow` 不绕过审批模式，只能收窄不能放宽。实现：审批层新增 `tools.CallRewriter`（`Approval.SetRewriter`），「PreToolUse → 审批」的接入在 `internal/chat/hooks_gate.go`；未配置 `hooks.pre_tool_use.tools` 时行为不变。
+
+### 修复
+
+- 宿主注入的 hook（`agentcore.Hook`）panic 不再把整个进程/回合拖倒：hook 链每个阶段都把 panic 换成错误（`hook %T panicked: ...`），判定“是否允许执行”的 `BeforeTool` 阶段因此拒绝该调用并留下错误事件，只做观察的 `AfterTool` 阶段已跑完的工具结果照常进会话记录。`pkg/sugasdk` 的回合级 panic 兜底不变。
 
 ## [0.44.0] - 2026-10-22
 

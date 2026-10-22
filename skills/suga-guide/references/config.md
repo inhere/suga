@@ -227,8 +227,10 @@
 | `hooks.stop_background` | `false` | 把 Stop 作为后台任务运行（打字、投递、任务唤醒都不打断它）；此时超时由 `tasks.max_duration` 限制，除非设了 `stop_wait_sec` |
 | `hooks.post_tool_use.tools` | `[]`（不发） | 只对这些 glob 匹配的工具发送 PostToolUse |
 | `hooks.post_tool_use.name` | 不设 | 设置了就把 PostToolUse 事件里的工具名改成它 |
+| `hooks.pre_tool_use.tools` | `[]`（不发） | 只对这些 glob 匹配的工具在**执行前**发送 PreToolUse（可拒绝或改写参数） |
+| `hooks.pre_tool_use.name` | 不设 | 设置了就把 PreToolUse 事件里的工具名改成它 |
 
-事件：SessionStart、UserPromptSubmit、PostToolUse、Stop、SessionEnd、Interrupt。`SUGA_HOOKS=off` 整体关闭。
+事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop、SessionEnd、Interrupt。`SUGA_HOOKS=off` 整体关闭。
 
 ## `log.*`（进程日志）
 
