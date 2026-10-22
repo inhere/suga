@@ -17,15 +17,22 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 )
 
-// allocEnv makes the helper below allocate memory: a shell command cannot
-// allocate a lot portably (PowerShell on Windows, sh elsewhere), so the tests
-// run this test binary again, driven by the variable.
-const allocEnv = "SUGA_TEST_ALLOC_MB"
+// allocEnv makes the helper below allocate memory and busyEnv makes it burn
+// CPU: a shell command cannot do either portably (PowerShell on Windows, sh
+// elsewhere), so the tests run this test binary again, driven by the variables.
+const (
+	allocEnv = "SUGA_TEST_ALLOC_MB"
+	busyEnv  = "SUGA_TEST_BUSY"
+)
 
-// TestShellLimitsHelperProcess is the process the memory limit tests run: with
-// SUGA_TEST_ALLOC_MB set it asks the OS for that many MiB and then exits 0, so
-// a limit below that makes it fail the way a runaway build does.
+// TestShellLimitsHelperProcess is the process the limit tests run: with
+// SUGA_TEST_ALLOC_MB set it asks the OS for that many MiB, with SUGA_TEST_BUSY
+// set it burns CPU, and either way it exits 0 unless a limit stopped it.
 func TestShellLimitsHelperProcess(t *testing.T) {
+	if os.Getenv(busyEnv) != "" {
+		burnCPU(60 * time.Second)
+		return
+	}
 	raw := os.Getenv(allocEnv)
 	if raw == "" {
 		return // the ordinary test run: not the helper
@@ -41,12 +48,37 @@ func TestShellLimitsHelperProcess(t *testing.T) {
 	fmt.Printf("allocated %d MiB\n", mb)
 }
 
+// burnCPU keeps one core busy for d (the CPU time limit ends the process long
+// before that).
+func burnCPU(d time.Duration) {
+	deadline := time.Now().Add(d)
+	x := 0
+	for time.Now().Before(deadline) {
+		for i := 0; i < 1e6; i++ {
+			x += i % 7
+		}
+	}
+	fmt.Println("burned CPU", x)
+}
+
 // helperCommand is the shell command line that runs the helper with mb MiB. The
 // flag is quoted because PowerShell splits an unquoted -test.run=... in two, and
 // a quoted path needs PowerShell's call operator (sh runs it as it is).
 func helperCommand(t *testing.T, mb int) string {
 	t.Helper()
 	t.Setenv(allocEnv, strconv.Itoa(mb))
+	return helperLine()
+}
+
+// busyCommand is the helper command line that burns CPU instead of allocating.
+func busyCommand(t *testing.T) string {
+	t.Helper()
+	t.Setenv(busyEnv, "1")
+	return helperLine()
+}
+
+// helperLine is the helper's command line with the environment of the test.
+func helperLine() string {
 	flag := " '-test.run=^TestShellLimitsHelperProcess$'"
 	if runtime.GOOS == "windows" {
 		return `& "` + os.Args[0] + `"` + flag

@@ -4,6 +4,7 @@ package native
 
 import (
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 )
@@ -23,4 +24,16 @@ func TestShellLimitsProcessLimit(t *testing.T) {
 	assert.True(t, meta["exit_code"] != 0, "starting past the limit fails the command: %v", content)
 	assert.StrContains(t, content, "超出 suga 的资源限制")
 	assert.StrContains(t, content, "进程数 4")
+}
+
+// TestShellLimitsCPUTimeLimit: the job object's PerProcessUserTimeLimit ends a
+// process that burns too much CPU, and the job accounting reports it (the only
+// signal for a limit that ends a process instead of failing an allocation).
+func TestShellLimitsCPUTimeLimit(t *testing.T) {
+	tool := limitTool(t.TempDir(), ShellLimits{CPUTime: 5 * time.Second})
+	content, meta := runLimitedShell(t, tool, busyCommand(t))
+	assert.True(t, meta["exit_code"] != 0, "the run was ended: %v", content)
+	assert.Eq(t, true, meta["limits_exceeded"])
+	assert.StrContains(t, content, "超出 suga 的资源限制")
+	assert.StrContains(t, content, "CPU 时间 5s")
 }
