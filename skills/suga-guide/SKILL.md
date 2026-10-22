@@ -165,6 +165,7 @@ hooks:
 - 子 agent（`agent` 工具）：`agents.enabled: false` 不注册；`agents.model` 让子 agent 跑更便宜的模型（写法同 `model`，裸 id 用主模型 provider）；上限 `agents.max_steps`(30)、`agents.max_tokens`(400000)、`agents.timeout`(10m)。子 agent 只读、不能再派子 agent。
 - 后台任务：`shell_exec` 传 `background: true`（写模式）或 `agent` 传 `background: true`（任何模式）；`tasks.max_running`(4)、`tasks.max_duration`(2h)、`tasks.max_output_bytes`(64MiB)、`tasks.wake_on_exit`(true，chat 里任务结束会唤醒空闲提示符)。
 - 前台 `shell_exec` 默认运行超过 `tools.shell_background_after`（默认 `120s`）会转成后台任务，已产生的输出会随工具结果返回，并明确给出任务 id；任务完成后通过现有通知机制唤醒模型。设置为 `0` 可关闭，`tools.shell_timeout_max` 仍会终止超过硬上限的任务。
+- 资源限制（`tools.shell_limits`）：每次 `shell_exec` 与它整棵进程树默认受 `memory`（`4GiB`）与 `processes`（`256`）限制，可选 `cpu_time`；`0` 关闭单项、`off: true` 全关。超限时结果里会明确写出「超出 suga 的资源限制」，不是沙箱（详见 `references/tools.md`）。
 
 ### 修改 suga 的规则文件（审批/输出整理/收工检查/语言）
 
