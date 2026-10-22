@@ -137,3 +137,15 @@ func TestDeliveryFailureHoldsQueuedMessages(t *testing.T) {
 	heldState, _ = source.DeliveryState("f-2")
 	assert.Eq(t, personalprocess.StateProcessed, heldState)
 }
+
+// TestDiscardQueuedReceipt: chat exits with messages still queued: every waiting
+// sender reads discarded, and a status query says discarded (design D3).
+func TestDiscardQueuedReceipt(t *testing.T) {
+	state, source := newDeliveryState(t, mock.NewProvider(mock.Final("ok")))
+	settled := deliverIn(t, state, personalprocess.DeliverRequest{Text: "排队中", ID: "d-1", WaitProcessed: true})
+	assert.Eq(t, 1, source.DiscardQueued())
+	assert.ErrIs(t, settledOrFail(t, settled, "discarded"), personalprocess.ErrDiscarded)
+	stateNow, known := source.DeliveryState("d-1")
+	assert.True(t, known)
+	assert.Eq(t, personalprocess.StateDiscarded, stateNow)
+}

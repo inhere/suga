@@ -398,6 +398,7 @@ func (s *chatInputSource) DiscardQueued() int {
 	for {
 		select {
 		case event := <-s.deliveries:
+			s.recordDeliveryStateLocked(event.id, process.StateDiscarded)
 			event.settle(process.ErrDiscarded)
 			n++
 		default:
