@@ -99,6 +99,38 @@ func TestLongSessionHardTasksLoad(t *testing.T) {
 	})
 }
 
+// TestHardTaskFixturesMatchTheirFileChecks covers the hand-copied fixtures: the
+// file checks that must hold before the agent touches anything (file_equals /
+// file_contains) pass on the untouched fixture, so a task.yaml cannot drift from
+// the file it pins.
+func TestHardTaskFixturesMatchTheirFileChecks(t *testing.T) {
+	for _, name := range []string{
+		"longsession-hard-naming-rules",
+		"longsession-hard-rule-update",
+		"longsession-hard-topic-cycles",
+		"longsession-hard-distractor-rules",
+	} {
+		t.Run(name, func(t *testing.T) {
+			task, err := loadTask(filepath.Join("testdata", "tasks", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ws := t.TempDir()
+			assert.NoErr(t, copyDir(filepath.Join("testdata", "tasks", name, "fixture"), ws))
+			var checks []Check
+			for _, c := range task.Checks {
+				if c.Type == "file_equals" || c.Type == "file_contains" {
+					checks = append(checks, c)
+				}
+			}
+			assert.True(t, len(checks) > 0, "the task pins no fixture file")
+			for _, r := range runChecks(ws, nil, checks) {
+				assert.True(t, r.Passed, r.Type+" "+r.Path+" "+r.Detail)
+			}
+		})
+	}
+}
+
 // TestRunTaskRecordsResolvedModel drives a whole run without --model: the stub
 // agent answers `suga config get model`, and the result plus the table name the
 // model the config resolved to instead of leaving the field empty (suga-h5vn).
