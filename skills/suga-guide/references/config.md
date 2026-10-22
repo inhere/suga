@@ -141,7 +141,7 @@
 | `tools.shell_background_after` | `120s` | 前台 `shell_exec` 超过此时长后转为后台任务并保留已输出；`0` 关闭转后台；`tools.shell_timeout_max` 仍是硬上限 |
 | `tools.shell_limits.memory` | `4GiB` | 一次 `shell_exec` 与它整棵进程树的内存上限（`2GiB`、`512MiB` 或字节数）；`0`/`off` 不限。Windows 为 Job Object 的单进程与整树提交上限，Unix 为 `RLIMIT_AS` |
 | `tools.shell_limits.processes` | `256` | 进程树同时可有的进程数（Windows `ActiveProcessLimit`）；`0` 不限。Unix 为 `RLIMIT_NPROC`，按用户计数，suga 取「当前用户进程数 + 该值」，无 `/proc` 的 Unix 不生效 |
-| `tools.shell_limits.cpu_time` | 不限 | 单进程 CPU 时间上限（如 `10m` 或秒数，Windows `PerProcessUserTimeLimit`、Unix `RLIMIT_CPU`）；`0` 不限 |
+| `tools.shell_limits.cpu_time` | 不限 | 单进程 CPU 时间上限（如 `10m` 或秒数，Windows `PerProcessUserTimeLimit`、Unix `RLIMIT_CPU`）；`0` 不限。Unix 上被它杀死时通常没有输出痕迹，结果里可能只有退出码（见 `references/tools.md`） |
 | `tools.shell_limits.off` | `false` | `true` 时以上三项全部关闭，命令不受资源限制（详见 `references/tools.md` 的资源限制一节；这不是沙箱） |
 | `tools.dependency_roots` | `true` | 自动识别工作区外的只读目录（Go 模块缓存、`GOROOT/src`、Rust crate 源码） |
 | `tools.standards_roots` | `true` | 自动识别 idev-std 发行目录（`IDEV_STD_RELEASES_ROOT` / `INHERE_DEV_STANDARDS_ROOT`）与绑定工作空间的 `tmp/idev-std` 加载产物目录；`false` 关闭 |

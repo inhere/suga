@@ -200,7 +200,7 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 - 一次 `shell_exec`（前台、后台任务、watch 的每一轮）和它启动的所有子进程受 `tools.shell_limits` 限制：`memory`（默认 `4GiB`）、`processes`（默认 `256`）、可选的 `cpu_time`（默认不限制）。某一项写 `0`（`memory` 也可写 `off`）关掉该项，`off: true` 整体关掉。
 - Windows 用 Job Object：`memory` 同时是单进程与整棵树的提交上限（`ProcessMemoryLimit`/`JobMemoryLimit`），`processes` 是 `ActiveProcessLimit`（超出时新进程创建失败），`cpu_time` 是单进程用户态 CPU 上限（超出由系统终止）。
 - Unix 用 `setrlimit`：`memory` 是 `RLIMIT_AS`（分配失败），`cpu_time` 是 `RLIMIT_CPU`。`processes` 是 `RLIMIT_NPROC`——它**按用户计数**，所以 suga 取「当前用户已有进程数 + `processes`」，即该命令大致能再开 `processes` 个进程；没有 `/proc` 的 Unix（如 macOS）与 root 不受这一项限制。
-- 超限时的结果与 trace：进程被终止或分配失败时，工具结果末尾有「超出 suga 的资源限制（内存 … / 进程数 …）」一行（元数据 `limits_exceeded: true`）；后台任务把同样的说明写进输出文件；watch 的 `=== exit X ===` 行带上它。Unix 没有「因限制被终止」的计数器，所以按失败输出里的痕迹判断（`out of memory`、`MemoryError`、`cannot allocate memory`、`fork: … Resource temporarily unavailable`、Windows 的配额不足），不是 100% 精确。
+- 超限时的结果与 trace：进程被终止或分配失败时，工具结果末尾有「超出 suga 的资源限制（内存 … / 进程数 …）」一行（元数据 `limits_exceeded: true`）；后台任务把同样的说明写进输出文件；watch 的 `=== exit X ===` 行带上它。Windows 由 job 记账（因限制被终止的进程数）直接判定，另加上面的输出痕迹；Unix 没有这个计数器，只能按失败输出里的痕迹判断（`out of memory`、`MemoryError`、`cannot allocate memory`、`fork: … Resource temporarily unavailable`、Windows 的配额不足），不是 100% 精确——`cpu_time` 在 Unix 上被 `RLIMIT_CPU` 杀死时通常没有输出痕迹，结果里可能只有退出码。
 - 这不是沙箱：命令仍能写用户有权限的任何文件、访问网络，危险命令拦截与审批也不因此变强；它只防止一个失控的构建或测试把机器吃光。chat 里以 `!` 输入的本地命令是你自己敲的命令，不套用这些上限。
 
 ## 后台任务
