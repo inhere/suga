@@ -86,6 +86,16 @@ func (s *Store) ListTurns(ctx context.Context, sessionID string, statuses ...str
 	return out, rows.Err()
 }
 
+// CountTurns counts a session's turns (idx_turns_session, no table scan). It
+// reads the index only: a turn's state_json is never loaded.
+func (s *Store) CountTurns(ctx context.Context, sessionID string) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM turns WHERE session_id = ?`, sessionID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count turns: %w", err)
+	}
+	return n, nil
+}
+
 // UpdateTurn writes status, stop_reason and ended_at (state_json is owned by
 // UpsertTurnState and left untouched).
 func (s *Store) UpdateTurn(ctx context.Context, t Turn) error {
