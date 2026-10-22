@@ -372,7 +372,7 @@ type Runner struct {
 	// (see gate.go).
 	gateMu sync.Mutex
 	gates  map[string]*gateState
-	rec *recorder
+	rec    *recorder
 	// toolLookup resolves a call's tool for the admit ledger, whose Meta decides
 	// whether the call has side effects; nil counts every call as one.
 	toolLookup tools.Lookup
