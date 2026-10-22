@@ -146,6 +146,13 @@ Details: [references/sessions.md](skills/suga-guide/references/sessions.md) (Chi
 - History folding starts by context size (`context.fold_at`, off by default; e.g. 0.5 starts folding at half the compaction threshold) and then folds old results of re-runnable read-only tools too; idle chat compacts in the background (`context.idle_after`).
 - The system prompt holds only stable content; environment, rules (`AGENTS.md`), memory index and skills list go into each segment's context message.
 
+## Embedding (pkg/sugasdk, experimental)
+
+- `pkg/sugasdk` lets another Go program drive suga in its own process: `Open` an engine, `OpenSession` per conversation, `Send` a turn and receive `Event`s, then `Card`, `Compact`, `Steer`, `Search`, `Sessions` and `Memory`.
+- Experimental: the API may change in a minor release until the embedding host (xhen) has settled. The exported surface names no `internal` package; `extra tools`, `host context`, the approver and the memory confirmation are the same extension points `wiring` offers.
+- suga's configuration is process global: one engine per process (`ErrEngineOpen` on a second `Open`, an `Open` after `Close` is fine), and the data root is guarded (`Open` sets and loads `SUGA_HOME`, reuses the same root, returns `ErrSugaHomeMismatch` for another one).
+- Sessions record origin `xhen` by default, so `suga sessions` hides them; list them with `Engine.Sessions(SessionFilter{Origin: "xhen"})`. A session runs one turn at a time (`ErrBusy` instead of queueing), `Steer` inserts into the running turn, and a panic inside a turn comes back as an error.
+
 ## Using with Gofer
 
 Details: [references/gofer.md](skills/suga-guide/references/gofer.md) (Chinese), [docs/usage/gofer-personal-agent.md](docs/usage/gofer-personal-agent.md)
