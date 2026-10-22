@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -163,5 +164,10 @@ func main() {
 		r2, err := runTask(o2, stub, "testrun", task, 1, nil)
 		assert.NoErr(t, err)
 		assert.Eq(t, "explicit/m2", r2.Model)
+	})
+
+	t.Run("unreadable config leaves it empty", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "no-such-suga")
+		assert.Eq(t, "", resolvedModel(context.Background(), missing, t.TempDir(), nil))
 	})
 }
