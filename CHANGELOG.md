@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.44.0] - 2026-10-22
+
+本版：修正 `tools.loop_guard`（按结果判断、改动后重置、同命令失败 3 次提示）；新增收工检查 `agents.nudge` 与 `nudge-rules.yaml`；语言规则文件 `lang-rules.yaml`（实现抽到 `codeintel` 子包，新增 C#、Kotlin、Ruby、C/C++、Dart）、flutter/dart 输出规则；`suga inspect rules` 与 suga-guide 的规则编写参考；ACP 中只读 MCP 工具报 kind=read。
+
 ### 新增
 
 - 语言规则文件 `lang-rules.yaml`：`file_symbols`/`file_refs` 的语言识别和 trace 分析的测试命令识别改由语言注册表描述，内置 → `$SUGA_HOME/lang-rules.yaml` → `<workspace>/.suga/lang-rules.yaml` 三层（同名整条替换、新名追加、`enabled: false` 关闭）；一门语言只需一段 YAML（扩展名、遮蔽语法、块风格 `brace`/`indent`/`end_keyword`、声明行正则、ctags 语言名、测试命令）。内置 JavaScript/TypeScript、Python、Java 迁到内嵌规则且符号与引用的输出逐字节不变；新增 C#（Allman 花括号）、Kotlin、Ruby（`end_keyword`）、C 与 C++（`.h` 的 ctags 映射 C++）四门语言的符号与引用遮蔽，`dotnet test`/`rspec`/`ctest`/`make test` 的识别迁入对应语言规则后结果不变。内置 `maskBraces`/`maskPython` 换成等价的通用遮蔽 `maskSpec`；规则文件出错（语法、未知字段、坏正则、未知 `blocks`、扩展名冲突）时整份跳过并写日志，`suga inspect manifest` 新增 `Language rules` 一节列出生效语言（名字、扩展名、块风格、来源层、ctags）与被跳过的文件及原因，工具描述里的语言列表由注册表生成。Go/PHP/YAML/TOML 的实现在代码里且扩展名受保护。
@@ -20,6 +24,7 @@
 
 ### 变更
 
+- 语言相关实现（语言注册表、注释/字符串遮蔽、各语言符号提取器、引用行匹配与分类、universal-ctags 调用）从 `pkg/agentcore/tools/native` 抽到子包 `pkg/agentcore/tools/native/codeintel`：子包只做纯分析（输入“路径 + 内容”，返回符号与引用），工具外壳（参数、路径解析、只读根、遍历、大小上限、输出拼装）与依赖根探测留在 `native`，为下一步用规则文件支持新语言做准备。工具描述文本、基础提示与 `file_symbols`/`file_refs` 的输出逐字节不变（characterization 黄金文件守护），并新增分层测试禁止 `codeintel` 反向 import `native`。
 - ACP 的 MCP 工具按服务器声明上报 kind（配合 gofer-o49v）：`tools/list` 的 `annotations`（`readOnlyHint`、`destructiveHint`、`idempotentHint`、`openWorldHint`、`title`）现在由 MCP 客户端解析；ACP 里 `readOnlyHint: true`（且未声明 `destructiveHint: true`）的 MCP 工具，`tool_call` 与 `session/request_permission` 都报 `kind=read`，客户端（gofer）据此自动放行只读工具。suga 自己不因该声明放行：权限请求照发，`read_only` 模式仍拒绝，chat/run/子 agent 的 MCP 审批规则不变；`destructiveHint: true` 或无 annotations 的仍是 `kind=other`。
 - 内置输出规则目录改名为 `outrules`（`pkg/agentcore/tools/native/outrules/`，原 `rules/`）：只影响源码位置与 `suga inspect rules output --builtin` 打印的内嵌文件名（现在是 `# outrules/go.yaml`），用户的 `output-rules.yaml` 与规则名不变。
 
@@ -43,7 +48,6 @@
 - chat 里工具调用的第一行按工具显示内容，不再一律是参数 JSON：`file_read` 显示路径（多个用 `, ` 分隔，带 offset/limit 时附 `:起-止`），`shell_exec` 显示命令本身（多行只显首行并加 `…`，timeout/background 等作简短附注），`file_write`/`file_edit` 显示路径加字节与行数/处数，`file_list`、`file_find`、`file_grep`、`file_symbols`、`file_refs` 显示目录、pattern、glob 或符号，`web_fetch`/`web_search`/`view_image`、`agent`、`session_message`、`session_search`、`recall`、`skill`、`tool_search`、`memory` 同样各显示自己的关键参数；工作区内的路径显示为相对路径。没有登记摘要的工具（`update_plan`、MCP 工具）、参数无法解析或摘要为空时仍是原来的 JSON，截断与 `redact` 规则不变；子 agent 的进度行用同一套摘要。只是显示：`run`、stream-json、ACP、trace 与转录不受影响。
 - chat 启动提示只列每轮常用命令，去掉 `:add-dir/:dirs/:rm-dir`、`:checkpoints`、`:undo [N] [force]`；这些命令照旧可用、照旧补全，完整列表仍在 `:help`。
 - eval 默认关闭联网工具（issues suga-okgw）：suga 在临时 SUGA_HOME 的 config 写 `tools.disabled: [web_fetch, web_search]`（通用配置，列出的工具不注册，模型看不到），claude 加 `--disallowedTools WebFetch,WebSearch`，`--allow-web` 或任务 `allow_web: true` 打开；omp 无可用开关，记为 `unsupported`（未禁网）。汇总表新增 WEB 列、表格下输出 `web: off/on/unsupported` 计数，`results.jsonl` 每行新增 `web` 字段，避免把查到在线题解的分数当成解题能力。
-- 语言相关实现（语言注册表、注释/字符串遮蔽、各语言符号提取器、引用行匹配与分类、universal-ctags 调用）从 `pkg/agentcore/tools/native` 抽到子包 `pkg/agentcore/tools/native/codeintel`：子包只做纯分析（输入“路径 + 内容”，返回符号与引用），工具外壳（参数、路径解析、只读根、遍历、大小上限、输出拼装）与依赖根探测留在 `native`，为下一步用规则文件支持新语言做准备。工具描述文本、基础提示与 `file_symbols`/`file_refs` 的输出逐字节不变（characterization 黄金文件守护），并新增分层测试禁止 `codeintel` 反向 import `native`。
 
 ### 修复
 
@@ -1048,7 +1052,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.43.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.44.0...HEAD
+[0.44.0]: https://github.com/inhere/suga/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/inhere/suga/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/inhere/suga/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/inhere/suga/compare/v0.40.0...v0.41.0
