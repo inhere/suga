@@ -39,6 +39,7 @@ suga init                                         # 创建 ~/.suga、带注释�
 suga config set model deepseek/deepseek-chat      # 选模型（<provider>/<model>）；密钥不能用 config set 写
 suga config set tools.allow_write true            # 允许 chat 写文件、执行命令（执行前会询问）
 suga models                                       # 离线查看可用模型；suga config get <key> 看生效值与来源
+suga inspect rules output --builtin               # 打印某类规则文件的内置 YAML（approval/output/nudge/lang），照着写；不带 --builtin 显示生效规则与来源层
 suga chat                                         # 在当前目录开启交互式对话
 ```
 
