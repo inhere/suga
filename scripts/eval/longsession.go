@@ -52,14 +52,21 @@ func turnStatus(checks []CheckResult) string {
 	return "FAIL"
 }
 
-// printTurnDetail writes the long-session report: one block per task that has
-// more than one turn or a forced compaction, one line per turn with its checks
-// and its compaction (tokens before -> after), then the pass rate over those
-// tasks. A run without such a task prints nothing.
+// longSession reports whether a run is judged as a long session: it has a
+// forced compaction or at least three turns (a two-turn task such as
+// read-then-edit keeps the plain table output).
+func longSession(r Result) bool {
+	return hasCompaction(r) || len(r.Turns) >= 3
+}
+
+// printTurnDetail writes the long-session report: one block per long session,
+// one line per turn with its checks and its compaction (tokens before ->
+// after), then the pass rate over those tasks. A run without a long session
+// prints nothing.
 func printTurnDetail(w io.Writer, rs []Result) {
 	var long []Result
 	for _, r := range rs {
-		if len(r.Turns) > 1 || hasCompaction(r) {
+		if longSession(r) {
 			long = append(long, r)
 		}
 	}

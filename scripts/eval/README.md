@@ -114,8 +114,8 @@ task.yaml 写 `keep_tests: true`，本题不做清理。
 - 检查类型：`answer_contains` / `answer_not_contains` / `answer_matches` / `answer_not_matches`
   （后两个是正则，用来表达确定性的约束，如“不许出现中文”`[\p{Han}]`、“必须是 Markdown 列表”`(?m)^[-*] `）；
   文件与命令检查照旧，它们只跑一次，算作最后一轮的检查。
-- 报告：主表之后按任务打印 `long sessions (per turn; ...)`：每轮一行（PASS/FAIL、该轮的检查、
-  该轮的换段 `[compacted ~A -> ~B tokens, segment N]`、耗时），最后给出 `long sessions: passed N/M` 的长会话通过率。
+- 报告：主表之后给“长会话”（带 `compact_after` 或 ≥ 3 轮的任务）逐任务打印 `long sessions (per turn; ...)`：每轮一行（PASS/FAIL、该轮的检查、
+  该轮的换段 `[compacted ~A -> ~B tokens, segment N]`、耗时），最后给出 `long sessions: passed N/M` 的长会话通过率（两轮、无换段的任务仍只进主表）。
 - 运行：`go run ./scripts/eval --fake --bin tmp/smoke/suga --task 'longsession-*'`
   （任务的 `fake_reply` 让假模型给出确定回答，`--fake` 用来验证多轮、换段、逐轮检查的管线；
   真实模型的通过率另跑）。

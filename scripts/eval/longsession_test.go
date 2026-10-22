@@ -120,7 +120,8 @@ func TestTurnChecksAndReport(t *testing.T) {
 	assert.Eq(t, "FAIL", turnStatus(byTurn[3]))
 
 	var buf bytes.Buffer
-	printTurnDetail(&buf, []Result{r, {Task: "single-turn", Passed: true}})
+	twoTurns := Result{Task: "two-turns", Passed: true, Turns: []TurnRun{{Turn: 1}, {Turn: 2}}}
+	printTurnDetail(&buf, []Result{r, {Task: "single-turn", Passed: true}, twoTurns})
 	out := buf.String()
 	assert.StrContains(t, out, "long sessions (per turn")
 	assert.StrContains(t, out, "t1 PASS")
@@ -129,6 +130,7 @@ func TestTurnChecksAndReport(t *testing.T) {
 	assert.StrContains(t, out, "file_equals:notes/plan.md=PASS")
 	assert.StrContains(t, out, "long sessions: passed 1/1")
 	assert.StrNotContains(t, out, "single-turn")
+	assert.StrNotContains(t, out, "two-turns") // two turns without a compaction keep the plain table
 
 	t.Run("no long session prints nothing", func(t *testing.T) {
 		var quiet bytes.Buffer
