@@ -80,6 +80,10 @@ type ManifestModel struct {
 type ManifestModels struct {
 	Main      ManifestModel   `json:"main"`
 	Compact   *ManifestModel  `json:"compact,omitempty"`
+	// Idle/Handoff are the per-scenario overrides (models.idle / models.handoff);
+	// nil means the scenario falls back to the compact model, then the main one.
+	Idle      *ManifestModel  `json:"idle,omitempty"`
+	Handoff   *ManifestModel  `json:"handoff,omitempty"`
 	Fallbacks []ManifestModel `json:"fallbacks,omitempty"`
 }
 
@@ -368,6 +372,14 @@ func BuildManifest(in ManifestInput) Manifest {
 	if in.Settings.Compact != nil {
 		c := manifestModel(*in.Settings.Compact)
 		m.Models.Compact = &c
+	}
+	if in.Settings.Idle != nil {
+		i := manifestModel(*in.Settings.Idle)
+		m.Models.Idle = &i
+	}
+	if in.Settings.Handoff != nil {
+		h := manifestModel(*in.Settings.Handoff)
+		m.Models.Handoff = &h
 	}
 	for _, f := range in.Settings.Fallbacks {
 		m.Models.Fallbacks = append(m.Models.Fallbacks, manifestModel(f))

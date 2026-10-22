@@ -70,6 +70,20 @@ func buildProviderWithEstimate(spec appconfig.ModelSpec, options personal.Estima
 	return personal.NewEstimatingProvider(provider, options), nil
 }
 
+// buildScenarioProvider builds the provider of one per-scenario model
+// (models.idle / models.handoff): an unset scenario (nil spec) returns nil and
+// "" — the runtime then falls back to the compact model.
+func buildScenarioProvider(spec *appconfig.ModelSpec, options personal.EstimateOptions) (agentcore.Provider, string, error) {
+	if spec == nil {
+		return nil, "", nil
+	}
+	built, err := buildProviderWithEstimate(*spec, options)
+	if err != nil {
+		return nil, "", err
+	}
+	return built, spec.Model, nil
+}
+
 // estimateOptionsForBudget disables the estimator when no budget is configured;
 // otherwise it applies the resolved budget policy to every provider path.
 func estimateOptionsForBudget(tokens int, costUSD float64, mode string, factor float64) personal.EstimateOptions {

@@ -58,6 +58,12 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 	if c := m.Models.Compact; c != nil {
 		fmt.Fprintf(&b, "  compact   %s/%s\n", c.Provider, c.Model)
 	}
+	if c := m.Models.Idle; c != nil {
+		fmt.Fprintf(&b, "  idle      %s/%s\n", c.Provider, c.Model)
+	}
+	if c := m.Models.Handoff; c != nil {
+		fmt.Fprintf(&b, "  handoff   %s/%s\n", c.Provider, c.Model)
+	}
 	for _, f := range m.Models.Fallbacks {
 		fmt.Fprintf(&b, "  fallback  %s/%s\n", f.Provider, f.Model)
 	}

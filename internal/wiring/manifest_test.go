@@ -29,6 +29,9 @@ func manifestConfig(t *testing.T) (workspace string) {
 	assert.NoErr(t, gkconfig.Set("model", "openai/gpt-4o"))
 	assert.NoErr(t, gkconfig.Set("compact_model", "openai/gpt-4o-mini"))
 	assert.NoErr(t, gkconfig.Set("fallback_models", []string{"openai/gpt-4.1"}))
+	// models.idle / models.handoff land in the manifest's per-scenario slots.
+	assert.NoErr(t, gkconfig.Set("models.idle", "deepseek/deepseek-chat"))
+	assert.NoErr(t, gkconfig.Set("models.handoff", "deepseek/deepseek-reasoner"))
 	assert.NoErr(t, gkconfig.Set("workspace", workspace))
 	assert.NoErr(t, gkconfig.Set("memory.project.backend", "files"))
 	assert.NoErr(t, gkconfig.Set("memory.taint_tools", []string{"web_fetch"}))
@@ -65,6 +68,11 @@ func TestLoadManifest(t *testing.T) {
 		assert.Eq(t, "gpt-4o-mini", m.Models.Compact.Model)
 		assert.Len(t, m.Models.Fallbacks, 1)
 		assert.Eq(t, "gpt-4.1", m.Models.Fallbacks[0].Model)
+		assert.Require(t, assert.NotNil(t, m.Models.Idle))
+		assert.Eq(t, "deepseek-chat", m.Models.Idle.Model)
+		assert.Eq(t, "deepseek", m.Models.Idle.Provider)
+		assert.Require(t, assert.NotNil(t, m.Models.Handoff))
+		assert.Eq(t, "deepseek-reasoner", m.Models.Handoff.Model)
 	})
 	t.Run("tools carry their metadata", func(t *testing.T) {
 		fr, ok := toolByName(m, "file_read")
