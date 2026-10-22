@@ -186,10 +186,15 @@ func (r *Runner) markInterruptedToolCalls(ctx context.Context, sessionID, turnID
 	var out []store.NewEntry
 	var events []store.Event
 	used := make(map[int]bool)
+	marked := make(map[string]bool)
 	for _, rec := range admitted {
 		if rec.CallID != "" && results[rec.CallID] {
 			continue // the call's own result made it into the transcript
 		}
+		if rec.CallID != "" && marked[rec.CallID] {
+			continue // one call cannot have two results
+		}
+		marked[rec.CallID] = true
 		call, stored := matchInterruptedCall(calls, used, rec)
 		if call == nil {
 			call = &agentcore.ToolCall{CallID: rec.CallID, Name: rec.Tool, Arguments: rec.Arguments}

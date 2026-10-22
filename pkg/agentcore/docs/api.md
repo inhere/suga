@@ -302,7 +302,7 @@ type ToolRegistry interface {
 - `ToolResult` 尽量补齐 `CallID` / `Name`
 - 工具失败直接返回原始错误，让 runtime 包装成 `ToolError`；交给 `ToolExecutionPolicy` 转成结果的失败会带 `ToolResult.IsError = true`
 
-不传 `Config.Tools` 时 runtime 使用私有空注册表（不列出工具，调用一律返回未注册的 `*ToolError`）。现成实现在 `agentcore/tools`：`tools.NewRegistry()`、审批层 `tools.NewApproval`、延迟加载 `tools.NewVisibility`，以及工具元数据 `tools.MetaOf` / `tools.KindOf` / `tools.IsMCP`，见 [README](../README.md#工具)。
+不传 `Config.Tools` 时 runtime 使用私有空注册表（不列出工具，调用一律返回未注册的 `*ToolError`）。现成实现在 `agentcore/tools`：`tools.NewRegistry()`、审批层 `tools.NewApproval`、延迟加载 `tools.NewVisibility`，以及工具元数据 `tools.MetaOf` / `tools.KindOf` / `tools.IsMCP`；每次调用的 ID 用 `tools.InvocationID(ctx)` 读取（钩子与工具内一致，会话内唯一），见 [README](../README.md#工具)。
 
 ## 7. ToolExecutionPolicy
 
