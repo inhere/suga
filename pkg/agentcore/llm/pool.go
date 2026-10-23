@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
 )
@@ -74,10 +75,24 @@ func (p *Pool) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) 
 	var lastErr error
 	for i := 0; i < len(providers); i++ {
 		prov := providers[i]
+		if remaining, skip := coolingSkip(providers, i); skip {
+			// This candidate's endpoint failed to connect a moment ago; a working
+			// candidate is left, so the request does not pay its connect timeout again.
+			lastErr = fmt.Errorf("provider %s skipped: cooling down for %s after a connect failure", prov.Name(), remaining.Round(time.Second))
+			slog.Warn("llm provider cooling down after a connect failure, skipping", "provider", prov.Name(),
+				"endpoint", providerEndpoint(prov), "remaining", remaining.Round(time.Second))
+			continue
+		}
+		// A later model takes over a connection-phase failure at once (postWithRetry):
+		// retrying an unreachable endpoint only waits the connect timeout again.
+		attemptCtx := ctx
+		if i+1 < len(providers) {
+			attemptCtx = withFallbackAvailable(ctx)
+		}
 		// The attempt is reported after the decision below, so its model event
 		// can say what the pool did with the failure (Attempt.Fallback).
 		attempt := &attemptCollector{obs: obs}
-		res, err := GenerateObserved(ctx, prov, req, i+1, attempt.observer())
+		res, err := GenerateObserved(attemptCtx, prov, req, i+1, attempt.observer())
 		if err == nil {
 			attempt.deliver(ctx, "")
 			return res, nil
@@ -85,6 +100,7 @@ func (p *Pool) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) 
 		next := nextProviderIndex(providers, i, err)
 		decision := decideFallback(err, next < 0)
 		attempt.deliver(ctx, decision.Reason)
+		coolDownAfterConnectFailure(prov, attempt, err)
 		if !decision.Next {
 			slog.Warn("llm provider failed, not trying another", "provider", prov.Name(), "reason", decision.Reason, "err", err)
 			if i == 0 {
@@ -134,7 +150,12 @@ func (p *Pool) Stream(ctx context.Context, req *agentcoreapi.GenerateRequest, em
 			continue
 		}
 		attempt := &attemptCollector{obs: obs}
-		res, err := StreamObserved(ctx, streaming, req, tracked, i+1, attempt.observer())
+		// See Generate: a connection-phase failure moves on to the next model at once.
+		attemptCtx := ctx
+		if i+1 < len(providers) {
+			attemptCtx = withFallbackAvailable(ctx)
+		}
+		res, err := StreamObserved(attemptCtx, streaming, req, tracked, i+1, attempt.observer())
 		if err == nil {
 			attempt.deliver(ctx, "")
 			return res, nil
@@ -150,6 +171,7 @@ func (p *Pool) Stream(ctx context.Context, req *agentcoreapi.GenerateRequest, em
 		next := nextProviderIndex(providers, i, err)
 		decision := decideFallback(err, next < 0)
 		attempt.deliver(ctx, decision.Reason)
+		coolDownAfterConnectFailure(prov, attempt, err)
 		if !decision.Next {
 			slog.Warn("llm provider stream failed, not trying another", "provider", prov.Name(), "reason", decision.Reason, "err", err)
 			if i == 0 {
@@ -164,6 +186,20 @@ func (p *Pool) Stream(ctx context.Context, req *agentcoreapi.GenerateRequest, em
 	// Unreachable: decideFallback never asks for the next provider after the
 	// last one, which returns above.
 	return nil, fmt.Errorf("all providers failed for stream: %w", lastErr)
+}
+
+// coolDownAfterConnectFailure cools a candidate down after an attempt that never
+// reached the provider, so the following steps of this run ask a working model
+// first (cooldown.go). The log line carries the phase and the attempt's
+// duration, which the trace shows as well.
+func coolDownAfterConnectFailure(prov Provider, attempt *attemptCollector, err error) {
+	if !isConnectFailure(err) {
+		return
+	}
+	markConnectFailed(prov)
+	slog.Warn("llm provider connect failed, cooling the candidate down", "provider", prov.Name(),
+		"endpoint", providerEndpoint(prov), "reason", phaseConnectFailed,
+		"cool_for", ConnectFailureCooldown.String(), "elapsed", attempt.attempt.Duration.Round(time.Millisecond), "err", err)
 }
 
 // nextProviderIndex is the index of the provider the pool would ask after

@@ -21,12 +21,7 @@ import (
 // DefaultResponseHeaderTimeout and ResponseHeaderTimeout). proxy, when set,
 // replaces the environment proxies of the cloned default transport.
 func newStreamClient(responseHeader time.Duration, proxy netproxy.ProxyFunc) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.ResponseHeaderTimeout = responseHeader
-	if proxy != nil {
-		transport.Proxy = proxy
-	}
-	return newProviderClient(0, transport)
+	return newProviderClient(0, newProviderTransport(responseHeader, proxy))
 }
 
 // Stream implements the public streaming contract with Server-Sent Events:

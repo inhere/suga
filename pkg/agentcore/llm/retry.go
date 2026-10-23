@@ -286,6 +286,7 @@ func postWithRetry(ctx context.Context, client *http.Client, b *backoff, provide
 		ctx, _ = withRetryReport(ctx)
 	}
 	ctx = ensureRetryBudget(ctx, b)
+	start := time.Now()
 	var lastErr error
 	for attempt := 1; ; attempt++ {
 		req, err := build()
@@ -296,6 +297,7 @@ func postWithRetry(ctx context.Context, client *http.Client, b *backoff, provide
 		resp, err := client.Do(req)
 		var retryAfter time.Duration
 		var reason string
+		phase := phaseRequestFailed
 		switch {
 		case err != nil:
 			if ErrorKind(err) == ErrorKindRejected {
@@ -305,7 +307,16 @@ func postWithRetry(ctx context.Context, client *http.Client, b *backoff, provide
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			lastErr, reason = err, "network error"
+			lastErr, reason = err, failurePhase(err)
+			phase = reason
+			if phase == phaseConnectFailed && fallbackAvailable(ctx) {
+				// The endpoint does not accept connections right now (DNS, dial, TLS
+				// handshake): retrying it only pays the connect timeout again, so a
+				// configured fallback model takes over after this first attempt.
+				slog.Warn("llm provider connect failed, trying the next model instead of retrying", "provider", provider, "path", path,
+					"attempt", attempt, "reason", phase, "elapsed", time.Since(start).Round(time.Millisecond), "err", lastErr)
+				return nil, &transientRequestError{withRequestID(ctx, fmt.Errorf("%s request failed after %d attempts: %w", provider, attempt, lastErr))}
+			}
 		case retryableStatus(resp.StatusCode):
 			noteRequestID(ctx, requestIDOf(resp.Header))
 			body, _ := io.ReadAll(resp.Body)
@@ -338,7 +349,7 @@ func postWithRetry(ctx context.Context, client *http.Client, b *backoff, provide
 			}
 			return nil, &transientRequestError{withRequestID(ctx, fmt.Errorf("%s request failed after %d attempts: %w", provider, attempt, lastErr))}
 		}
-		slog.Warn("llm request failed, retrying", "provider", provider, "attempt", attempt, "reason", reason, "wait", wait.Round(time.Millisecond), "err", lastErr)
+		slog.Warn("llm request failed, retrying", "provider", provider, "attempt", attempt, "phase", phase, "reason", reason, "wait", wait.Round(time.Millisecond), "err", lastErr)
 		if err := noteRetry(ctx, attempt, wait, reason); err != nil {
 			return nil, err
 		}

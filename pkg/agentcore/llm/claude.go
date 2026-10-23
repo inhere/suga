@@ -174,6 +174,10 @@ func claudeMessagesURL(base string) string {
 func (p *ClaudeProvider) Name() string  { return p.name }
 func (p *ClaudeProvider) Model() string { return p.model }
 
+// Endpoint is the messages URL of this provider; with the provider name it keys
+// the connect-failure cooldown (cooldown.go).
+func (p *ClaudeProvider) Endpoint() string { return p.messagesURL }
+
 // SupportsToolChoice implements api.ToolChooser: /v1/messages takes
 // tool_choice as an object ({"type": "none"}), which is also allowed with
 // extended thinking.

@@ -2,17 +2,36 @@ package llm
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
 
+// newProviderTransport clones the default transport for a provider client and
+// pins the connection-phase timeouts on it (DefaultConnectTimeout: dialing and
+// the TLS handshake), so a dead endpoint is noticed within that bound instead
+// of the default dialer's 30s. responseHeader bounds the wait for a streamed
+// request's response headers (0 = no bound). A non-nil proxy replaces the
+// environment proxies; a nil one keeps http.ProxyFromEnvironment, the behavior
+// of an unconfigured network.proxy.
+func newProviderTransport(responseHeader time.Duration, proxy netproxy.ProxyFunc) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{Timeout: DefaultConnectTimeout, KeepAlive: 30 * time.Second}).DialContext
+	transport.TLSHandshakeTimeout = DefaultConnectTimeout
+	transport.ResponseHeaderTimeout = responseHeader
+	if proxy != nil {
+		transport.Proxy = proxy
+	}
+	return transport
+}
+
 // proxyTransport clones the default transport and pins the global proxy
 // selector on it, so this client stops reading HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
 // A nil selector returns an untyped nil RoundTripper: the caller then keeps the
-// default transport, i.e. the environment behavior of an unconfigured
-// network.proxy.
+// default behavior, i.e. the environment proxies of an unconfigured
+// network.proxy (newProviderClient pins the connect timeouts on it).
 func proxyTransport(proxy netproxy.ProxyFunc) http.RoundTripper {
 	if proxy == nil {
 		return nil
@@ -27,7 +46,9 @@ func proxyTransport(proxy netproxy.ProxyFunc) http.RoundTripper {
 // preserve on a cross-host redirect (and 307/308 can resend the request body).
 func newProviderClient(timeout time.Duration, transport http.RoundTripper) *http.Client {
 	if transport == nil {
-		transport = http.DefaultTransport
+		// No selector: the default transport's environment proxy behavior, with
+		// the connection-phase timeouts pinned on a clone of it.
+		transport = newProviderTransport(0, nil)
 	}
 	return &http.Client{
 		Timeout:       timeout,
