@@ -54,6 +54,12 @@ func (b *contextBuilder) recordContext(ctx context.Context, state *agentcore.Run
 			}
 		}
 	}
+	if v := b.r.cfg.Visibility; v != nil {
+		// Deferred native tools are not in the table, so the counts above cannot
+		// show them: report the deferred set and what the session loaded (Q7).
+		native, loaded := v.DeferredStats(ctx)
+		attrs["deferred_native"], attrs["deferred_loaded"] = native, loaded
+	}
 	if seg := b.seg; seg != nil {
 		for key, text := range map[string]string{"environment": seg.Environment, "rules": seg.Rules,
 			"memory_index": seg.MemoryIndex, "skills": seg.Skills, "append_prompt": seg.AppendPrompt,

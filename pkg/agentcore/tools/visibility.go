@@ -607,6 +607,44 @@ func tokenSet(s string) map[string]bool {
 	return set
 }
 
+// DeferredStats reports how many native tools are deferred and how many deferred
+// tools the session has loaded (design Q7, the context event).
+func (v *Visibility) DeferredStats(ctx context.Context) (native, loaded int) {
+	if v == nil {
+		return 0, 0
+	}
+	for _, d := range v.deferred {
+		if d.native {
+			native++
+		}
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for n := range v.loadedLocked(ctx) {
+		if d := v.deferred[n]; d != nil {
+			loaded++
+		}
+	}
+	return native, loaded
+}
+
+// KindOfDeferred reports the source of a deferred tool ("native" or "mcp"), or
+// "" for a name that is not deferred here. It feeds the newly_loaded_kinds
+// field of the tool_search event (design Q7).
+func (v *Visibility) KindOfDeferred(name string) string {
+	if v == nil {
+		return ""
+	}
+	d := v.deferred[name]
+	switch {
+	case d == nil:
+		return ""
+	case d.native:
+		return "native"
+	}
+	return "mcp"
+}
+
 // PromptSection lists the deferred tools for the system prompt: the native
 // tools first, then each MCP server, sorted by name, so it is stable for the
 // whole session. It is empty when nothing is deferred.
