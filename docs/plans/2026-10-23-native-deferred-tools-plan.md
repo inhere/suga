@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.2.0 -->
 # native 工具按需加载 实施计划
 
-> 状态：Draft 0.1 / 待人工计划批准
+> 状态：Approved 0.1（2026-10-23 用户经 web：“批准按需加载计划，开始实施”）/ 实施中
 
 ## 修订记录
 
