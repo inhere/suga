@@ -22,10 +22,11 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ptydrive import CTRL_C, PtySession  # noqa: E402
-from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
+from chat_approval import check_answered_prompt, isolate_ws, wait_port, write_home  # noqa: E402
 
 QUESTION = r"写入记忆？\[y\]是 \[N\]否 \[a\]本会话不再问"
 SAVED = r"已记住：Smoke rule（project）"
+COLS = 80  # the pty is started without a size: chat keeps its 80-column default
 
 
 def scenario(s):
@@ -47,17 +48,23 @@ def scenario(s):
             and s.contains(r"正文：smoke memory body", m))
     s.line("y")
     s.check("y: written", s.until(SAVED, m) and turn_end(m))
+    # The answered question's turn ended like a no-question one (suga-9ew7).
+    check_answered_prompt(s, COLS, "y")
 
     m = s.mark(); s.line("跑一下再记")
     s.check("n: question", s.until(QUESTION, m))
     s.line("n")
     s.check("n: refused", s.until(r"用户拒绝写入记忆", m) and turn_end(m))
     s.check("n: nothing remembered", not s.contains(SAVED, m))
+    # Same after the refused one (suga-9ew7).
+    check_answered_prompt(s, COLS, "n")
 
     m = s.mark(); s.line("跑一下再记")
     s.check("a: question", s.until(QUESTION, m))
     s.line("a")
     s.check("a: written", s.until(SAVED, m) and turn_end(m))
+    # Same after the "a" answer (suga-9ew7).
+    check_answered_prompt(s, COLS, "a")
     m = s.mark(); s.line("跑一下再记")
     s.check("a: written again", s.until(SAVED, m) and turn_end(m))
     s.check("a: no question again", not s.contains(QUESTION, m))

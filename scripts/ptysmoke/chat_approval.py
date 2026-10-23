@@ -96,6 +96,20 @@ def wait_port(proc):
         raise SystemExit("fake model did not start: " + line)
 
 
+def check_answered_prompt(s, cols, name):
+    """The input row after a turn whose question was answered (issue suga-9ew7):
+    it must look the way a turn without a question ends - the row holds the
+    prompt alone, and what is typed next is a line of its own. Without the
+    repaint the row kept the steer prompt plus the question's width."""
+    s.drain(0.5)
+    s.check(name + ": prompt row is ❯", input_row(s, cols) == "❯")
+    s.send("abc")
+    s.drain(0.4)
+    s.check(name + ": typed text is a prompt line", input_row(s, cols) == "❯ abc")
+    s.send(CTRL_U)
+    s.drain(0.2)
+
+
 def turn_end(s, start):
     """Waits for the end-of-turn status line, which every turn prints."""
     return s.until(r"tokens · ", start)
@@ -156,6 +170,8 @@ def pretyped_scenario(s, steering):
         # what makes it cover the turn rather than the instant of the check.
         s.check("pre-typed y: no insert at all", not s.contains(r"\[插话\]", m))
     s.check("turn end shows the context share and the local time", s.until(TURN_STATE, m))
+    # The answered "n" turn ended like a no-question one (suga-9ew7).
+    check_answered_prompt(s, COLS, "n")
 
 
 def scenario(s):
@@ -203,6 +219,8 @@ def scenario(s):
     s.check("y: turn ends", turn_end(s, m))
     # NO_COLOR in this scenario (see main): the input line gets no background.
     s.check("no highlight without colors", not s.contains_raw(r"\x1b\[48;", m))
+    # The answered question's turn ended like a no-question one (suga-9ew7).
+    check_answered_prompt(s, COLS, "y")
 
     m = s.mark(); s.line("第三次")
     s.check("ctrl-c: question", s.until(QUESTION, m))
@@ -227,6 +245,8 @@ def scenario(s):
     s.check("a: persistence question", s.until(r"把这条规则写进规则文件", m))
     s.line("")
     s.check("a: executed", s.until(OK, m) and turn_end(s, m))
+    # The answered "a" turn ended like a no-question one (suga-9ew7).
+    check_answered_prompt(s, COLS, "a")
     # The call the person answered was approved by that answer: its result line
     # ends with the note.
     s.check("a: approved note shown", s.contains(r"⎿ ok: SMOKE_OK[^\r\n]*已经人工批准执行", m))
