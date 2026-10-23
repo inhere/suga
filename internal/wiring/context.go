@@ -8,6 +8,7 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/personal"
 	capskills "github.com/inhere/suga/pkg/agentcore/skills"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 // Resident context soft thresholds (docs/design, harness2 exploration 3.6).
@@ -303,6 +304,30 @@ func loadResidentContext(workspace string, preferred []PreferredToolStatus, skil
 		MemoryIndexNote:   indexNote,
 		Skills:            skills,
 		AppendPrompt:      appendSystemPrompt(""),
-		DeferredToolsNote: "no MCP server is started by this command; a session lists deferred tools when it has some",
+		DeferredToolsNote: "no MCP server is started by this command; a session lists deferred tools (native and MCP) when it has some",
 	}
+}
+
+// deferredToolsNote names the deferred tools by source and the ones the session
+// already loaded. The listing text alone does not separate "deferred but never
+// loaded" from "nothing deferred", which is what a manifest has to show when the
+// model never found a tool (design Q7).
+func deferredToolsNote(ctx context.Context, v *tools.Visibility) string {
+	if v == nil || !v.Active() {
+		return ""
+	}
+	native, mcp, loaded := v.DeferredList(ctx)
+	parts := make([]string, 0, 3)
+	if len(native) > 0 {
+		parts = append(parts, "native: "+strings.Join(native, ", "))
+	}
+	if len(mcp) > 0 {
+		parts = append(parts, "mcp: "+strings.Join(mcp, ", "))
+	}
+	if len(loaded) == 0 {
+		parts = append(parts, "loaded: none")
+	} else {
+		parts = append(parts, "loaded: "+strings.Join(loaded, ", "))
+	}
+	return strings.Join(parts, "; ")
 }

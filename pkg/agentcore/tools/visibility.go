@@ -645,6 +645,30 @@ func (v *Visibility) KindOfDeferred(name string) string {
 	return "mcp"
 }
 
+// DeferredList returns the deferred tool names by source (native, MCP) and the
+// loaded subset, all sorted. The manifest note and the diagnosis of "the model
+// never found a tool" use it (design Q7).
+func (v *Visibility) DeferredList(ctx context.Context) (native, mcp, loaded []string) {
+	if v == nil {
+		return nil, nil, nil
+	}
+	v.mu.Lock()
+	isLoaded := v.loadedLocked(ctx)
+	v.mu.Unlock()
+	for _, n := range v.names {
+		d := v.deferred[n]
+		if d.native {
+			native = append(native, n)
+		} else {
+			mcp = append(mcp, n)
+		}
+		if isLoaded[n] {
+			loaded = append(loaded, n)
+		}
+	}
+	return native, mcp, loaded
+}
+
 // PromptSection lists the deferred tools for the system prompt: the native
 // tools first, then each MCP server, sorted by name, so it is stable for the
 // whole session. It is empty when nothing is deferred.

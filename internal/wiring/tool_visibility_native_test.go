@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	gkconfig "github.com/gookit/config/v2"
@@ -125,6 +126,18 @@ func TestNewToolVisibilityNative(t *testing.T) {
 		after, _ := vis.ListTools(ctx)
 		assert.Eq(t, string(mustMarshalJSON(inside)), string(mustMarshalJSON(after)))
 		assert.Eq(t, []string{"file_read", "tool_call", "tool_search"}, schemaNames(after))
+	})
+	t.Run("the manifest note names the deferred and loaded tools", func(t *testing.T) {
+		_, vis, err := build(t, map[string]any{"tools.deferred_native": "auto"}, nil)
+		assert.NoErr(t, err)
+		ctx := context.Background()
+		note := deferredToolsNote(ctx, vis)
+		assert.True(t, strings.Contains(note, "native: "))
+		assert.True(t, strings.Contains(note, "memory"))
+		assert.True(t, strings.Contains(note, "loaded: none"))
+		_, err = vis.Search(ctx, "select:memory", 5)
+		assert.NoErr(t, err)
+		assert.True(t, strings.Contains(deferredToolsNote(ctx, vis), "loaded: memory"))
 	})
 }
 
