@@ -28,8 +28,10 @@ func NewToolSearchTool(searcher ToolSearcher) *ToolSearchTool {
 
 func (t *ToolSearchTool) Name() string { return "tool_search" }
 func (t *ToolSearchTool) Description() string {
-	return "Search the deferred MCP tools listed in the system prompt and load the matches so they can be " +
-		"called from the next step. query is keywords, or \"select:name1,name2\" to load exact tools."
+	return "Search the deferred tools listed in the session context and load the matches so they can be " +
+		"called. The deferred set holds built-in tools (memory, recall, skill, web_fetch ...) and MCP server " +
+		"tools. query is keywords, or \"select:name1,name2\" to load exact tools at once; a loaded tool " +
+		"stays available for the rest of the session."
 }
 
 // ToolMeta marks the tool as a read-only search.
@@ -71,14 +73,20 @@ func (t *ToolSearchTool) Execute(ctx context.Context, call api.ToolCall) (*api.T
 	if len(res.Hits) == 0 {
 		b.WriteString("No deferred tool matched. Try other keywords or select:<exact name>.")
 	} else {
-		fmt.Fprintf(&b, "Found %d tool(s); they can be called from the next step:\n", len(res.Hits))
+		fmt.Fprintf(&b, "Found %d tool(s); they are available for the rest of the session:\n", len(res.Hits))
 		for _, h := range res.Hits {
 			state := "newly loaded"
 			if h.AlreadyLoaded {
 				state = "already loaded"
 			}
 			fmt.Fprintf(&b, "- %s [%s] — %s\n", h.Name, state, strings.Join(strings.Fields(h.Description), " "))
+			if h.Params != "" {
+				// The compact parameter list lets the model call the tool without
+				// another round to read the full schema (design Q6).
+				fmt.Fprintf(&b, "  params: %s\n", h.Params)
+			}
 		}
+		b.WriteString("Call them directly, or through tool_call when they are not in the tool table yet.")
 	}
 	if len(res.Missing) > 0 {
 		fmt.Fprintf(&b, "\nNot deferred tools: %s", strings.Join(res.Missing, ", "))

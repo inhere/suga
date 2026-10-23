@@ -557,10 +557,18 @@ func (r *DefaultRuntime) executeSingleTool(ctx context.Context, state *RunState,
 		return nil, nil, false
 	}
 	ctrl := NewControl()
+	// A tool_call proxy call is replaced by the real tool call here, before the
+	// runtime hooks, the approval layer and the trace see it.
+	activeCall := call
+	if exp, ok := r.tools.(CallExpander); ok {
+		if real, ok := exp.ExpandCall(ctx, activeCall); ok {
+			activeCall = real
+		}
+	}
 	event := &ToolEvent{
 		RunID:     state.RunID,
 		AgentID:   state.AgentID,
-		Call:      cloneToolCallValue(&call),
+		Call:      cloneToolCallValue(&activeCall),
 		Metadata:  cloneMetadata(state.Metadata),
 		Timestamp: time.Now(),
 	}
@@ -571,7 +579,6 @@ func (r *DefaultRuntime) executeSingleTool(ctx context.Context, state *RunState,
 		return result, err, true
 	}
 
-	activeCall := call
 	if event.Call != nil {
 		activeCall = *cloneToolCallValue(event.Call)
 	}

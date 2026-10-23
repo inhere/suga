@@ -272,6 +272,16 @@ func (o *observedTools) Get(name string) (agentcore.Tool, error) {
 	return nil, errors.New("tool lookup is not supported by the wrapped registry")
 }
 
+// ExpandCall forwards the proxy-call expansion (tool_call) of the wrapped layer:
+// every wrapper between the runtime and Visibility has to forward it, otherwise
+// the runtime does not expand a proxied call and the trace shows tool_call.
+func (o *observedTools) ExpandCall(ctx context.Context, call agentcore.ToolCall) (agentcore.ToolCall, bool) {
+	if e, ok := o.inner.(tools.CallExpander); ok {
+		return e.ExpandCall(ctx, call)
+	}
+	return agentcore.ToolCall{}, false
+}
+
 func (o *observedTools) ExecuteTool(ctx context.Context, call agentcore.ToolCall) (*agentcore.ToolResult, error) {
 	start := time.Now()
 	ctx, approval := tools.WithApprovalReport(ctx)

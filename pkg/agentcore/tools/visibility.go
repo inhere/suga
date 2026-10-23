@@ -85,12 +85,23 @@ type VisibilityOptions struct {
 	// PinnedMCPTools are MCP tool names that stay directly visible even when
 	// the selected deferred mode would otherwise hide them.
 	PinnedMCPTools []string
+	// NativeTools are native tool names to defer in addition to the MCP tools
+	// (tools.deferred_native). Names that are not registered, are hidden or are
+	// reserved (tool_search, tool_call) are ignored with a log line.
+	NativeTools []string
+	// Apply tells when a loaded native tool joins the tool table. It applies to
+	// the native tools only: MCP tools keep the immediate behaviour (design Q5,
+	// the conservative option). Empty means immediate.
+	Apply DeferredApplyMode
 }
 
 // SearchHit is one tool_search match.
 type SearchHit struct {
-	Name          string
-	Description   string
+	Name        string
+	Description string
+	// Params is the compact parameter list ("a(integer), b(string)") so the model
+	// can call the tool with the right arguments without seeing the full schema.
+	Params        string
 	AlreadyLoaded bool // loaded before this search
 }
 
@@ -105,6 +116,12 @@ type SearchResult struct {
 type deferredTool struct {
 	schema api.ToolSchema
 	server string
+	// native marks a built-in tool deferred through tools.deferred_native
+	// (server is empty for it).
+	native bool
+	// segment marks a native tool with tools.deferred_apply: segment: it joins
+	// the tool table at the next segment boundary, not when it is loaded.
+	segment bool
 	// nameTokens/descTokens feed tool_search scoring.
 	nameTokens map[string]bool
 	descTokens map[string]bool
@@ -119,9 +136,10 @@ type lookupRegistry interface {
 
 // Visibility is the registry layer deciding which tools the model sees (order:
 // observe -> visibility -> approval -> base). Direct tools are always listed;
-// deferred (MCP) tools are listed only once loaded. Executing an unloaded
-// deferred tool loads it and returns a tool error carrying its schema, without
-// calling the inner layer, so no approval is requested for it.
+// deferred tools (MCP and the configured native names) are listed only once
+// loaded. Executing an unloaded deferred tool loads it and returns a tool error
+// carrying its schema, without calling the inner layer, so no approval is
+// requested for it.
 type Visibility struct {
 	inner    lookupRegistry
 	deferred map[string]*deferredTool
@@ -131,6 +149,12 @@ type Visibility struct {
 	store   LoadedStore
 	onEvent func(context.Context, SearchEvent)
 	mem     map[string]bool // used when no store is bound
+	// table holds the segment-mode tools whose schema is in the current tool
+	// table. It is folded from the loaded set at a segment boundary
+	// (FoldLoaded) and once at the first ListTools (resume), so loading a tool
+	// inside a segment leaves the table bytes unchanged.
+	table      map[string]bool
+	tableReady bool
 }
 
 var _ api.ToolRegistry = (*Visibility)(nil)
@@ -146,30 +170,64 @@ func NewVisibility(inner lookupRegistry, opts VisibilityOptions) *Visibility {
 		return v
 	}
 	mcp := map[string]*deferredTool{}
+	native := map[string]*deferredTool{}
 	pinned := make(map[string]bool, len(opts.PinnedMCPTools))
 	for _, name := range opts.PinnedMCPTools {
 		pinned[name] = true
 	}
+	wanted := make(map[string]bool, len(opts.NativeTools))
+	for _, name := range opts.NativeTools {
+		wanted[name] = true
+	}
+	registered, hidden := make(map[string]bool, len(schemas)), map[string]bool{}
 	total := 0
 	for _, s := range schemas {
+		registered[s.Name] = true
 		tool, err := inner.Get(s.Name)
-		if err != nil || !IsMCP(tool) || pinned[s.Name] {
+		if err != nil {
 			continue
 		}
-		server := MCPServerOf(tool)
-		d := &deferredTool{schema: s, server: server,
+		if MetaOf(tool).Hidden {
+			hidden[s.Name] = true
+			continue
+		}
+		d := &deferredTool{schema: s,
 			nameTokens: tokenSet(s.Name), descTokens: tokenSet(s.Description)}
-		mcp[s.Name] = d
-		total += len(schemaJSON(s))
+		switch {
+		case IsMCP(tool):
+			if pinned[s.Name] {
+				continue
+			}
+			d.server = MCPServerOf(tool)
+			mcp[s.Name] = d
+			total += len(schemaJSON(s))
+		case wanted[s.Name] && s.Name != "tool_search" && s.Name != ToolCallName:
+			// The native list decides by itself: no size threshold, because the
+			// most expensive native tool (memory) is also the most valuable one.
+			d.native, d.segment = true, opts.Apply == DeferredApplySegment
+			native[s.Name] = d
+		}
 	}
 	window := opts.ContextWindow
 	if window <= 0 {
 		window = defaultVisibilityWindow
 	}
-	// auto: defer once MCP schemas exceed 10% of the window (4 bytes per token).
+	// auto: defer MCP tools once their schemas exceed 10% of the window (4 bytes
+	// per token). The configured native names are always deferred (mode never
+	// returned above).
 	if opts.Mode == DeferredAlways || total > window*bytesPerToken*autoDeferPercent/100 {
-		v.deferred = mcp
+		for name, d := range mcp {
+			v.deferred[name] = d
+		}
 	}
+	for name, d := range native {
+		v.deferred[name] = d
+	}
+	deferredNames := make(map[string]bool, len(native))
+	for name := range native {
+		deferredNames[name] = true
+	}
+	warnIgnoredNativeNames(registered, hidden, deferredNames, opts.NativeTools)
 	for name := range v.deferred {
 		v.names = append(v.names, name)
 	}
@@ -245,6 +303,9 @@ func (v *Visibility) addLoadedLocked(ctx context.Context, loaded map[string]bool
 }
 
 // ListTools returns direct tools followed by the loaded deferred tools sorted by name.
+// A native tool with tools.deferred_apply: segment is listed only after the
+// loaded set was folded into the table (FoldLoaded), so the list stays
+// byte-identical inside a segment.
 func (v *Visibility) ListTools(ctx context.Context) ([]api.ToolSchema, error) {
 	all, err := v.inner.ListTools(ctx)
 	if err != nil || len(v.deferred) == 0 {
@@ -258,13 +319,95 @@ func (v *Visibility) ListTools(ctx context.Context) ([]api.ToolSchema, error) {
 	}
 	v.mu.Lock()
 	loaded := v.loadedLocked(ctx)
+	if !v.tableReady {
+		// First listing (session start or resume): the persisted loaded set is
+		// the table, which is what a resumed session must send again.
+		v.foldLocked(loaded)
+	}
+	table := v.table
 	v.mu.Unlock()
 	for _, n := range v.names { // names is sorted
-		if loaded[n] {
-			out = append(out, v.deferred[n].schema)
+		if !loaded[n] {
+			continue
 		}
+		if d := v.deferred[n]; d.segment && !table[n] {
+			continue
+		}
+		out = append(out, v.deferred[n].schema)
 	}
 	return out, nil
+}
+
+// FoldLoaded folds the loaded deferred tools into the tool table (segment
+// boundary). The caller invokes it when a new segment snapshot is built: the
+// prompt prefix is rebuilt anyway, so adding the tools costs no extra cache
+// write. It is a no-op when nothing is deferred or nothing new is segment-mode.
+func (v *Visibility) FoldLoaded(ctx context.Context) {
+	if v == nil || len(v.deferred) == 0 {
+		return
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.foldLocked(v.loadedLocked(ctx))
+}
+
+// foldLocked replaces the table with the segment-mode names of loaded.
+func (v *Visibility) foldLocked(loaded map[string]bool) {
+	table := map[string]bool{}
+	for n := range loaded {
+		if d := v.deferred[n]; d != nil && d.segment {
+			table[n] = true
+		}
+	}
+	v.table, v.tableReady = table, true
+}
+
+// HasSegmentNative reports whether a deferred native tool waits for the next
+// segment boundary to join the tool table. The wiring registers the tool_call
+// proxy only then: with immediate apply the tool is listed as soon as loaded.
+func (v *Visibility) HasSegmentNative() bool {
+	if v == nil {
+		return false
+	}
+	for _, d := range v.deferred {
+		if d.segment {
+			return true
+		}
+	}
+	return false
+}
+
+// ExpandCall turns a tool_call proxy call into the real tool call, so the
+// execution path (approval, hooks, taint, trace) sees the real tool name. ok is
+// false for every other call and for a proxy call naming a tool that is not a
+// loaded deferred tool: the proxy tool itself then answers with an error.
+func (v *Visibility) ExpandCall(ctx context.Context, call api.ToolCall) (api.ToolCall, bool) {
+	if v == nil || call.Name != ToolCallName {
+		return api.ToolCall{}, false
+	}
+	real, ok := v.expandLocked(ctx, call)
+	return real, ok
+}
+
+// expandLocked builds the real call of a proxy call: the target has to be a
+// deferred tool of this layer and has to be loaded already.
+func (v *Visibility) expandLocked(ctx context.Context, call api.ToolCall) (api.ToolCall, bool) {
+	name, _ := call.Arguments["name"].(string)
+	name = strings.TrimSpace(name)
+	args, hasArgs := call.Arguments["arguments"].(map[string]any)
+	if name == "" || !hasArgs {
+		return api.ToolCall{}, false
+	}
+	if _, ok := v.deferred[name]; !ok {
+		return api.ToolCall{}, false
+	}
+	v.mu.Lock()
+	loaded := v.loadedLocked(ctx)
+	v.mu.Unlock()
+	if !loaded[name] {
+		return api.ToolCall{}, false
+	}
+	return api.ToolCall{CallID: call.CallID, Name: name, Arguments: args}, true
 }
 
 // ExecuteTool runs loaded or direct tools through the inner layers. An unloaded
@@ -285,10 +428,57 @@ func (v *Visibility) ExecuteTool(ctx context.Context, call api.ToolCall) (*api.T
 	v.mu.Unlock()
 	if onEvent != nil {
 		onEvent(ctx, SearchEvent{Kind: SearchEventAutoLoad, Query: call.Name,
-			Hits: []string{call.Name}, NewlyLoaded: added, CacheInvalidated: len(added) > 0})
+			Hits: []string{call.Name}, NewlyLoaded: added, CacheInvalidated: v.cacheInvalidated(added)})
 	}
 	return nil, fmt.Errorf("tool %s is not loaded yet; its schema: %s\nIt is loaded now: call it again with matching arguments",
 		call.Name, schemaJSON(d.schema))
+}
+
+// cacheInvalidated reports whether newly loaded tools change the tool table of
+// the running segment. Segment-mode tools wait for the segment boundary (the
+// prefix is rebuilt then anyway), so they invalidate nothing now.
+func (v *Visibility) cacheInvalidated(newly []string) bool {
+	for _, n := range newly {
+		if d := v.deferred[n]; d == nil || !d.segment {
+			return true
+		}
+	}
+	return false
+}
+
+// maxSearchParams caps the parameter list of a tool_search hit (design Q6):
+// beyond that the list would cost as much as the schema it saves.
+const maxSearchParams = 10
+
+// paramSummary renders the compact parameter list of a schema: the sorted
+// property names with their JSON type, capped at maxSearchParams entries.
+func paramSummary(s api.ToolSchema) string {
+	props, _ := s.InputSchema["properties"].(map[string]any)
+	if len(props) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(props))
+	for n := range props {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names))
+	for i, n := range names {
+		if i == maxSearchParams {
+			out = append(out, fmt.Sprintf("…(+%d)", len(names)-maxSearchParams))
+			break
+		}
+		typ := ""
+		if p, ok := props[n].(map[string]any); ok {
+			typ, _ = p["type"].(string)
+		}
+		if typ == "" {
+			out = append(out, n)
+			continue
+		}
+		out = append(out, n+"("+typ+")")
+	}
+	return strings.Join(out, ", ")
 }
 
 func schemaJSON(s api.ToolSchema) string {
@@ -332,7 +522,8 @@ func (v *Visibility) Search(ctx context.Context, query string, limit int) (Searc
 	loaded := v.loadedLocked(ctx)
 	res := SearchResult{Missing: missing}
 	for _, n := range names {
-		res.Hits = append(res.Hits, SearchHit{Name: n, Description: v.deferred[n].schema.Description, AlreadyLoaded: loaded[n]})
+		res.Hits = append(res.Hits, SearchHit{Name: n, Description: v.deferred[n].schema.Description,
+			Params: paramSummary(v.deferred[n].schema), AlreadyLoaded: loaded[n]})
 	}
 	res.NewlyLoaded = v.addLoadedLocked(ctx, loaded, names)
 	onEvent := v.onEvent
@@ -341,7 +532,7 @@ func (v *Visibility) Search(ctx context.Context, query string, limit int) (Searc
 		hits := make([]string, 0, len(names))
 		hits = append(hits, names...)
 		onEvent(ctx, SearchEvent{Kind: SearchEventSearch, Query: query, Hits: hits,
-			NewlyLoaded: res.NewlyLoaded, CacheInvalidated: len(res.NewlyLoaded) > 0})
+			NewlyLoaded: res.NewlyLoaded, CacheInvalidated: v.cacheInvalidated(res.NewlyLoaded)})
 	}
 	return res, nil
 }
@@ -416,16 +607,23 @@ func tokenSet(s string) map[string]bool {
 	return set
 }
 
-// PromptSection lists the deferred tools for the system prompt, grouped by MCP
-// server and sorted by name, so it is stable for the whole session. It is empty
-// when nothing is deferred.
+// PromptSection lists the deferred tools for the system prompt: the native
+// tools first, then each MCP server, sorted by name, so it is stable for the
+// whole session. It is empty when nothing is deferred.
 func (v *Visibility) PromptSection() string {
 	if !v.Active() {
 		return ""
 	}
+	var nativeLines []string
 	byServer := map[string][]string{}
+	segment := false
 	for _, n := range v.names {
 		d := v.deferred[n]
+		if d.native {
+			segment = segment || d.segment
+			nativeLines = append(nativeLines, "- "+n+" — "+NativePurpose(n, d.schema.Description))
+			continue
+		}
 		server := d.server
 		if server == "" {
 			server = "mcp"
@@ -439,8 +637,20 @@ func (v *Visibility) PromptSection() string {
 	sort.Strings(servers)
 	var b strings.Builder
 	b.WriteString("## 延迟加载的工具\n")
-	b.WriteString("下列 MCP 工具的参数 schema 默认不下发。需要使用时，先调用 tool_search 加载" +
-		"（query 用关键字搜索，或写 select:name1,name2 精确选择）；加载后下一步即可调用。\n")
+	b.WriteString("下列工具的参数 schema 默认不下发。需要使用时，先调用 tool_search 加载" +
+		"（query 用关键字搜索，或写 select:name1,name2 精确选择）；加载后本会话一直可用。\n")
+	if segment {
+		// The provider probe of 2026-10-23 showed models do not call a tool that
+		// is missing from the request's tools field, so the segment mode calls
+		// the loaded ones through the proxy tool instead.
+		b.WriteString(`本段内已加载的工具用 tool_call 调用：{"name":"<工具名>","arguments":{…}}；` +
+			"下一次换段后它们会直接出现在工具表里。\n")
+	}
+	if len(nativeLines) > 0 {
+		b.WriteString("\n### native\n")
+		b.WriteString(strings.Join(nativeLines, "\n"))
+		b.WriteString("\n")
+	}
 	for _, s := range servers {
 		b.WriteString("\n### " + s + "\n")
 		b.WriteString(strings.Join(byServer[s], "\n"))
