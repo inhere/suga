@@ -26,6 +26,7 @@ Modes (--mode):
         it as "发给 <短名称>：…"; a message that names nobody only answers.
   adddir  every user message first gets file_read (--read-path), then
         file_write (--write-path with --write-body), then the text --reply:
+  image   one file_read of --read-path (a picture) and then the text --reply;
         the smoke for --add-dir, where both paths live outside the workspace.
         A user message containing "只读" or "只写" narrows it to that one call,
         so a smoke can drive the read and the write of one turn separately.
@@ -246,6 +247,10 @@ def make_handler(args):
                               "tools": [((tool.get("function") or {}).get("name") or tool.get("name", ""))
                                         for tool in (body.get("tools") or [])],
                               "tail": message_tail(body["messages"]),
+                              # The last tool result's text, longer than "tail" keeps it:
+                              # a smoke asserts what file_read answered (a picture note).
+                              "tool_text": next((str(m.get("content") or "")[:300] for m in reversed(body["messages"])
+                                                 if m.get("role") == "tool"), ""),
                               # The "Preferred tool:" lines of the environment the
                               # model was sent (it never reaches the terminal).
                               "preferred": [line.strip() for m in body["messages"]
@@ -333,6 +338,11 @@ def make_handler(args):
                 name, arguments = memory_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "image" and step < 1:
+                # image mode: one file_read of --read-path (a picture), then the text.
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": "file_read", "arguments": json.dumps({"path": args.read_path or "shot.png"})}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "adddir" and step < len(adddir_calls):
                 name, arguments = adddir_calls[step]
