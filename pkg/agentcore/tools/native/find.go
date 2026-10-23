@@ -44,7 +44,7 @@ func (t *FileFindTool) Schema() api.ToolSchema {
 				"pattern":     map[string]any{"type": "string", "description": "Glob, e.g. *.md or cmd/**/main.go (relative to path or to the workspace)"},
 				"path":        map[string]any{"type": "string", "description": "Directory to search (default: workspace root); may be absolute under a read-only dependency root"},
 				"max_results": map[string]any{"type": "integer", "description": fmt.Sprintf("Maximum paths (default %d)", defaultFindResults)},
-				"no_ignore":   map[string]any{"type": "boolean", "description": "Also search ignored paths (.git stays skipped)"},
+				"no_ignore":   map[string]any{"type": "boolean", "description": "Also search node_modules, vendor, dist and .gitignore'd paths (.git stays skipped)"},
 			},
 			"required": []any{"pattern"},
 		},

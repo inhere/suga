@@ -82,7 +82,7 @@ func (t *FileSymbolsTool) Schema() api.ToolSchema {
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
-					"description": "Also list ignored paths (.git stays skipped)",
+					"description": "Also list node_modules, vendor, dist and .gitignore'd paths (.git stays skipped)",
 				},
 				"limit": map[string]any{
 					"type":        "integer",

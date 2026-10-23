@@ -63,7 +63,7 @@ func (t *FileGrepTool) Schema() api.ToolSchema {
 				"ignore_case": map[string]any{"type": "boolean", "description": "Case-insensitive match"},
 				"output":      map[string]any{"type": "string", "enum": []any{"content", "files"}, "description": "content (default): matching lines; files: matching file paths"},
 				"max_results": map[string]any{"type": "integer", "description": fmt.Sprintf("Maximum lines or files (default %d, max %d)", defaultGrepResults, maxGrepResults)},
-				"no_ignore":   map[string]any{"type": "boolean", "description": "Also search ignored paths (.git stays skipped)"},
+				"no_ignore":   map[string]any{"type": "boolean", "description": "Also search node_modules, vendor, dist and .gitignore'd paths (.git stays skipped)"},
 			},
 			"required": []any{"pattern"},
 		},

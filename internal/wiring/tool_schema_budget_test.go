@@ -23,6 +23,10 @@ import (
 // re-growth: a wording change must not quietly rebuild the paragraphs the
 // trim deleted. Raise a cap only with the report's counting script redone,
 // saying what added the characters.
+// 2026-10-23: file_find/file_list/file_symbols/file_grep name the skipped
+// directories in no_ignore again (node_modules, vendor, dist) - with only
+// "ignored paths" the model listed vendor/ through shell_exec instead (naming
+// run, shell_exec 9.3 -> 17.3 calls per run).
 var toolSchemaBudget = map[string]int{
 	"memory":          2600,
 	"session_search":  1950,
@@ -32,15 +36,15 @@ var toolSchemaBudget = map[string]int{
 	"file_grep":       1600,
 	"agent":           1600,
 	"file_edit":       1350,
-	"file_symbols":    1300,
+	"file_symbols":    1350,
 	"session_message": 1250,
 	"task":            1150,
 	"recall":          1150,
 	"web_fetch":       900,
-	"file_find":       850,
+	"file_find":       880,
 	"skill":           800,
 	"file_remove":     750,
-	"file_list":       750,
+	"file_list":       800,
 	"update_plan":     700,
 	"file_write":      600,
 	"suga_manifest":   500,

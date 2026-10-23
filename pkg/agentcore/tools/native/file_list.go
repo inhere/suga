@@ -62,7 +62,7 @@ func (t *FileListTool) Schema() api.ToolSchema {
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
-					"description": "Also enter ignored directories (.git stays out)",
+					"description": "Also enter node_modules, vendor, dist and .gitignore'd directories (.git stays out)",
 				},
 			},
 		},
