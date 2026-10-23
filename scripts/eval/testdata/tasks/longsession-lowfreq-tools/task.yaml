@@ -1,0 +1,31 @@
+name: longsession-lowfreq-tools
+mode: allow-write
+fake_mode: text
+# 低频 native 工具（recall / session_search / memory）的发现与使用：
+# 第 1 轮把一份大日志完整打印出来（超出内联上限，结果被折叠成 out: 引用 + 首尾片段），
+# 第 2 轮要回答的 rid 只在那段被折叠的内容里 —— 不看 out: 引用、不用 recall 展开就拿不到。
+# 第 2 轮之后强制换段：段内加载的工具在换段后应该原生入表（真实模型跑时才可观测，
+# tool_counts 里应出现 recall；--fake 只验证任务本身可跑，假模型不会调工具）。
+fake_reply: |-
+  The 503 line is rid Q7XK-2291 (read back from the folded shell output).
+prompts:
+  - |-
+    用 shell_exec 把 logs/access.log 原样完整打印出来（例如 PowerShell 的 Get-Content logs/access.log 或 cat logs/access.log），
+    这条命令不要加过滤、管道或截取。
+  - |-
+    基于第 1 步保存下来的输出回答（用什么工具查看由你决定，输出被折叠时按它的方式展开）：
+    status 是 503 的那一行的 rid 值是多少？
+compact_after: [2]
+checks:
+  # 第 2 轮必须给出被折叠输出里的 rid。
+  - {type: answer_contains, text: 'Q7XK-2291', turn: 2}
+  # 干扰行里的 rid（status=500 的另一条）不得被当成 503 行的答案。
+  - {type: answer_not_contains, text: 'Q7XK-0000', turn: 2}
+generate:
+  - path: logs/access.log
+    count: 6000
+    line: "2026-10-23T09:00:00Z GET /api/items/{i} status=200 bytes=512 rid=- ua=probe/1.0 latency=4ms"
+    inserts:
+      - {at: 917, text: "2026-10-23T09:14:02Z GET /api/billing/retry status=500 bytes=0 rid=Q7XK-0000 ua=probe/1.0 latency=900ms"}
+      - {at: 4217, text: "2026-10-23T09:58:37Z GET /api/billing/sync status=503 bytes=0 rid=Q7XK-2291 ua=probe/1.0 latency=30000ms"}
+timeout: 20m

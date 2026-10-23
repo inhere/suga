@@ -13,6 +13,10 @@
 
 - chat 状态行的“子 agent：N 个运行中”残留（2026-10-23 用户遇到：状态行一直显示 4 个运行中，而 `:tasks` 里没有任何运行中的任务）：子 agent 改为按**工具调用 ID** 记账（`description` 只用于显示，同名子 agent 不再共享一个条目；provider 未给调用 ID 时退回按 description 记账），`agent_progress` 事件带上所属调用的 ID，未知调用的进度不再凭空新建条目；前台子 agent 的工具调用一结束（成功、失败或没有报告）就删除条目，回合结束时清空所有没有后台任务关联的前台条目（Ctrl-C 取消、工具调用被中断的回合也能清）；后台子 agent 的“运行中”以 tasks 管理器里该会话状态为运行中的 agent 任务为准，任务结束、失败或被 `:tasks -k` 终止都立即不再计数，不再依赖任务通知是否投递。
 
+### 新增
+
+- native（内置）工具按需加载（设计 2026-10-23 0.2，默认关）：新增 `tools.deferred_native: auto | never | [名字…]`（默认 `never`）与 `tools.deferred_apply: segment | immediate`（默认 `segment`，只作用于 native，MCP 行为不变）。配成 `auto` 时 9 个低频工具（`agent`、`file_symbols`、`memory`、`recall`、`session_search`、`session_message`、`skill`、`suga_manifest`、`web_fetch`）不进每次请求的工具表，改由段上下文清单（每个一行用途）加 `tool_search` 发现；命中后记入 `loaded_tools`，段内用常驻的 `tool_call {name, arguments}` 代理调用（换段时再原生入表），审批、只读模式、PreToolUse hook、taint 与 trace 都按真实工具名走。T1 探针（三个真实 provider）确认模型不会调用未声明的工具，因此取代理工具方案。`context` 事件新增 `deferred_native`/`deferred_loaded` 计数，`tool_search` 事件新增 `newly_loaded_kinds`。默认 `never` 时工具表、段上下文与请求字节不变。
+
 ## [0.47.0] - 2026-10-23
 
 `file_read` 读图（`view_image` 降为隐藏别名，工具表不再随模型变化）；Claude 多步工具调用的 thinking 签名错误修复；provider 连接阶段失败快速切换与冷却；评测 `--repeat` 与耗时拆分。

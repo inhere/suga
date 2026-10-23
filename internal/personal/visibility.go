@@ -49,11 +49,20 @@ func (r *Runner) bindVisibility() {
 		if newly == nil {
 			newly = []string{}
 		}
+		// newly_loaded_kinds splits the newly loaded names by source, so a trace
+		// shows whether the model found a built-in or an MCP tool (design Q7).
+		kinds := map[string]int{}
+		for _, n := range newly {
+			if k := r.cfg.Visibility.KindOfDeferred(n); k != "" {
+				kinds[k]++
+			}
+		}
 		r.rec.record(ctx, store.Event{
 			Kind: store.EventToolSearch, Name: name, Status: eventOK,
 			Attrs: map[string]any{
 				"query": ev.Query, "hits": hits, "newly_loaded": newly,
-				"cache_invalidated": ev.CacheInvalidated,
+				"newly_loaded_kinds": kinds,
+				"cache_invalidated":  ev.CacheInvalidated,
 			},
 		})
 	})

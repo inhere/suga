@@ -166,6 +166,11 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "mcp.servers", Type: ConfigTypeYAML, Writable: true, Reader: "mcp"},
 	{Pattern: "tools.preferred", Type: ConfigTypeYAML, Writable: true, Reader: "preferred_tools"},
 	{Pattern: "tools.deferred", Type: ConfigTypeEnum, Writable: true},
+	// tools.deferred_native: which native tools may be deferred (auto | never |
+	// [names]); tools.deferred_apply: when a loaded native tool joins the tool
+	// table (segment | immediate). MCP tools keep the immediate behaviour.
+	{Pattern: "tools.deferred_native", Type: ConfigTypeYAML, Writable: true, Reader: "deferred_native"},
+	{Pattern: "tools.deferred_apply", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "tools.allow_write", Type: ConfigTypeBool, Writable: true},
 	// session_message: the tool that lets a model message the other chat sessions
 	// of this SUGA_HOME, and how deep their automatic replies may go.
@@ -466,6 +471,8 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = []string{ChatThemeAuto, ChatThemeDark, ChatThemeLight}
 	case key == "tools.deferred":
 		allowed = []string{string(tools.DeferredAuto), string(tools.DeferredAlways), string(tools.DeferredNever)}
+	case key == "tools.deferred_apply":
+		allowed = []string{string(tools.DeferredApplySegment), string(tools.DeferredApplyImmediate)}
 	case key == "tools.approval":
 		allowed = []string{ToolsApprovalAsk, ToolsApprovalAuto}
 	case key == "memory.write":
@@ -628,6 +635,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadNetworkProxy()
 	case "preferred_tools":
 		_, err = ReadPreferredTools()
+	case "deferred_native":
+		_, err = ReadDeferredNativeTools()
 	case "rules":
 		_, err = ReadRuleFileName()
 	case "tool_body":

@@ -88,6 +88,15 @@ func (o *Output) ListTools(ctx context.Context) ([]api.ToolSchema, error) {
 	return o.inner.ListTools(ctx)
 }
 
+// ExpandCall forwards the proxy-call expansion (tool_call) of the wrapped layer,
+// so the runtime still sees the real tool call.
+func (o *Output) ExpandCall(ctx context.Context, call api.ToolCall) (api.ToolCall, bool) {
+	if e, ok := o.inner.(CallExpander); ok {
+		return e.ExpandCall(ctx, call)
+	}
+	return api.ToolCall{}, false
+}
+
 // Get passes tool lookup through to the wrapped layers.
 func (o *Output) Get(name string) (api.Tool, error) {
 	if l, ok := o.inner.(Lookup); ok {

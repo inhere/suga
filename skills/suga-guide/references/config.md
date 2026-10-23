@@ -116,7 +116,9 @@
 | `tools.approval_rules.always_prefix_tokens` | `2`（≥1） | chat 的 `a`/`always` 为安全 shell 命令保存的前缀 token 数 |
 | `tools.approval_rules.persist_ask` | `true` | chat 的 `a`/`d` 后是否询问写回用户级/项目级规则文件 |
 | `tools.approval_rules.project_trust` | `{}` | 绝对 workspace 路径到规则文件 SHA-256；未信任项目 allow 会被忽略 |
-| `tools.deferred` | `auto` | MCP 工具 schema 延迟加载：`auto`（schema 超过上下文窗口约 10% 时延迟）、`always`、`never`；被延迟的工具用 `tool_search` 取回 |
+| `tools.deferred` | `auto` | MCP 工具 schema 延迟加载：`auto`（schema 超过上下文窗口约 10% 时延迟）、`always`、`never`；被延迟的工具用 `tool_search` 取回。`never` 同时关闭 native 延迟 |
+| `tools.deferred_native` | `never` | 内置工具按需加载：`auto`（9 个低频工具：`agent`、`file_symbols`、`memory`、`recall`、`session_search`、`session_message`、`skill`、`suga_manifest`、`web_fetch`）、`never`、或内置工具名列表。名单里的名字必须是内置工具；`tool_search`、隐藏别名与宿主工具不允许进名单 |
+| `tools.deferred_apply` | `segment` | 加载后何时进工具表（仅作用于 native，MCP 保持立即入表）：`segment`（换段时才入表，段内用常驻的 `tool_call {name, arguments}` 调用已加载工具）、`immediate`（加载即入表，每次加载让前缀缓存失效一次） |
 | `tools.preferred` | `[]` | 优先工具声明列表：每项 `name`、`kind`（`command` 的可执行文件名，或 `mcp` 的 `mcp.servers` id）、`when`（适用场景）。可用项写进环境说明，缺失项不列出；`command` 项只在本会话注册了 `shell_exec` 的可写会话里列出；`mcp` 项不被延迟加载，但不自动放行（见 references/tools.md 的“优先工具”） |
 | `tools.snapshots.enabled` | `true` | 是否为 `file_write`、`file_edit`、`file_remove` 保存写前快照；关闭只停止新快照，不删除已有快照或命令 |
 | `tools.snapshots.max_file_bytes` | `16777216`（16 MiB） | 单次调用保留的写前内容上限；超过时照常写入但标记不可恢复 |

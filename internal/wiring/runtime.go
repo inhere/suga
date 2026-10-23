@@ -528,16 +528,17 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		index, indexNote := residentMemoryIndex(rctx, mem)
 		skillsText, _ := skillsPrompt(skillReg, readSkillPolicy())
 		return NewResidentReport(ResidentContext{
-			SystemPrompt:    basePrompt(),
-			Environment:     environmentPrompt(opts),
-			Rules:           rules,
-			RuleStats:       ruleStats,
-			MemoryIndex:     personal.RenderMemorySection(index),
-			MemoryIndexNote: indexNote,
-			Skills:          skillsText,
-			AppendPrompt:    appendSystemPrompt(opts.AppendSystemPrompt),
-			HostContext:     hostContextText(opts.HostContext),
-			DeferredTools:   vis.PromptSection(),
+			SystemPrompt:      basePrompt(),
+			Environment:       environmentPrompt(opts),
+			Rules:             rules,
+			RuleStats:         ruleStats,
+			MemoryIndex:       personal.RenderMemorySection(index),
+			MemoryIndexNote:   indexNote,
+			Skills:            skillsText,
+			AppendPrompt:      appendSystemPrompt(opts.AppendSystemPrompt),
+			HostContext:       hostContextText(opts.HostContext),
+			DeferredTools:     vis.PromptSection(),
+			DeferredToolsNote: deferredToolsNote(rctx, vis),
 		}, skillReg)
 	}
 	dbPath, err := appconfig.ResolveCoreStorePath()

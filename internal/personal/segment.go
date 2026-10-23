@@ -97,6 +97,12 @@ func (r *Runner) freshSnapshot(ctx context.Context, sessionID string, prev *segm
 	if prev == nil {
 		prev = &segmentContext{}
 	}
+	// A new segment rebuilds the prompt prefix anyway: the deferred native tools
+	// loaded so far join the tool table now (tools.deferred_apply: segment), so
+	// the listing and the table of this segment agree.
+	if r.cfg.Visibility != nil {
+		r.cfg.Visibility.FoldLoaded(ctx)
+	}
 	c := &segmentContext{
 		Environment:   r.segmentEnvironment(),
 		Rules:         prev.Rules,

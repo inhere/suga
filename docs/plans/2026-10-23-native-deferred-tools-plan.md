@@ -165,6 +165,21 @@
 
 ## 完成 Gate 与剩余工作
 
+### 实施记录（2026-10-23）
+
+| 任务 | 状态 | 提交 |
+|---|---|---|
+| T1 探针 | 完成，Q9 选 `tool_call` 代理（三项 provider 均未调用未声明工具，历史可接受） | `5ad113c7` |
+| T2 选取与配置 | 完成 | `ae0c6b59` |
+| T3 发现清单 | 完成（清单 ≤1200 字符单测） | `ae0c6b59` |
+| T4 段内调用与段边界入表 | 完成（`tool_call` 代理 + runtime 展开 + 段边界折叠 + resume） | `ae0c6b59` |
+| T5 观测 | 完成（context `deferred_native`/`deferred_loaded`、tool_search `newly_loaded_kinds`、manifest note 列名） | `2b78880f`、`8b2ef7cb` |
+| T6 评测任务与文档 | 完成（新任务 `--fake` 与真实模型各一次 PASS；文档 4 处） | `181fd730`、`0aa18950`、`260c8375`、`a487c2bd` |
+| 伪终端冲烟 | 已写 `scripts/ptysmoke/chat_deferred_native.py`（+ fakellm `deferred` 模式，已离线验证），**待监督在 Linux 容器跑** | `5f684aa1` |
+| 反向验证 | 两项均已做：去掉 `ExpandCall` → 两处代理用例失败；去掉默认 `never` 守卫（visibility 与 wiring 各一次）→ 逐字节回归用例失败 | — |
+
+真实模型（`command-code/deepseek-v4.1-flash`，`tools.deferred_native: auto`，隔离 home）：首轮 `tool_counts` 出现 `tool_search:1`、`session_search:1`（先验的发现路径有效）；修正任务干扰行后二跑 PASS（`file_grep:1`、`shell_exec:2`），说明该任务也可以通过展开 spill 文件完成——“必须 `recall`” 不是硬约束，`--repeat 3` 对照仍待 Gate 3。
+
 - T1–T6 完成并提交，验证输出贴汇报；反向验证：去掉段内调用支持 → 对应用例失败；去掉“默认 never 逐字节”保护 → 回归用例失败。
 - 监督：容器 race、`make smoke-chat`、suga-verify workflow 通过后合并；随后跑 `--repeat 3` 对照，为“切默认开”的决定准备数据。
 - 剩余：切默认开（人工 Gate 3）、MCP 统一到 `segment`（设计 Q5 后续）。
