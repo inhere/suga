@@ -331,6 +331,10 @@ func (o *observedTools) ExecuteTool(ctx context.Context, call agentcore.ToolCall
 	if approval.Wait > 0 {
 		e.Attrs["approval_wait_ms"] = approval.Wait.Milliseconds()
 	}
+	if approval.Answered {
+		// 这一次调用是人在提示里批准的（区别于规则或记住的 always 放行）。
+		e.Attrs["approval_answered"] = true
+	}
 	if approval.Danger != "" {
 		e.Attrs["danger"] = approval.Danger
 	}

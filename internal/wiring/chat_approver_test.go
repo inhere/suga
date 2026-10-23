@@ -334,6 +334,49 @@ func TestOpenCLIChatApproval(t *testing.T) {
 	})
 }
 
+func TestChatApproverApprovedNote(t *testing.T) {
+	gkconfig.Reset()
+	t.Cleanup(gkconfig.Reset)
+	// 与 internal/personal/runner.go 的真实装配一致：observe 建报告上下文 ->
+	// output 层（含标注） -> approval 层。这里直接用同一顺序的栈，断言模型看到的
+	// 结果文案：人批准的那次有注明，记住的 always 与规则放行没有，拒绝不变。
+	buildLayer := func(t *testing.T, asker *scriptedAsker) agentcoreapi.ToolRegistry {
+		approval, _ := newChatApproval(t, false, asker)
+		return tools.NewOutput(approval, tools.OutputConfig{})
+	}
+	run := func(t *testing.T, layer agentcoreapi.ToolRegistry, call agentcore.ToolCall) (*agentcoreapi.ToolResult, error) {
+		ctx, _ := tools.WithApprovalReport(context.Background())
+		return layer.ExecuteTool(ctx, call)
+	}
+	asker := &scriptedAsker{answers: []string{"a"}}
+	layer := buildLayer(t, asker)
+
+	t.Run("human answered once equals noted", func(t *testing.T) {
+		res, err := run(t, layer, agentcore.ToolCall{CallID: "c1", Name: "shell_exec", Arguments: map[string]any{"command": "echo hi"}})
+		assert.NoErr(t, err)
+		assert.StrContains(t, res.Content, tools.ApprovedResultNote)
+	})
+	t.Run("remembered rule stays unnoted", func(t *testing.T) {
+		res, err := run(t, layer, agentcore.ToolCall{CallID: "c2", Name: "shell_exec", Arguments: map[string]any{"command": "echo hi"}})
+		assert.NoErr(t, err)
+		assert.False(t, strings.Contains(res.Content, tools.ApprovedResultNote))
+	})
+	t.Run("rule allowed read tool stays unnoted", func(t *testing.T) {
+		res, err := run(t, layer, agentcore.ToolCall{CallID: "c3", Name: "file_read", Arguments: map[string]any{"path": "a.txt"}})
+		assert.NoErr(t, err)
+		assert.False(t, strings.Contains(res.Content, tools.ApprovedResultNote))
+	})
+	t.Run("denied call keeps its refusal", func(t *testing.T) {
+		denying := &scriptedAsker{answers: []string{"n"}}
+		deniedLayer := buildLayer(t, denying)
+		res, err := run(t, deniedLayer, agentcore.ToolCall{CallID: "c4", Name: "shell_exec", Arguments: map[string]any{"command": "echo hi"}})
+		assert.ErrIs(t, err, tools.ErrDenied)
+		assert.Nil(t, res)
+		// 拒绝时结果文案不变：模型看到的仍是拒绝错误，不会有人批准的注明。
+		assert.Eq(t, "用户拒绝执行 shell_exec", err.Error())
+	})
+}
+
 func TestChatApproverReportsSource(t *testing.T) {
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)

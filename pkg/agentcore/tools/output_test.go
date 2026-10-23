@@ -74,6 +74,57 @@ func outRegistry(ts ...*outTool) *Registry {
 	return reg
 }
 
+func TestOutputApprovedNote(t *testing.T) {
+	// 注明只进模型看到的结果，行为经 output + approval 的真实栈，不直接调内部函数。
+	layer := NewOutput(NewApproval(outRegistry(&outTool{name: "act", res: &api.ToolResult{Content: "done"}}),
+		ApproverFunc(func(ctx context.Context, call api.ToolCall, _ api.Tool) error {
+			switch call.CallID {
+			case "answered":
+				ReportApprovalAnswer(ctx, ApprovedByUser, 120)
+			case "always":
+				ReportApproval(ctx, ApprovedAlways, 0)
+			case "rule":
+				ReportApproval(ctx, ApprovedByRule, 0)
+			}
+			return nil
+		})), OutputConfig{})
+
+	t.Run("human answer gets the note once", func(t *testing.T) {
+		ctx, _ := WithApprovalReport(context.Background())
+		res, err := layer.ExecuteTool(ctx, api.ToolCall{CallID: "answered", Name: "act"})
+		assert.NoErr(t, err)
+		assert.Eq(t, "done\n"+ApprovedResultNote, res.Content)
+	})
+	t.Run("remembered always and rules stay unnoted", func(t *testing.T) {
+		for _, call := range []api.ToolCall{{CallID: "always", Name: "act"}, {CallID: "rule", Name: "act"}, {Name: "act"}} {
+			ctx, _ := WithApprovalReport(context.Background())
+			res, err := layer.ExecuteTool(ctx, call)
+			assert.NoErr(t, err)
+			assert.Eq(t, "done", res.Content, call.CallID)
+		}
+	})
+	t.Run("denied calls keep their error and get no result", func(t *testing.T) {
+		denying := NewOutput(NewApproval(outRegistry(&outTool{name: "act", res: &api.ToolResult{Content: "done"}}),
+			ApproverFunc(func(_ context.Context, _ api.ToolCall, _ api.Tool) error {
+				return Denied("nope")
+			})), OutputConfig{})
+		ctx, _ := WithApprovalReport(context.Background())
+		res, err := denying.ExecuteTool(ctx, api.ToolCall{CallID: "x", Name: "act"})
+		assert.ErrIs(t, err, ErrDenied)
+		assert.Nil(t, res)
+	})
+
+	t.Run("report survives json with the new field", func(t *testing.T) {
+		ctx, rep := WithApprovalReport(context.Background())
+		ReportApprovalAnswer(ctx, ApprovedByUser, 100)
+		created, err := json.Marshal(rep)
+		assert.NoErr(t, err)
+		var decoded ApprovalReport
+		assert.NoErr(t, json.Unmarshal(created, &decoded))
+		assert.Eq(t, ApprovalReport{Source: ApprovedByUser, Wait: 100, Answered: true}, decoded)
+	})
+}
+
 func TestOutput(t *testing.T) {
 	ctx := context.Background()
 	big := bigText(2000) // ~90 KB

@@ -194,11 +194,11 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 	if !a.usePolicy {
 		switch chatreply.ParseApprovalReply(answer) {
 		case chatreply.ReplyAllow:
-			tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 			return nil
 		case chatreply.ReplyAllowAlways:
 			a.always[name] = true
-			tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 			return nil
 		}
 		tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
@@ -208,7 +208,7 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 	reply := chatreply.ParseApprovalReply(answer)
 	switch reply {
 	case chatreply.ReplyAllow:
-		tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+		tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 		return nil
 	case chatreply.ReplyAllowAlways, chatreply.ReplyDenyAlways:
 		if reply == chatreply.ReplyAllowAlways && !scope.allowAlways {
@@ -227,7 +227,13 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 		scope.rule.Action = decision
 		a.policy.Rules = append(a.policy.Rules, scope.rule)
 		tools.ReportRule(ctx, scope.rule.Summary(), approvalScopeAttr(call.Name, scope.key))
-		tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+		if decision == approvalrules.Allow {
+			// 这一次调用是人在提示里批准的（选“总是允许”也算批准了这一次），
+			// 模型可见结果会注明；之后由记住的会话规则放行的调用不再注明。
+			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
+		} else {
+			tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
+		}
 		if a.policy.PersistAsk {
 			persistAnswer, persistErr := a.asker.Ask(ctx, tools.Question{Tool: "approval_rule", Prompt: chatreply.PersistPrompt(string(decision))})
 			if persistErr != nil {

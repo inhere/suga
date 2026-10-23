@@ -28,6 +28,11 @@ Reverse verification (drop the behaviour and the check fails):
 - give the answer read a clearing Ctrl-C as well (SetCtrlCClearsLine(true) for
   every read, ask.go included): "ctrl-c with text: cancelled" fails - the press
   drops the typed answer and the question waits on instead of cancelling.
+- drop the person-approved note (annotateApproved in pkg/agentcore/tools,
+  output.go): "y: approved note shown" and "a: approved note shown" fail - the
+  tool result of a person-approved call no longer ends with the note.
+- prepend the note to the result instead of appending it: "y: executed" fails -
+  the ok summary starts with the note and no longer with SMOKE_OK.
 
   make smoke-chat                        # builds tmp/smoke/suga and runs this
   python3 -I scripts/ptysmoke/chat_approval.py --bin tmp/smoke/suga
@@ -191,6 +196,9 @@ def scenario(s):
     s.check("y: full command shown", s.until(r"命令：echo SMOKE_OK", m) and s.until(QUESTION, m))
     s.line("y")
     s.check("y: executed", s.until(OK, m) and s.until(r"完成", m))
+    # The person approved this very call: the model-visible result ends with the
+    # note (the chat ok line collapses the whole result, so the note is on it).
+    s.check("y: approved note shown", s.until(r"⎿ ok: SMOKE_OK[^\r\n]*已经人工批准执行", m))
     s.check("y: answer marked ▣", s.contains(r"▣ 完成", m))
     s.check("y: turn ends", turn_end(s, m))
     # NO_COLOR in this scenario (see main): the input line gets no background.
@@ -219,8 +227,14 @@ def scenario(s):
     s.check("a: persistence question", s.until(r"把这条规则写进规则文件", m))
     s.line("")
     s.check("a: executed", s.until(OK, m) and turn_end(s, m))
+    # The call the person answered was approved by that answer: its result line
+    # ends with the note.
+    s.check("a: approved note shown", s.contains(r"⎿ ok: SMOKE_OK[^\r\n]*已经人工批准执行", m))
     m = s.mark(); s.line("又一次")
     s.check("a: executed again", s.until(OK, m) and turn_end(s, m))
+    # The remembered session rule let the second call through without a person:
+    # its result stays un-noted.
+    s.check("a: remembered call: no note", not s.contains(r"⎿ ok: SMOKE_OK[^\r\n]*已经人工批准执行", m))
     s.check("a: no question again", not s.contains(QUESTION, m))
 
     # Ctrl-C on a non-empty input line only clears the line (wll1, the way Claude

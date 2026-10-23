@@ -266,13 +266,13 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 	}
 	switch selected {
 	case "allow":
-		tools.ReportApproval(ctx, tools.ApprovedByUser, time.Since(asked))
+		tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, time.Since(asked))
 	case "allow_always":
 		sessionRule := h.session.add(scope, "allow")
 		if sessionRule.summary != "" {
 			tools.ReportRule(ctx, sessionRule.summary, scope)
 		}
-		tools.ReportApproval(ctx, tools.ApprovedAlways, time.Since(asked))
+		tools.ReportApprovalAnswer(ctx, tools.ApprovedAlways, time.Since(asked))
 	case "reject_always":
 		sessionRule := h.session.add(scope, "deny")
 		if sessionRule.summary != "" {
