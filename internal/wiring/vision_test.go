@@ -24,10 +24,12 @@ func runtimeToolNames(t *testing.T, rt *Runtime) []string {
 	return names
 }
 
-// TestSwitchModelFiltersViewImageByVision pins the model-scoped tool table end
-// to end: the runtime filters view_image by the current main model's vision
-// capability, so a :model switch changes what the next step offers.
-func TestSwitchModelFiltersViewImageByVision(t *testing.T) {
+// TestSwitchModelKeepsToolTableStable pins design 2026-10-23 section 8 end to
+// end: the tool table no longer follows the current main model's vision
+// capability, so a :model switch leaves it identical, and file_read explains a
+// picture to a model that cannot see it instead of a picture tool appearing and
+// disappearing.
+func TestSwitchModelKeepsToolTableStable(t *testing.T) {
 	resetConfig(t)
 	assert.NoErr(t, gkconfig.Set("model", "fake/gpt-4o"))
 	setProviders(t, map[string]any{"fake": map[string]any{"type": "openai", "api_key": "k",
@@ -38,39 +40,48 @@ func TestSwitchModelFiltersViewImageByVision(t *testing.T) {
 			"glm-4":               map[string]any{},
 			"pinned":              map[string]any{"model_id": "glm-5.3-flash", "vision": true},
 		}}})
-	rt := openTestRuntime(t, "")
-	session, err := rt.Runner.NewSession(context.Background(), "vision-switch", "test")
+	workspace := t.TempDir()
+	rt, err := Open(context.Background(), Options{Workspace: workspace, RuleCWD: t.TempDir()})
 	assert.Require(t, assert.NoErr(t, err))
-	hasViewImage := func() bool {
-		return slices.Contains(runtimeToolNames(t, rt), "view_image")
+	t.Cleanup(func() { _ = rt.Close() })
+	ctx := context.Background()
+	session, err := rt.Runner.NewSession(ctx, "vision-switch", "test")
+	assert.Require(t, assert.NoErr(t, err))
+	writeTestPNG(t, workspace) // shot.png: the picture every model reads below
+
+	before := runtimeToolNames(t, rt)
+	assert.False(t, slices.Contains(before, "view_image"), "the alias is not listed")
+	// Every switch model, vision or not, sees the same table.
+	for _, model := range []string{"fake/deepseek-v4.1-flash", "fake/deepseek-chat", "fake/glm-4",
+		"fake/pinned", "fake/gpt-4o"} {
+		_, err := rt.SwitchModel(ctx, session.ID, model)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, before, runtimeToolNames(t, rt), "the table does not follow the model: "+model)
 	}
 
-	assert.True(t, hasViewImage())
-	// The user confirmed deepseek-v4.1-flash sees images (2026-10-20), so the
-	// table keeps view_image; its sibling deepseek-chat stays text-only.
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-v4.1-flash")
-	assert.Require(t, assert.NoErr(t, err))
-	assert.True(t, hasViewImage())
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-chat")
-	assert.Require(t, assert.NoErr(t, err))
-	assert.False(t, hasViewImage())
-	// Non-flash members of both families stay text-only by inference.
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/glm-4")
-	assert.Require(t, assert.NoErr(t, err))
-	assert.False(t, hasViewImage())
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/pinned")
-	assert.Require(t, assert.NoErr(t, err))
-	assert.True(t, hasViewImage())
-	// And back to the vision model.
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/gpt-4o")
-	assert.Require(t, assert.NoErr(t, err))
-	assert.True(t, hasViewImage())
-
-	// The tool itself refuses a stale call of a text-only model.
-	_, err = rt.SwitchModel(context.Background(), session.ID, "fake/deepseek-chat")
-	assert.Require(t, assert.NoErr(t, err))
-	_, err = rt.Runner.ToolRegistry().ExecuteTool(context.Background(), agentcore.ToolCall{CallID: "c1", Name: "view_image",
-		Arguments: map[string]any{"path": "x.png"}})
-	assert.Require(t, assert.Err(t, err))
-	assert.Contains(t, err.Error(), ":model")
+	t.Run("a model without vision gets the note", func(t *testing.T) {
+		_, err := rt.SwitchModel(ctx, session.ID, "fake/deepseek-chat")
+		assert.Require(t, assert.NoErr(t, err))
+		res, err := rt.capabilities.Registry.ExecuteTool(ctx, agentcore.ToolCall{CallID: "c1", Name: "file_read",
+			Arguments: map[string]any{"path": "shot.png"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, 0, len(res.Images))
+		assert.Contains(t, res.Content, "cannot see images")
+		assert.Contains(t, res.Content, ":model")
+	})
+	t.Run("a model with vision gets the picture", func(t *testing.T) {
+		_, err := rt.SwitchModel(ctx, session.ID, "fake/gpt-4o")
+		assert.Require(t, assert.NoErr(t, err))
+		res, err := rt.capabilities.Registry.ExecuteTool(ctx, agentcore.ToolCall{CallID: "c2", Name: "file_read",
+			Arguments: map[string]any{"path": "shot.png"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.Eq(t, 1, len(res.Images)))
+		assert.Eq(t, 8, res.Images[0].Width)
+	})
+	t.Run("the hidden alias still runs by name", func(t *testing.T) {
+		res, err := rt.capabilities.Registry.ExecuteTool(ctx, agentcore.ToolCall{CallID: "c3", Name: "view_image",
+			Arguments: map[string]any{"path": "shot.png"}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.Eq(t, 1, len(res.Images)))
+	})
 }

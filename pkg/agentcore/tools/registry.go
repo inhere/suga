@@ -124,6 +124,8 @@ func (r *Registry) Get(name string) (api.Tool, error) {
 }
 
 // Schemas returns the ToolSchema list for all registered tools in deterministic order.
+// A Hidden tool (view_image, an alias of file_read's picture branch) is left out: it
+// stays callable by name, but the model is not offered it (design 2026-10-23 Q4).
 func (r *Registry) Schemas() []api.ToolSchema {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -140,6 +142,9 @@ func (r *Registry) Schemas() []api.ToolSchema {
 
 	schemas := make([]api.ToolSchema, 0, len(names))
 	for _, name := range names {
+		if MetaOf(r.tools[name]).Hidden {
+			continue
+		}
 		schema := r.tools[name].Schema()
 		if schema.Name == "" {
 			schema.Name = name

@@ -12,6 +12,7 @@ import (
 	"github.com/inhere/suga/internal/hooks"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore/redact"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 // LocalEnv is what a session in a workspace would get on this machine now:
@@ -94,6 +95,11 @@ func LoadLocalEnv(workspace string) (LocalEnv, error) {
 	for _, name := range parts.registry.List() {
 		t, err := parts.registry.Get(name)
 		if err != nil {
+			continue
+		}
+		if tools.MetaOf(t).Hidden {
+			// A hidden alias (view_image) is not part of the tool table the model is
+			// offered, and the manifest does not list it either.
 			continue
 		}
 		schema := t.Schema()

@@ -58,6 +58,20 @@ func TestDisabledToolsMainRegistry(t *testing.T) {
 		assert.Eq(t, before, after)
 	})
 
+	// The alias of file_read's picture branch is a legal name and disabling it only
+	// turns off the alias: pictures stay readable through file_read (design Q7).
+	t.Run("view_image is still a legal name and only turns off the alias", func(t *testing.T) {
+		resetConfig(t)
+		disabledToolsConfig(t, "view_image")
+		caps, err := buildPersonalCapabilities(workspace, nil, true)
+		assert.Require(t, assert.NoErr(t, err))
+		t.Cleanup(func() { _ = caps.Close() })
+		_, err = caps.Registry.Get("view_image")
+		assert.Err(t, err)
+		_, err = caps.Registry.Get("file_read")
+		assert.NoErr(t, err)
+	})
+
 	t.Run("an unknown name fails with the available names", func(t *testing.T) {
 		resetConfig(t)
 		disabledToolsConfig(t, "no_such_tool")

@@ -26,8 +26,11 @@ import (
 //
 // The bytes never stay in the message: the store writes them to the session's
 // images directory and keeps a reference (internal/personal). The tool itself is
-// read-only and never marked Prefetchable: a prefetch would produce an image a
-// cut-away step never used, i.e. an orphan file.
+// read-only and never marked Prefetchable: a prefetch would decode, scale and
+// encode a picture a cut-away step never used, all of that wasted (the bytes are
+// only written by AppendMessages, so a prefetch leaves no file behind).
+// file_read reads pictures through this pipeline too and exempts its picture
+// calls from the prefetch for the same reason (tools.PrefetchExempt).
 const (
 	// DefaultImageMaxSide is the long side an image is scaled down to
 	// (images.max_side). 1568 is what both Anthropic and OpenAI recommend as an
@@ -109,9 +112,12 @@ func (t *ViewImageTool) Description() string {
 }
 
 // ToolMeta marks the tool as a read-only read. It is not Prefetchable: its
-// bytes would be stored even when the step is cut away (design 0.3).
+// bytes would be stored even when the step is cut away (design 0.3). It is
+// Hidden: file_read reads pictures now, so view_image stays only as an alias one
+// version longer - callable by name for old sessions and name-based
+// configuration, never listed (design 2026-10-23 Q4).
 func (*ViewImageTool) ToolMeta() tools.Meta {
-	return tools.Meta{Category: tools.CategoryRead, ReadOnly: true}
+	return tools.Meta{Category: tools.CategoryRead, ReadOnly: true, Hidden: true}
 }
 
 func (t *ViewImageTool) Schema() api.ToolSchema {

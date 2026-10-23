@@ -104,6 +104,9 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
 		assert.True(t, strings.Contains(out[0].Content, "已省略"))
+		// The note points at the tool that reads pictures now (design 2026-10-23
+		// section 6); view_image is only a hidden alias.
+		assert.Contains(t, out[0].Content, "需要时 file_read images/")
 		assert.Eq(t, 1, len(out[4].Images), "the newest image stays")
 	})
 

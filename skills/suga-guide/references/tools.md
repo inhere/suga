@@ -235,6 +235,8 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 
 外部命令 hook 只想看某些工具的调用时，配 `hooks.pre_tool_use.tools`（glob，`path.Match`）——不配则完全不发 PreToolUse。事件带 `tool_name` 与 `tool_input`（完整参数），回答按 Claude Code 的形状：
 
+> 读图入口是 `file_read`（`view_image` 只是保留一个版本的隐藏别名，不在工具表里）：只配了 `view_image` 的 glob 已拦不到读图，要带上 `file_read`；同理 `tools.disabled: [view_image]` 现在只关掉别名，关读图用 `tools.disabled: [file_read]`。
+
 ```json
 {"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"不要写 go.mod","updatedInput":{"path":"docs/ok.txt"}}}
 ```

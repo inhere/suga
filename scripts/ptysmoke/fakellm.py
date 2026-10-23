@@ -26,6 +26,7 @@ Modes (--mode):
         it as "发给 <短名称>：…"; a message that names nobody only answers.
   adddir  every user message first gets file_read (--read-path), then
         file_write (--write-path with --write-body), then the text --reply:
+  image   one file_read of --read-path (a picture) and then the text --reply;
         the smoke for --add-dir, where both paths live outside the workspace.
         A user message containing "只读" or "只写" narrows it to that one call,
         so a smoke can drive the read and the write of one turn separately.
@@ -102,6 +103,14 @@ def message_token(m):
         return "a:" + ",".join(names) if names else "a"
     head = " ".join(str(m.get("content") or "").split())[:40]
     return "%s:%s" % (role, head)
+
+
+def is_image_attachment(message):
+    """A user message whose content parts include an image_url: the picture a
+    tool result carries (suga appends it after the tool message for OpenAI)."""
+    content = message.get("content")
+    return isinstance(content, list) and any(
+        isinstance(part, dict) and part.get("type") == "image_url" for part in content)
 
 
 def last_index(messages, role):
@@ -246,6 +255,10 @@ def make_handler(args):
                               "tools": [((tool.get("function") or {}).get("name") or tool.get("name", ""))
                                         for tool in (body.get("tools") or [])],
                               "tail": message_tail(body["messages"]),
+                              # The last tool result's text, longer than "tail" keeps it:
+                              # a smoke asserts what file_read answered (a picture note).
+                              "tool_text": next((str(m.get("content") or "")[:300] for m in reversed(body["messages"])
+                                                 if m.get("role") == "tool"), ""),
                               # The "Preferred tool:" lines of the environment the
                               # model was sent (it never reaches the terminal).
                               "preferred": [line.strip() for m in body["messages"]
@@ -291,9 +304,12 @@ def make_handler(args):
                                  for m in body["messages"][last_tool + 1:]):
                 tool_done = False
             # Tool results since the last user message: the step of this turn.
+            # A user message that only carries a tool result's picture (the
+            # OpenAI mapping appends one after the tool message) is part of that
+            # result, not a new request: it does not end the count.
             step = 0
             for m in reversed(body["messages"]):
-                if m.get("role") == "user":
+                if m.get("role") == "user" and not is_image_attachment(m):
                     break
                 if m.get("role") == "tool":
                     step += 1
@@ -333,6 +349,11 @@ def make_handler(args):
                 name, arguments = memory_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "image" and step < 1:
+                # image mode: one file_read of --read-path (a picture), then the text.
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": "file_read", "arguments": json.dumps({"path": args.read_path or "shot.png"})}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "adddir" and step < len(adddir_calls):
                 name, arguments = adddir_calls[step]
@@ -506,7 +527,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge", "image"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")

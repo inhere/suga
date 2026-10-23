@@ -387,10 +387,12 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		return nil, err
 	}
 	// Bind view_image to the runtime's gate: the tool was built from the startup
-	// model, the gate follows every later :model switch.
+	// model, the gate follows every later :model switch. file_read reads pictures
+	// through the same instance, so it follows the gate too.
 	if t, err := capabilities.Registry.Get("view_image"); err == nil {
 		if img, ok := t.(*native.ViewImageTool); ok {
 			img.SetVision(visionGate)
+			bindFileReadImage(capabilities.Registry, img)
 		}
 	}
 	// Every command the session runs sees its session and turn in the environment
@@ -746,11 +748,24 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// Session image refs (images/<sha256>.<ext>): view_image resolves them
 	// against the session being served, which only opens later (ApplyAddDirs /
 	// chat's SetupSession); the resolver hands the ref rule the live directory
-	// at every call instead of the one the tool was built with.
+	// at every call instead of the one the tool was built with. file_read shares
+	// the instance, so a ref reads the same in both tools.
 	if t, err := capabilities.Registry.Get("view_image"); err == nil {
 		if img, ok := t.(*native.ViewImageTool); ok {
 			img.SetImagesDirResolver(rt.sessionDirs.ImagesDir)
+			bindFileReadImage(capabilities.Registry, img)
 		}
 	}
 	return rt, nil
+}
+
+// bindFileReadImage hands file_read the picture reader of view_image (design
+// 2026-10-23-file-read-images): one instance, so a :model switch and a session
+// switch reach the tool that actually reads pictures.
+func bindFileReadImage(reg *tools.Registry, img *native.ViewImageTool) {
+	if t, err := reg.Get("file_read"); err == nil {
+		if fr, ok := t.(*native.FileReadTool); ok {
+			fr.SetImagePipeline(img)
+		}
+	}
 }

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -63,6 +64,51 @@ func (t *barrierTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolRe
 
 func readCall(id, name, path string) api.ToolCall {
 	return api.ToolCall{CallID: id, Name: name, Arguments: map[string]any{"path": path}}
+}
+
+// exemptTool is a Prefetchable tool that exempts single calls: one whose path
+// names a picture, like file_read does.
+type exemptTool struct{ *barrierTool }
+
+// SkipPrefetch implements PrefetchExempt.
+func (*exemptTool) SkipPrefetch(args map[string]any) bool {
+	path, _ := args["path"].(string)
+	return strings.HasSuffix(path, ".png")
+}
+
+func TestRegistryPrefetchExempt(t *testing.T) {
+	ctx := context.Background()
+	prefetchable := Meta{Category: CategoryRead, ReadOnly: true, Prefetchable: true}
+
+	t.Run("an exempt call is not run ahead, its siblings still are", func(t *testing.T) {
+		read := &exemptTool{&barrierTool{name: "read", meta: prefetchable}}
+		reg := NewRegistry()
+		reg.Register(read)
+		calls := []api.ToolCall{readCall("c1", "read", "a.txt"), readCall("c2", "read", "b.txt"),
+			readCall("c3", "read", "c.png")}
+		reg.Prefetch(ctx, calls)
+		deadline := time.Now().Add(time.Second)
+		for read.runs.Load() < 2 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		time.Sleep(20 * time.Millisecond)
+		assert.Eq(t, int32(2), read.runs.Load(), "only the text calls ran ahead")
+		// The picture call runs in turn, once.
+		_, err := reg.ExecuteTool(ctx, calls[2])
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int32(3), read.runs.Load())
+	})
+	t.Run("a tool without the interface keeps prefetching every call", func(t *testing.T) {
+		read := &barrierTool{name: "read", meta: prefetchable}
+		reg := NewRegistry()
+		reg.Register(read)
+		reg.Prefetch(ctx, []api.ToolCall{readCall("c1", "read", "a.png"), readCall("c2", "read", "b.png")})
+		deadline := time.Now().Add(time.Second)
+		for read.runs.Load() < 2 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		assert.Eq(t, int32(2), read.runs.Load())
+	})
 }
 
 func TestRegistryPrefetch(t *testing.T) {

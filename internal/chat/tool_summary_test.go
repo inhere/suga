@@ -77,6 +77,8 @@ func TestToolCallSummaryLines(t *testing.T) {
 			want: "⏺ file_refs Load"},
 		{name: "view_image path", tool: "view_image", args: `{"path":"images/a.png"}`,
 			want: "⏺ view_image images/a.png"},
+		{name: "file_read a picture", tool: "file_read", args: `{"path":"images/a.png"}`,
+			want: "⏺ file_read images/a.png"},
 		{name: "shell_exec command", tool: "shell_exec", args: `{"command":"echo hi"}`,
 			want: "⏺ shell_exec echo hi"},
 		{name: "shell_exec first line with notes", tool: "shell_exec",

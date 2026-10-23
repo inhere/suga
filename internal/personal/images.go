@@ -24,7 +24,7 @@ import (
 //   - the bytes of an image are attached only for the messages newer than the
 //     last history fold boundary; older images are replaced by a text note (the
 //     boundary moves once per batch, so the request prefix stays cacheable), and
-//     the model can re-read one with view_image <ref>;
+//     the model can re-read one with file_read <ref>;
 //   - one request carries at most images.max_request_count images and
 //     images.max_request_bytes encoded bytes; the oldest ones are replaced by a
 //     note;
@@ -121,7 +121,7 @@ func imageNote(part agentcore.ImagePart, reason string) string {
 	if ref == "" {
 		ref = "(unknown)"
 	}
-	return fmt.Sprintf("[%s (%s%s)：%s；需要时 view_image %s]", kind, filepath.Base(ref), size, reason, ref)
+	return fmt.Sprintf("[%s (%s%s)：%s；需要时 file_read %s]", kind, filepath.Base(ref), size, reason, ref)
 }
 
 // prepareImages returns a copy of view whose images carry their bytes, with the
