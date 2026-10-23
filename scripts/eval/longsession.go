@@ -91,7 +91,7 @@ func printTurnDetail(w io.Writer, rs []Result, repeated bool) {
 			}
 		}
 		fmt.Fprintf(w, "  %s  %s  (%d turns, %d compactions, %.1fs, %d checks)\n",
-			resultLabel(r, repeated), status, len(r.Turns), compactions, float64(r.DurationMs)/1000, len(r.Checks))
+			runLabel(r, repeated), status, len(r.Turns), compactions, float64(r.DurationMs)/1000, len(r.Checks))
 		for _, t := range r.Turns {
 			ts := turnStatus(checks[t.Turn])
 			fmt.Fprintf(w, "    t%d %s  %s", t.Turn, ts, checkSummary(checks[t.Turn]))

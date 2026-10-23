@@ -145,6 +145,12 @@ func TestPrintTiming(t *testing.T) {
 	assert.StrContains(t, out, "timing (turn + compaction + overhead = duration")
 	assert.StrContains(t, out, "a-r2  turn 7.0s  compaction 1.5s  fault 0.9s  overhead 1.5s  = 10.0s")
 
+	t.Run("variant rows are distinguishable", func(t *testing.T) {
+		var b bytes.Buffer
+		printTiming(&b, []Result{{Task: "a", Variant: "v1", DurationMs: 2000, TurnMs: 2000}}, false)
+		assert.StrContains(t, b.String(), "v1/a  turn 2.0s")
+	})
+
 	t.Run("no results", func(t *testing.T) {
 		var quiet bytes.Buffer
 		printTiming(&quiet, nil, false)

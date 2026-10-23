@@ -154,6 +154,17 @@ func meanTiming(rs []Result) (turn, compact, fault float64) {
 	return float64(t) / n / 1000, float64(c) / n / 1000, float64(f) / n / 1000
 }
 
+// runLabel is resultLabel with the variant prefixed, for the sections that list
+// runs outside the main table: without it the rows of two variants look alike
+// (the table itself keeps the plain task name so its single-run output stays
+// byte-identical).
+func runLabel(r Result, repeated bool) string {
+	if r.Variant == "" {
+		return resultLabel(r, repeated)
+	}
+	return r.Variant + "/" + resultLabel(r, repeated)
+}
+
 // secs is a duration in milliseconds as seconds for the reports.
 func secs(ms int64) float64 { return float64(ms) / 1000 }
 
@@ -168,6 +179,6 @@ func printTiming(w io.Writer, rs []Result, repeated bool) {
 	fmt.Fprintln(w, "\ntiming (turn + compaction + overhead = duration; provider faults are inside turns):")
 	for _, r := range rs {
 		fmt.Fprintf(w, "  %s  turn %.1fs  compaction %.1fs  fault %.1fs  overhead %.1fs  = %.1fs\n",
-			resultLabel(r, repeated), secs(r.TurnMs), secs(r.CompactionMs), secs(r.ProviderFaultMs), secs(r.OverheadMs), secs(r.DurationMs))
+			runLabel(r, repeated), secs(r.TurnMs), secs(r.CompactionMs), secs(r.ProviderFaultMs), secs(r.OverheadMs), secs(r.DurationMs))
 	}
 }
