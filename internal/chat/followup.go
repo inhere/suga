@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -24,13 +25,15 @@ const (
 )
 
 const (
-	// queueCmd names the command that shows and clears the queue.
+	// queueCmd names the command that shows and changes the queue.
 	queueCmd = ":queue"
 	// chatQueueEmpty answers :queue (and :queue clear) with nothing queued.
 	chatQueueEmpty = "没有排队的消息"
-	// queueUsageHint answers a :queue line it does not know.
-	queueUsageHint = "用法：:queue（列出排队的消息）/:queue clear（清空）"
 )
+
+// queueUsageHint answers a :queue line it does not know; the text is the :queue
+// entry of the command table (chat_usage.go).
+var queueUsageHint = commandUsageText(queueCmd)
 
 // isQueueCommand recognizes :queue and its arguments.
 func isQueueCommand(line string) bool {
@@ -72,6 +75,21 @@ func (q *followUpQueue) pending() []string {
 	return append([]string(nil), q.lines...)
 }
 
+// remove drops the queued message at index (0-based) and returns it; false means
+// there is no such message.
+func (q *followUpQueue) remove(index int) (string, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if index < 0 || index >= len(q.lines) {
+		return "", false
+	}
+	line := q.lines[index]
+	// The full slice expression caps the capacity at index, so append copies the
+	// tail into a new array and the queue keeps no overlapping view of it.
+	q.lines = append(q.lines[:index:index], q.lines[index+1:]...)
+	return line, true
+}
+
 // clear drops every queued message and reports how many went.
 func (q *followUpQueue) clear() int {
 	q.mu.Lock()
@@ -111,31 +129,64 @@ func (s *chatState) takeFollowUp() (string, bool) {
 	return line, true
 }
 
-// runQueueCommand answers :queue (list what waits) and :queue clear (drop it).
-// It is the one local command a running turn runs itself (steering.go), because
-// the turn is what fills the queue.
+// runQueueCommand answers :queue (list what waits), :queue -d <N> (drop the Nth
+// message) and :queue clear (drop them all). It is the one local command a
+// running turn runs itself (steering.go), because the turn is what fills the
+// queue.
 func (s *chatState) runQueueCommand(line string) {
-	arg := strings.TrimSpace(strings.TrimPrefix(line, queueCmd))
-	switch arg {
-	case "":
-		pending := s.followUps.pending()
-		if len(pending) == 0 {
-			fmt.Fprintln(s.source, chatQueueEmpty)
+	args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, queueCmd)))
+	if len(args) == 0 {
+		s.printQueue()
+		return
+	}
+	switch args[0] {
+	case "clear":
+		if len(args) > 1 {
+			fmt.Fprintln(s.source, queueUsageHint)
 			return
 		}
-		fmt.Fprintf(s.source, "排队的消息（%d 条，本轮结束后按顺序发送）：\n", len(pending))
-		for i, text := range pending {
-			fmt.Fprintf(s.source, "  %d. %s\n", i+1, truncateLine(text, resultSummaryLimit))
-		}
-	case "clear":
 		if n := s.followUps.clear(); n > 0 {
 			fmt.Fprintf(s.source, "已清空 %d 条排队的消息\n", n)
 			return
 		}
 		fmt.Fprintln(s.source, chatQueueEmpty)
+	case "-d":
+		s.dropQueued(args[1:])
 	default:
 		fmt.Fprintln(s.source, queueUsageHint)
 	}
+}
+
+// printQueue lists what waits, oldest first.
+func (s *chatState) printQueue() {
+	pending := s.followUps.pending()
+	if len(pending) == 0 {
+		fmt.Fprintln(s.source, chatQueueEmpty)
+		return
+	}
+	fmt.Fprintf(s.source, "排队的消息（%d 条，本轮结束后按顺序发送）：\n", len(pending))
+	for i, text := range pending {
+		fmt.Fprintf(s.source, "  %d. %s\n", i+1, truncateLine(text, resultSummaryLimit))
+	}
+}
+
+// dropQueued removes the message :queue -d names, counted as :queue lists them.
+func (s *chatState) dropQueued(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(s.source, queueUsageHint)
+		return
+	}
+	n, err := strconv.Atoi(args[0])
+	if err != nil || n < 1 {
+		fmt.Fprintln(s.source, queueUsageHint)
+		return
+	}
+	text, ok := s.followUps.remove(n - 1)
+	if !ok {
+		fmt.Fprintf(s.source, "没有第 %d 条排队的消息（:queue 查看）\n", n)
+		return
+	}
+	fmt.Fprintf(s.source, "已删除第 %d 条排队的消息：%s\n", n, truncateLine(text, resultSummaryLimit))
 }
 
 // setFollowUp installs (or clears, with nil) what Tab on a non-empty line does

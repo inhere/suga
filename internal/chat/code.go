@@ -11,10 +11,13 @@ import (
 const codeCmd = ":code"
 
 const (
-	codeUsageHint    = "用法：:code 展开上一条回答里被折叠的代码块，:code N 展开第 N 个代码块"
 	codeNoneHint     = "上一条回答里没有代码块"
 	codeNoFoldedHint = "上一条回答没有折叠的代码块（chat.code_max_lines: 0 时不折叠）"
 )
+
+// codeUsageHint answers a :code line whose argument does not parse; the text is
+// the :code entry of the command table (chat_usage.go).
+var codeUsageHint = commandUsageText(codeCmd)
 
 // isCodeCommand recognizes the :code command (and its ":code N" form): the
 // answer's code blocks are kept by the markdown renderer, since a long one is

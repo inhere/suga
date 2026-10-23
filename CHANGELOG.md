@@ -17,6 +17,7 @@
 ### 新增
 
 - native（内置）工具按需加载（设计 2026-10-23 0.2，默认关）：新增 `tools.deferred_native: auto | never | [名字…]`（默认 `never`）与 `tools.deferred_apply: segment | immediate`（默认 `segment`，只作用于 native，MCP 行为不变）。配成 `auto` 时 9 个低频工具（`agent`、`file_symbols`、`memory`、`recall`、`session_search`、`session_message`、`skill`、`suga_manifest`、`web_fetch`）不进每次请求的工具表，改由段上下文清单（每个一行用途）加 `tool_search` 发现；命中后记入 `loaded_tools`，段内用常驻的 `tool_call {name, arguments}` 代理调用（换段时再原生入表），审批、只读模式、PreToolUse hook、taint 与 trace 都按真实工具名走。T1 探针（三个真实 provider）确认模型不会调用未声明的工具，因此取代理工具方案。`context` 事件新增 `deferred_native`/`deferred_loaded` 计数，`tool_search` 事件新增 `newly_loaded_kinds`。默认 `never` 时工具表、段上下文与请求字节不变。
+- chat 的每个本地命令都支持 `-h`/`--help` 看用法（中文说明、参数与 1–2 个示例）：`:session`、`:compact`、`:add-dir`、`:dirs`、`:rm-dir`、`:diff`、`:code`、`:image`、`:queue`、`:checkpoints`、`:undo`、`:help`、`:model`、`:usage`、`:tasks`、`:quit`/`:exit`；命令不接受的参数不再被静默忽略，而是打印该命令的用法。用法文本集中到 `internal/chat/chat_usage.go` 的一张表（`:help`、`-h` 与 Tab 补全共用，原 `:tasks` 的用法迁入），`:help` 列出每条命令一句说明并在末尾指向 `:<命令> -h`，`:help <命令>` 打印同一段用法。新增操作选项：`:queue -d <N>` 删除第 N 条排队消息（原有 `:queue clear` 语义不变）、`:checkpoints [N]` 只列最近 N 个回合（不带 N 仍是全部）；`:dirs`/`:session` 等本来没有可加的参数，保持原样。Tab 补全改为读同一张表（各命令的 `-h`、`:queue` 的 `-d`/`clear`、`:help` 的命令名）。
 
 ## [0.47.0] - 2026-10-23
 

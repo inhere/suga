@@ -40,9 +40,6 @@ const (
 	rmDirCmd  = ":rm-dir"
 )
 
-// dirCommandHelp is the usage line printed for a malformed directory command.
-const dirCommandHelp = "用法：:add-dir <绝对路径>[:ro|:rw]（默认 :ro），:dirs 列出目录，:rm-dir <路径> 撤销"
-
 // isDirCommand reports whether line names one of the added-directory commands.
 func isDirCommand(line string) bool {
 	name := line

@@ -3,10 +3,14 @@
 
 This is deliberately falsifiable: removing command dispatch makes the help and
 usage checks fail; removing the terminal guard makes the non-TTY notification
-check fail. The task listing checks cover the default view and the options
-(:tasks -h, -k <id> for an unknown, a running and an ended task); they use the
-same background fake-model path as chat_tasks.py. Run on Linux/macOS through
-``make smoke-chat``; Windows has no PTY equivalent in this suite.
+check fail. The help checks cover :help's one-line hint and per-command usage
+(:session -h, :queue -h, :checkpoints -h, :help :queue) plus the new arguments
+(:queue -d on an empty queue, :checkpoints N); removing the usage table
+(chat_usage.go) or the -h dispatch makes them fail. The task listing checks
+cover the default view and the options (:tasks -h, -k <id> for an unknown, a
+running and an ended task); they use the same background fake-model path as
+chat_tasks.py. Run on Linux/macOS through ``make smoke-chat``; Windows has no
+PTY equivalent in this suite.
 """
 import argparse, os, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +27,13 @@ def main():
     try:
         m=s.mark(); s.until(r"❯ ",m); s.line(":help"); s.check("help usage", s.until(r":usage",m))
         s.check("help tasks", s.until(r":tasks",m))
+        s.check("help points at the per-command usage", s.until(r"查看命令详情",m))
+        m=s.mark(); s.line(":session -h"); s.check("session usage", s.until(r"用法：:session",m))
+        m=s.mark(); s.line(":queue -h"); s.check("queue usage", s.until(r"用法：:queue",m))
+        m=s.mark(); s.line(":checkpoints -h"); s.check("checkpoints usage", s.until(r"用法：:checkpoints",m))
+        m=s.mark(); s.line(":help :queue"); s.check(":help <command> shows the same usage", s.until(r"用法：:queue",m))
+        m=s.mark(); s.line(":queue -d 1"); s.check("queue -d on an empty queue", s.until(r"没有第 1 条排队的消息",m))
+        m=s.mark(); s.line(":checkpoints 3"); s.check("checkpoints takes a count", s.until(r"没有可回滚的快照",m))
         m=s.mark(); s.line(":usage"); s.check("usage line", s.until(r"本次 0 轮",m))
         m=s.mark(); s.line(":tasks"); s.check("empty tasks", s.until(r"没有后台任务",m))
         m=s.mark(); s.line(":tasks -h"); s.check("tasks usage", s.until(r":tasks -k <ID>",m))

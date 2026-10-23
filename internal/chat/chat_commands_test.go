@@ -16,22 +16,16 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 )
 
+// TestChatCommandsText pins the shape of :help: the table of chat_usage.go builds
+// it, the first line is the first command and the last line says where the detail
+// of a command is.
 func TestChatCommandsText(t *testing.T) {
-	assert.Eq(t, `:session 显示会话
-:compact 压缩上下文
-:add-dir/:dirs/:rm-dir 管理附加目录
-:diff [N] 显示文件改动
-:code [N] 展开上一条回答的代码块
-:image <路径|clear> 管理待发图片（附到下一条消息）
-:queue [clear] 列出/清空排队的消息（回合中 Tab 排队，本轮结束后发送）
-:checkpoints 列出写操作快照
-:undo [N] [force] 回滚文件改动
-:help 显示此帮助
-:usage 显示本会话用量与成本
-:tasks [-a|-k <ID>] 后台任务：运行中+最近结束（-a 全部，-k 终止）
-:quit/:exit 退出
-!<命令> 本地执行；!!<命令> 执行并附给下一条消息
-按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Tab 补全命令（回合中 Tab 把该行排到本轮结束后发送）；Alt+V 贴剪贴板图片；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`, BuildChatHelp())
+	help := BuildChatHelp()
+	assert.Eq(t, chatHelpText, help)
+	lines := strings.Split(help, "\n")
+	assert.Eq(t, ":session 显示会话", lines[0])
+	assert.Eq(t, chatHelpHint, lines[len(lines)-1])
+	assert.StrContains(t, help, "按键：Enter/Alt+Enter/Ctrl+J 提交/换行")
 }
 
 func TestChatUsageAndTasks(t *testing.T) {

@@ -45,6 +45,7 @@
 | `chat_tool_lines.py` | 工具调用行按工具定制显示：假模型（`display` 模式）一轮里返回 `file_read target.txt`（offset/limit）、两行 `shell_exec`、`update_plan`；检查终端上是 `⏺ file_read target.txt:1-2`、`⏺ shell_exec echo SMOKE_DISPLAY …`（只显首行）与未定制工具的 JSON 回退，`suga inspect trace --json` 仍保留调用参数摘要（显示层改动不影响记录）；同时检查 banner 不再列出 `:add-dir`、`:checkpoints`、`:undo` 而 `:help` 仍然列出；反向验证见脚本 docstring |
 | `chat_session_message.py` | 会话之间互发消息（`session_message` 工具、两个 chat 共用一个 SUGA_HOME）：A 的模型 `send` 给 B，B 自动开一轮并回信，A 再回……第 3 跳（默认 `tools.session_message.max_hops`）到 B 时不再开一轮，B 只显示 `来自会话 <A> 的消息已排队（连续自动回复已达上限…）`，两个会话的回合数与模型请求数都有上限（超时兜底，循环停不下来会判失败）；消息以 `[来自会话 <短名称>（<会话 ID>）的消息] ` 进入对方用户消息；反向验证见脚本 docstring。**本机无 pty，未运行，待在 Linux 容器验证** |
 | `preferred_tools.py` | 配置优先 command/MCP，检查 manifest 的 found/missing/configured reason、chat 环境过滤、`tools.deferred: always` 下 preferred MCP 直显且仍需审批，以及 trace 只记录名字；反向验证见脚本 docstring |
+| `chat_commands.py` | 本地命令与终端通知：`:help` 列全部命令并在末尾指向 `:<命令> -h`，`:session -h`/`:queue -h`/`:checkpoints -h` 各打印用法，`:help :queue` 打印同一段用法，`:queue -d 1`（空队列）与 `:checkpoints 3`/`:tasks -h`/`:tasks -x` 的处理，`:usage` 与 `:tasks` 默认视图；一轮后台任务结束时响铃（非 TTY 不响）。反向验证：去掉 `chat_usage.go` 的命令表或 `-h` 分发，用法相关检查失败。**本机无 pty，本次未运行，待在 Linux 容器验证** |
 
 运行：
 

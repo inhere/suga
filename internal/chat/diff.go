@@ -13,11 +13,14 @@ import (
 const diffCmd = ":diff"
 
 const (
-	diffUsageHint    = "用法：:diff 查看本会话最近一次文件改动，:diff N 查看第 N 次"
 	diffNoneHint     = "本次会话还没有文件改动"
 	diffDisabledHint = "文件改动的 diff 已显示关闭（chat.diff: false）"
 	defaultDiffLines = 20
 )
+
+// diffUsageHint answers a :diff line whose argument does not parse; the text is
+// the :diff entry of the command table (chat_usage.go).
+var diffUsageHint = commandUsageText(diffCmd)
 
 func isDiffCommand(line string) bool { return line == diffCmd || strings.HasPrefix(line, diffCmd+" ") }
 

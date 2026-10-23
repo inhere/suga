@@ -19,29 +19,8 @@ const tasksCmd = ":tasks"
 const chatTasksRecent = 10
 
 const (
-	chatHelpText = `:session 显示会话
-:compact 压缩上下文
-:add-dir/:dirs/:rm-dir 管理附加目录
-:diff [N] 显示文件改动
-:code [N] 展开上一条回答的代码块
-:image <路径|clear> 管理待发图片（附到下一条消息）
-:queue [clear] 列出/清空排队的消息（回合中 Tab 排队，本轮结束后发送）
-:checkpoints 列出写操作快照
-:undo [N] [force] 回滚文件改动
-:help 显示此帮助
-:usage 显示本会话用量与成本
-:tasks [-a|-k <ID>] 后台任务：运行中+最近结束（-a 全部，-k 终止）
-:quit/:exit 退出
-!<命令> 本地执行；!!<命令> 执行并附给下一条消息
-按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Tab 补全命令（回合中 Tab 把该行排到本轮结束后发送）；Alt+V 贴剪贴板图片；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`
 	chatUsageHint  = ":usage 用量：本次 %d 轮 · 输入 %d / 输出 %d · 缓存读 %d / 写 %d · 成本 $%.6f；会话累计输入 %d / 输出 %d · 成本 $%.6f"
 	chatTasksEmpty = "没有后台任务"
-	chatTasksUsage = `用法：:tasks [选项]
-  :tasks          列出运行中的任务和最近 10 条已结束任务
-  :tasks -a       列出全部任务（含已结束的）
-  :tasks -k <ID>  终止后台任务，可写多个：:tasks -k t3 t4
-  :tasks -h       显示此帮助
-示例：:tasks -k t2`
 )
 
 // BuildChatHelp returns the complete local-command and keyboard help text.
@@ -131,7 +110,7 @@ func (s *chatState) runTasksCommand(line string) {
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
 		case "-h", "--help":
-			fmt.Fprintln(s.source, chatTasksUsage)
+			fmt.Fprintln(s.source, commandUsageText(tasksCmd))
 			return
 		case "-a":
 			showAll = true
@@ -141,7 +120,7 @@ func (s *chatState) runTasksCommand(line string) {
 			i = len(args)
 		default:
 			fmt.Fprintln(s.source, "未知参数："+arg)
-			fmt.Fprintln(s.source, chatTasksUsage)
+			fmt.Fprintln(s.source, commandUsageText(tasksCmd))
 			return
 		}
 	}
@@ -317,9 +296,16 @@ func displayThinking(level string) string {
 
 // runChatCommand handles commands typed at this terminal. The caller checks injected first.
 func (s *chatState) runChatCommand(line string) bool {
+	// A help ask (":queue -h", ":queue --help") is answered from the table of
+	// chat_usage.go before the command itself looks at its line.
+	if reply := commandUsageReply(line, s.dirs != nil); reply != "" {
+		fmt.Fprintln(s.source, reply)
+		return true
+	}
 	switch {
-	case line == ":help":
-		fmt.Fprintln(s.source, BuildChatHelp())
+	case line == ":help" || strings.HasPrefix(line, ":help "):
+		// :help alone lists every command, :help <命令> shows one command's usage.
+		fmt.Fprintln(s.source, chatHelpFor(strings.TrimPrefix(line, ":help")))
 	case isModelCommand(line) && !isCheckpointCommand(line) && !isUndoCommand(line):
 		arg := strings.TrimSpace(strings.TrimPrefix(line, ":model"))
 		if arg == "" {
@@ -362,11 +348,8 @@ func (s *chatState) runChatCommand(line string) bool {
 	case isTasksCommand(line):
 		s.runTasksCommand(line)
 	case isCheckpointCommand(line):
-		if strings.TrimSpace(line) != checkpointsCmd {
-			fmt.Fprintln(s.source, "用法：:checkpoints")
-		} else {
-			s.runCheckpoints()
-		}
+		// :checkpoints [N]: N keeps the listing to the last N turns.
+		s.runCheckpoints(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), checkpointsCmd)))
 	case isUndoCommand(line):
 		command, ok := parseUndoCommand(line)
 		if !ok {
