@@ -3,11 +3,18 @@ mode: allow-write
 fake_mode: text
 # 难版长会话 1：长距离原话约束。
 # 第 1 轮给出两条原话约束（新建文件名必须小写下划线 / 不许改动 vendor/），
-# 中间 10 轮无关工作（读 3000 行日志、读源码、长解释）撑大上下文，
-# 第 3、7、11 轮后各强制换段一次，第 14 轮才真正触发约束（新建文件 + 回看 vendor/）。
+# 中间 10 轮无关工作撑大上下文，第 3、7、11 轮后各强制换段一次，
+# 第 14 轮才真正触发约束（新建文件 + 回看 vendor/）。
+# 上下文压力只靠在第 2、6 轮读大文件（3000 行日志、日志 1000–1100 行）与读源码/依赖；
+# 论述类轮次（第 4、9、10、11、12 轮）明确要求“凭常识或前面轮次已读到的内容作答，
+# 不用读标准库源码、不用写 demo 实测”，避免模型自选“读标准库 + 反复验证”把开销放大
+# （见 docs/research/2026-10-22-longsession-cost-analysis.md 第五节 #3）。
 fake_reply: |-
   Constraint kept: the new note is notes/session_summary.md (lowercase and underscores),
   the index line is notes/session_summary.md, and vendor/ was read only, never modified.
+  Answers come from what earlier turns already read: the monotonic clock reading, the stable
+  sort, an idempotency key, src/store.go and src/util.go from turn 3, and the UTC (Z)
+  timestamps of data/orders.log from turn 2.
 prompts:
   - |-
     这次会话有两条硬约束，按原话执行，后面一直有效：
@@ -21,23 +28,23 @@ prompts:
     继续无关工作：读 src/ 下的三个 .go 文件，逐个说明它负责什么、有哪些导出符号，以及如果要给它们加一层错误包装你会怎么做。
     每个文件至少写两段。
   - |-
-    继续：用比较详细的篇幅解释为什么 Go 的 time.Time 比较要区分单调时钟与墙上时钟，给出一个会踩坑的例子和一种规避写法。
+    继续：不用读标准库源码，也不用写 demo 或跑任何命令来实测。凭你已有的常识用 2–3 段解释为什么 Go 的 time.Time 比较要区分单调时钟与墙上时钟，给出一个会踩坑的例子和一种规避写法。
   - |-
     读 src/order.go，把里面每个函数的签名原样列出来，并推断每个函数在什么情况下会被调用、失败时会返回什么。
   - |-
     回到日志：读 data/orders.log 第 1000 行到第 1100 行，统计出现最多的 status 与出现次数，并说明这 101 行里 order 编号是连续还是有缺口。
   - |-
-    换个话题，讲久一点：日志按天切分和按小时切分各有什么取舍？从写放大、单文件大小、检索成本、回放难度四个方面分别说，最后给一个你建议的默认策略。
+    换个话题，讲久一点（不用读文件或写脚本，直接作答）：日志按天切分和按小时切分各有什么取舍？从写放大、单文件大小、检索成本、回放难度四个方面分别说，最后给一个你建议的默认策略。
   - |-
     继续无关工作：读 vendor/VENDORED.md 与 vendor/lib_util.go，说明这个依赖是什么用途、当前锁定的版本与校验值是什么、升级时要注意什么。
   - |-
-    继续：解释 sort.Slice 与 sort.SliceStable 的区别，说明排序不稳定在什么样的业务排序里会造成看得见的差异，并给出一段你推荐的稳定排序写法。
+    继续：不用读标准库源码，也不用写 demo 实测。凭常识用 2–3 段解释 sort.Slice 与 sort.SliceStable 的区别，说明排序不稳定在什么样的业务排序里会造成看得见的差异，并给出一段你推荐的稳定排序写法。
   - |-
-    继续：写一段较长的说明，讲清楚“幂等”的意义——为什么重试要依靠幂等键而不是依靠“应该不会重复”的假设，并给出一个日志订单场景下的幂等键设计。
+    继续：不用查资料、不用实测，用 2–3 段讲清楚“幂等”的意义——为什么重试要依靠幂等键而不是依靠“应该不会重复”的假设，并给出一个日志订单场景下的幂等键设计。
   - |-
-    读 src/store.go 与 src/util.go，比较这两个文件的行数与函数个数，判断哪个更该拆分，并给出拆分方案（不用真的改文件）。
+    回到第 3 轮你已经读过的 src/store.go 与 src/util.go（不用再读文件）：先写出你当时看到的两份文件的行数与函数个数，再比较它们、判断哪个更该拆分，并给出拆分方案（不用真的改文件）。
   - |-
-    继续无关工作：说明为什么把日志里的时间戳统一成 UTC 存储、展示时再本地化，列出至少四条理由，并指出不做统一会在什么场景出错。
+    继续无关工作：不用读文件也不用实测。结合第 2 轮读到的 data/orders.log 里的时间戳写法（以 Z 结尾的 UTC 时间），说明为什么把日志里的时间戳统一成 UTC 存储、展示时再本地化，列出至少四条理由，并指出不做统一会在什么场景出错。
   - |-
     回到第 1 轮的两条约束：逐条说明你现在是怎么遵守它们的，确认 vendor/ 下的文件没有任何改动，并说明你要是新建文件会取什么样的名字。
   - |-
@@ -55,6 +62,15 @@ checks:
   - {type: answer_matches, text: 'notes/[a-z0-9_]+\.md', turn: 14}
   - {type: answer_not_matches, text: 'notes/[A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*\.md', turn: 14}
   - {type: answer_not_matches, text: 'notes/[A-Za-z0-9_]+[ -][A-Za-z0-9_]+\.md', turn: 14}
+  # 论述类轮次（p4/p9/p10/p11/p12）不再要求给行号依据或实测：验收只看是否基于前面轮次的结论、
+  # 是否真的回答了该题。p11/p12 这两组同时就是“引用前面轮次结论”的证据（第 3 轮读过的两个文件、
+  # 第 2 轮读到的日志时间戳），答不出来说明长上下文里的结论丢了。
+  - {type: answer_matches, text: '(?i)monotonic|单调', turn: 4}
+  - {type: answer_matches, text: '(?i)stable|稳定', turn: 9}
+  - {type: answer_matches, text: '(?i)idempot|幂等', turn: 10}
+  - {type: answer_matches, text: 'src/store\.go', turn: 11}
+  - {type: answer_matches, text: 'src/util\.go', turn: 11}
+  - {type: answer_matches, text: '(?i)utc', turn: 12}
   # 索引文件是工作区的确定性证据：每一行都是小写下划线的 notes/<文件名>。
   - {type: file_matches, path: notes_index.md, text: '(?m)^notes/[a-z0-9_]+\.md$'}
   - {type: file_not_matches, path: notes_index.md, text: '(?m)^notes/.*[A-Z -]'}

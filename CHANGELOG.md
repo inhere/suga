@@ -15,6 +15,10 @@
 - 输出契约（一期，设计 2026-10-22）：`suga run --output-schema <文件|内联 JSON|->` 与 `pkg/sugasdk` 的 `Prompt.OutputSchema` 让最终答复要么是符合调用方 JSON Schema 的 JSON 值，要么以明确失败结束。取值判定固定为 `-`（stdin，只读一次）→ 以 `{`/`[` 开头为内联 JSON → 其余为文件路径；schema 在创建会话前编译，语法错、顶层非对象/布尔、超 32 KiB、外部 `$ref`、未知 `$schema` 都是用法错误（退出码 2，不建会话）。schema 只出现在本次请求末尾的临时上下文（`personal.RunRequest.EphemeralContext`：不落库、resume 不继承、不改系统提示词与工具 schema）；判定是流水线最后一步（Run → 后台任务 → nudge → `--verify` → 契约），不合格只纠正一次（injected 新回合，纠正消息只含校验错误），两次都不合格时 text 模式 stdout 仍是答复原文、stderr 一行 `[output schema] …`、退出码 6。回答提取顺序固定（整段 → 围栏块，```` ```json ```` 优先、从后往前 → 平衡括号子串，从后往前），`value` 是被采纳片段的原文经 `json.Compact`，大整数保真（`{"id":9007199254740993}` 原样返回）。`--output-format stream-json` 的 result 行新增 `output_schema`（`checked`/`passed`/`rounds`/`source`/`errors`/`value`，不判定时 `checked:false` + `reason`）；SDK 侧通过时 `Result.OutputValue` 有值，失败时 `errors.Is(err, sugasdk.ErrOutputContract)` 且 `Result.OutputContract.Passed=false`（`State` 仍为 `COMPLETED`），非法 schema 在跑回合前返回 `ErrInvalidOutputSchema`。trace 新增 `output_schema` 事件（round、action、passed、source、errors ≤5、schema_sha256 前 12 位、schema_bytes，不含 schema 全文）。不传契约时 stdout、stream-json 行、trace 与提示词投影逐字节不变；`suga chat` 拒绝该参数。依赖新增 `github.com/santhosh-tekuri/jsonschema/v6 v6.0.2`。
 - `suga memory lint [--scope user|project] [--json]`：只读列出重复/可能冲突/可能过期的记忆候选，不改任何记忆、不调用模型、有候选时退出码仍为 0。重复按规范化文本（大小写、空白、标点）完全相同或 token 集合 Jaccard ≥ 0.70 判定；冲突是同一标题下正文不同；过期是超过 365 天未更新（记忆没有过期字段，只是提示）。每条候选给出记忆 ID、判定依据与建议动作（合并/人工确认），不执行。为控制开销，按规范化文本分组并用 4 段 MinHash 分桶后再比较（1 万条扫描约 27ms），不能枚举条目的后端（gofer、exec）只比较标题与索引摘要。`--json` 结构写入 README 的 “Memory” 一节。
 
+### 变更
+
+- 难版长会话评测 `longsession-hard-naming-rules` 去掉任务自带的“自选验证”诱因（依据 `docs/research/2026-10-22-longsession-cost-analysis.md` 第五节 #3）：论述类轮次（第 4、9、10、11、12 轮）不再要求“给行号依据”或长篇证明，明确写成“凭常识或前面轮次已读到的内容作答，不用读标准库源码、不用写 demo 实测”，其中第 11 轮要回到第 3 轮读过的 `src/store.go`/`src/util.go`、第 12 轮要结合第 2 轮日志里的 UTC 时间戳，这些结论答不出来即判 FAIL；读大文件的第 2、6 轮与第 1、13、14 轮的两条原话约束检查原样保留。`--fake` 下的管线与逐轮判定照旧（仅缺少 `notes/` 文件时第 14 轮文件检查 FAIL，与其他难版任务一致）。
+
 ## [0.45.1] - 2026-10-22
 
 修复 Windows 上快照清理与并发写入相撞时失败。
