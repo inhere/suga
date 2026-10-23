@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -97,6 +98,41 @@ func TestLongSessionHardTasksLoad(t *testing.T) {
 		assert.True(t, kinds["file_not_matches"])
 		assert.True(t, kinds["answer_not_matches"])
 	})
+}
+
+// TestNamingTaskKeepsItsCostShape guards the design of the naming task after it
+// was slimmed down (suga-1145): the discussion turns must ask for an answer from
+// what earlier turns already read instead of demanding measurements or standard
+// library sources, each of them is still judged on its own turn, and the two
+// turns that read the big generated log stay in place to keep the context
+// growing (docs/research/2026-10-22-longsession-cost-analysis.md, section 5 #3).
+func TestNamingTaskKeepsItsCostShape(t *testing.T) {
+	task, err := loadTask(filepath.Join("testdata", "tasks", "longsession-hard-naming-rules"))
+	assert.NoErr(t, err)
+	turns := task.Turns()
+	assert.Eq(t, 14, len(turns))
+	assert.Eq(t, []int{3, 7, 11}, task.CompactAfter)
+
+	judged := map[int]int{}
+	for _, c := range task.Checks {
+		judged[c.Turn]++
+	}
+	// The constraint checks stay on the first and the last turns, and the
+	// discussion turns are each judged where they happen.
+	for _, turn := range []int{1, 4, 9, 10, 11, 12, 13, 14} {
+		assert.True(t, judged[turn] > 0, fmt.Sprintf("turn %d carries no check", turn))
+	}
+
+	// The discussion turns must not send the model off to read sources or run
+	// demos; the prompts say so explicitly.
+	for _, turn := range []int{4, 9, 10, 11, 12} {
+		p := turns[turn-1]
+		assert.True(t, strings.Contains(p, "不用"), fmt.Sprintf("turn %d asks for work that can be measured again: %s", turn, p))
+	}
+	// Context pressure stays on the big generated log (turns 2 and 6).
+	for _, turn := range []int{2, 6} {
+		assert.StrContains(t, turns[turn-1], "data/orders.log")
+	}
 }
 
 // TestHardTaskFixturesMatchTheirFileChecks covers the hand-copied fixtures: the
