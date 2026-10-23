@@ -164,6 +164,58 @@ func TestTerminal_ReadLineNoHistory(t *testing.T) {
 	assert.Eq(t, 1, historyLen(tm))
 }
 
+// TestTerminal_FreshReadRepaintsTheFormerQuestionPrompt: a fresh read whose block
+// is still drawn from an earlier one repaints it in place with its own prompt when
+// the two differ (issue suga-9ew7): a question ends the read it borrowed, chat's
+// next prompt read then starts with no read holding the block, and without the
+// repaint the row kept the drawn steer prompt and the question's width.
+func TestTerminal_FreshReadRepaintsTheFormerQuestionPrompt(t *testing.T) {
+	t.Run("a stale block is repainted with the coming read's prompt", func(t *testing.T) {
+		tm, mem := newMem("", 0)
+		// A question drew its prompt over the block (ask.go) and was answered;
+		// endAsk repainted the turn's steer prompt in place, with no read holding
+		// the block any more.
+		assert.NoErr(t, tm.UpdatePrompt("写入记忆？[y]/[N]："))
+		mem.in = append(mem.in, "y\r")
+		line, err := tm.ReadLineNoHistory()
+		assert.NoErr(t, err)
+		assert.Eq(t, "y", line)
+		assert.NoErr(t, tm.UpdatePrompt("↳ "))
+
+		// The read chat starts when the turn is over: the block on screen shows the
+		// steer prompt, the coming read's prompt is the terminal's own.
+		before := mem.out.Len()
+		tm.SetPrompt("❯ ")
+		mem.in = append(mem.in, "abc\r")
+		line, err = tm.ReadLine()
+		assert.NoErr(t, err)
+		assert.Eq(t, "abc", line)
+		repaint := mem.out.String()[before:]
+		// The row was repainted in place: the stale block cleared, the new prompt
+		// drawn before anything else is echoed onto it.
+		assert.StrContains(t, repaint, "\x1b[K")
+		assert.False(t, strings.Contains(repaint, "↳"))
+		assert.True(t, strings.Contains(repaint, "❯ "), "repaint = %q", repaint)
+		assert.True(t, strings.Index(repaint, "❯ ") < strings.Index(repaint, "abc"),
+			"repaint = %q", repaint)
+	})
+
+	t.Run("a continuing prompt is not painted twice", func(t *testing.T) {
+		tm, mem := newMem("> ", 0)
+		// Chat's request() already repainted the read it continues (UpdatePrompt
+		// paints the block), so the read that picks it up adds nothing.
+		assert.NoErr(t, tm.UpdatePrompt("↳ "))
+		before := mem.out.Len()
+		tm.SetPrompt("↳ ")
+		mem.in = append(mem.in, "hi\r")
+		line, err := tm.ReadLine()
+		assert.NoErr(t, err)
+		assert.Eq(t, "hi", line)
+		seg := mem.out.String()[before:]
+		assert.False(t, strings.Contains(seg, "↳"), "seg = %q", seg)
+	})
+}
+
 func TestTerminal_AbortLine(t *testing.T) {
 	t.Run("ctrl-c is consumed and the next read starts clean", func(t *testing.T) {
 		tm, mem := newMem("? ", 0)
