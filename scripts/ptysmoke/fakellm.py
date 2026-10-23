@@ -263,6 +263,11 @@ def make_handler(args):
                               # a smoke asserts what file_read answered (a picture note).
                               "tool_text": next((str(m.get("content") or "")[:300] for m in reversed(body["messages"])
                                                  if m.get("role") == "tool"), ""),
+                              # The deferred-tool listing of the segment context
+                              # (the text after "延迟加载的工具", 600 chars): "seen"
+                              # keeps only 40 chars per message.
+                              "deferred": next((str(m.get("content") or "")[str(m.get("content") or "").find("延迟加载的工具"):][:600]
+                                                for m in body["messages"] if "延迟加载的工具" in str(m.get("content") or "")), ""),
                               # The "Preferred tool:" lines of the environment the
                               # model was sent (it never reaches the terminal).
                               "preferred": [line.strip() for m in body["messages"]
@@ -364,7 +369,10 @@ def make_handler(args):
             deferred_calls = [("tool_search", {"query": "select:memory"}),
                               ("tool_call", {"name": "memory",
                                              "arguments": {"action": "search", "query": "smoke"}})]
-            if args.mode == "deferred" and step < len(deferred_calls):
+            # A request without tools (the compaction summary call) is answered
+            # with text: a tool call there leaves the summary empty and the
+            # segment break fails.
+            if args.mode == "deferred" and step < len(deferred_calls) and body.get("tools"):
                 name, arguments = deferred_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}

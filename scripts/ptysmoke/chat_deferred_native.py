@@ -91,12 +91,15 @@ def trace_events(binary, env, session):
 
 
 def check_requests(s, requests):
-    first = requests[0] if requests else {}
+    # The log starts with fakellm's {"listening": port} line: the first request
+    # is the first entry with a path.
+    reqs = [r for r in requests if r.get("path")]
+    first = reqs[0] if reqs else {}
     tools = first.get("tools") or []
     s.check("request 1: memory is not in the tool table", "memory" not in tools)
     s.check("request 1: tool_search is registered", "tool_search" in tools)
     s.check("request 1: tool_call is registered", "tool_call" in tools)
-    seen = " ".join(str(x) for x in (first.get("seen") or [])) + " " + str(first.get("user") or "")
+    seen = str(first.get("deferred") or "")
     s.check("request 1: segment context lists the deferred tools", "延迟加载的工具" in seen)
     s.check("request 1: memory is listed with its purpose", "- memory —" in seen)
 
@@ -155,7 +158,16 @@ def main():
                             stdout=log_file, text=True)
     s = None
     try:
-        wait_port(fake)
+        # fakellm writes {"listening": port} to the log file (stdout goes there,
+        # not to a pipe), so wait for that line in the file.
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            with open(log_path, encoding="utf-8") as f:
+                if '"listening"' in f.read():
+                    break
+            time.sleep(0.1)
+        else:
+            raise SystemExit("fake model did not start")
         s = PtySession([binary, "chat"], env=env, cwd=ws)
         session = scenario(s)
         s.close()
