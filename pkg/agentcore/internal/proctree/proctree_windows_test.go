@@ -19,9 +19,12 @@ import (
 
 // childPIDFile polls until the launcher wrote the pid of the spawned child and
 // returns it; the child is a ping that would run on its own for minutes.
-func childPIDFile(t *testing.T, path string) uint32 {
+func childPIDFile(t *testing.T, path string, out *bytes.Buffer) uint32 {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	// A cold PowerShell on a CI runner can take well over 15 s to start
+	// (v0.46.0 windows-latest), so the wait is generous; the launcher's output
+	// is printed when it never writes the pid.
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(path); err == nil {
 			var pid uint32
@@ -31,7 +34,7 @@ func childPIDFile(t *testing.T, path string) uint32 {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatal("the launcher never wrote the child pid")
+	t.Fatalf("the launcher never wrote the child pid; its output:\n%s", out.String())
 	return 0
 }
 
@@ -97,7 +100,7 @@ func TestWindowsJobKillsSpawnedChild(t *testing.T) {
 		tree := New(cmd)
 		assert.Require(t, assert.NoError(t, cmd.Start()), "start")
 		assert.Require(t, assert.NoError(t, tree.Started()), "assign the shell to the job")
-		pid := childPIDFile(t, pidfile)
+		pid := childPIDFile(t, pidfile, &out)
 		time.Sleep(300 * time.Millisecond) // the child is up and running now
 		assert.NoError(t, tree.Kill(), "kill the tree")
 		_ = cmd.Wait()
