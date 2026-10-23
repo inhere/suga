@@ -13,6 +13,17 @@ cleanly (resume line), the interrupted turn reads 已中断本轮 (never the raw
 background: the agent call has background: true; the turn ends at once and
 the sub-agent's end wakes the idle chat with a notice holding its report.
 
+error: the sub-agent's model call fails for good (--child-fail): the status
+line must stop counting it when its error result comes back (a failed child has
+no summary), so the waiting line reads 思考中… again.
+
+cancel-status: Ctrl-C during a slow sub-agent ends the turn; the next turn's
+status line must not count the cancelled sub-agent (no tool result ever came).
+
+kill-status: a running background agent is killed with :tasks -k; the status
+line counts a background agent by its task, so the next turn must not show it
+either.
+
   python3 -I scripts/ptysmoke/chat_agent.py --bin tmp/smoke/suga
 
 Exit status 0 when every check passes. --agents-off is the reverse check
@@ -132,6 +143,72 @@ def background_scenario(s):
     exit_chat(s)
 
 
+# NOTE: the waiting line ("子 agent：N 个运行中") is drawn by the spinner, which is
+# off under NO_COLOR - and the smokes run with NO_COLOR=1. The "no running
+# count" checks below can therefore never see a stale label; they guard the
+# turn flow only. The label's lifecycle is covered by the unit test
+# TestRendererAgentStatusLifecycle (internal/chat/render_test.go), which fails
+# when EndTurnAgents does nothing (reverse-checked 2026-10-23).
+def error_scenario(s):
+    """A sub-agent that fails for good: its entry ends with the error result, so
+    the waiting line goes back to 思考中… (it used to keep 子 agent：1 个运行中)."""
+    m = s.mark()
+    s.check("error: ❯ prompt", s.until(r"❯ ", m))
+    m = s.mark(); s.line("调研一下")
+    s.check("error: agent call shown", s.until(r"⏺ agent", m))
+    s.check("error: failed sub-agent result", s.until(r"⎿ error: sub-agent failed", m, timeout=20))
+    # The model is asked again after the result: its waiting line must no longer
+    # count the failed sub-agent. Without the cleanup the label stays
+    # "子 agent：1 个运行中（smoke survey 0 次调用）" and this never appears.
+    # The failed call still gets its one summary line; what must not happen is
+    # the running count staying on the status line after the result.
+    r = s.mark()
+    s.check("error: turn ends", s.until(r"tokens · ", m, timeout=20))
+    s.check("error: no running count after the result", not s.contains(r"子 agent：\d+ 个运行中", r))
+    exit_chat(s)
+
+
+def cancel_status_scenario(s):
+    """Ctrl-C during a slow sub-agent: the next turn's status line starts clean."""
+    m = s.mark()
+    s.check("cancel-status: ❯ prompt", s.until(r"❯ ", m))
+    m = s.mark(); s.line("调研一下")
+    s.check("cancel-status: sub-agent at work", s.until(r"  · file_grep", m))
+    m = s.mark(); s.send(CTRL_C)
+    s.check("cancel-status: turn interrupted", s.until(r"已中断本轮", m, timeout=15))
+    s.check("cancel-status: chat takes the next line", s.until(r"❯ ", m, timeout=15))
+    # A plain turn (no 调研 in the message: the fake answers with text): its
+    # waiting line must not count the cancelled sub-agent.
+    m = s.mark(); s.line("你好")
+    s.check("cancel-status: no stale sub-agent count", not s.contains(r"子 agent：", m))
+    s.check("cancel-status: turn ends", s.until(r"tokens · ", m, timeout=20))
+    exit_chat(s)
+
+
+def kill_status_scenario(s):
+    """A killed background agent leaves the status line by its task, not by a
+    notice (Kill suppresses that notice)."""
+    m = s.mark()
+    s.check("kill-status: ❯ prompt", s.until(r"❯ ", m))
+    m = s.mark(); s.line("后台调研")
+    s.check("kill-status: task started", s.until(r"background agent task t1 started", m))
+    s.check("kill-status: turn ends", s.until(r"tokens · ", m, timeout=20))
+    m = s.mark(); s.line(":tasks")
+    s.check("kill-status: task listed as running", s.until(r"t1 · running", m))
+    m = s.mark(); s.line(":tasks -k t1")
+    s.check("kill-status: killed", s.until(r"已终止任务 t1：", m))
+    m = s.mark(); s.line(":tasks")
+    s.check("kill-status: task listed as killed", s.until(r"t1 · killed", m))
+    m = s.mark(); s.line(":tasks -k t1")
+    s.check("kill-status: killing it again says it ended", s.until(r"任务 t1 已结束（killed），无需终止", m))
+    # The sub-agent is gone from the manager: the next turn's waiting line must
+    # not count it (the old code kept the entry until a notice that never comes).
+    m = s.mark(); s.line("你好")
+    s.check("kill-status: no stale sub-agent count", not s.contains(r"子 agent：", m))
+    s.check("kill-status: turn ends", s.until(r"tokens · ", m, timeout=20))
+    exit_chat(s)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", default="tmp/smoke/suga", help="suga binary to test")
@@ -154,6 +231,12 @@ def main():
         ("cancel-off", ["--child-delay", "30"], "chat:\n  agent_progress: full\n  steering: false\n",
          lambda s, env: cancel_scenario(s, binary, env, label="cancel-off", steering=False)),
         ("background", ["--background"], "", lambda s, env: background_scenario(s)),
+        ("error", ["--agent-when", "调研", "--child-fail", "--delay", "0.4"], "", lambda s, env: error_scenario(s)),
+        ("cancel-status", ["--child-delay", "30", "--agent-when", "调研", "--delay", "0.5"],
+         "chat:\n  agent_progress: full\n", lambda s, env: cancel_status_scenario(s)),
+        # --child-delay keeps the sub-agent running, so :tasks has a task to kill.
+        ("kill-status", ["--background", "--agent-when", "调研", "--child-delay", "30", "--delay", "0.5"], "",
+         lambda s, env: kill_status_scenario(s)),
     ]
     try:
         for name, fake_args, extra, run in scenarios:

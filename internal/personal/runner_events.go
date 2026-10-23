@@ -44,7 +44,8 @@ func (h toolEventHook) BeforeTool(ctx context.Context, event *agentcore.ToolEven
 	if event == nil || event.Call == nil {
 		return nil
 	}
-	call := Event{Kind: "tool_call", ToolName: event.Call.Name, Text: toolArgSummary(event.Call.Arguments), ToolArgs: event.Call.Arguments}
+	call := Event{Kind: "tool_call", ToolName: event.Call.Name, CallID: event.Call.CallID,
+		Text: toolArgSummary(event.Call.Arguments), ToolArgs: event.Call.Arguments}
 	if h.diffPreview {
 		if change, ok := diffview.Call(h.workspace, event.Call.Name, event.Call.Arguments); ok {
 			call.Change = change
@@ -58,7 +59,8 @@ func (h toolEventHook) AfterTool(ctx context.Context, event *agentcore.ToolEvent
 	if event == nil || event.Result == nil {
 		return nil
 	}
-	resultEvent := Event{Kind: "tool_result", ToolName: event.Result.Name, Text: event.Result.Content, IsError: event.Result.IsError}
+	resultEvent := Event{Kind: "tool_result", ToolName: event.Result.Name, CallID: event.Result.CallID,
+		Text: event.Result.Content, IsError: event.Result.IsError}
 	if event.Result.Name == "agent" {
 		resultEvent.AgentSummary = agentSummary(event.Result.Metadata)
 	}
@@ -74,10 +76,11 @@ func agentSummary(metadata map[string]any) *AgentSummary {
 	calls := metadataInt(metadata["tool_calls"])
 	duration := time.Duration(metadataInt64(metadata["duration_ms"])) * time.Millisecond
 	background, _ := metadata["background"].(bool)
+	taskID, _ := metadata["task_id"].(string)
 	if description == "" && calls == 0 && duration == 0 && !background {
 		return nil
 	}
-	return &AgentSummary{Description: description, ToolCalls: calls, Duration: duration, Background: background}
+	return &AgentSummary{Description: description, ToolCalls: calls, Duration: duration, Background: background, TaskID: taskID}
 }
 
 func metadataInt(value any) int {

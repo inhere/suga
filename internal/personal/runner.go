@@ -227,6 +227,10 @@ type AgentSummary struct {
 	ToolCalls   int
 	Duration    time.Duration
 	Background  bool
+	// TaskID is the background task a background agent runs as (empty for a
+	// foreground run): chat ties the status line's entry to that task, so the
+	// manager - not a delivered notice - decides when the entry is gone.
+	TaskID string
 }
 
 // Event is one transport-neutral lifecycle or model-stream update.
@@ -237,6 +241,12 @@ type Event struct {
 	RunID     string
 	Text      string
 	ToolName  string
+	// CallID names the tool call a "tool_call", its "tool_result" and the
+	// "agent_progress" events of the sub-agent it started (the call's id from the
+	// model, e.g. call_abc): chat tracks a running sub-agent by it, so two agents
+	// with the same description cannot share an entry. Empty when the producer
+	// does not know it.
+	CallID string `json:"-"`
 	// ToolArgs is set on "tool_call" and "agent_progress" events: the call's
 	// whole arguments, for chat's one-line summary of the call (Text carries
 	// them as JSON cut at toolArgSummaryLimit, too short to decode a long shell

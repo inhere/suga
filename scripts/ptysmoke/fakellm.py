@@ -227,6 +227,14 @@ def loop_plan(args):
     return [("file_read", {"path": "loop_target.txt"})] * 4
 
 
+def agent_wanted(args, user_text):
+    """Whether this request calls the agent tool: --agent-when narrows it to the
+    user messages containing that text, so a smoke can run an agent turn and then
+    a plain text turn in the same chat (the status line after a cancelled or
+    killed agent must read 思考中… again)."""
+    return not args.agent_when or args.agent_when in str(user_text)
+
+
 def session_target(text):
     """The short name a session-mode answer goes to: the sender a received session
     message names in its tag, or the peer the person's own line addresses as
@@ -266,6 +274,12 @@ def make_handler(args):
                                             if "Preferred tool:" in line]}), flush=True)
             system = " ".join(str(m.get("content")) for m in body["messages"] if m.get("role") == "system")
             child = "suga sub-agent" in system
+            if child and args.child_fail:
+                # --child-fail: the sub-agent's model call fails for good (a 400 is
+                # not retried), so the agent tool answers with an error result and no
+                # report: the status-line leak smoke (chat_agent.py).
+                self.reject()
+                return
             # --child-delay slows the sub-agent's report (after its grep).
             reporting = child and body["messages"][-1].get("role") == "tool"
             time.sleep(args.delay + (args.child_delay if reporting else 0))
@@ -314,6 +328,11 @@ def make_handler(args):
                 if m.get("role") == "tool":
                     step += 1
             edit_calls = edit_call_sequence(args, user_text)
+            # agent mode with --agent-when: a user message without the marker is a
+            # plain text turn, so a smoke can check the status line after an agent
+            # turn was cancelled or its background task killed.
+            agent_turn = args.agent and agent_wanted(args, user_text)
+            plain_turn = args.agent and not agent_turn
             adddir_calls = [("file_read", {"path": args.read_path}),
                             ("file_write", {"path": args.write_path, "content": args.write_body})]
             memory_calls = [("shell_exec", {"command": args.command}),
@@ -390,7 +409,7 @@ def make_handler(args):
                         "function": {"name": "file_write",
                                      "arguments": json.dumps({"path": args.write_path, "content": args.write_body})}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
-            elif args.mode == "tool" and args.agent and not tool_done and "[background task" not in str(user_text):
+            elif args.mode == "tool" and agent_turn and not tool_done and "[background task" not in str(user_text):
                 agent_args = {"description": "smoke survey", "prompt": "Where is SMOKE? Report file:line."}
                 if args.background:
                     agent_args["background"] = True
@@ -419,7 +438,7 @@ def make_handler(args):
                                                               "to": session_target(user_text),
                                                               "text": args.session_text})}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
-            elif args.mode == "tool" and not tool_done and "[background task" not in str(user_text):
+            elif args.mode == "tool" and not plain_turn and not tool_done and "[background task" not in str(user_text):
                 shell_args = {"command": args.command}
                 if args.background:
                     shell_args["background"] = True
@@ -497,6 +516,16 @@ def make_handler(args):
             self.end_headers()
             self.wfile.write(raw)
 
+        def reject(self):
+            """Answer 400: a failure that is not retried (a sub-agent whose model
+            call is broken for good)."""
+            raw = b'{"error":{"message":"child model is broken"}}'
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
         def refuse(self):
             """Answer 503: the shape the retry policy treats as transient."""
             raw = b'{"error":{"message":"overloaded"}}'
@@ -554,6 +583,10 @@ def main():
     p.add_argument("--loop-command", default="echo SMOKE_LOOP_SHELL", help="loop-edit mode: the successful command repeated")
     p.add_argument("--loop-fail-command", default="false", help="loop-fail mode: the command that keeps failing")
     p.add_argument("--agent", action="store_true", help="tool mode: call the agent tool instead of shell_exec")
+    p.add_argument("--agent-when", default="",
+                   help="tool mode with --agent: only a user message containing this text calls the agent tool")
+    p.add_argument("--child-fail", action="store_true",
+                   help="a sub-agent's model call fails for good (a 400, not retried)")
     p.add_argument("--session-text", default="SMOKE_SESSION_TEXT",
                    help="session mode: the text one session_message send carries")
     p.add_argument("--child-delay", type=float, default=0, help="extra seconds before each sub-agent response")

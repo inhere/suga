@@ -54,6 +54,18 @@ func installCompletion(source *chatInputSource, dirs SessionDirs, modelRefs ...[
 			}
 			return completeCandidates(source, line, matches)
 		}
+		if name == tasksCmd {
+			// The :tasks options; a task id is not offered (the manager's ids are
+			// the session's own, and :tasks lists them).
+			var matches []string
+			for _, option := range []string{"-a", "-h", "-k"} {
+				candidate := name + " " + option
+				if strings.HasPrefix(candidate, line) {
+					matches = append(matches, candidate)
+				}
+			}
+			return completeCandidates(source, line, matches)
+		}
 		if dirs == nil || (name != addDirCmd && name != rmDirCmd) {
 			return "", 0, false
 		}
