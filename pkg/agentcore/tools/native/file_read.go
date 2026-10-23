@@ -48,6 +48,9 @@ type FileReadTool struct {
 	readRoots []string // read-only directories outside the workspace
 	addDirs   *AddDirs // the session's added directories, read at call time
 	maxOut    int      // page cap in bytes per file; 0 = DefaultReadPageBytes
+	// image is the picture pipeline this tool shares with view_image (design
+	// 2026-10-23-file-read-images): nil = a default reader, which can see.
+	image *ViewImageTool
 }
 
 func (t *FileReadTool) Name() string { return "file_read" }
@@ -59,7 +62,11 @@ func (t *FileReadTool) Description() string {
 		"line spans of its own as path:start-end[,start-end], e.g. paths: [\"a.go:10-30\", "+
 		"\"b.go:40-60,90-110\"]. Use outline=true only to see which declarations a source file over %d "+
 		"lines holds: it answers with the declaration outline (line numbers and declaration lines) instead "+
-		"of the text. Binary files are reported, not dumped.", defaultReadLines, maxReadPaths, outlineLines)
+		"of the text. Binary files are reported, not dumped. A picture (PNG, JPEG, GIF first frame or WebP, "+
+		"recognized by its file header whatever the extension) is returned as an image you can look at, "+
+		"scaled down on its long side; a session image ref such as images/<sha256>.png works too. A model "+
+		"that cannot see images gets a one-line note instead (switch the model, e.g. chat :model, and read "+
+		"it again). offset, limit and outline apply to text only.", defaultReadLines, maxReadPaths, outlineLines)
 }
 
 // ToolMeta marks the tool as a read-only read.
@@ -116,9 +123,17 @@ func (t *FileReadTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 	}
 	outline, _ := call.Arguments["outline"].(bool)
 	var content string
+	var images []api.ImagePart
 	if len(items) == 1 {
-		if content, err = t.readItem(items[0], offset, limit, outline); err != nil {
+		// A single path may attach one picture: readEntry answers a picture with an
+		// image part and everything else as before.
+		text, part, err := t.readEntry(items[0], offset, limit, outline, true)
+		if err != nil {
 			return nil, err
+		}
+		content = text
+		if part != nil {
+			images = []api.ImagePart{*part}
 		}
 	} else {
 		// Several files: each gets its own page cap, as if read one by one, and
@@ -132,7 +147,7 @@ func (t *FileReadTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 			if i > 0 {
 				sb.WriteString("\n\n")
 			}
-			text, err := t.readItem(item, offset, limit, outline)
+			text, _, err := t.readEntry(item, offset, limit, outline, false)
 			if err != nil {
 				text = "[error: " + err.Error() + "]"
 			}
@@ -144,6 +159,7 @@ func (t *FileReadTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 		CallID:  call.CallID,
 		Name:    t.Name(),
 		Content: content,
+		Images:  images,
 	}, nil
 }
 
