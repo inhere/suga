@@ -389,6 +389,10 @@ func (t *Terminal) clearBlock() {
 // the prompt follows on the next one; cursorY counts from the prompt row, which is
 // why it is reset between the two.
 func (t *Terminal) paintBlock() {
+	// What the block is drawn with: the next read repaints the block only when its
+	// own prompt differs from this one (readLine), so this has to be the paint's
+	// prompt even when a caller repaints without a change of its own.
+	t.drawnPrompt = string(t.prompt)
 	pos := t.pos
 	if t.statusOn {
 		t.cursorX, t.cursorY = 0, 0
