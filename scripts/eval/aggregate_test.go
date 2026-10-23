@@ -2,7 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 )
@@ -144,6 +150,47 @@ func TestPrintTiming(t *testing.T) {
 		printTiming(&quiet, nil, false)
 		assert.Eq(t, "", quiet.String())
 	})
+}
+
+// TestRepeatEndToEnd runs the real loop with --repeat 2 against a stub agent:
+// every round gets its own workspace and home, and results.jsonl carries the
+// repeat number and the timing split (a run without per-turn records reports
+// its whole time as turn time).
+func TestRepeatEndToEnd(t *testing.T) {
+	stub := evalStub(t)
+	base := t.TempDir()
+	taskDir := filepath.Join(base, "tasks", "rep")
+	assert.NoErr(t, os.MkdirAll(filepath.Join(taskDir, "fixture"), 0o755))
+	assert.NoErr(t, os.WriteFile(filepath.Join(taskDir, "fixture", "go.mod"), []byte("module evalfixture/rep\n"), 0o644))
+	assert.NoErr(t, os.WriteFile(filepath.Join(taskDir, "task.yaml"),
+		[]byte("name: rep\nprompt: hi\nchecks:\n  - {type: answer_contains, text: \"run ok\"}\n"), 0o644))
+	tasks, err := loadTasks(filepath.Join(base, "tasks"), "*")
+	assert.NoErr(t, err)
+
+	out := filepath.Join(base, "out")
+	assert.NoErr(t, os.MkdirAll(out, 0o755))
+	jf, err := os.Create(filepath.Join(out, "results.jsonl"))
+	assert.NoErr(t, err)
+	defer jf.Close()
+	o := &options{bin: stub, agent: "suga", out: out, timeout: time.Minute, tasksDir: filepath.Join(base, "tasks"), repeat: 2}
+	assert.NoErr(t, runTaskSet(o, stub, "20260101-000000", tasks, nil, jf))
+
+	raw, err := os.ReadFile(filepath.Join(out, "results.jsonl"))
+	assert.NoErr(t, err)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	assert.Eq(t, 2, len(lines))
+	for i, line := range lines {
+		var r Result
+		assert.NoErr(t, json.Unmarshal([]byte(line), &r))
+		assert.Eq(t, i+1, r.Repeat)
+		assert.True(t, r.Passed, r.Checks)
+		// The stub keeps no per-turn record, so the whole run is turn time.
+		assert.True(t, r.DurationMs > 0, r.DurationMs)
+		assert.Eq(t, r.DurationMs, r.TurnMs+r.CompactionMs+r.OverheadMs)
+		if _, serr := os.Stat(filepath.Join(out, fmt.Sprintf("rep-r%d", i+1), "ws")); serr != nil {
+			t.Fatalf("round %d has its own workspace: %v", i+1, serr)
+		}
+	}
 }
 
 // TestTaskCellRepeat covers the compare report's per-task cell for a repeated
