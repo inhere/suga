@@ -25,12 +25,10 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 			continue
 		}
 		a := averageRounds(sub)
-		s := statRounds(sub)
 		total, hit := totals(sub)
 		turn, compact, fault := meanTiming(sub)
-		fmt.Fprintf(&b, "| %s | %d/%d | %s | %s | %s | %.0f | %.1f | %s | %.1f/%.1f/%.1fs | %s |\n",
-			v.Name, a.Passed, a.Rounds, countCell(s.Rounds, s.Calls), tokensCell(s.Rounds, s.Prompt), tokensCell(s.Rounds, s.Uncached),
-			total, hit*100, secondsCell(s.Rounds, s.Seconds), turn, compact, fault, webLabel(sub))
+		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %.1fs | %.1f/%.1f/%.1fs | %s |\n",
+			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, a.Seconds, turn, compact, fault, webLabel(sub))
 	}
 	fmt.Fprintln(&b)
 
@@ -144,7 +142,8 @@ func resultStatus(r Result) string {
 
 // taskCell renders one (variant, task) cell: status (+ pass counts when
 // repeated), calls, prompt tokens and time; a repeated task shows the mean and
-// the min-max of its rounds.
+// the min-max of its rounds (the variant overview above only states the mean
+// over all its rows, tasks and rounds mixed).
 func taskCell(rs []Result, variant, task string) (status, cell string) {
 	var sub []Result
 	for _, r := range rs {

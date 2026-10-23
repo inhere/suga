@@ -45,14 +45,6 @@ func countCell(n int, s Stat) string {
 	return fmt.Sprintf("%.0f", s.Mean)
 }
 
-// tokensCell is countCell for token statistics (no decimals).
-func tokensCell(n int, s Stat) string {
-	if n > 1 {
-		return formatTokens(s)
-	}
-	return fmt.Sprintf("%.0f", s.Mean)
-}
-
 // secondsCell is countCell for a duration in seconds.
 func secondsCell(n int, s Stat) string {
 	if n > 1 {
