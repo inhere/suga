@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # 内置（native）工具按需加载（延迟下发 schema）设计
 
-> 状态：**Draft 0.1 / 待用户批准**（设计批准只授权进入规划，不授权实施）
+> 状态：**Draft 0.2 / 待用户批准**（0.2 按评审 `docs/review/2026-10-23-native-deferred-tools-design-review.md` 的 F1–F2 修订）（设计批准只授权进入规划，不授权实施）
 > 日期：2026-10-23
 > 关联：`docs/research/2026-10-23-fixed-prefix-tools-report.md`（结论 4、5、7 与第五、六节）、`docs/research/2026-10-22-longsession-cost-analysis.md`；前序设计 `docs/design/2026-10-08-core-capabilities-design.md`（C 工具分档与 `tool_search`）、`docs/design/2026-10-17-preferred-tools-design.md`（MCP pin 不进延迟集）、`docs/design/2026-10-11-segments-projection-design.md`（段快照与缓存稳定）
 
@@ -10,6 +10,7 @@
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-10-23 | suga 子 agent | 初稿：把 native 工具纳入现有 `Visibility`/`tool_search` 延迟机制，回答选取、发现、加载时机（含前缀缓存账）、与 MCP 的统一、风险与验证六问 |
+| 0.2 | 2026-10-23 | Claude（监督） | 评审 F1：段内可用性不再依赖模型调用未声明工具——实施第一步做 provider 探针，不成立时用常驻代理工具 `tool_call` 调用段内已加载工具（新增 Q9）；F2：默认开启前须通过探针、新增评测任务与 `--repeat 3` 对照，在此之前以默认关合入 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -19,7 +20,7 @@
 2. **复用同一机制，不开第二套**：同一个 `Visibility` 层、同一个 `tool_search`、同一个 `loaded_tools` 会话元数据、同一个 `tool_search` trace 事件；只扩「哪些工具可以进延迟集」这一个谓词，并新增 `tools.deferred_native` 配置键。
 3. **发现靠段上下文清单**（`segmentContext.DeferredTools`，每段冻结）+ `tool_search` 自身描述 + **直呼自动加载兜底**（现有行为：调用未加载的延迟工具会加载它并把 schema 还回来）。清单 9 行 ≈ 900 字符，与省下的 13,412 字符相比净省 ≈ 12.5k 字符 ≈ 3.2k token/次调用。
 4. **加载不立即改工具表，只在段边界入表**（`tools.deferred_apply: segment` 为默认；`immediate` 保留现有 MCP 行为作兼容）。理由见 §5 的账：工具块位于 prompt 最前，任何中途改动都让整条前缀（工具 + 全部消息）作废一次，代价 ≈ 1.15 ×(前缀+历史)，常常吃掉整场会话的收益；而消息追加发生在尾部，本来就按未命中计费。
-5. **本段内加载的工具立即可调用**：`Visibility.ExecuteTool` 早已放行「已加载但未在表里」的工具（`visibility.go:272-292`），`tool_search` 的结果文本给出紧凑参数清单，模型不必靠猜参数。
+5. **本段内加载的工具必须本段可用**（评审 F1）：模型通常不会调用没出现在 `tools` 声明里的工具，所以不能只靠 `Visibility.ExecuteTool` 放行。实施第一步先用真实 provider 做探针（Q9）：若模型能按结果文本里的参数清单原生调用未声明工具、且 API 接受这样的历史，就直接调用；**否则（默认预期）用常驻的极小代理工具 `tool_call {name, arguments}`** 调用段内已加载的延迟工具，执行、审批、hook、trace 都按真实工具名走；到段边界再原生入表。工具表在段内始终不变。
 6. **已加载集合按会话持久**（session meta `loaded_tools`，`internal/personal/visibility.go:10-33`）：resume 后第一次请求的工具表就包含它们，换段时入表，不同加载顺序产生同一字节序列（表内顺序：直连工具按名排序，已加载工具按名追加在末尾，`visibility.go:247-267`）。
 7. **子 agent 不参与**：它们走独立 registry + 白名单（6–8 个高频工具，`internal/wiring/subagent.go:53-56,204-219`），没有 `tool_search` 也没有 visibility 层，本次不改。
 8. 8 个待批决定见下节（Q1–Q8），其中 Q1（默认开）与 Q4（入表时机）决定方案骨架。
@@ -35,6 +36,7 @@
 | Q5 | 是否把同一「段边界入表」用于 MCP | **是**（统一一套语义）；若不想动 MCP 现状，可先只对 native 生效（`apply` 按来源分档） | 两套时机最难解释也最容易出 bug；MCP 的 schema 走 `tool_search` 文本一样可用 |
 | Q6 | `memory`/`recall`/`session_search` 这对「低频但关键」的工具是否默认延迟 | **默认延迟**，但清单行明写用途（长会话找回前文/长期记忆/大输出展开），并保留直呼自动加载 | 三者合计 6,024 字符（21% 的工具块）；关键在于「不知道有它」而不是「加载慢」，清单就是为此 |
 | Q7 | 观测是否加字段 | `context` 事件加 `deferred_native` 计数；`tool_search` 事件加 `newly_loaded_kinds`；manifest 标出被延迟的工具 | 现在只能从 `deferred_tools` 字符数间接判断，诊断「为什么模型没搜到」缺入口（报告「发现但不碰」已验证这点） |
+| Q9 | 段内调用已加载工具的方式（评审 F1） | **探针决定**：模型能原生调用未声明工具且 API 接受 → 直接调用；否则常驻代理工具 `tool_call {name, arguments}`（约 300 字符），段边界再原生入表 | 段内可用性不能押在未证实的 provider 行为上；代理工具让段内工具表不变、缓存收益保住 |
 | Q8 | 是否新增「需要低频工具」的评测任务 | **新增 1 个**（`recall`/`session_search` 类）+ 复用 4 个 longsession-hard 做 `--repeat 3` 对照 | 现有评测没有任何 run 覆盖延迟加载（`deferred_tools` 恒 0），不新增就等于没有回归网 |
 
 ## 背景与动机
@@ -144,7 +146,7 @@ tools:
 
 | 时机 | 行为 |
 |---|---|
-| `tool_search` 命中 / 直呼未加载工具 | 只把名字写入 loaded 集（session meta）；**工具表不变**；`tool_search` 结果文本给出紧凑参数清单（`name — 描述；参数：a(integer), b(string), …`，超过 10 个参数截断），模型可立刻按正确参数调用 |
+| `tool_search` 命中 / 直呼未加载工具 | 只把名字写入 loaded 集（session meta）；**工具表不变**；`tool_search` 结果文本给出紧凑参数清单（`name — 描述；参数：a(integer), b(string), …`，超过 10 个参数截断）；段内调用经 Q9 的方式（探针结论或常驻代理工具 `tool_call`） |
 | 已加载工具的执行 | `ExecuteTool` 已放行（`visibility.go:279-282`），执行、审批、hook、trace 与直连工具完全一致 |
 | 换段（压缩/交接/空闲整理） | `freshSnapshot` 重算段快照时，把 loaded 集里属于延迟集的工具**并入工具表**（`ListTools` 在段边界之后多带它们）；此时前缀本来就要重建，不额外损失 |
 | resume / 交接 | 构造 `Visibility` 时从 session meta 读 `loaded_tools`，第一次请求的工具表即包含它们（顺序按名追加，稳定） |
@@ -280,6 +282,14 @@ Wiring.Open → newToolVisibility ──► tools.Visibility ──► ListTools
 6. Q8 新增评测任务的具体场景（`recall` 找回大输出 / `session_search` 跨会话 / `memory` 写入）。
 7. 清单文案语言（现为中文混英文工具名，与 `PromptSection` 现状一致）。
 8. 是否需要 `suga config` 之外的一条诊断命令（如 `suga tools --deferred`）——建议不做，manifest 够用。
+
+## 默认开启的前置 Gate（评审 F2）
+
+实现先以默认关（`tools.deferred_native: never`）合入；只有以下三项都通过，才把默认切到开启：
+
+1. Q9 的 provider 探针结论与所选调用方式落地；
+2. 新增的“需要低频工具”评测任务（Q8）通过；
+3. 4 个 longsession-hard 任务 `--repeat 3` 对照：通过率不下降、调用数不上升超过 5%。
 
 ## 人工 Gate
 
