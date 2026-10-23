@@ -6,6 +6,8 @@
 
 ### 新增
 
+- 评测运行器（`scripts/eval`）把耗时拆开：`results.jsonl` 每行新增 `turn_ms`（各回合 `suga run` 的墙钟之和）、`compaction_ms`（强制换段 `suga compact` 之和）与 `overhead_ms`（回合之间），三者相加等于 `duration_ms`；`provider_fault_ms` 取 `suga inspect trace --json` 里 `status != ok` 的 model 事件的耗时加 `retry_wait_ms`，是 `turn_ms` 里花在重试/切换上的部分（不另加）。逐次换段耗时记在 `turns[].compacted.duration_ms`，长会话逐轮输出显示为 `[compacted ~A -> ~B tokens, segment N, 耗时]`；主表之后新增 `timing (...)` 段逐行列出拆分，没有强制换段与 provider 故障的短任务也能看出回合时间。
+- 评测 `--repeat N` 的逐任务汇总行升级：RESULT 为通过轮数/总轮数（如 `2/3`），CALLS、TOOLS、PROMPT、TOKENS(in/out) 与 TIME 为各轮的均值加最小–最大（如 `5.0 (4-6)`、`12.0s (10.0-14.5s)`）；`results.jsonl` 的轮次字段由 `round` 改名 `repeat`；`compare.md` 的 variant 总览多一列平均 turn/compact/fault 耗时，逐任务单元格在 repeat 时给出范围。单次运行（N=1、无 `--variant`）的表格逐字节不变。
 - `file_read` 也能读图（设计 2026-10-23，读图合并）：按文件头识别 PNG/JPEG/GIF 首帧/WebP（不看扩展名，且排在 NUL 二进制嗅探之前），单个 `path` 调用返回 1 个 image part 加一行说明（格式、原始像素、发送尺寸）；长边只由 `images.max_side` 决定，`max_side` 参数退休但旧调用传了也只忽略。不能看图的模型不再报错，而是得到一段说明（格式、像素、字节数与“用 `:model` 换能看图的模型再读一次”）。一次调用最多附一张图：`paths` 里的图片条目、带行范围的条目只给一行说明；`offset`/`limit`/`outline` 对图片忽略并写明；会话图片 ref（`images/<sha256>.<ext>`）照旧可读。扩展名像图片但文件头不是（截断的下载、改了名的文本）时照常按文本/二进制读，首行提示“文件头不是支持的图片格式”。文本文件、普通二进制文件与目录的结果逐字节不变。trace 的读图事件新增 `images` / `image_bytes` 属性。
 
 ### 变更
