@@ -179,6 +179,44 @@ func TestDeadlineHintThroughRunner(t *testing.T) {
 	})
 }
 
+// TestDeadlineHookStableWithinTurn: inside one turn the hint keeps the same
+// bytes and the same position across model requests, so a provider that binds
+// thinking signatures to the request prefix (Anthropic 2026) keeps accepting
+// an earlier step's replayed thinking blocks (2026-10-23 claude-haiku-5-5).
+func TestDeadlineHookStableWithinTurn(t *testing.T) {
+	state := &deadlineState{deadline: time.Date(2026, 1, 1, 22, 28, 0, 0, time.FixedZone("CST", 8*3600)),
+		now: fixedClock(time.Date(2026, 1, 1, 21, 40, 0, 0, time.FixedZone("CST", 8*3600)))}
+	t.Run("text frozen and repositioned after the turn's prompt on replay", func(t *testing.T) {
+		hook := &deadlineHook{state: state}
+		ctx := context.Background()
+		// First request: the plain prompt; the hint is appended.
+		first := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{Messages: []agentcore.Message{
+			{Role: "user", Content: "start"}}}}
+		assert.Require(t, assert.NoErr(t, hook.BeforeModel(ctx, first, agentcore.NewControl())))
+		assert.Eq(t, 2, len(first.Request.Messages))
+		assert.StrContains(t, first.Request.Messages[1].Content, "[时间] 现在 21:40（+08:00），本任务截止 22:28")
+		// Second request of the same turn: tool calls and results are stored
+		// behind the prompt and a minute has passed; the hint must stay the
+		// same bytes at the same place, in front of the stored messages.
+		second := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{Messages: []agentcore.Message{
+			{Role: "user", Content: "start"},
+			{Role: "assistant", ToolCall: &agentcore.ToolCall{CallID: "t1", Name: "file_read"}},
+			{Role: "tool", ToolResult: &agentcore.ToolResult{CallID: "t1", Content: "x"}}}}}
+		assert.Require(t, assert.NoErr(t, hook.BeforeModel(ctx, second, agentcore.NewControl())))
+		assert.Eq(t, first.Request.Messages[1].Content, second.Request.Messages[1].Content)
+		assert.Eq(t, "user", second.Request.Messages[1].Role)
+		assert.Eq(t, "assistant", second.Request.Messages[2].Role)
+		assert.Eq(t, 4, len(second.Request.Messages))
+	})
+	t.Run("a disabled hint stays out and freezes nothing", func(t *testing.T) {
+		hook := &deadlineHook{state: &deadlineState{}}
+		event := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{Messages: []agentcore.Message{
+			{Role: "user", Content: "start"}}}}
+		assert.Require(t, assert.NoErr(t, hook.BeforeModel(context.Background(), event, agentcore.NewControl())))
+		assert.Eq(t, 1, len(event.Request.Messages))
+	})
+}
+
 // stablePrefixDigest hashes the stable prefix of a request: the system
 // prompt and every message, as bytes. The configured run's digest over its
 // messages minus the trailing hint must equal the unconfigured run's digest

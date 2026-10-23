@@ -739,10 +739,10 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 	}
 	hooks = append(hooks, denialLimitHook{denials: denials, usage: usage},
 		prefixHook{tracker: r.rec.prefix})
-	// The deadline hint goes after the prefix tracker so its appended
-	// transient message stays out of the recorded request fingerprint; see
-	// deadline.go for the message and its wording.
-	hooks = append(hooks, deadlineHook{state: r.deadline})
+	// The deadline hint goes after the prefix tracker so its transient message
+	// stays out of the recorded request fingerprint; see deadline.go for the
+	// message, its frozen per-turn text and its stable position.
+	hooks = append(hooks, &deadlineHook{state: r.deadline})
 	hooks = append(hooks, r.cfg.Hooks...)
 	if r.cfg.MaxRunTokens > 0 || r.cfg.RunTimeout > 0 {
 		limits := limitHook{maxTokens: r.cfg.MaxRunTokens, now: r.clock()}

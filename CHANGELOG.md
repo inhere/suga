@@ -7,6 +7,7 @@
 ### 修复
 
 - Claude provider：多轮工具调用时回传的 `tool_use.input` 不再是 `null`（参数被参数规整清空且元数据克隆丢失空 map 后），原先 /v1/messages 会以 `Invalid input at messages.2.content` 拒收第二轮请求（2026-10-23 claude-haiku-5-5 经网关复现，含带 thinking 块的现场）。
+- 时间自适应：时间提醒在同一轮内的多条请求中保持相同的文本与位置（轮首冻结，固定插在最后一条普通 user 消息之后）。Anthropic 2026 起把 thinking 块签名绑定到创建时的请求前缀，原先每条请求变文本、且第二轮被挪到工具结果之后，都会得到 `Invalid signature in thinking block. The block is bound to a different conversation`，多步工具调用必挂（2026-10-23 claude-haiku-5-5 复现并修复）。
 
 ### 新增
 
