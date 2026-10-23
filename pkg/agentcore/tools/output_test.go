@@ -93,7 +93,7 @@ func TestOutputApprovedNote(t *testing.T) {
 		ctx, _ := WithApprovalReport(context.Background())
 		res, err := layer.ExecuteTool(ctx, api.ToolCall{CallID: "answered", Name: "act"})
 		assert.NoErr(t, err)
-		assert.Eq(t, ApprovedResultNote+"\ndone", res.Content)
+		assert.Eq(t, "done\n"+ApprovedResultNote, res.Content)
 	})
 	t.Run("remembered always and rules stay unnoted", func(t *testing.T) {
 		for _, call := range []api.ToolCall{{CallID: "always", Name: "act"}, {CallID: "rule", Name: "act"}, {Name: "act"}} {

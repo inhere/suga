@@ -267,16 +267,19 @@ func ReportDanger(ctx context.Context, reason string) {
 	}
 }
 
-// ApprovedResultNote is prepended in front of the model-visible tool result of
-// a call a person approved this time (ApprovalReport.Answered, the ACP
-// allow/allow_always answer and the chat y/a answer). It tells the model truth
-// about who let the call run; it is never added for a rule- or
+// ApprovedResultNote goes after (annotateApproved) the model-visible tool
+// result of a call a person approved this time (ApprovalReport.Answered, the
+// ACP allow/allow_always answer and the chat y/a answer). It tells the model
+// truth about who let the call run; it is never added for a rule- or
 // remembered-always allowed call.
 const ApprovedResultNote = "[已经人工批准执行]"
 
-// annotateApproved prepends ApprovedResultNote to the result a person approved
-// this very call. It only shapes the text the model reads: the tool's exit
-// codes and error semantics, and the result the trace stores, stay untouched.
+// annotateApproved appends ApprovedResultNote to the result a person approved
+// this very call. The note goes after the content, not before it: the first
+// line of a tool result is what the chat `⎿ ok:` summary (and any head-kept
+// truncation) shows, and that should stay the tool's own output. It only
+// shapes the text the model reads: the tool's exit codes and error semantics,
+// and the result the trace stores, stay untouched.
 func annotateApproved(ctx context.Context, res *api.ToolResult) {
 	if res == nil {
 		return
@@ -285,7 +288,7 @@ func annotateApproved(ctx context.Context, res *api.ToolResult) {
 	if r == nil || !r.Answered {
 		return
 	}
-	res.Content = ApprovedResultNote + "\n" + res.Content
+	res.Content = res.Content + "\n" + ApprovedResultNote
 }
 
 func approvalReportOf(ctx context.Context) *ApprovalReport {

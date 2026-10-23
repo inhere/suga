@@ -76,7 +76,7 @@ func TestACPApprovedNote(t *testing.T) {
 		assert.NoErr(t, err)
 		results := allResults(provider)
 		assert.Require(t, assert.Len(t, results, 1))
-		assert.True(t, strings.HasPrefix(results[0], tools.ApprovedResultNote))
+		assert.True(t, strings.HasSuffix(results[0], tools.ApprovedResultNote))
 	})
 
 	t.Run("allow always notes the first call only", func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestACPApprovedNote(t *testing.T) {
 		client.mu.Unlock()
 		rresults := modelToolResults(finalReq)
 		assert.Require(t, len(rresults) >= 2)
-		assert.True(t, strings.HasPrefix(rresults[0], tools.ApprovedResultNote))
+		assert.True(t, strings.HasSuffix(rresults[0], tools.ApprovedResultNote))
 		assert.False(t, strings.Contains(rresults[len(rresults)-1], tools.ApprovedResultNote))
 	})
 
