@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.47.0] - 2026-10-23
+
+`file_read` 读图（`view_image` 降为隐藏别名，工具表不再随模型变化）；Claude 多步工具调用的 thinking 签名错误修复；provider 连接阶段失败快速切换与冷却；评测 `--repeat` 与耗时拆分。
+
 ### 新增
 
 - `file_read` 也能读图（设计 2026-10-23，读图合并）：按文件头识别 PNG/JPEG/GIF 首帧/WebP（不看扩展名，且排在 NUL 二进制嗅探之前），单个 `path` 调用返回 1 个 image part 加一行说明（格式、原始像素、发送尺寸）；长边只由 `images.max_side` 决定，`max_side` 参数退休但旧调用传了也只忽略。不能看图的模型不再报错，而是得到一段说明（格式、像素、字节数与“用 `:model` 换能看图的模型再读一次”）。一次调用最多附一张图：`paths` 里的图片条目、带行范围的条目只给一行说明；`offset`/`limit`/`outline` 对图片忽略并写明；会话图片 ref（`images/<sha256>.<ext>`）照旧可读。扩展名像图片但文件头不是（截断的下载、改了名的文本）时照常按文本/二进制读，首行提示“文件头不是支持的图片格式”。文本文件、普通二进制文件与目录的结果逐字节不变。trace 的读图事件新增 `images` / `image_bytes` 属性。
@@ -1133,7 +1137,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.46.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.47.0...HEAD
+[0.47.0]: https://github.com/inhere/suga/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/inhere/suga/compare/v0.45.1...v0.46.0
 [0.45.1]: https://github.com/inhere/suga/compare/v0.45.0...v0.45.1
 [0.45.0]: https://github.com/inhere/suga/compare/v0.44.0...v0.45.0
