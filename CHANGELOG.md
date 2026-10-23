@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- chat 中回答过确认提问（工具审批、记忆写入询问）的回合结束后，下一轮输入行不再残留插话提示符与提问宽度（用户报 suga-9ew7，显示成 `↳ ： …`）：提问借回合的输入读读答案，回答结束这个读也结束，回合结束后的下一次读取是全新的一道，旧逻辑只重画被“接住的旧读”的屏上块，全新读站在现有块上不重画，输入行就停在 `↳` 和提问的宽度上。现在 lineedit 记住屏上块画的是哪个提示符，新读到一块没有读持有且提示符已变时清行后原地重画成新提示符；提问与插话本身的功能与已有冒烟不变。
+
 ### 变更
 
 - 工具描述精简第一批（只改措辞，参数名/类型/required/默认值与行为不变；依据 `docs/research/2026-10-23-fixed-prefix-tools-report.md` 第三节 29 处）：`file_refs`、`file_symbols` 删去解析器与语言支持细节（`approx`/`class`/`pkg:` 标记已在每条结果行里）；`memory` 描述不再复述四类 kind 与「不要记」清单（会每段携带的记忆索引 note 已写同一套，两份文案此前已出现中英文漂移）；`file_grep` 删去 `exclude`/`glob`/`context`/`literal` 参数的复述（各参数自己的说明为准）；`shell_exec` 的 background/watch 段缩为一句（task 工具与 `every`/`watch_paths` 参数自带完整说明）；`file_read`、`web_fetch`、`file_remove`、`file_edit`、`agent`、`file_list`、`file_find` 删去 system 提示或运行结果已覆盖的句子；`no_ignore`（5 个工具）与 `include_tests`（2 个工具）的参数说明统一为一句，忽略规则的默认值改在 system 提示的稳定部分统一声明（新增一行，前缀缓存重建一次后字节稳定）。实测固定前缀（隔离 `SUGA_HOME` + 默认配置 + 假 provider 抓真实请求体）：工具 schema 总量 28,219 → 24,206 字符，system 3,391 → 3,559，净省 3,845 字符 ≈ 986 token/次调用；suga 自算口径（`context` 事件）`tools` 27,951 → 23,938、`est_tokens` 8,694 → 7,733。新增 `internal/wiring` 的 `TestToolSchemaBudget`：按 wire 口径给每个工具 schema 设上限（总量 24,800），防止日后回涨。
