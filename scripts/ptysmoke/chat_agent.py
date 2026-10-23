@@ -226,9 +226,11 @@ def main():
          lambda s, env: cancel_scenario(s, binary, env, label="cancel-off", steering=False)),
         ("background", ["--background"], "", lambda s, env: background_scenario(s)),
         ("error", ["--agent-when", "调研", "--child-fail", "--delay", "0.4"], "", lambda s, env: error_scenario(s)),
-        ("cancel-status", ["--child-delay", "30", "--agent-when", "调研"],
+        ("cancel-status", ["--child-delay", "30", "--agent-when", "调研", "--delay", "0.5"],
          "chat:\n  agent_progress: full\n", lambda s, env: cancel_status_scenario(s)),
-        ("kill-status", ["--background", "--agent-when", "调研"], "", lambda s, env: kill_status_scenario(s)),
+        # --child-delay keeps the sub-agent running, so :tasks has a task to kill.
+        ("kill-status", ["--background", "--agent-when", "调研", "--child-delay", "30", "--delay", "0.5"], "",
+         lambda s, env: kill_status_scenario(s)),
     ]
     try:
         for name, fake_args, extra, run in scenarios:
