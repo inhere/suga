@@ -143,6 +143,12 @@ def background_scenario(s):
     exit_chat(s)
 
 
+# NOTE: the waiting line ("子 agent：N 个运行中") is drawn by the spinner, which is
+# off under NO_COLOR - and the smokes run with NO_COLOR=1. The "no running
+# count" checks below can therefore never see a stale label; they guard the
+# turn flow only. The label's lifecycle is covered by the unit test
+# TestRendererAgentStatusLifecycle (internal/chat/render_test.go), which fails
+# when EndTurnAgents does nothing (reverse-checked 2026-10-23).
 def error_scenario(s):
     """A sub-agent that fails for good: its entry ends with the error result, so
     the waiting line goes back to 思考中… (it used to keep 子 agent：1 个运行中)."""
@@ -154,9 +160,11 @@ def error_scenario(s):
     # The model is asked again after the result: its waiting line must no longer
     # count the failed sub-agent. Without the cleanup the label stays
     # "子 agent：1 个运行中（smoke survey 0 次调用）" and this never appears.
-    s.check("error: status line goes back to thinking", s.until(r"思考中…", m, timeout=20))
-    s.check("error: no sub-agent summary line", not s.contains(r"子 agent smoke survey：", m))
+    # The failed call still gets its one summary line; what must not happen is
+    # the running count staying on the status line after the result.
+    r = s.mark()
     s.check("error: turn ends", s.until(r"tokens · ", m, timeout=20))
+    s.check("error: no running count after the result", not s.contains(r"子 agent：\d+ 个运行中", r))
     exit_chat(s)
 
 
@@ -172,7 +180,6 @@ def cancel_status_scenario(s):
     # A plain turn (no 调研 in the message: the fake answers with text): its
     # waiting line must not count the cancelled sub-agent.
     m = s.mark(); s.line("你好")
-    s.check("cancel-status: waiting line is thinking again", s.until(r"思考中…", m, timeout=20))
     s.check("cancel-status: no stale sub-agent count", not s.contains(r"子 agent：", m))
     s.check("cancel-status: turn ends", s.until(r"tokens · ", m, timeout=20))
     exit_chat(s)
@@ -197,7 +204,6 @@ def kill_status_scenario(s):
     # The sub-agent is gone from the manager: the next turn's waiting line must
     # not count it (the old code kept the entry until a notice that never comes).
     m = s.mark(); s.line("你好")
-    s.check("kill-status: waiting line is thinking again", s.until(r"思考中…", m, timeout=20))
     s.check("kill-status: no stale sub-agent count", not s.contains(r"子 agent：", m))
     s.check("kill-status: turn ends", s.until(r"tokens · ", m, timeout=20))
     exit_chat(s)

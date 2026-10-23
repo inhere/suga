@@ -164,7 +164,18 @@ func (s *chatState) killTasks(ids []string) {
 		return
 	}
 	killed := false
+	// The state before the kill decides the answer: Manager.Kill on a task that
+	// already ended returns its final snapshot without an error, so a second
+	// ":tasks -k" would otherwise report "已终止" again.
+	before := make(map[string]tasks.Info)
+	for _, info := range s.tasks.List(s.sessionID) {
+		before[info.ID] = info
+	}
 	for _, id := range ids {
+		if prev, ok := before[id]; ok && prev.Status != tasks.Running {
+			fmt.Fprintf(s.source, "任务 %s 已结束（%s），无需终止\n", id, prev.Status)
+			continue
+		}
 		info, err := s.tasks.Kill(s.sessionID, id)
 		switch {
 		case errors.Is(err, tasks.ErrUnknownTask):
