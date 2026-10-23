@@ -314,11 +314,19 @@ func (p *ClaudeProvider) buildRequestBody(req *agentcoreapi.GenerateRequest, mod
 			if m.Content != "" {
 				msgs = appendClaudeBlock(msgs, "assistant", map[string]any{"type": "text", "text": m.Content})
 			}
+			// tool_use.input must always be an object: a call whose arguments were
+			// wholly dropped (coerceArguments removes empty placeholders, and a nil
+			// map loses that) would otherwise replay as "input": null, which
+			// /v1/messages rejects with "Invalid input at messages.2.content".
+			replayInput := m.ToolCall.Arguments
+			if replayInput == nil {
+				replayInput = map[string]any{}
+			}
 			msgs = appendClaudeBlock(msgs, "assistant", map[string]any{
 				"type":  "tool_use",
 				"id":    m.ToolCall.CallID,
 				"name":  m.ToolCall.Name,
-				"input": m.ToolCall.Arguments,
+				"input": replayInput,
 			})
 		default:
 			if v, _ := m.Metadata[SegmentContextMetaKey].(bool); v {

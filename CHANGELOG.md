@@ -11,6 +11,8 @@
 ### 修复
 
 - provider 连接阶段失败时快速切换模型（长会话开销分析第 4 条）：一次 command-code 443 `dial tcp ... i/o timeout` 在旧策略下重试 4 次、约 178s 才降级到 `opencode-go`，单轮 456s。现在区分两种失败：**连接阶段**（DNS、建立 TCP 连接、TLS 握手——请求根本没到 provider）在配了 `fallback_models` 时只发一次尝试就交给下一个候选，不再把同一个 endpoint 重试到 `max_elapsed`；没有备选时仍按 `retry` 重试。**请求阶段**（已连上但等响应头超时、408/429/5xx、流中断）处理不变。连接阶段另有固定 10s 上限（dial 与 TLS 握手，之前用的是 DefaultTransport 的 30s dial），不会被整体请求超时掩盖；同一进程内某候选连接失败后 60s 内优先跳过它（按 provider + endpoint 冷却，所有候选都在冷却时最后一个仍会尝试），后续每一步不再先撞一次死 endpoint。trace 的 model 事件 `fallback` 里写明 `(connect_failed)`，日志行带 `phase` 与 `elapsed`。
+- Claude provider：多轮工具调用时回传的 `tool_use.input` 不再是 `null`（参数被参数规整清空且元数据克隆丢失空 map 后），原先 /v1/messages 会以 `Invalid input at messages.2.content` 拒收第二轮请求（2026-10-23 claude-haiku-5-5 经网关复现，含带 thinking 块的现场）。
+- 时间自适应：时间提醒在同一轮内的多条请求中保持相同的文本与位置（轮首冻结，固定插在最后一条普通 user 消息之后）。Anthropic 2026 起把 thinking 块签名绑定到创建时的请求前缀，原先每条请求变文本、且第二轮被挪到工具结果之后，都会得到 `Invalid signature in thinking block. The block is bound to a different conversation`，多步工具调用必挂（2026-10-23 claude-haiku-5-5 复现并修复）。
 
 ### 变更
 
