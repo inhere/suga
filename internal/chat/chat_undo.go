@@ -16,12 +16,15 @@ const (
 	checkpointsCmd     = ":checkpoints"
 	undoCmd            = ":undo"
 	undoForceArg       = "force"
-	undoUsageHint      = "用法：:undo [N] [force]（N 为最近 N 个有文件改动的回合）"
 	noUndoHint         = "没有可回滚的快照（本会话没有写工具改动，或快照已按 tools.snapshots 清理）。"
 	undoConflictReason = "冲突：快照之后被改动过"
 	undoBusyHint       = "回合进行中，等它结束再执行本地命令"
 	undoConfirm        = "执行？[y] 回滚 [N] 取消："
 )
+
+// undoUsageHint answers a :undo line whose arguments do not parse; the text is
+// the :undo entry of the command table (chat_usage.go).
+var undoUsageHint = commandUsageText(undoCmd)
 
 type undoCommand struct {
 	n     int
@@ -83,12 +86,12 @@ func (s *chatState) undoStore() (*personal.SessionSnapshots, string, error) {
 	}), sessionsDir, nil
 }
 
-func (s *chatState) checkpoints() ([]personal.Checkpoint, error) {
+func (s *chatState) checkpoints(limit int) ([]personal.Checkpoint, error) {
 	snapshots, sessionsDir, err := s.undoStore()
 	if err != nil {
 		return nil, err
 	}
-	return s.runner.Checkpoints(s.ctx, snapshots, sessionsDir, s.sessionID, 0)
+	return s.runner.Checkpoints(s.ctx, snapshots, sessionsDir, s.sessionID, limit)
 }
 
 func (s *chatState) selectUndo(command undoCommand) ([]personal.Checkpoint, *personal.SessionSnapshots, error) {
@@ -103,13 +106,37 @@ func (s *chatState) selectUndo(command undoCommand) ([]personal.Checkpoint, *per
 	return rows, snapshots, err
 }
 
-func (s *chatState) runCheckpoints() {
-	rows, err := s.checkpoints()
+// runCheckpoints lists the write snapshots of this session; arg is the optional
+// number of turns to show (:checkpoints [N]).
+func (s *chatState) runCheckpoints(arg string) {
+	limit, ok := checkpointLimit(arg)
+	if !ok {
+		fmt.Fprintln(s.errWriter(), commandUsageText(checkpointsCmd))
+		return
+	}
+	rows, err := s.checkpoints(limit)
 	if err != nil {
 		fmt.Fprintln(s.errWriter(), formatCommandError(checkpointsCmd, err))
 		return
 	}
 	fmt.Fprintln(s.source, BuildCheckpoints(rows))
+}
+
+// checkpointLimit reads the :checkpoints argument: no argument lists every turn,
+// N the last N turns of the listing.
+func checkpointLimit(arg string) (int, bool) {
+	fields := strings.Fields(arg)
+	if len(fields) == 0 {
+		return 0, true
+	}
+	if len(fields) > 1 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(fields[0])
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
 }
 
 func (s *chatState) runUndo(command undoCommand) {

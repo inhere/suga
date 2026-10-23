@@ -554,6 +554,11 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		// clock starts over. A running consolidation is preempted by the
 		// Run/Compact below through the session gate.
 		idle.Touch()
+		// The usage answer of the commands of chat_usage.go: a help ask (":queue -h")
+		// or an argument a command without options cannot take (":session foo").
+		// An injected line never reaches it (its case below runs first), and a "!"
+		// line or a plain message names no command of the table.
+		usageReply := commandUsageReply(line, state.dirs != nil)
 		switch {
 		case line == "":
 			continue
@@ -566,6 +571,9 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// A command typed at this keyboard: it runs in the local shell and
 			// starts no turn (local_cmd.go).
 			state.runLocalCommand(local)
+			continue
+		case usageReply != "":
+			fmt.Fprintln(inputSource, usageReply)
 			continue
 		case line == ":quit", line == ":exit":
 			// Both spellings leave chat; :exit is the familiar one from other REPLs.
@@ -592,7 +600,8 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// Show a code block of the last answer in full (:code [N]).
 			render.ShowCode(strings.TrimPrefix(line, codeCmd))
 			continue
-		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), isTasksCommand(line), line == ":help", line == ":usage":
+		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), isTasksCommand(line),
+			line == ":help", strings.HasPrefix(line, ":help "), line == ":usage":
 			// The reference, this session's usage and its background tasks
 			// (chat_commands.go); like every : command, keyboard only.
 			state.runChatCommand(line)

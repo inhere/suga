@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-var chatCommands = []string{":session", ":compact", ":add-dir", ":dirs", ":rm-dir", ":diff", ":code", ":image", ":queue", ":checkpoints", ":undo", ":help", ":model", ":usage", ":tasks", ":quit", ":exit"}
-
 // installCompletion wires the line editor's callback to local chat commands and
 // directory arguments. Completion only acts at the command line and never on a
 // delivered message or an approval answer.
@@ -45,32 +43,29 @@ func installCompletion(source *chatInputSource, dirs SessionDirs, modelRefs ...[
 			if len(modelRefs) > 0 {
 				refs = modelRefs[0]
 			}
-			matches := make([]string, 0, len(refs))
-			for _, ref := range refs {
-				candidate := name + " " + ref
-				if strings.HasPrefix(candidate, line) {
-					matches = append(matches, candidate)
-				}
-			}
-			return completeCandidates(source, line, matches)
+			return completeArgs(source, line, name, refs)
 		}
-		if name == tasksCmd {
-			// The :tasks options; a task id is not offered (the manager's ids are
-			// the session's own, and :tasks lists them).
-			var matches []string
-			for _, option := range []string{"-a", "-h", "-k"} {
-				candidate := name + " " + option
-				if strings.HasPrefix(candidate, line) {
-					matches = append(matches, candidate)
-				}
-			}
-			return completeCandidates(source, line, matches)
+		if dirs != nil && (name == addDirCmd || name == rmDirCmd) {
+			// A directory is what these two take; a task id is not offered (:tasks
+			// lists the manager's own ids).
+			return completePath(source, dirs.Workspace(), line, name, arg)
 		}
-		if dirs == nil || (name != addDirCmd && name != rmDirCmd) {
-			return "", 0, false
-		}
-		return completePath(source, dirs.Workspace(), line, name, arg)
+		// The arguments of the table in chat_usage.go (:queue offers -d, clear and
+		// -h, :help the command names).
+		return completeArgs(source, line, name, commandOptions(name))
 	}
+}
+
+// completeArgs offers the candidates name + " " + value that continue line.
+func completeArgs(source *chatInputSource, line, name string, values []string) (string, int, bool) {
+	matches := make([]string, 0, len(values))
+	for _, value := range values {
+		candidate := name + " " + value
+		if strings.HasPrefix(candidate, line) {
+			matches = append(matches, candidate)
+		}
+	}
+	return completeCandidates(source, line, matches)
 }
 
 func completeCandidates(source *chatInputSource, line string, matches []string) (string, int, bool) {
