@@ -105,6 +105,14 @@ def message_token(m):
     return "%s:%s" % (role, head)
 
 
+def is_image_attachment(message):
+    """A user message whose content parts include an image_url: the picture a
+    tool result carries (suga appends it after the tool message for OpenAI)."""
+    content = message.get("content")
+    return isinstance(content, list) and any(
+        isinstance(part, dict) and part.get("type") == "image_url" for part in content)
+
+
 def last_index(messages, role):
     """The index of the last message with role (-1 when there is none)."""
     for i in range(len(messages) - 1, -1, -1):
@@ -296,9 +304,12 @@ def make_handler(args):
                                  for m in body["messages"][last_tool + 1:]):
                 tool_done = False
             # Tool results since the last user message: the step of this turn.
+            # A user message that only carries a tool result's picture (the
+            # OpenAI mapping appends one after the tool message) is part of that
+            # result, not a new request: it does not end the count.
             step = 0
             for m in reversed(body["messages"]):
-                if m.get("role") == "user":
+                if m.get("role") == "user" and not is_image_attachment(m):
                     break
                 if m.get("role") == "tool":
                     step += 1
@@ -516,7 +527,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge", "image"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")

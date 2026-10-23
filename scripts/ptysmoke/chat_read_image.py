@@ -75,6 +75,31 @@ def scenario(s, reply, log):
     s.check("the model received the message text", log.wait_user("读一下这张图"))
 
 
+def pump(log, seconds=2.0):
+    """Reads the fakellm lines that arrived after wait_user returned (the
+    request carrying the tool result comes after the one with the user text).
+    The pipe is read non-blocking: an earlier readline may already hold those
+    lines in the text buffer, where select on the descriptor cannot see them."""
+    import os as _os
+    time.sleep(seconds)
+    fd = log.proc.stdout.fileno()
+    _os.set_blocking(fd, False)
+    try:
+        while True:
+            try:
+                line = log.proc.stdout.readline()
+            except (BlockingIOError, TypeError):
+                break
+            if not line:
+                break
+            try:
+                log.entries.append(json.loads(line))
+            except ValueError:
+                pass
+    finally:
+        _os.set_blocking(fd, True)
+
+
 def exit_and_session(s):
     """Leaves chat with the double Ctrl-C and returns the session id."""
     m = s.mark()
@@ -153,6 +178,7 @@ def main():
         finally:
             if s is not None:
                 s.close(grace=0)
+        pump(log)
         tool_text = " ".join(str(e.get("tool_text", "")) for e in log.entries)
         s.check("vision on: the tool text says the picture is attached",
                 "attached as an image part" in tool_text)
@@ -177,6 +203,7 @@ def main():
         finally:
             if s is not None:
                 s.close(grace=0)
+        pump(log)
         tool_text = " ".join(str(e.get("tool_text", "")) for e in log.entries[-2:])
         s.check("vision off: the tool text is the note", "cannot see images" in tool_text)
         s.check("vision off: the note names the switch", ":model" in tool_text)
