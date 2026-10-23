@@ -335,14 +335,14 @@ gofer job resume <job-id> --prompt "从上次会话继续"
 
 Suga 的 ACP 服务端支持图片内容块（第二期）：
 
-- `initialize`：配置里有任一支持看图的模型（`suga models` 显示 vision 的模型，含主模型、compact、fallback 与网关下其它模型）时声明 `promptCapabilities.image = true`；没有则不声明，客户端（gofer）继续走“附图路径 + 让模型 `view_image`”的方案。
+- `initialize`：配置里有任一支持看图的模型（`suga models` 显示 vision 的模型，含主模型、compact、fallback 与网关下其它模型）时声明 `promptCapabilities.image = true`；没有则不声明，客户端（gofer）继续走“附图路径 + 让模型 `file_read`”的方案。
 - `session/prompt`：image 内容块（`data` 为 base64，或 `uri` 指向 `data:` URI 或本地文件路径）按顺序与文本块一起处理：图片走与 `view_image` 相同的校验与缩放（PNG/JPEG/GIF/WebP、20MB/40MP 上限、长边 1568），落盘到 `sessions/<id>/images/`，消息文本里留 “[图片 N]” 占位；远程 `http(s)://` URI 拒绝，坏 base64、不支持的格式、超限的图片写原因进文本（“[图片 N 不可用：<原因>]”），不让整轮失败——只有没有任何文本块且没有可用图片时才拒绝这条 prompt（invalid params）。
 - 当前模型不支持看图时：图片仍照常落盘，请求里换成文字说明，并在回复前以一次 agent 思考通知告知客户端（“附带的 N 张图片已转为文字说明”）。会话中途 `:model` 类切换由下一次 prompt 重新判断。
 - acpprobe（`scripts/acpprobe/acp_probe.py`）可用 `--prompt-with-image "<文本>|<PNG 路径>"` 发一个带图片块的 prompt，开始时打印 initialize 的实际声明。
 
 ### CLI 图片输入（`run --image`）
 
-- `suga run --image <路径>`（可重复，顺序保留）把图片直接附到本条用户消息，不必先让模型调 `view_image`：校验、缩放与落盘与 chat `:image` 相同（PNG/JPEG/GIF/WebP，长边 `images.max_side`，落盘到 `sessions/<id>/images/`，数据库只存引用），相对路径按 run 的工作目录解析。
+- `suga run --image <路径>`（可重复，顺序保留）把图片直接附到本条用户消息，不必先让模型调 `view_image`（读图入口是 `file_read`）：校验、缩放与落盘与 chat `:image` 相同（PNG/JPEG/GIF/WebP，长边 `images.max_side`，落盘到 `sessions/<id>/images/`，数据库只存引用），相对路径按 run 的工作目录解析。
 - 当前模型不支持看图、或任何一张图读取失败（不存在、格式不支持、超限）时，run 在开始回合前报错退出（exit 1）：错误写明第几张与路径/原因，并提示用 `--model` 指定支持看图的模型或为该模型配置 `vision`，不会静默丢图。
 - `--output stream-json` 的首行 session 事件在有图时多一个 `images` 字段（张数）；无 `--image` 时该行与原来逐字节一致。
 - gofer 的命令行形态可按路径传图：`suga run --model <provider>/<model> --image <绝对路径> -p "描述这张图"`（图片在发送端读取、按 chat `:image` 的规则校验后随本条消息发出）。`suga send --image` 尚未支持：投递协议（`internal/personal/process`）只携带文本，需要附图时用 run 或 ACP 图片块。
