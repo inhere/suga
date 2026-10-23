@@ -38,7 +38,7 @@ type prefetchState struct {
 func (r *Registry) Prefetch(ctx context.Context, calls []api.ToolCall) {
 	var ahead []api.ToolCall
 	for _, call := range calls {
-		if t, err := r.Get(call.Name); err == nil && MetaOf(t).Prefetchable {
+		if t, err := r.Get(call.Name); err == nil && MetaOf(t).Prefetchable && !skipsPrefetch(t, call.Arguments) {
 			ahead = append(ahead, call)
 		}
 	}
