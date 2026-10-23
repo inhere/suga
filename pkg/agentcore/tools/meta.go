@@ -43,6 +43,11 @@ type Meta struct {
 	// so a reply's calls to them may run ahead concurrently (Registry.Prefetch).
 	// Never honoured for MCP tools.
 	Prefetchable bool
+	// Hidden marks a tool that stays registered and callable by name but is not
+	// listed in the tool table (ListTools), the manifest or tool_search: an alias
+	// of another tool kept for one version, so old sessions and name-based
+	// configuration keep working (view_image, design 2026-10-23 Q4).
+	Hidden bool
 }
 
 // Describer is the optional interface a tool implements to declare its Meta.

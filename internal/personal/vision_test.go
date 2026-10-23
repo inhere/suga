@@ -27,7 +27,7 @@ func (r *schemaRegistry) ExecuteTool(_ context.Context, call agentcore.ToolCall)
 	return &api.ToolResult{CallID: call.CallID, Name: call.Name, Content: "ok"}, nil
 }
 
-var visionToolSchemas = []agentcore.ToolSchema{{Name: "file_read"}, {Name: "view_image"}, {Name: "file_list"}}
+var visionToolSchemas = []agentcore.ToolSchema{{Name: "file_read"}, {Name: "file_list"}}
 
 // registryToolNames lists the tool names a registry offers.
 func registryToolNames(t *testing.T, registry agentcore.ToolRegistry) []string {
@@ -41,46 +41,36 @@ func registryToolNames(t *testing.T, registry agentcore.ToolRegistry) []string {
 	return names
 }
 
-// TestObservedToolsFilterViewImageByVision pins the model-scoped tool table:
-// view_image is offered only while the current model can see images, and the
-// same gate follows a model switch (no tool rebuild).
-func TestObservedToolsFilterViewImageByVision(t *testing.T) {
-	t.Run("a model without vision does not get view_image", func(t *testing.T) {
+// TestObservedToolsToolTableIsModelIndependent pins design 2026-10-23 section 8:
+// the table the model is offered no longer follows its vision capability, and a
+// picture call is no longer refused in front of the tool (file_read itself
+// explains a picture the model cannot use).
+func TestObservedToolsToolTableIsModelIndependent(t *testing.T) {
+	t.Run("a model without vision gets the same table", func(t *testing.T) {
 		gate := tools.NewVisionGate(false)
 		inner := &schemaRegistry{schemas: visionToolSchemas}
 		assert.Eq(t, []string{"file_read", "file_list"}, registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
 	})
-	t.Run("a model with vision gets it", func(t *testing.T) {
+	t.Run("a model with vision gets the same table", func(t *testing.T) {
 		gate := tools.NewVisionGate(true)
 		inner := &schemaRegistry{schemas: visionToolSchemas}
-		assert.Eq(t, []string{"file_read", "view_image", "file_list"}, registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
+		assert.Eq(t, []string{"file_read", "file_list"}, registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
 	})
-	t.Run("a model switch updates the table", func(t *testing.T) {
+	t.Run("a model switch changes nothing", func(t *testing.T) {
 		gate := tools.NewVisionGate(true)
 		inner := &schemaRegistry{schemas: visionToolSchemas}
 		observed := (&recorder{vision: gate}).observeTools(inner)
-		assert.Eq(t, 3, len(registryToolNames(t, observed)))
-		// :model to a text-only model, then back.
+		before := registryToolNames(t, observed)
 		gate.SetVision(false)
-		assert.Eq(t, []string{"file_read", "file_list"}, registryToolNames(t, observed))
-		gate.SetVision(true)
-		assert.Eq(t, 3, len(registryToolNames(t, observed)))
+		assert.Eq(t, before, registryToolNames(t, observed))
 	})
-	t.Run("a call of a text-only model is refused before the tool runs", func(t *testing.T) {
+	t.Run("a picture call reaches the tool of a text-only model", func(t *testing.T) {
 		gate := tools.NewVisionGate(false)
 		inner := &schemaRegistry{schemas: visionToolSchemas}
 		observed := (&recorder{vision: gate}).observeTools(inner)
-		_, err := observed.ExecuteTool(context.Background(), agentcore.ToolCall{Name: "view_image"})
-		assert.Require(t, assert.Err(t, err))
-		assert.Contains(t, err.Error(), ":model")
-		assert.Eq(t, 0, len(inner.executed))
-		// Other tools still run.
-		_, err = observed.ExecuteTool(context.Background(), agentcore.ToolCall{Name: "file_read"})
+		_, err := observed.ExecuteTool(context.Background(), agentcore.ToolCall{Name: "file_read",
+			Arguments: map[string]any{"path": "a.png"}})
 		assert.NoErr(t, err)
 		assert.Eq(t, []string{"file_read"}, inner.executed)
-	})
-	t.Run("a nil gate keeps every tool", func(t *testing.T) {
-		inner := &schemaRegistry{schemas: visionToolSchemas}
-		assert.Eq(t, 3, len(registryToolNames(t, (&recorder{}).observeTools(inner))))
 	})
 }

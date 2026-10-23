@@ -104,11 +104,14 @@ type Spec struct {
 func Catalog() []Spec {
 	return []Spec{
 		{Name: "file_read", New: func(env Env) api.Tool {
-			return &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes}
+			t := &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes}
+			// file_read reads pictures with the same pipeline as view_image (design
+			// 2026-10-23-file-read-images); the host rebinds this instance to the
+			// runtime's live vision gate and session images directory.
+			return t.SetImagePipeline(newImageViewTool(env))
 		}},
 		{Name: "view_image", New: func(env Env) api.Tool {
-			return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs,
-				imagesDir: env.ImagesDir, vision: env.Vision, maxSide: env.ImageMaxSide}
+			return newImageViewTool(env)
 		}},
 		{Name: "file_list", New: func(env Env) api.Tool {
 			return &FileListTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
@@ -181,6 +184,13 @@ func Catalog() []Spec {
 			return &SessionMessageTool{messenger: env.SessionMessenger, turnID: env.TurnID}
 		}},
 	}
+}
+
+// newImageViewTool builds the picture reader from env: view_image wraps it as a
+// tool, file_read reads pictures through it.
+func newImageViewTool(env Env) *ViewImageTool {
+	return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs,
+		imagesDir: env.ImagesDir, vision: env.Vision, maxSide: env.ImageMaxSide}
 }
 
 // BuildTools returns the catalog tools available in env, in catalog order.

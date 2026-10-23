@@ -240,9 +240,6 @@ func (r *recorder) observeProvider(p agentcore.Provider, name, model string) age
 	return &base
 }
 
-// errToolWithoutVision refuses view_image for a model that cannot see images.
-var errToolWithoutVision = errors.New("view_image: current model cannot see images: switch to a model with vision (chat: :model)")
-
 // observedTools is the outermost tool-registry layer (observe -> visibility ->
 // approval -> base). It records a tool event per call and a denial event when
 // an inner layer refused the call with tools.ErrDenied.
@@ -258,21 +255,12 @@ func (r *recorder) observeTools(inner agentcore.ToolRegistry) agentcore.ToolRegi
 	return &observedTools{inner: inner, rec: r}
 }
 
+// ListTools passes the tool table through unchanged: it no longer depends on
+// the current model (design 2026-10-23-file-read-images section 8). file_read
+// reads pictures itself and explains a picture to a model without vision,
+// instead of a picture tool appearing and disappearing on :model.
 func (o *observedTools) ListTools(ctx context.Context) ([]agentcore.ToolSchema, error) {
-	schemas, err := o.inner.ListTools(ctx)
-	if err != nil || o.rec.vision.CanSee() {
-		return schemas, err
-	}
-	// A model without vision does not get the tool: showing it would only
-	// invite a call that must fail (design 0.3, filter view_image by model).
-	out := make([]agentcore.ToolSchema, 0, len(schemas))
-	for _, schema := range schemas {
-		if schema.Name == "view_image" {
-			continue
-		}
-		out = append(out, schema)
-	}
-	return out, nil
+	return o.inner.ListTools(ctx)
 }
 
 // Get passes tool lookup through to the wrapped layers.
@@ -291,13 +279,7 @@ func (o *observedTools) ExecuteTool(ctx context.Context, call agentcore.ToolCall
 		res *agentcore.ToolResult
 		err error
 	)
-	if call.Name == "view_image" && !o.rec.vision.CanSee() {
-		// A model switched away from vision mid-turn can still emit a cached call:
-		// refuse it here instead of storing bytes the model cannot read.
-		err = errToolWithoutVision
-	} else {
-		res, err = o.inner.ExecuteTool(ctx, call)
-	}
+	res, err = o.inner.ExecuteTool(ctx, call)
 	e := store.Event{
 		Kind: store.EventTool, Name: call.Name, Status: eventOK, StartedAt: start,
 		DurationMs: time.Since(start).Milliseconds(),
@@ -489,6 +471,16 @@ var exitCodePattern = regexp.MustCompile(`\[exit code: (-?\d+)\]`)
 func addOutputAttrs(attrs map[string]any, res *agentcore.ToolResult) {
 	inline := len(res.Content)
 	attrs["raw_bytes"], attrs["inline_bytes"], attrs["spilled"] = inline, inline, false
+	// A picture result carries its pixels beside the text (file_read, view_image):
+	// the count and their size are what the trace has to show of that cost (design
+	// 2026-10-23-file-read-images Q8).
+	if len(res.Images) > 0 {
+		total := 0
+		for _, part := range res.Images {
+			total += len(part.Data)
+		}
+		attrs["images"], attrs["image_bytes"] = len(res.Images), total
+	}
 	if info, ok := tools.OutputInfoOf(res.Metadata); ok {
 		attrs["raw_bytes"], attrs["spilled"] = info.Bytes, info.Ref != "" && !info.Minimized
 		if info.Minimized {

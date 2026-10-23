@@ -393,6 +393,11 @@ func BuildManifest(in ManifestInput) Manifest {
 				continue
 			}
 			meta := tools.MetaOf(t)
+			if meta.Hidden {
+				// An alias kept for one version (view_image) is not a tool of its own: the
+				// manifest lists what the model is offered (design 2026-10-23 Q4).
+				continue
+			}
 			m.Tools = append(m.Tools, ManifestTool{
 				Name: name, Category: string(meta.Category), ReadOnly: meta.ReadOnly, External: meta.External,
 				Rereadable: meta.Rereadable, AgentState: meta.AgentState,

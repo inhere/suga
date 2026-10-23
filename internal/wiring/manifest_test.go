@@ -14,6 +14,7 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 	toolsmcp "github.com/inhere/suga/pkg/agentcore/tools/mcp"
 	"github.com/inhere/suga/pkg/agentcore/tools/native/codeintel"
 )
@@ -196,7 +197,15 @@ func TestManifestMatchesRuntimeTools(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = rt.Close() })
 	runtimeNames := rt.Registry.List()
-	runtimeNames = slices.DeleteFunc(runtimeNames, func(n string) bool { return n == "tool_search" })
+	// The tool table is what the manifest lists: hidden aliases (view_image) and
+	// the deferred-tool search stay out of both.
+	runtimeNames = slices.DeleteFunc(runtimeNames, func(n string) bool {
+		if n == "tool_search" {
+			return true
+		}
+		t, err := rt.Registry.Get(n)
+		return err == nil && tools.MetaOf(t).Hidden
+	})
 	slices.Sort(runtimeNames)
 	assert.Eq(t, runtimeNames, fromManifest)
 
