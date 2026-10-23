@@ -145,6 +145,113 @@ func TestCheckNudgeUnverified(t *testing.T) {
 	})
 }
 
+func TestCheckNudgeUnverifiedScriptRun(t *testing.T) {
+	// The real sequences of the 2026-10-22 long-session run
+	// (docs/research/2026-10-22-longsession-cost-analysis.md #5): the model
+	// wrote a script under tmp/ and ran it back - 4 of 5 hits of the built-in
+	// rule were that false positive, the notes_index one was real.
+	tests := []struct {
+		name     string
+		calls    []NudgeToolCall
+		wantFire bool
+	}{
+		{
+			// Sequence t2 of the run.
+			name: "run the written python script back",
+			calls: []NudgeToolCall{
+				call("file_write", true, "tmp/analyze_orders.py"),
+				shellCall(true, "python tmp/analyze_orders.py"),
+			},
+		},
+		{
+			// Sequence t5 of the run: the go run with a Windows path was the
+			// verification; gofmt/vet alone would not have counted.
+			name: "run the written go file back with a windows path",
+			calls: []NudgeToolCall{
+				call("file_write", true, "tmp/mono_clock_demo.go"),
+				shellCall(true, "go run .\\tmp\\mono_clock_demo.go"),
+			},
+		},
+		{
+			// Sequence t8 of the run.
+			name: "run the written python checker back",
+			calls: []NudgeToolCall{
+				call("file_write", true, "tmp/check_orders_1000_1100.py"),
+				shellCall(true, "python tmp/check_orders_1000_1100.py"),
+			},
+		},
+		{
+			// Sequence t16 of the run: the script was run back twice.
+			name: "run the written python script back twice with a windows path",
+			calls: []NudgeToolCall{
+				call("file_write", true, "tmp/verify_vendor_baseline.py"),
+				shellCall(true, "python .\\tmp\\verify_vendor_baseline.py"),
+				shellCall(true, "python .\\tmp\\verify_vendor_baseline.py"),
+			},
+		},
+		{
+			// Sequence t18 of the run: only viewers ran, so this must still fire
+			// (the real gap the whitelist expansion must keep reporting).
+			name: "only directory and file viewers ran",
+			calls: []NudgeToolCall{
+				call("file_write", true, "notes_index.md"),
+				shellCall(true, "Get-ChildItem"),
+				shellCall(true, "Get-Content notes_index.md"),
+			},
+			wantFire: true,
+		},
+		{
+			// A viewer between the write and the script run does not matter.
+			name: "a viewer before the script run",
+			calls: []NudgeToolCall{
+				call("file_write", true, "tmp/analyze_orders.py"),
+				shellCall(true, "ls"),
+				shellCall(true, "python3 tmp/analyze_orders.py"),
+			},
+		},
+		// The other shapes of the whitelist, each as a write + one check call.
+		{name: "py with a windows path", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "py .\\tmp\\x.py")}},
+		{name: "python with a flag", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "python -u tmp/x.py")}},
+		{name: "node with a ts file", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.ts"), shellCall(true, "node tmp/x.ts")}},
+		{name: "deno run", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.ts"), shellCall(true, "deno run -A tmp/x.ts")}},
+		{name: "bun", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.js"), shellCall(true, "bun tmp/x.js")}},
+		{name: "bash", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.sh"), shellCall(true, "bash tmp/x.sh")}},
+		{name: "sh", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.sh"), shellCall(true, "sh ./tmp/x.sh")}},
+		{name: "pwsh -File", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.ps1"), shellCall(true, "pwsh -File .\\tmp\\x.ps1")}},
+		{name: "powershell -File", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.ps1"), shellCall(true, "powershell -File tmp/x.ps1")}},
+		{name: "ruby", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.rb"), shellCall(true, "ruby tmp/x.rb")}},
+		{name: "go run inside a chained command", calls: []NudgeToolCall{call("file_edit", true, "tmp/demo.go"), shellCall(true, "cd tmp && go run ./demo.go")}},
+		// Viewers keep not counting: they look at the work without running
+		// anything of it back.
+		{name: "ls alone", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "ls")}, wantFire: true},
+		{name: "dir alone", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "dir tmp")}, wantFire: true},
+		{name: "cat of the written script", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "cat tmp/x.py")}, wantFire: true},
+		{name: "Get-Content of the written script", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "Get-Content tmp/x.py")}, wantFire: true},
+		{name: "Get-ChildItem of the written script", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "Get-ChildItem tmp")}, wantFire: true},
+		// The runner has to run back the script, not just name it.
+		{name: "deno fmt is not a run", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.ts"), shellCall(true, "deno fmt tmp/x.ts")}, wantFire: true},
+		{name: "python without a script path", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(true, "python --version")}, wantFire: true},
+		// The old half of the command keep counting.
+		{name: "go test still counts", calls: []NudgeToolCall{call("file_edit", true, "a.go"), shellCall(true, "go test ./...")}},
+		{name: "python -m pytest still counts", calls: []NudgeToolCall{call("file_edit", true, "a.py"), shellCall(true, "python -m pytest -q")}},
+		{name: "make still counts", calls: []NudgeToolCall{call("file_edit", true, "a.go"), shellCall(true, "make check test")}},
+		// A failed script run also counts as a check that ran (like go test). For
+		// parity with the old half, see TestCheckNudgeUnverified's failed cases.
+		{name: "a failed script run counts", calls: []NudgeToolCall{call("file_edit", true, "tmp/x.py"), shellCall(false, "python tmp/x.py")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			findings := CheckNudge(builtinTestRules(), tt.calls, nil, "summary", true)
+			got := rules(findings)
+			if tt.wantFire {
+				assert.Require(t, assert.Contains(t, got, NudgeRuleUnverifiedWrite))
+			} else {
+				assert.NotContains(t, got, NudgeRuleUnverifiedWrite)
+			}
+		})
+	}
+}
+
 func TestCheckNudgePromise(t *testing.T) {
 	tests := []struct {
 		name  string

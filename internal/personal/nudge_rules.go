@@ -52,10 +52,37 @@ var defaultWriteTools = map[string]bool{"file_edit": true, "file_write": true, "
 // does not name check_tools of its own.
 var defaultCheckTools = map[string]bool{defaultCheckTool: true}
 
+// builtinScriptRunCommand is the script-run half of the built-in check_command.
+// Running an interpreter over a script inside the workspace counts as having
+// verified a change: that is the way the 2026-10-22 long-session run checked
+// its edits (docs/research/2026-10-22-longsession-cost-analysis.md #5 - it
+// wrote throwaway scripts under tmp/ and ran them back, 4 of 5 hits of the
+// rule were this false positive). The runners are the ones that ran there plus
+// Windows shells: python3?/py, go run, node, deno run, bun, bash|sh|zsh,
+// pwsh|powershell, ruby. Each needs a script-file argument (the extension its
+// runner accepts), so a bare viewer (ls/dir/Get-ChildItem/cat/Get-Content)
+// still does not count - the notes_index.md hit of that run was real. The
+// match stays by command text: the rule cannot open files, so it cannot confirm
+// the script existed or that it is the file the write touched, and it credits
+// an interpreter line that only mentions such a path (e.g. python -c reading
+// one). Runners outside the list keep not counting; adding one is a one-line
+// edit here.
+const builtinScriptRunCommand = "(" +
+	"\\b(python3?|py) +(\\S* )*\\S*\\.py\\b" +
+	"|\\bnode +(\\S* )*\\S*\\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)\\b" +
+	"|\\bdeno +run +(\\S* )*\\S*\\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)\\b" +
+	"|\\bbun +(\\S* )*\\S*\\.(js|mjs|cjs|ts|mts|cts|jsx|tsx)\\b" +
+	"|\\bgo +run +\\S" +
+	"|\\b(bash|zsh|sh) +(\\S* )*\\S*\\.sh\\b" +
+	"|\\b(pwsh|powershell) +(\\S* )*\\S*\\.ps1\\b" +
+	"|\\bruby +(\\S* )*\\S*\\.rb\\b" +
+	")"
+
 // builtinCheckCommand is the check_command of the built-in unverified-write
-// rule: the common test, vet and build commands count as having verified a
-// change, so a bare `ls` (or cat/git status) after an edit no longer does.
-const builtinCheckCommand = "(go +(test|vet|build)|make +|npm +(test|run)|pnpm +(test|run)|yarn +(test|run)|pytest|python +-m +pytest|cargo +(test|check|build)|mvn +|gradle +|dotnet +(test|build)|ctest +)"
+// rule: the common test, vet, build and script-run commands count as having
+// verified a change, so a bare `ls` (or cat/git status) after an edit no longer
+// does. The script-run half is builtinScriptRunCommand above.
+const builtinCheckCommand = "(go +(test|vet|build|run +\\S)|make +|npm +(test|run)|pnpm +(test|run)|yarn +(test|run)|pytest|python +-m +pytest|cargo +(test|check|build)|mvn +|gradle +|dotnet +(test|build)|ctest +|" + builtinScriptRunCommand + ")"
 
 // NudgeRule is one rule of the check. Configuration writes it as a `rules`
 // list in nudge-rules.yaml; a rule file entry replaces a same-name rule whole
