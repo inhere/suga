@@ -32,8 +32,8 @@ func coolingProvider(name, endpoint string) Provider {
 
 type namedEndpointProvider struct{ name, endpoint string }
 
-func (p namedEndpointProvider) Name() string         { return p.name }
-func (p namedEndpointProvider) Endpoint() string     { return p.endpoint }
+func (p namedEndpointProvider) Name() string     { return p.name }
+func (p namedEndpointProvider) Endpoint() string { return p.endpoint }
 func (p namedEndpointProvider) Generate(context.Context, *agentcoreapi.GenerateRequest) (*agentcoreapi.GenerateResult, error) {
 	return nil, nil
 }

@@ -29,16 +29,15 @@ func newProviderTransport(responseHeader time.Duration, proxy netproxy.ProxyFunc
 
 // proxyTransport clones the default transport and pins the global proxy
 // selector on it, so this client stops reading HTTP_PROXY/HTTPS_PROXY/NO_PROXY.
-// A nil selector returns an untyped nil RoundTripper: the caller then keeps the
+// The connection-phase timeouts come with it (newProviderTransport). A nil
+// selector returns an untyped nil RoundTripper: the caller then keeps the
 // default behavior, i.e. the environment proxies of an unconfigured
 // network.proxy (newProviderClient pins the connect timeouts on it).
 func proxyTransport(proxy netproxy.ProxyFunc) http.RoundTripper {
 	if proxy == nil {
 		return nil
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = proxy
-	return transport
+	return newProviderTransport(0, proxy)
 }
 
 // newProviderClient creates every provider HTTP client with the same redirect

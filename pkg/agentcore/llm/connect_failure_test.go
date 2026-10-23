@@ -14,6 +14,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/netproxy"
 )
 
 // failingTransport answers every request with err and counts the calls, so the
@@ -122,6 +123,14 @@ func TestProviderConnectTimeouts(t *testing.T) {
 		c := NewClaudeProvider(ClaudeConfig{})
 		assertConnectTimeouts(t, c.client)
 		assertConnectTimeouts(t, c.streamClient)
+	})
+
+	t.Run("a configured proxy keeps them", func(t *testing.T) {
+		selector, err := netproxy.New("http://127.0.0.1:9", []string{"provider.example"})
+		assert.Require(t, assert.NoErr(t, err))
+		p := NewOpenAIProvider(OpenAIConfig{Proxy: selector.ProxyFunc()})
+		assertConnectTimeouts(t, p.client)
+		assertConnectTimeouts(t, p.streamClient)
 	})
 
 	t.Run("a refused connect fails at once, not after the request timeout", func(t *testing.T) {
