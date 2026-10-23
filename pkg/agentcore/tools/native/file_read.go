@@ -54,19 +54,22 @@ type FileReadTool struct {
 }
 
 func (t *FileReadTool) Name() string { return "file_read" }
+
+// Description keeps the window/multi-path/image contract; the outline
+// restatement went (its parameter is the one place the trigger and the
+// 300-line threshold are stated) with the "cannot see images" note, which the
+// tool result itself shows when it happens (docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #14-#15).
 func (t *FileReadTool) Description() string {
 	return fmt.Sprintf("Read a text file in the workspace. Lines are prefixed with their number and a tab "+
 		"(the prefix is not part of the file). Returns at most %d lines per call; for large files pass "+
 		"offset (1-based start line) and limit to read further. To look at several places at once, prefer "+
 		"paths (up to %d) over path: offset and limit then apply to each file, and an entry may ask for "+
 		"line spans of its own as path:start-end[,start-end], e.g. paths: [\"a.go:10-30\", "+
-		"\"b.go:40-60,90-110\"]. Use outline=true only to see which declarations a source file over %d "+
-		"lines holds: it answers with the declaration outline (line numbers and declaration lines) instead "+
-		"of the text. Binary files are reported, not dumped. A picture (PNG, JPEG, GIF first frame or WebP, "+
+		"\"b.go:40-60,90-110\"]. Binary files are reported, not dumped. A picture (PNG, JPEG, GIF first frame or WebP, "+
 		"recognized by its file header whatever the extension) is returned as an image you can look at, "+
-		"scaled down on its long side; a session image ref such as images/<sha256>.png works too. A model "+
-		"that cannot see images gets a one-line note instead (switch the model, e.g. chat :model, and read "+
-		"it again). offset, limit and outline apply to text only.", defaultReadLines, maxReadPaths, outlineLines)
+		"scaled down on its long side; a session image ref such as images/<sha256>.png works too. "+
+		"offset, limit and outline apply to text only.", defaultReadLines, maxReadPaths)
 }
 
 // ToolMeta marks the tool as a read-only read.

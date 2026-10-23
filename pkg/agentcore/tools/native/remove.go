@@ -57,11 +57,15 @@ func NewFileRemoveTool(workspace, trashDir string) *FileRemoveTool {
 }
 
 func (t *FileRemoveTool) Name() string { return "file_remove" }
+
+// Description skips the "instead of shell rm" sentence: the stable system
+// prompt already names file_remove for every delete (docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #19).
 func (t *FileRemoveTool) Description() string {
 	return fmt.Sprintf("Remove a file or directory in the workspace. It is moved to the trash and kept for %d days, "+
 		"so it can be restored; directories ignored by .gitignore (and node_modules, vendor, dist) are deleted for good "+
 		"instead, and the result lists them. A directory needs recursive=true; at most %d files go to the trash per call. "+
-		"Wildcards are not expanded. Use this instead of shell rm/del/Remove-Item.", int(TrashRetention.Hours()/24), RemoveMaxFiles)
+		"Wildcards are not expanded.", int(TrashRetention.Hours()/24), RemoveMaxFiles)
 }
 
 // ToolMeta marks the tool as a deletion: it changes workspace files.

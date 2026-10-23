@@ -31,13 +31,16 @@ type FileGrepTool struct {
 }
 
 func (t *FileGrepTool) Name() string { return "file_grep" }
+
+// Description keeps the result shape and the skip defaults; the parameter
+// restatement (glob/exclude/context/literal sentences) went, each parameter's
+// own description is the one place that text lives (docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #12-#13).
 func (t *FileGrepTool) Description() string {
 	return "Search file contents in the workspace with a Go (RE2) regular expression. " +
 		"Returns path:line: text (paths relative to the workspace, / separated), or only paths with output=files. " +
-		"Skips .git, node_modules, vendor, dist, .gitignore matches (any directory's .gitignore; the result says what was skipped, " +
-		"no_ignore includes it), binary files and files over 1MB. Prefer this over shell grep. " +
-		"exclude drops lines like grep -v; glob takes a list with ! to exclude, e.g. [\"*.go\", \"!*_test.go\"]; " +
-		"context adds N lines around each match; literal for plain text; lookaround/backreferences fall back to a backtracking engine."
+		"Skips .git, node_modules, vendor, dist, .gitignore matches, binary files and files over 1MB. " +
+		"Prefer this over shell grep."
 }
 
 // ToolMeta marks the tool as a read-only search.
@@ -60,7 +63,7 @@ func (t *FileGrepTool) Schema() api.ToolSchema {
 				"ignore_case": map[string]any{"type": "boolean", "description": "Case-insensitive match"},
 				"output":      map[string]any{"type": "string", "enum": []any{"content", "files"}, "description": "content (default): matching lines; files: matching file paths"},
 				"max_results": map[string]any{"type": "integer", "description": fmt.Sprintf("Maximum lines or files (default %d, max %d)", defaultGrepResults, maxGrepResults)},
-				"no_ignore":   map[string]any{"type": "boolean", "description": "Also search .gitignore matches and node_modules/vendor/dist (.git is always skipped)"},
+				"no_ignore":   map[string]any{"type": "boolean", "description": "Also search ignored paths (.git stays skipped)"},
 			},
 			"required": []any{"pattern"},
 		},

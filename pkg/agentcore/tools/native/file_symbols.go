@@ -38,23 +38,18 @@ type FileSymbolsTool struct {
 }
 
 func (t *FileSymbolsTool) Name() string { return "file_symbols" }
+
+// Description keeps the listing contract and the file_refs pointer, and drops
+// the per-language parser details: an approx result line carries the same
+// information, and the caps (config key levels, 200 declarations) only matter
+// when a result they explain appears (docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #5-#9).
 func (t *FileSymbolsTool) Description() string {
 	return "List the declarations of a source file, or of every source file under a directory (recursive): " +
 		"one `path:line kind name signature` line each, sorted by path and line. Use it instead of guessing " +
-		"file_grep patterns to find where something is declared. Go is parsed exactly (func/method/type/const/var); " +
-		codeintel.DeclLineLanguages() + " are recognised from their declaration lines and marked " +
-		"approx (confirm a name with file_grep). A YAML/TOML file lists its keys by their dotted key path " +
-		"(server.http.port, services[].name), a mapping/table as kind section and a leaf as kind key, with the " +
-		"value preview in the signature; YAML is parsed with go-yaml (a file the parser rejects falls back to " +
-		"indentation lines, marked approx), TOML from its lines. A config file lists at most " +
-		fmt.Sprintf("%d key levels and %d keys - file_grep finds a deeper or later one", codeintel.ConfigMaxDepth, codeintel.ConfigMaxKeys) +
-		"; universal-ctags is used first when it is installed and covers more " +
-		"languages. It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
-		"Unsupported file types are refused with a file_grep pattern to use instead; file_read outline is unavailable for them. Paths under a read-only dependency " +
-		"root (module cache, SDK sources) work too: use it there to list a dependency's API instead of reading its " +
-		"source in pieces. " +
-		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d declarations.",
-			defaultSymbolLimit)
+		"file_grep patterns to find where something is declared. " +
+		"It lists declarations only, never usages: for who calls X or where X is used, use file_refs. " +
+		"Unsupported file types are refused with a file_grep pattern to use instead; file_read outline is unavailable for them."
 }
 
 // ToolMeta marks the tool as a read-only read of the sources. It pages its own
@@ -83,11 +78,11 @@ func (t *FileSymbolsTool) Schema() api.ToolSchema {
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
-					"description": "Also list *_test.go, *.test.ts, test_*.py, *Test.java and *Test.php (default false)",
+					"description": "Also list test files (default false)",
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
-					"description": "Also search .gitignore matches and node_modules/vendor/dist (.git is always skipped)",
+					"description": "Also list ignored paths (.git stays skipped)",
 				},
 				"limit": map[string]any{
 					"type":        "integer",

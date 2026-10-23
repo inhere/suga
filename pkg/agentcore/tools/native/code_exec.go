@@ -188,12 +188,11 @@ func (t *ShellExecTool) Description() string {
 			"one over the process or CPU time limit is ended; the result says so.", t.limits.describe())
 	}
 	if t.tasks != nil {
-		desc += fmt.Sprintf(" With background: true it starts the command in the background and returns a task id at once "+
-			"(long builds, full test runs, servers, watchers; ended after %s): keep working, read its output or wait for it "+
-			"with the task tool; you are told when it ends.", t.tasks.Limits().MaxDuration)
-		desc += fmt.Sprintf(" Adding every (seconds, at least %d) and/or watch_paths (globs) makes it a watch: the command "+
-			"runs now and again on each tick or change of the matching files, and you are told only when its exit code or "+
-			"output changes (e.g. keep the tests running while you edit).", int(minWatchEvery.Seconds()))
+		// The task tool owns the wait/notify mechanics and its background/timeout
+		// limits, and the every / watch_paths parameters own the watch behaviour:
+		// one sentence instead of restating both here (docs/research/
+		// 2026-10-23-fixed-prefix-tools-report.md 三 #16-#17).
+		desc += " With background: true it runs in the background and returns a task id; the every / watch_paths parameters make it a watch."
 	}
 	return desc
 }

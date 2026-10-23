@@ -15,7 +15,10 @@ import (
 // TestFileSymbolsUserLangRules is the end-to-end test of a language a user rule
 // file adds (design docs/design/2026-10-22-lang-rules-design.md): a
 // <workspace>/.suga/lang-rules.yaml teaches file_symbols Lua, an end_keyword
-// language no Go code knows, and the tool description lists it.
+// language no Go code knows, and the result lists its declarations. (The tool
+// description no longer advertises the registered language list; the model
+// gets the same answer from the result's approx note - docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #5.)
 func TestFileSymbolsUserLangRules(t *testing.T) {
 	ws := t.TempDir()
 	const source = `local function helper(x)
@@ -61,7 +64,6 @@ end
 	assert.Require(t, assert.NoErr(t, err))
 	assert.StrContains(t, res.Content, "store.lua:1 func helper")
 	assert.StrContains(t, res.Content, "store.lua:5 func Store.reload")
-	assert.StrContains(t, tool.Description(), "C/C++, Dart, Lua, PHP and TOML")
 
 	// The reference search masks Lua's comment the same way.
 	refs := &FileRefsTool{workspace: ws}
