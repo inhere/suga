@@ -267,11 +267,11 @@ func ReportDanger(ctx context.Context, reason string) {
 	}
 }
 
-// ApprovedResultNote is appended in front of the model-visible tool result of
+// ApprovedResultNote is prepended in front of the model-visible tool result of
 // a call a person approved this time (ApprovalReport.Answered, the ACP
 // allow/allow_always answer and the chat y/a answer). It tells the model truth
-// about who let the call run; it is one line the approval layer never adds for
-// a rule- or remembered-always allowed call.
+// about who let the call run; it is never added for a rule- or
+// remembered-always allowed call.
 const ApprovedResultNote = "[已经人工批准执行]"
 
 // annotateApproved prepends ApprovedResultNote to the result a person approved

@@ -228,9 +228,8 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 		a.policy.Rules = append(a.policy.Rules, scope.rule)
 		tools.ReportRule(ctx, scope.rule.Summary(), approvalScopeAttr(call.Name, scope.key))
 		if decision == approvalrules.Allow {
-			// The person answered this prompt and let the call run ("always" keeps
-			// the note of a human-approved call on this one; later calls the
-			// remembered session rule allows stay unnoted).
+			// 这一次调用是人在提示里批准的（选“总是允许”也算批准了这一次），
+			// 模型可见结果会注明；之后由记住的会话规则放行的调用不再注明。
 			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 		} else {
 			tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
