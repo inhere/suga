@@ -84,9 +84,10 @@ type recorder struct {
 	prefix *prefixTracker
 	// workspace is shortened to <ws> in recorded argument summaries.
 	workspace string
-	// vision is the live capability of the current model: view_image leaves the
-	// tool table of a model that cannot see images (a runtime lists the tools at
-	// every step, so a :model switch takes effect on the next one).
+	// vision is the live capability of the current model, kept on the recorder for
+	// the layers that ask it. The tool table no longer depends on it: file_read
+	// reads pictures itself and explains one to a model without vision (design
+	// 2026-10-23 section 8), so a :model switch no longer changes the tools.
 	vision *tools.VisionGate
 }
 
