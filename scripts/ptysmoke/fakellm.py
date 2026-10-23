@@ -363,6 +363,13 @@ def make_handler(args):
                     adddir_calls = adddir_calls[:1]
                 elif "只写" in str(user_text):
                     adddir_calls = adddir_calls[1:]
+            # deferred mode: load a native tool through tool_search and call it
+            # through the tool_call proxy of the segment apply mode. (Defined here,
+            # before the reply chain: a statement inside the if/elif chain splits it,
+            # and the second half's else overwrote the first half's tool calls.)
+            deferred_calls = [("tool_search", {"query": "select:memory"}),
+                              ("tool_call", {"name": "memory",
+                                             "arguments": {"action": "search", "query": "smoke"}})]
             if args.mode == "memory" and "直接" in str(user_text):
                 memory_calls = memory_calls[1:]
             if child:
@@ -383,15 +390,10 @@ def make_handler(args):
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": "file_read", "arguments": json.dumps({"path": args.read_path or "shot.png"})}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
-            # deferred mode: load a native tool through tool_search and call it
-            # through the tool_call proxy of the segment apply mode.
-            deferred_calls = [("tool_search", {"query": "select:memory"}),
-                              ("tool_call", {"name": "memory",
-                                             "arguments": {"action": "search", "query": "smoke"}})]
             # A request without tools (the compaction summary call) is answered
             # with text: a tool call there leaves the summary empty and the
             # segment break fails.
-            if args.mode == "deferred" and step < len(deferred_calls) and body.get("tools"):
+            elif args.mode == "deferred" and step < len(deferred_calls) and body.get("tools"):
                 name, arguments = deferred_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
