@@ -110,7 +110,20 @@ func (o *Output) rereadable(name string) bool {
 	return err == nil && MetaOf(t).Rereadable
 }
 
+// ExecuteTool runs the wrapped stack and then notes a call the person approved:
+// the note is added here, above output governance, so a minimizer or a
+// truncation cannot drop it from the result the model reads.
 func (o *Output) ExecuteTool(ctx context.Context, call api.ToolCall) (*api.ToolResult, error) {
+	res, err := o.execute(ctx, call)
+	if res != nil {
+		annotateApproved(ctx, res)
+	}
+	return res, err
+}
+
+// execute is the output layer proper (minimize, spill, truncate); ExecuteTool
+// wraps it with the human-approved note.
+func (o *Output) execute(ctx context.Context, call api.ToolCall) (*api.ToolResult, error) {
 	res, err := o.inner.ExecuteTool(ctx, call)
 	if err != nil || res == nil {
 		return res, err // errors (ErrDenied, ErrAborted ...) pass through as is

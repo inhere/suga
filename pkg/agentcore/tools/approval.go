@@ -217,6 +217,11 @@ type ApprovalReport struct {
 	// Scope is the session rule's scope key; it is empty for user, project and
 	// legacy rules, and for calls without a representative rule.
 	Scope string
+	// Answered marks a call the person was asked about in this very call and
+	// allowed (allow_once, and the allow_always of the same prompt: the person
+	// did approve this call). Later calls a remembered "always" rule lets
+	// through are not Answered, so the model-visible note is not added there.
+	Answered bool
 }
 
 type approvalReportKey struct{}
@@ -244,11 +249,43 @@ func ReportRule(ctx context.Context, summary, scope string) {
 	}
 }
 
+// ReportApprovalAnswer is ReportApproval plus Answered: the person answered a
+// prompt in this very call and let it run (allow once or allow always; either
+// way the model-visible result gets the human-approved note, see
+// annotateApproved). Later calls with ReportApproval(ApprovedAlways, 0) come
+// from a remembered session rule, not from a fresh answer, and stay unmarked.
+func ReportApprovalAnswer(ctx context.Context, source string, wait time.Duration) {
+	if r, _ := ctx.Value(approvalReportKey{}).(*ApprovalReport); r != nil {
+		r.Source, r.Wait, r.Answered = source, wait, true
+	}
+}
+
 // ReportDanger records in ctx's report why the call is dangerous.
 func ReportDanger(ctx context.Context, reason string) {
 	if r, _ := ctx.Value(approvalReportKey{}).(*ApprovalReport); r != nil {
 		r.Danger = reason
 	}
+}
+
+// ApprovedResultNote is appended in front of the model-visible tool result of
+// a call a person approved this time (ApprovalReport.Answered, the ACP
+// allow/allow_always answer and the chat y/a answer). It tells the model truth
+// about who let the call run; it is one line the approval layer never adds for
+// a rule- or remembered-always allowed call.
+const ApprovedResultNote = "[已经人工批准执行]"
+
+// annotateApproved prepends ApprovedResultNote to the result a person approved
+// this very call. It only shapes the text the model reads: the tool's exit
+// codes and error semantics, and the result the trace stores, stay untouched.
+func annotateApproved(ctx context.Context, res *api.ToolResult) {
+	if res == nil {
+		return
+	}
+	r := approvalReportOf(ctx)
+	if r == nil || !r.Answered {
+		return
+	}
+	res.Content = ApprovedResultNote + "\n" + res.Content
 }
 
 func approvalReportOf(ctx context.Context) *ApprovalReport {

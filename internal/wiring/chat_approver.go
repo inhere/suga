@@ -194,11 +194,11 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 	if !a.usePolicy {
 		switch chatreply.ParseApprovalReply(answer) {
 		case chatreply.ReplyAllow:
-			tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 			return nil
 		case chatreply.ReplyAllowAlways:
 			a.always[name] = true
-			tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 			return nil
 		}
 		tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
@@ -208,7 +208,7 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 	reply := chatreply.ParseApprovalReply(answer)
 	switch reply {
 	case chatreply.ReplyAllow:
-		tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+		tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
 		return nil
 	case chatreply.ReplyAllowAlways, chatreply.ReplyDenyAlways:
 		if reply == chatreply.ReplyAllowAlways && !scope.allowAlways {
@@ -227,7 +227,14 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 		scope.rule.Action = decision
 		a.policy.Rules = append(a.policy.Rules, scope.rule)
 		tools.ReportRule(ctx, scope.rule.Summary(), approvalScopeAttr(call.Name, scope.key))
-		tools.ReportApproval(ctx, tools.ApprovedByUser, wait)
+		if decision == approvalrules.Allow {
+			// The person answered this prompt and let the call run ("always" keeps
+			// the note of a human-approved call on this one; later calls the
+			// remembered session rule allows stay unnoted).
+			tools.ReportApprovalAnswer(ctx, tools.ApprovedByUser, wait)
+		} else {
+			tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
+		}
 		if a.policy.PersistAsk {
 			persistAnswer, persistErr := a.asker.Ask(ctx, tools.Question{Tool: "approval_rule", Prompt: chatreply.PersistPrompt(string(decision))})
 			if persistErr != nil {
