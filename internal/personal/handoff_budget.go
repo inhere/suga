@@ -334,15 +334,16 @@ func handoffCappedTotal() int {
 	return n
 }
 
-// handoffOutputTokens is the output cap of one summary call: the capped
-// sections' budgets plus half again for the uncapped protected section, at the
-// 4-bytes-per-token estimate the context layer uses. It is deliberately loose
-// (a model over budget is corrected by normalizeHandoffBody, which cuts the
-// capped sections and never the protected one), but bounded: the old call had
-// no cap at all and a fold could ask for 21,676 output tokens (research
-// 2026-10-22 §3).
+// handoffOutputTokens is the output cap of one summary call: 0, the protocol's
+// own default. A cap sized after the section budgets (about 3.3k tokens) left
+// reasoning models with an empty summary - their reasoning spends the same
+// output allowance, and a re-ask hit the same wall - so every segment break of
+// the 2026-10-23 hard evaluation run failed with "empty summary". The package
+// size is bounded where it matters instead: the budgets the template states
+// and normalizeHandoffBody, which cuts the capped sections of whatever comes
+// back and never the protected one.
 func handoffOutputTokens() int {
-	return (handoffCappedTotal()*3/2 + 3) / 4
+	return 0
 }
 
 // completeProtectedNote is what a re-ask after a truncated summary asks for: it

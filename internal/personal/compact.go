@@ -526,7 +526,7 @@ type packageInput struct {
 //
 // The fold is bounded on three sides (research 2026-10-22 §5 #2): the previous
 // package enters deduped and cut to its budgets (foldPreviousPackage), the call
-// has an output cap sized after the budgets (handoffOutputTokens), and the body
+// sets no output cap (handoffOutputTokens: a cap starved reasoning models), and the body
 // that comes back is normalized again (normalizeHandoffBody) - which cuts the
 // capped sections and never the protected one. A summary cut short by the cap
 // is asked for once more with the budgets restated.
@@ -556,9 +556,10 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 	sb.WriteString("\n\n# 待压缩的对话\n")
 	sb.WriteString(transcript)
 
-	// The cap is a loose one: it only stops an unbounded summary. Going over it
-	// is handled downstream by normalizeHandoffBody (capped sections cut,
-	// protected section kept), and a truncated answer is asked for once more.
+	// No cap of our own (handoffOutputTokens is 0): going over the budgets is
+	// handled downstream by normalizeHandoffBody (capped sections cut, protected
+	// section kept), and an answer the provider still truncated is asked for once
+	// more.
 	maxTokens := handoffOutputTokens()
 	body, truncated, err := r.summaryCall(ctx, scenario, sb.String(), maxTokens)
 	if err != nil {

@@ -131,15 +131,14 @@ func TestHandoffPackageBudgetOverThreeSegments(t *testing.T) {
 	recs := compactionEntries(t, repo, sid)
 	assert.Require(t, assert.Len(t, recs, 4))
 
-	t.Run("every summary call carries the budget as its output cap", func(t *testing.T) {
+	t.Run("summary calls set no output cap", func(t *testing.T) {
+		// A cap left reasoning models with an empty summary (their reasoning
+		// spends the same allowance); the package is bounded by the budgets and
+		// normalizeHandoffBody instead, which the next subtests check.
 		assert.Eq(t, 4, len(prov.sumReqs))
 		for _, req := range prov.sumReqs {
-			assert.Eq(t, handoffOutputTokens(), req.MaxTokens)
+			assert.Eq(t, 0, req.MaxTokens)
 		}
-		// Loose but bounded: the capped budgets plus half again for the
-		// protected section, and far below the 21,676 tokens measured before.
-		assert.Eq(t, true, handoffOutputTokens() >= handoffCappedTotal()/4)
-		assert.Eq(t, true, handoffOutputTokens() < 8000)
 	})
 
 	t.Run("the third package does not grow over the second", func(t *testing.T) {
