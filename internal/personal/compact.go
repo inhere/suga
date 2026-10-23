@@ -41,14 +41,19 @@ const refsHeading = "## 与当前任务相关的引用"
 // the sections are fixed so a summary can be located by section and searched,
 // and the last one is refsHeading, which parseRefs reads the refs back from.
 // The plan is appended by renderPackage, so the template has no plan section.
-const compactTemplate = `请按下列固定结构输出交接包正文（没有内容的小节写“无”）：
-## 当前任务（最近的用户请求原文会附在交接包里，不必复述）
-## 坐标（文件 / 符号 / 分支 / 版本）
-## 采纳与否决
-## 验证到哪
-## 进展与阻塞
-## 下一步
-` + refsHeading + `（ref + 一句话说明，可用 recall 读取）`
+//
+// Each section but 采纳与否决 carries its output budget (handoffSectionBudgets)
+// in the heading's note: the model is told the budgets so a summary stays small
+// where it may, while the protected section is told to stay verbatim and
+// uncapped (the long-session evaluation checks those lines).
+const compactTemplate = `请按下列固定结构输出交接包正文（没有内容的小节写“无”）；每节括号里的“≤N”是该节的字节预算，超出时只保留继续任务最必要的行：
+## 当前任务（最近的用户请求原文会附在交接包里，不必复述；≤1 KB）
+## 坐标（文件 / 符号 / 分支 / 版本；≤2 KB，同一文件同一符号只写最新的一次）
+## 采纳与否决（硬约束、规则与用户原话一律原文，不设上限，不得改写或省略）
+## 验证到哪（≤1.5 KB）
+## 进展与阻塞（≤2 KB）
+## 下一步（≤1 KB）
+` + refsHeading + `（ref + 一句话说明，可用 recall 读取；≤1 KB）`
 
 // compactLimits resolves the window and reserve budgets (tokens).
 //
@@ -518,12 +523,20 @@ type packageInput struct {
 // transcript is size-capped so the request itself fits the window. Context
 // updates are skipped: the next segment re-reads rules and the rest into its
 // own snapshot.
+//
+// The fold is bounded on three sides (research 2026-10-22 §5 #2): the previous
+// package enters deduped and cut to its budgets (foldPreviousPackage), the call
+// has an output cap sized after the budgets (handoffOutputTokens), and the body
+// that comes back is normalized again (normalizeHandoffBody) - which cuts the
+// capped sections and never the protected one. A summary cut short by the cap
+// is asked for once more with the budgets restated.
 func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput, threshold int) (string, error) {
 	dropped := withoutContextUpdates(in.dropped)
+	transcript := renderTranscript(dropped, max(threshold*3, 8000))
 	var sb strings.Builder
 	sb.WriteString(compactTemplate)
 	if in.previous != "" {
-		sb.WriteString("\n\n# 已有摘要（需并入新摘要）\n" + in.previous)
+		sb.WriteString("\n\n# 已有摘要（需并入新摘要）\n" + foldPreviousPackage(in.previous, transcript))
 	}
 	plan := in.plan
 	if plan == "" {
@@ -541,22 +554,45 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 		}
 	}
 	sb.WriteString("\n\n# 待压缩的对话\n")
-	sb.WriteString(renderTranscript(dropped, max(threshold*3, 8000)))
+	sb.WriteString(transcript)
 
-	// No MaxTokens on purpose: a summary is short by nature, so the protocol's
-	// own default is enough here; the output limit setting target the main
-	// loop's answers (Config.MaxOutputTokens).
-	res, err := generateQuietly(withPurpose(ctx, purposeCompact), r.scenarioProvider(scenario), &agentcore.GenerateRequest{
-		System:   compactSystemPrompt,
-		Messages: []agentcore.Message{{Role: "user", Content: sb.String()}},
-	})
+	// The cap is a loose one: it only stops an unbounded summary. Going over it
+	// is handled downstream by normalizeHandoffBody (capped sections cut,
+	// protected section kept), and a truncated answer is asked for once more.
+	maxTokens := handoffOutputTokens()
+	body, truncated, err := r.summaryCall(ctx, scenario, sb.String(), maxTokens)
 	if err != nil {
-		return "", fmt.Errorf("summarize context: %w", err)
+		return "", err
 	}
-	if res == nil || strings.TrimSpace(res.Content) == "" {
+	if truncated {
+		slog.Warn("handoff summary hit the output cap; asking once more with the budgets restated",
+			"max_tokens", maxTokens, "summary_bytes", len(body))
+		if again, _, aerr := r.summaryCall(ctx, scenario, sb.String()+completeProtectedNote, maxTokens); aerr == nil && strings.TrimSpace(again) != "" {
+			body = again
+		}
+	}
+	if strings.TrimSpace(body) == "" {
 		return "", errors.New("summarize context: empty summary")
 	}
-	return strings.TrimSpace(res.Content), nil
+	return normalizeHandoffBody(strings.TrimSpace(body)), nil
+}
+
+// summaryCall makes one summary request (prompt is the whole user message).
+// truncated reports that the provider cut the answer at the output limit, so
+// the package may be missing its last sections.
+func (r *Runner) summaryCall(ctx context.Context, scenario, prompt string, maxTokens int) (body string, truncated bool, err error) {
+	res, err := generateQuietly(withPurpose(ctx, purposeCompact), r.scenarioProvider(scenario), &agentcore.GenerateRequest{
+		System:    compactSystemPrompt,
+		Messages:  []agentcore.Message{{Role: "user", Content: prompt}},
+		MaxTokens: maxTokens,
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("summarize context: %w", err)
+	}
+	if res == nil || strings.TrimSpace(res.Content) == "" {
+		return "", false, errors.New("summarize context: empty summary")
+	}
+	return res.Content, res.Truncated, nil
 }
 
 // withoutContextUpdates returns items without replayed context updates
