@@ -105,6 +105,11 @@ type rendererOptions struct {
 	Spinner bool
 	// AgentProgress controls sub-agent tool-call display: summary, full or off.
 	AgentProgress string
+	// AgentTasks returns the session's background tasks. The status line counts a
+	// running background agent by its task there, so a task that ended, failed or
+	// was killed stops being counted whether or not its notice reached the model
+	// (nil: a background agent is not shown, nothing could tell that it ended).
+	AgentTasks func() []tasks.Info
 	// now supplies the local wall clock of the end-of-turn time on the status
 	// line (nil: time.Now). Tests inject a fixed clock.
 	now func() time.Time
@@ -145,15 +150,25 @@ type Renderer struct {
 	budget *personal.BudgetSnapshot
 	// budgetNoticed prevents repeated threshold reminders within one turn.
 	budgetNoticed bool
-	// agentProgress tracks child calls by description. It deliberately lives on the
-	// renderer, not in the event stream, so concurrent children cannot share counts.
+	// agentProgress tracks the running agent tool calls of this chat by call ID
+	// (the state carries the description for display). It deliberately lives on
+	// the renderer, not in the event stream, so concurrent children cannot share
+	// counts.
 	agentProgress map[string]*agentProgressState
 }
 
+// agentProgressState is one running agent tool call: the call ID is the key and
+// the description only labels it. A foreground entry ends with its tool result
+// (a failed or cancelled run leaves no summary) or, at the latest, with the
+// turn; a background one lives while its task in the tasks manager runs.
 type agentProgressState struct {
-	calls      int
-	started    time.Time
-	background bool
+	description string
+	calls       int
+	started     time.Time
+	background  bool
+	// taskID is the background task the call started (empty: a foreground call
+	// or one whose result never arrived).
+	taskID string
 }
 
 // newRenderer returns a renderer that shows no waiting line yet: the first turn
@@ -268,37 +283,107 @@ func (r *Renderer) agentProgressMode() string {
 }
 
 func (r *Renderer) agentStatusLabel() string {
-	if r.agentProgressMode() != "summary" || len(r.agentProgress) == 0 {
+	if r.agentProgressMode() != "summary" {
 		return spinnerLabel
 	}
-	names := make([]string, 0, len(r.agentProgress))
-	for name, state := range r.agentProgress {
-		if state != nil {
-			names = append(names, name)
-		}
-	}
-	if len(names) == 0 {
+	parts := r.runningAgents()
+	if len(parts) == 0 {
 		return spinnerLabel
 	}
-	sort.Strings(names)
-	parts := make([]string, 0, len(names))
-	for _, name := range names {
-		parts = append(parts, fmt.Sprintf("%s %d 次调用", truncateLine(name, 24), r.agentProgress[name].calls))
+	texts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		texts = append(texts, fmt.Sprintf("%s %d 次调用", truncateLine(part.description, 24), part.calls))
 	}
-	return truncateLine(fmt.Sprintf("子 agent：%d 个运行中（%s）", len(names), strings.Join(parts, "、")), 120)
+	return truncateLine(fmt.Sprintf("子 agent：%d 个运行中（%s）", len(parts), strings.Join(texts, "、")), 120)
 }
 
+// agentStatusPart is one running agent the status line counts.
+type agentStatusPart struct {
+	id          string
+	description string
+	calls       int
+}
+
+// runningAgents is what the status line counts as running, in display order: the
+// foreground entries of this turn and the manager's running agent tasks. The
+// tasks manager is the truth for a background agent - its task leaves the
+// running set when it ends, fails or is killed, so the count never depends on a
+// notice being delivered - and an entry whose task is gone is dropped here.
+func (r *Renderer) runningAgents() []agentStatusPart {
+	tasksByID := make(map[string]tasks.Info)
+	for _, info := range r.agentTasks() {
+		if info.Kind == "agent" && info.Status == tasks.Running {
+			tasksByID[info.ID] = info
+		}
+	}
+	parts := make([]agentStatusPart, 0, len(r.agentProgress)+len(tasksByID))
+	for id, state := range r.agentProgress {
+		if state == nil {
+			delete(r.agentProgress, id)
+			continue
+		}
+		if state.taskID == "" {
+			parts = append(parts, agentStatusPart{id: id, description: state.description, calls: state.calls})
+			continue
+		}
+		if _, running := tasksByID[state.taskID]; !running {
+			delete(r.agentProgress, id)
+			continue
+		}
+		parts = append(parts, agentStatusPart{id: id, description: state.description, calls: state.calls})
+		delete(tasksByID, state.taskID)
+	}
+	// A running agent task no entry knows (its call ended without a result) is
+	// still a running sub-agent: name it by its task.
+	for id, info := range tasksByID {
+		parts = append(parts, agentStatusPart{id: id, description: strings.TrimPrefix(info.Summary, "agent: ")})
+	}
+	sort.Slice(parts, func(i, j int) bool {
+		if parts[i].description != parts[j].description {
+			return parts[i].description < parts[j].description
+		}
+		return parts[i].id < parts[j].id
+	})
+	return parts
+}
+
+// agentTasks is the renderer's view of the session's tasks (nil: none).
+func (r *Renderer) agentTasks() []tasks.Info {
+	if r.opts.AgentTasks == nil {
+		return nil
+	}
+	return r.opts.AgentTasks()
+}
+
+// refreshAgentStatus puts what the line says back in place after a background
+// agent changed outside the event stream (its task ended or was killed).
+func (r *Renderer) refreshAgentStatus() { r.spin.SetLabel(r.agentStatusLabel()) }
+
+// EndTurnAgents forgets the entries no background task backs: a foreground
+// sub-agent ends with its turn (a cancelled turn leaves no tool result, a failed
+// one no summary), so the status line of the next turn starts clean.
+func (r *Renderer) EndTurnAgents() {
+	for id, state := range r.agentProgress {
+		if state == nil || state.taskID == "" {
+			delete(r.agentProgress, id)
+		}
+	}
+	r.refreshAgentStatus()
+}
+
+// beginAgent records the agent tool call of event, so the status line counts
+// the sub-agent's tool calls under that call. The call ID is the key and the
+// description is only its label: two children with the same description stay
+// two entries.
 func (r *Renderer) beginAgent(event personal.Event) {
-	if event.ToolName != "agent" {
+	if event.ToolName != "agent" || event.CallID == "" {
 		return
 	}
-	name, background := agentCallDetails(event.Text)
-	if name == "" {
+	description, background := agentCallDetails(event.Text)
+	if description == "" {
 		return
 	}
-	if _, ok := r.agentProgress[name]; !ok {
-		r.agentProgress[name] = &agentProgressState{started: time.Now(), background: background}
-	}
+	r.agentProgress[event.CallID] = &agentProgressState{description: description, started: time.Now(), background: background}
 }
 
 func agentCallDetails(text string) (string, bool) {
@@ -312,29 +397,44 @@ func agentCallDetails(text string) (string, bool) {
 	return strings.TrimSpace(args.Description), args.Background
 }
 
-func (r *Renderer) finishAgent(summary *personal.AgentSummary) {
+// finishAgent ends the entry of an agent tool result. Any end counts - a report,
+// an error or a refusal - so an entry never outlives its call. A background call
+// keeps its entry: the task it started is what runs, and the manager's task list
+// decides when it is gone; its summary line comes with that task's notice
+// (AgentTaskSummaries).
+func (r *Renderer) finishAgent(event personal.Event) {
+	if event.ToolName != "agent" {
+		return
+	}
+	summary := event.AgentSummary
+	state := r.agentProgress[event.CallID]
+	if (state != nil && state.background) || (summary != nil && summary.Background) {
+		if state != nil && summary != nil {
+			state.taskID = summary.TaskID
+		}
+		return
+	}
+	if event.CallID != "" {
+		delete(r.agentProgress, event.CallID)
+	}
 	if summary == nil || summary.Description == "" {
 		return
 	}
-	state := r.agentProgress[summary.Description]
-	if state == nil {
-		state = &agentProgressState{started: time.Now()}
-	}
-	if summary.Background {
-		state.background = true
-		if summary.ToolCalls > state.calls {
-			state.calls = summary.ToolCalls
-		}
-		r.agentProgress[summary.Description] = state
-		return
-	}
 	calls := summary.ToolCalls
-	if calls < state.calls {
+	if state != nil && calls < state.calls {
 		calls = state.calls
 	}
-	delete(r.agentProgress, summary.Description)
 	if r.agentProgressMode() == "summary" {
 		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(summary.Description, 40), calls, formatElapsed(summary.Duration))
+	}
+}
+
+// dropAgentTask forgets the entry of a background agent task that ended.
+func (r *Renderer) dropAgentTask(taskID string) {
+	for id, state := range r.agentProgress {
+		if state != nil && state.taskID == taskID {
+			delete(r.agentProgress, id)
+		}
 	}
 }
 
@@ -351,8 +451,9 @@ func (r *Renderer) AgentTaskSummaries(infos []tasks.Info) {
 		name := strings.TrimPrefix(info.Summary, "agent: ")
 		calls := info.Counters["tool_calls"]
 		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(name, 40), calls, formatElapsed(info.Duration()))
-		delete(r.agentProgress, name)
+		r.dropAgentTask(info.ID)
 	}
+	r.refreshAgentStatus()
 }
 func (r *Renderer) toolRunning(name string) {
 	if !r.statusLine() {
@@ -433,17 +534,16 @@ func (r *Renderer) Handle(event personal.Event) {
 			r.noteMemory(event)
 			r.showToolResult(change, tool)
 		}
-		r.finishAgent(event.AgentSummary)
+		r.finishAgent(event)
 		r.startThinking() // the model reads the result and thinks on
 	case "agent_progress":
-		// A sub-agent's tool call, under the agent call that started it.
-		name := event.Agent
-		state := r.agentProgress[name]
-		if state == nil {
-			state = &agentProgressState{started: time.Now()}
-			r.agentProgress[name] = state
+		// A sub-agent's tool call, under the agent call that started it. It is
+		// counted on that call's entry only: an event of a call the renderer does
+		// not know must not create one, or the status line would count an agent
+		// nothing ever ends.
+		if state := r.agentProgress[event.CallID]; state != nil {
+			state.calls++
 		}
-		state.calls++
 		if r.agentProgressMode() == "full" {
 			r.live.Finish()
 			line := "  · " + event.ToolName

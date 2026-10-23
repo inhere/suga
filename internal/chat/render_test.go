@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
 
@@ -451,9 +453,9 @@ func TestRendererMemoryWrites(t *testing.T) {
 func TestRendererAgentProgress(t *testing.T) {
 	var out bytes.Buffer
 	r := newRenderer(rendererOptions{Out: &out, Err: &out, AgentProgress: "full"})
-	r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", Text: `{"description":"find Foo"}`})
-	r.Handle(personal.Event{Kind: "agent_progress", Agent: "find Foo", ToolName: "file_grep", Text: `{"pattern":"Foo"}`})
-	r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", Text: "Foo is in a.go:3"})
+	r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c1", Text: `{"description":"find Foo"}`})
+	r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "find Foo", ToolName: "file_grep", Text: `{"pattern":"Foo"}`})
+	r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "Foo is in a.go:3"})
 	assert.Eq(t, strings.Join([]string{
 		`⏺ agent explore find Foo`,
 		`  · file_grep "Foo"`,
@@ -476,15 +478,15 @@ func TestRendererAgentProgressModes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 			r := newRenderer(rendererOptions{Out: &out, AgentProgress: tc.mode})
-			r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", Text: `{"description":"审计 bug"}`})
-			r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", Text: `{"description":"读文档"}`})
-			r.Handle(personal.Event{Kind: "agent_progress", Agent: "审计 bug", ToolName: "file_read"})
-			r.Handle(personal.Event{Kind: "agent_progress", Agent: "读文档", ToolName: "file_grep"})
-			r.Handle(personal.Event{Kind: "agent_progress", Agent: "审计 bug", ToolName: "file_find"})
-			r.Handle(personal.Event{Kind: "agent_progress", Agent: "读文档", ToolName: "file_read"})
-			r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", Text: "report 1",
+			r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c1", Text: `{"description":"审计 bug"}`})
+			r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c2", Text: `{"description":"读文档"}`})
+			r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "审计 bug", ToolName: "file_read"})
+			r.Handle(personal.Event{Kind: "agent_progress", CallID: "c2", Agent: "读文档", ToolName: "file_grep"})
+			r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "审计 bug", ToolName: "file_find"})
+			r.Handle(personal.Event{Kind: "agent_progress", CallID: "c2", Agent: "读文档", ToolName: "file_read"})
+			r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "report 1",
 				AgentSummary: &personal.AgentSummary{Description: "审计 bug", ToolCalls: 2, Duration: 2 * time.Second}})
-			r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", Text: "report 2",
+			r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c2", Text: "report 2",
 				AgentSummary: &personal.AgentSummary{Description: "读文档", ToolCalls: 2, Duration: 3 * time.Second}})
 			got := out.String()
 			assert.Eq(t, tc.progress, strings.Contains(got, "  · "))
@@ -492,6 +494,79 @@ func TestRendererAgentProgressModes(t *testing.T) {
 				strings.Contains(got, "子 agent 读文档：2 次工具调用，耗时 3.0s"))
 		})
 	}
+}
+
+// TestRendererAgentStatusLifecycle: the status line counts a sub-agent only
+// while it runs. A failed sub-agent (an error result without a summary), the end
+// of the turn and the end of a background agent's task all end its entry, and
+// progress of a call the renderer does not know never starts one.
+func TestRendererAgentStatusLifecycle(t *testing.T) {
+	agentCall := func(callID string, background bool) personal.Event {
+		text := `{"description":"survey"}`
+		if background {
+			text = `{"description":"survey","background":true}`
+		}
+		return personal.Event{Kind: "tool_call", ToolName: "agent", CallID: callID, Text: text}
+	}
+
+	t.Run("a failed result ends the entry", func(t *testing.T) {
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
+		r.Handle(agentCall("c1", false))
+		assert.StrContains(t, r.agentStatusLabel(), "survey")
+		// A sub-agent that failed: an error result without any summary.
+		r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "sub-agent failed", IsError: true})
+		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+	})
+
+	t.Run("the end of the turn ends the entries no task backs", func(t *testing.T) {
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
+		r.Handle(agentCall("c1", false))
+		r.Handle(agentCall("c2", false))
+		r.Handle(personal.Event{Kind: "agent_progress", CallID: "c2", Agent: "survey", ToolName: "file_grep"})
+		r.EndTurnAgents() // a cancelled turn leaves no tool result at all
+		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+	})
+
+	t.Run("progress of an unknown call adds nothing", func(t *testing.T) {
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
+		r.Handle(personal.Event{Kind: "agent_progress", CallID: "gone", Agent: "ghost", ToolName: "file_grep"})
+		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+	})
+
+	t.Run("the same description stays two entries", func(t *testing.T) {
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
+		r.Handle(agentCall("c1", false))
+		r.Handle(agentCall("c2", false))
+		assert.StrContains(t, r.agentStatusLabel(), "子 agent：2 个运行中")
+		r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "report",
+			AgentSummary: &personal.AgentSummary{Description: "survey", ToolCalls: 1, Duration: time.Second}})
+		assert.StrContains(t, r.agentStatusLabel(), "子 agent：1 个运行中")
+	})
+
+	t.Run("a background agent follows its task", func(t *testing.T) {
+		running := true
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary", AgentTasks: func() []tasks.Info {
+			if !running {
+				return nil
+			}
+			return []tasks.Info{{ID: "t1", Kind: "agent", Summary: "agent: survey", Status: tasks.Running}}
+		}})
+		r.Handle(agentCall("c1", true))
+		r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "[background agent task t1 started]",
+			AgentSummary: &personal.AgentSummary{Description: "survey", Background: true, TaskID: "t1"}})
+		assert.StrContains(t, r.agentStatusLabel(), "survey")
+		// The task ended or was killed: gone from the manager, gone from the line,
+		// whether or not its notice was ever delivered.
+		running = false
+		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+	})
+
+	t.Run("a running agent task is counted without an entry", func(t *testing.T) {
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary", AgentTasks: func() []tasks.Info {
+			return []tasks.Info{{ID: "t2", Kind: "agent", Summary: "agent: survey", Status: tasks.Running}}
+		}})
+		assert.StrContains(t, r.agentStatusLabel(), "survey 0 次调用")
+	})
 }
 
 // TestRendererLoopGuardLine: the loop guard's reminder is one gray line of its

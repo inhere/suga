@@ -126,7 +126,8 @@ func RunChild(ctx context.Context, child *Runner, req ChildRequest) (ChildResult
 }
 
 // childProgress forwards the sub-agent's tool calls as "agent_progress" events
-// (Description in Text after the call; the turn's other events are dropped).
+// (Description in Agent for display, the agent tool call's id in CallID so chat
+// counts them on the right entry; the turn's other events are dropped).
 func childProgress(req ChildRequest) EmitFunc {
 	if req.Emit == nil {
 		return nil
@@ -135,7 +136,8 @@ func childProgress(req ChildRequest) EmitFunc {
 		if e.Kind != "tool_call" {
 			return nil
 		}
-		return req.Emit(ctx, Event{Kind: "agent_progress", ToolName: e.ToolName, Text: e.Text, ToolArgs: e.ToolArgs, Agent: req.Description})
+		return req.Emit(ctx, Event{Kind: "agent_progress", ToolName: e.ToolName, CallID: req.ParentCall,
+			Text: e.Text, ToolArgs: e.ToolArgs, Agent: req.Description})
 	}
 }
 

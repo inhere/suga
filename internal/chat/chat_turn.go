@@ -307,6 +307,9 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 		_ = s.server.SetBusy(false)
 	}
 	s.stats.add(result)
+	// The turn is over: a sub-agent of it is not shown as running any more, even
+	// when the turn ended before its tool result (a cancelled turn has none).
+	s.render.EndTurnAgents()
 	s.pendingContext = ""
 	// The "!!" results went to the model with this turn; the next ones start a
 	// new block.

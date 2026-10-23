@@ -194,8 +194,8 @@ func TestSpinnerAgentProgress(t *testing.T) {
 	clock.tick(3 * time.Second)
 	assert.Require(t, waitOutput(t, out, spinnerLabel))
 
-	r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent"})
-	r.Handle(personal.Event{Kind: "agent_progress", Agent: "survey", ToolName: "file_grep", Text: `{"pattern":"x"}`})
+	r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c1", Text: `{"description":"survey"}`})
+	r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "survey", ToolName: "file_grep", Text: `{"pattern":"x"}`})
 	assert.True(t, spinnerRunning(r.spin))
 
 	clock.tick(2 * time.Second)

@@ -138,9 +138,9 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 	})
 
 	t.Run("a sub-agent keeps the wording of a waiting turn", func(t *testing.T) {
-		r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", Text: `{"prompt":"survey"}`})
+		r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c1", Text: `{"description":"survey"}`})
 		assert.StrContains(t, log.last(), toolLabel("agent"))
-		r.Handle(personal.Event{Kind: "agent_progress", Agent: "survey", ToolName: "file_grep", Text: `{"pattern":"x"}`})
+		r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "survey", ToolName: "file_grep", Text: `{"pattern":"x"}`})
 		assert.StrContains(t, log.last(), "子 agent：1 个运行中")
 		assert.StrNotContains(t, log.last(), "file_grep")
 	})
