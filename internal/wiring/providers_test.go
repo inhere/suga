@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/gookit/goutil/x/assert"
@@ -356,4 +357,38 @@ func TestBudgetEstimatorRemainsOffWithoutLimits(t *testing.T) {
 	assert.False(t, estimated)
 	assert.Eq(t, int64(0), events[0].InputTokens)
 	assert.Eq(t, int64(0), events[0].OutputTokens)
+}
+
+// TestOpenFallbackOnConnectFailure drives the real assembly: the main model's
+// endpoint refuses connections, so the pool hands the turn to the fallback model
+// after one attempt instead of retrying the dead endpoint.
+//
+// Reverse verification: removing the fallbackAvailable branch in postWithRetry
+// makes the run spend the default policy's 6 attempts with 1s..16s waits (31s)
+// on the dead primary, so the elapsed bound fails.
+func TestOpenFallbackOnConnectFailure(t *testing.T) {
+	resetConfig(t)
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := dead.URL
+	dead.Close()
+	good := fakeServer(t, http.StatusOK, "backup", nil)
+	assert.NoErr(t, gkconfig.Set("model", "primary/m1"))
+	assert.NoErr(t, gkconfig.Set("fallback_models", []string{"backup/m2"}))
+	setProviders(t, map[string]any{
+		"primary": map[string]any{"type": "openai", "api_key": "k", "base_url": closedURL},
+		"backup":  map[string]any{"type": "openai", "api_key": "k", "base_url": good.URL},
+	})
+	rt := openTestRuntime(t, "")
+	start := time.Now()
+	res, err := rt.Runner.Run(context.Background(), personal.RunRequest{Prompt: "hi"})
+	elapsed := time.Since(start)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "ok-from-backup", res.Output)
+	assert.True(t, elapsed < 5*time.Second, "the fallback was reached after %s", elapsed)
+
+	events := modelEvents(t, rt, res.SessionID)
+	assert.Require(t, assert.Eq(t, 2, len(events)))
+	assert.Eq(t, "primary", events[0].Name)
+	fallback, _ := events[0].Attrs["fallback"].(string)
+	assert.StrContains(t, fallback, "connect_failed")
 }

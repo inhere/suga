@@ -8,6 +8,10 @@
 
 - `file_read` 也能读图（设计 2026-10-23，读图合并）：按文件头识别 PNG/JPEG/GIF 首帧/WebP（不看扩展名，且排在 NUL 二进制嗅探之前），单个 `path` 调用返回 1 个 image part 加一行说明（格式、原始像素、发送尺寸）；长边只由 `images.max_side` 决定，`max_side` 参数退休但旧调用传了也只忽略。不能看图的模型不再报错，而是得到一段说明（格式、像素、字节数与“用 `:model` 换能看图的模型再读一次”）。一次调用最多附一张图：`paths` 里的图片条目、带行范围的条目只给一行说明；`offset`/`limit`/`outline` 对图片忽略并写明；会话图片 ref（`images/<sha256>.<ext>`）照旧可读。扩展名像图片但文件头不是（截断的下载、改了名的文本）时照常按文本/二进制读，首行提示“文件头不是支持的图片格式”。文本文件、普通二进制文件与目录的结果逐字节不变。trace 的读图事件新增 `images` / `image_bytes` 属性。
 
+### 修复
+
+- provider 连接阶段失败时快速切换模型（长会话开销分析第 4 条）：一次 command-code 443 `dial tcp ... i/o timeout` 在旧策略下重试 4 次、约 178s 才降级到 `opencode-go`，单轮 456s。现在区分两种失败：**连接阶段**（DNS、建立 TCP 连接、TLS 握手——请求根本没到 provider）在配了 `fallback_models` 时只发一次尝试就交给下一个候选，不再把同一个 endpoint 重试到 `max_elapsed`；没有备选时仍按 `retry` 重试。**请求阶段**（已连上但等响应头超时、408/429/5xx、流中断）处理不变。连接阶段另有固定 10s 上限（dial 与 TLS 握手，之前用的是 DefaultTransport 的 30s dial），不会被整体请求超时掩盖；同一进程内某候选连接失败后 60s 内优先跳过它（按 provider + endpoint 冷却，所有候选都在冷却时最后一个仍会尝试），后续每一步不再先撞一次死 endpoint。trace 的 model 事件 `fallback` 里写明 `(connect_failed)`，日志行带 `phase` 与 `elapsed`。
+
 ### 变更
 
 - 读图入口改为 `file_read`，`view_image` 降为**隐藏别名**（设计 2026-10-23 Q4，保留一个版本）：仍注册、仍可按名调用（走同一条图片管线），但不再出现在工具表、manifest 与 `suga manifest` 的本地环境里；删除时间看 trace 是否连续 30 天没有 `view_image` 调用。工具表不再随模型变化（`observedTools.ListTools` 的 vision 过滤与执行前的 `view_image` 拒绝都已删除），`:model` 切换前后列出的工具完全相同，固定前缀不再因为换模型而变。`file_read` 读图的调用不进预取（`tools.PrefetchExempt`），文本调用照常并行预取。**NOTE**：`hooks.pre_tool_use.tools` 只配了 `view_image` 的，需要把 `file_read` 加进 glob（模型现在发的是 `file_read`；别名不解决这一条）；`tools.disabled: [view_image]` 现在只关掉别名，要关读图用 `tools.disabled: [file_read]`。

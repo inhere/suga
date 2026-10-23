@@ -88,13 +88,17 @@ func TestProviderNetworkProxy(t *testing.T) {
 		assert.Eq(t, "hi there", res.Content)
 		assert.Empty(t, seen)
 	})
-	t.Run("without a selector the default transport stays in place", func(t *testing.T) {
+	t.Run("without a selector the environment proxy behavior stays", func(t *testing.T) {
 		provider := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: "http://provider.example/v1", Model: "m"})
 		client, ok := provider.client.Transport.(redirectRejectingTransport)
 		assert.True(t, ok)
 		// The environment behavior (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) is the
-		// default transport's ProxyFromEnvironment, not a second selector.
-		assert.Eq(t, http.RoundTripper(http.DefaultTransport), client.base)
+		// default transport's ProxyFromEnvironment, not a second selector. It is a
+		// clone now, so the connection-phase timeouts can be pinned on it.
+		base, ok := client.base.(*http.Transport)
+		assert.Require(t, assert.True(t, ok))
+		assert.True(t, base.Proxy != nil)
+		assert.Eq(t, DefaultConnectTimeout, base.TLSHandshakeTimeout)
 		streamBase, ok := provider.streamClient.Transport.(redirectRejectingTransport)
 		assert.True(t, ok)
 		transport, ok := streamBase.base.(*http.Transport)

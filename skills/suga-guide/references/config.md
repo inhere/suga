@@ -52,6 +52,7 @@
 | `context.idle_min_ratio` | `0.65` | 空闲整理要求的上下文占比（相对阈值 `窗口-预留`；0..1） |
 
 - 重试覆盖所有 provider，触发条件：网络错误、HTTP 408/429/5xx、响应流中断。
+- **连接阶段**（DNS、建立 TCP 连接、TLS 握手）失败说明这个 endpoint 当下不可达：配了 `fallback_models` 时只发一次尝试就交给下一个候选，不再重试同一个 endpoint（没有备选时照 `retry` 重试）；**请求阶段**（等响应头超时、408/429/5xx、流中断）处理不变。同一进程内某候选连接失败后 `60s` 内优先跳过它（按 provider + endpoint），后续每一步不再先撞一次死 endpoint。
 - 历史折叠只改发给模型的请求（去掉较早步骤的思考内容、把超过 1000 字符的字符串参数换成说明），存储的历史完整；主模型为 `anthropic` 类型时不生效（签名绑定请求前缀）。
 
 ## 请求超时
@@ -65,7 +66,7 @@
 | `providers.<id>.timeouts.response_header` | 继承 `timeouts.response_header` | 该 provider 的响应头等待，覆盖全局 |
 | `providers.<id>.timeouts.stream_idle` | 继承 `timeouts.stream_idle` | 该 provider 的流空闲上限，覆盖全局 |
 
-超时后由 `retry` 决定是否重试：一次请求最多 `retry.max_attempts` 次尝试，每次都可能等满上面的超时，所以一次卡住的时长约为“超时 × 尝试次数 + 退避”。默认值下（响应头 60s、`reset_after` 10m）连续超时会正常退避（1s→2s→4s→8s→16s），最坏约 6×60s + 31s ≈ 6.5 分钟。注意两个值的相对大小：如果某个超时大于 `retry.reset_after`，退避档位会在每次尝试前被重置（表现为每次重试只等约 `base_delay`）。
+超时后由 `retry` 决定是否重试：一次请求最多 `retry.max_attempts` 次尝试，每次都可能等满上面的超时，所以一次卡住的时长约为“超时 × 尝试次数 + 退避”。默认值下（响应头 60s、`reset_after` 10m）连续超时会正常退避（1s→2s→4s→8s→16s），最坏约 6×60s + 31s ≈ 6.5 分钟。注意两个值的相对大小：如果某个超时大于 `retry.reset_after`，退避档位会在每次尝试前被重置（表现为每次重试只等约 `base_delay`）。连接阶段（建立 TCP 连接与 TLS 握手）固定 `10s` 上限（不可配置），与上面的超时分开计时。
 
 `retry.max_elapsed` 是这套组合的总闸：不管尝试次数用没用完，一次请求的重试总耗时到点就结束（默认 3 分钟），进程随即收尾退出、释放会话锁，而不是继续持有几分钟。provider 持续连不上、网关一直 5xx 时最明显；配了 `fallback_models` 时由下一个模型接手。
 

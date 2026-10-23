@@ -195,5 +195,9 @@ func fallbackReason(err error) string {
 	if errors.As(err, &rejected) {
 		reason = fmt.Sprintf("%s (HTTP %d)", reason, rejected.Status())
 	}
+	if isConnectFailure(err) {
+		// The trace shows whether the model was unreachable or its request failed.
+		reason = fmt.Sprintf("%s (%s)", reason, phaseConnectFailed)
+	}
 	return reason
 }
