@@ -171,6 +171,15 @@ type Terminal struct {
 	ctrlCClearsLine bool
 	// inputStyle paints a submitted line (highlight.go); zero by default.
 	inputStyle InputStyle
+	// drawnPrompt is the prompt the block on screen was last painted with (set by
+	// every paintBlock): a fresh read that starts while an earlier read's block is
+	// still drawn binds to it, so a block whose read is gone - a question ends the
+	// borrowed steer read, and chat's next prompt read would otherwise keep the
+	// drawn steer prompt and the question's width on the row - is repainted in
+	// place with the coming read's prompt (issue suga-9ew7). A read that took a
+	// live one over was already repainted by UpdatePrompt, so it sees an equal
+	// prompt and paints nothing here twice.
+	drawnPrompt string
 	// statusText is the text SetStatus was given and status the runes actually on
 	// screen (cut to the terminal width, so the two differ); statusOn says the
 	// status line's row is on screen, i.e. that the block the cursor belongs to
@@ -247,6 +256,10 @@ func (t *Terminal) readLine() (line string, err error) {
 	t.reading = true
 	defer func() { t.reading, t.noHistory = false, false }()
 	prefilled := t.applyPendingLine()
+	// A stale block (another read's prompt drawn, and no read holding it any more)
+	// is repainted in place along with a prefilled one: the coming read's prompt
+	// has to be what is on screen.
+	stalePrompts := t.drawnPrompt != string(t.prompt)
 	if !t.lineShown() {
 		// Nothing of the block is on screen yet: draw it - the status line, while
 		// one is set (chat may set it before this read draws anything), above the
@@ -255,7 +268,7 @@ func (t *Terminal) readLine() (line string, err error) {
 		t.paintBlock()
 		t.c.Write(t.outBuf)
 		t.outBuf = t.outBuf[:0]
-	} else if prefilled {
+	} else if prefilled || stalePrompts {
 		// The prompt is already on screen with the old line: repaint it.
 		t.repaintLocked()
 	}
