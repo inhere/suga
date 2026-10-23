@@ -366,6 +366,13 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	if opts.Dirs != nil {
 		workspace = opts.Dirs.Workspace()
 	}
+	// The status line counts a running background agent by its task in the manager
+	// (renderer.runningAgents): a task that ended, failed or was killed stops
+	// counting even when its notice never reached the model.
+	var agentTasks func() []tasks.Info
+	if opts.Tasks != nil {
+		agentTasks = func() []tasks.Info { return opts.Tasks.List(sessionID) }
+	}
 	render = newRenderer(rendererOptions{
 		Out: inputSource, Err: errOut,
 		Color: color, ErrColor: colorEnabledFor(stderr),
@@ -374,6 +381,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		WriteTools: opts.WriteTools, Markdown: opts.Markdown, Spinner: opts.Spinner,
 		Workspace:     workspace,
 		AgentProgress: opts.AgentProgress,
+		AgentTasks:    agentTasks,
 		Diff:          opts.Diff, DiffLines: opts.DiffLines,
 		CodeHighlight: opts.CodeHighlight, CodeMaxLines: opts.CodeMaxLines,
 		Theme:          opts.Theme,
@@ -584,7 +592,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// Show a code block of the last answer in full (:code [N]).
 			render.ShowCode(strings.TrimPrefix(line, codeCmd))
 			continue
-		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), line == ":help", line == ":usage", line == ":tasks":
+		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), isTasksCommand(line), line == ":help", line == ":usage":
 			// The reference, this session's usage and its background tasks
 			// (chat_commands.go); like every : command, keyboard only.
 			state.runChatCommand(line)

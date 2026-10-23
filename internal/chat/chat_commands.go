@@ -1,7 +1,9 @@
 package chat
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -9,6 +11,12 @@ import (
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 )
+
+// tasksCmd is the :tasks command; its options follow it.
+const tasksCmd = ":tasks"
+
+// chatTasksRecent caps the finished tasks the default :tasks listing shows.
+const chatTasksRecent = 10
 
 const (
 	chatHelpText = `:session 显示会话
@@ -22,12 +30,18 @@ const (
 :undo [N] [force] 回滚文件改动
 :help 显示此帮助
 :usage 显示本会话用量与成本
-:tasks 显示后台任务
+:tasks [-a|-k <ID>] 后台任务：运行中+最近结束（-a 全部，-k 终止）
 :quit/:exit 退出
 !<命令> 本地执行；!!<命令> 执行并附给下一条消息
 按键：Enter/Alt+Enter/Ctrl+J 提交/换行；Tab 补全命令（回合中 Tab 把该行排到本轮结束后发送）；Alt+V 贴剪贴板图片；Esc 中止本轮；Ctrl+C 清空/中止/退出；回合中 Up 撤回插话；Up/Down 浏览历史`
 	chatUsageHint  = ":usage 用量：本次 %d 轮 · 输入 %d / 输出 %d · 缓存读 %d / 写 %d · 成本 $%.6f；会话累计输入 %d / 输出 %d · 成本 $%.6f"
 	chatTasksEmpty = "没有后台任务"
+	chatTasksUsage = `用法：:tasks [选项]
+  :tasks          列出运行中的任务和最近 10 条已结束任务
+  :tasks -a       列出全部任务（含已结束的）
+  :tasks -k <ID>  终止后台任务，可写多个：:tasks -k t3 t4
+  :tasks -h       显示此帮助
+示例：:tasks -k t2`
 )
 
 // BuildChatHelp returns the complete local-command and keyboard help text.
@@ -40,24 +54,136 @@ func BuildChatUsage(stats chatStats) string {
 		stats.session.InputTokens, stats.session.OutputTokens, stats.session.CostUSD)
 }
 
-// BuildChatTasks renders the task manager's stable start-order snapshot.
-func BuildChatTasks(items []tasks.Info, now time.Time) string {
+// BuildChatTasks renders the task manager's snapshot for :tasks: by default the
+// running tasks plus the 10 most recently active finished ones and how many are
+// left; showAll lists every task in start order.
+func BuildChatTasks(items []tasks.Info, now time.Time, showAll bool) string {
 	if len(items) == 0 {
 		return chatTasksEmpty
 	}
-	lines := make([]string, 0, len(items))
-	for _, item := range items {
-		last := item.Ended
-		if last.IsZero() {
-			last = item.Started
+	if showAll {
+		lines := make([]string, 0, len(items))
+		for _, item := range items {
+			lines = append(lines, chatTaskLine(item, now))
 		}
-		lines = append(lines, fmt.Sprintf("%s · %s · %s · 已运行 %s · 最近输出 %s · %s",
-			termtext.Clean(item.ID), termtext.Clean(string(item.Status)), termtext.Clean(item.Summary), formatElapsedAt(item.Duration(), now), last.Local().Format("15:04:05"), termtext.Clean(item.Kind)))
+		return strings.Join(lines, "\n")
+	}
+	var running, finished []tasks.Info
+	for _, item := range items {
+		if item.Status == tasks.Running {
+			running = append(running, item)
+		} else {
+			finished = append(finished, item)
+		}
+	}
+	// Most recently active first: the end time, or the start of a task without one.
+	sort.SliceStable(finished, func(i, j int) bool {
+		return taskLastActivity(finished[i]).After(taskLastActivity(finished[j]))
+	})
+	hidden := len(finished) - chatTasksRecent
+	shown := make([]tasks.Info, 0, len(running)+len(finished))
+	shown = append(shown, running...)
+	if hidden > 0 {
+		shown = append(shown, finished[:chatTasksRecent]...)
+	} else {
+		shown = append(shown, finished...)
+	}
+	lines := make([]string, 0, len(shown)+1)
+	for _, item := range shown {
+		lines = append(lines, chatTaskLine(item, now))
+	}
+	if hidden > 0 {
+		lines = append(lines, fmt.Sprintf("还有 %d 条已结束任务，:tasks -a 查看全部", hidden))
 	}
 	return strings.Join(lines, "\n")
 }
 
+// chatTaskLine is one task of the :tasks listing.
+func chatTaskLine(item tasks.Info, now time.Time) string {
+	return fmt.Sprintf("%s · %s · %s · 已运行 %s · 最近输出 %s · %s",
+		termtext.Clean(item.ID), termtext.Clean(string(item.Status)), termtext.Clean(item.Summary),
+		formatElapsedAt(item.Duration(), now), taskLastActivity(item).Local().Format("15:04:05"), termtext.Clean(item.Kind))
+}
+
+// taskLastActivity is when the task last did something: its end, or the start of
+// a task that is still running.
+func taskLastActivity(item tasks.Info) time.Time {
+	if !item.Ended.IsZero() {
+		return item.Ended
+	}
+	return item.Started
+}
+
 func formatElapsedAt(d time.Duration, _ time.Time) string { return formatElapsed(d) }
+
+// isTasksCommand recognizes :tasks with its options.
+func isTasksCommand(line string) bool {
+	return line == tasksCmd || strings.HasPrefix(line, tasksCmd+" ")
+}
+
+// runTasksCommand runs the :tasks command: the default view (running tasks and
+// the most recently active finished ones), -a for every task, -k <id>... to kill
+// and -h for the usage.
+func (s *chatState) runTasksCommand(line string) {
+	args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, tasksCmd)))
+	showAll := false
+	var kills []string
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i]; arg {
+		case "-h", "--help":
+			fmt.Fprintln(s.source, chatTasksUsage)
+			return
+		case "-a":
+			showAll = true
+		case "-k":
+			// Everything after -k is a task id, so several can be killed at once.
+			kills = append(kills, args[i+1:]...)
+			i = len(args)
+		default:
+			fmt.Fprintln(s.source, "未知参数："+arg)
+			fmt.Fprintln(s.source, chatTasksUsage)
+			return
+		}
+	}
+	if len(kills) > 0 {
+		s.killTasks(kills)
+		return
+	}
+	if s.tasks == nil {
+		fmt.Fprintln(s.source, chatTasksEmpty)
+		return
+	}
+	fmt.Fprintln(s.source, BuildChatTasks(s.tasks.List(s.sessionID), time.Now(), showAll))
+}
+
+// killTasks kills the named background tasks and says what became of each: a
+// typo and a task that had already ended read differently.
+func (s *chatState) killTasks(ids []string) {
+	if s.tasks == nil {
+		fmt.Fprintln(s.source, chatTasksEmpty)
+		return
+	}
+	killed := false
+	for _, id := range ids {
+		info, err := s.tasks.Kill(s.sessionID, id)
+		switch {
+		case errors.Is(err, tasks.ErrUnknownTask):
+			fmt.Fprintf(s.source, "没有任务 %s\n", id)
+		case err != nil:
+			fmt.Fprintf(s.source, "终止任务 %s 失败：%s\n", id, err.Error())
+		case info.Status != tasks.Killed:
+			fmt.Fprintf(s.source, "任务 %s 已结束（%s），无需终止\n", id, info.Status)
+		default:
+			killed = true
+			fmt.Fprintf(s.source, "已终止任务 %s：%s\n", id, truncateLine(info.Summary, resultSummaryLimit))
+		}
+	}
+	if killed && s.render != nil {
+		// A killed background agent leaves the status line's running count now: Kill
+		// suppresses the task's notice, so no event would tell the line it ended.
+		s.render.refreshAgentStatus()
+	}
+}
 
 // isImageCommand recognizes the :image command (chat :image, design 0.3): no
 // argument lists the pending pictures, "clear" drops them, a path attaches one
@@ -222,12 +348,8 @@ func (s *chatState) runChatCommand(line string) bool {
 	case isQueueCommand(line):
 		// The messages queued with Tab during a turn (followup.go).
 		s.runQueueCommand(line)
-	case line == ":tasks":
-		if s.tasks == nil {
-			fmt.Fprintln(s.source, chatTasksEmpty)
-		} else {
-			fmt.Fprintln(s.source, BuildChatTasks(s.tasks.List(s.sessionID), time.Now()))
-		}
+	case isTasksCommand(line):
+		s.runTasksCommand(line)
 	case isCheckpointCommand(line):
 		if strings.TrimSpace(line) != checkpointsCmd {
 			fmt.Fprintln(s.source, "用法：:checkpoints")

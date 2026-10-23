@@ -3,9 +3,10 @@
 
 This is deliberately falsifiable: removing command dispatch makes the help and
 usage checks fail; removing the terminal guard makes the non-TTY notification
-check fail. The task listing check uses the same background fake-model path as
-chat_tasks.py. Run on Linux/macOS through ``make smoke-chat``; Windows has no
-PTY equivalent in this suite.
+check fail. The task listing checks cover the default view and the options
+(:tasks -h, -k <id> for an unknown, a running and an ended task); they use the
+same background fake-model path as chat_tasks.py. Run on Linux/macOS through
+``make smoke-chat``; Windows has no PTY equivalent in this suite.
 """
 import argparse, os, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,6 +25,9 @@ def main():
         s.check("help tasks", s.until(r":tasks",m))
         m=s.mark(); s.line(":usage"); s.check("usage line", s.until(r"本次 0 轮",m))
         m=s.mark(); s.line(":tasks"); s.check("empty tasks", s.until(r"没有后台任务",m))
+        m=s.mark(); s.line(":tasks -h"); s.check("tasks usage", s.until(r":tasks -k <ID>",m))
+        m=s.mark(); s.line(":tasks -x"); s.check("tasks unknown option", s.until(r"未知参数：-x",m))
+        m=s.mark(); s.line(":tasks -k t1"); s.check("tasks kill unknown", s.until(r"没有任务 t1",m))
         # A turn of two model requests (1.0s each) that starts a background task:
         # longer than chat.notify_after (1s), so its end rings the bell.
         m=s.mark(); s.line("hello"); s.check("turn ends", s.until(r"tokens · ",m))
@@ -32,6 +36,9 @@ def main():
         s.check("completion bell", s.until(r"\x07", m, timeout=3))
         m=s.mark(); s.line(":usage"); s.check("usage after turn", s.until(r"本次 1 轮",m))
         m=s.mark(); s.line(":tasks"); s.check("running task listed", s.until(r"running",m) and s.contains(r"TASK_COMMAND|sleep 5",m))
+        m=s.mark(); s.line(":tasks -k t1"); s.check("tasks kill", s.until(r"已终止任务 t1：sleep 5",m))
+        m=s.mark(); s.line(":tasks"); s.check("killed task listed", s.until(r"t1 · killed",m))
+        m=s.mark(); s.line(":tasks -k t1"); s.check("tasks kill again says it ended", s.until(r"任务 t1 已结束（killed），无需终止",m))
         s.send(CTRL_C); time.sleep(.2); s.send(CTRL_C); s.close()
     finally:
         s.close(grace=0); fake.terminate(); fake.wait(timeout=5)
