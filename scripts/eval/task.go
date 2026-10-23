@@ -115,11 +115,13 @@ type TurnRun struct {
 }
 
 // TurnCompaction is the segment break the runner forced after a turn
-// (`suga compact <session> --json`).
+// (`suga compact <session> --json`); DurationMs is its own wall time, measured
+// by the runner.
 type TurnCompaction struct {
-	TokensBefore int `json:"tokens_before"`
-	TokensAfter  int `json:"tokens_after"`
-	Segment      int `json:"segment"`
+	TokensBefore int   `json:"tokens_before"`
+	TokensAfter  int   `json:"tokens_after"`
+	Segment      int   `json:"segment"`
+	DurationMs   int64 `json:"duration_ms"`
 }
 
 const (

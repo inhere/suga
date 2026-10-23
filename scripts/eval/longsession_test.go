@@ -102,7 +102,7 @@ func TestTurnChecksAndReport(t *testing.T) {
 		Task: "constraint", Passed: true, DurationMs: 4000,
 		Turns: []TurnRun{
 			{Turn: 1, Answer: "ok", DurationMs: 1000},
-			{Turn: 2, Answer: "ok", DurationMs: 1000, Compacted: &TurnCompaction{TokensBefore: 1800, TokensAfter: 300, Segment: 2}},
+			{Turn: 2, Answer: "ok", DurationMs: 1000, Compacted: &TurnCompaction{TokensBefore: 1800, TokensAfter: 300, Segment: 2, DurationMs: 3200}},
 			{Turn: 3, Answer: "ok", DurationMs: 1000},
 		},
 		Checks: []CheckResult{
@@ -121,11 +121,11 @@ func TestTurnChecksAndReport(t *testing.T) {
 
 	var buf bytes.Buffer
 	twoTurns := Result{Task: "two-turns", Passed: true, Turns: []TurnRun{{Turn: 1}, {Turn: 2}}}
-	printTurnDetail(&buf, []Result{r, {Task: "single-turn", Passed: true}, twoTurns})
+	printTurnDetail(&buf, []Result{r, {Task: "single-turn", Passed: true}, twoTurns}, false)
 	out := buf.String()
 	assert.StrContains(t, out, "long sessions (per turn")
 	assert.StrContains(t, out, "t1 PASS")
-	assert.StrContains(t, out, "t2 PASS  -  [compacted ~1800 -> ~300 tokens, segment 2]")
+	assert.StrContains(t, out, "t2 PASS  -  [compacted ~1800 -> ~300 tokens, segment 2, 3.2s]")
 	assert.StrContains(t, out, "t3 FAIL")
 	assert.StrContains(t, out, "file_equals:notes/plan.md=PASS")
 	assert.StrContains(t, out, "long sessions: passed 1/1")
@@ -134,7 +134,7 @@ func TestTurnChecksAndReport(t *testing.T) {
 
 	t.Run("no long session prints nothing", func(t *testing.T) {
 		var quiet bytes.Buffer
-		printTurnDetail(&quiet, []Result{{Task: "single-turn", Passed: true}})
+		printTurnDetail(&quiet, []Result{{Task: "single-turn", Passed: true}}, false)
 		assert.Eq(t, "", quiet.String())
 	})
 }

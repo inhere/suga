@@ -17,17 +17,20 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 
 	// Per-variant totals.
 	fmt.Fprintf(&b, "## variant 总览\n\n")
-	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | 平均耗时 | WEB |")
-	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|")
+	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | 平均耗时 | 平均 turn/compact/fault | WEB |")
+	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|---|")
 	for _, v := range variants {
 		sub := variantResults(rs, v.Name)
 		if len(sub) == 0 {
 			continue
 		}
 		a := averageRounds(sub)
+		s := statRounds(sub)
 		total, hit := totals(sub)
-		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %.1fs | %s |\n",
-			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, a.Seconds, webLabel(sub))
+		turn, compact, fault := meanTiming(sub)
+		fmt.Fprintf(&b, "| %s | %d/%d | %s | %s | %s | %.0f | %.1f | %s | %.1f/%.1f/%.1fs | %s |\n",
+			v.Name, a.Passed, a.Rounds, countCell(s.Rounds, s.Calls), tokensCell(s.Rounds, s.Prompt), tokensCell(s.Rounds, s.Uncached),
+			total, hit*100, secondsCell(s.Rounds, s.Seconds), turn, compact, fault, webLabel(sub))
 	}
 	fmt.Fprintln(&b)
 
@@ -140,7 +143,8 @@ func resultStatus(r Result) string {
 }
 
 // taskCell renders one (variant, task) cell: status (+ pass counts when
-// repeated), calls, prompt tokens and time.
+// repeated), calls, prompt tokens and time; a repeated task shows the mean and
+// the min-max of its rounds.
 func taskCell(rs []Result, variant, task string) (status, cell string) {
 	var sub []Result
 	for _, r := range rs {
@@ -162,9 +166,10 @@ func taskCell(rs []Result, variant, task string) (status, cell string) {
 		}
 		label = fmt.Sprintf("%d/%d %s", pass, len(sub), status)
 	}
-	a := averageRounds(sub)
+	// A repeated task shows mean and range, a single run its plain value.
+	s := statRounds(sub)
 	total, _ := totals(sub)
-	return status, fmt.Sprintf("%s c=%.0f p=%.0f %.1fs", label, a.Calls, total, a.Seconds)
+	return status, fmt.Sprintf("%s c=%s p=%.0f %s", label, countCell(len(sub), s.Calls), total, secondsCell(len(sub), s.Seconds))
 }
 
 func yesNo(b bool) string {
