@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # file_read 并入 view_image（读图合并）设计
 
-> 状态：Draft 0.1 / 待用户批准
+> 状态：Draft 0.2 / 待用户批准（0.2 按评审 `docs/review/2026-10-23-file-read-images-design-review.md` 的 F1–F3 修订）
 > 日期：2026-10-23
 > 关联 issue：`suga-yri4`；前序设计 `docs/design/2026-10-19-image-input-design.md`（图片输入 0.3，`view_image` 的来源）；成本依据 `docs/research/2026-10-22-longsession-cost-analysis.md`（固定前缀占 prompt 29%）
 
@@ -9,7 +9,8 @@
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
-| 0.1 | 2026-10-23 | 监督（Claude） | 用户 2026-10-22 提出“减少一个工具”：把 `view_image` 并入 `file_read`，并指出 `:model` 切换会改变工具集、使前缀缓存失效；模型拿到图片路径时本来就常先试 `file_read`。本稿只出设计，回答 6 个问题，实施等设计与计划批准。 |
+| 0.1 | 2026-10-23 | suga 子 agent（opencode-go/deepseek-v4.1-flash） | 用户 2026-10-22 提出“减少一个工具”：把 `view_image` 并入 `file_read`，并指出 `:model` 切换会改变工具集、使前缀缓存失效；模型拿到图片路径时本来就常先试 `file_read`。本稿只出设计，回答 6 个问题，实施等设计与计划批准。 |
+| 0.2 | 2026-10-23 | Claude（监督） | 评审 F1：别名删除改为可观测条件 + 未知 `view_image` 调用给迁移说明；F2：结论写明 token 收益量级 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -21,7 +22,7 @@
 4. **参数**：去掉 `max_side`（缩放只由配置 `images.max_side` 决定）；`offset`/`limit`/`outline` 对图片不适用，答案里写明；`paths` 多条目、带行范围的条目、`outline=true` 的调用**不附图片**，只给一行说明——一次调用最多读一张图。
 5. **会话图片 ref 继续支持**：`images/<sha256>.<ext>`（省略提示里的形式）仍可读，规则与今天 `view_image` 相同（`isSessionImageRef` + 会话目录解析器）。
 6. **Prefetch**：`file_read` 仍是 `Prefetchable`（并行读文本是既有收益），但**图片调用不预取**：给 `tools` 层加一个可选接口，`Registry.Prefetch` 在按 `Meta` 筛选后再问一次“这次调用要不要跳过预取”，`FileReadTool` 在参数里出现图片扩展名或 `images/` ref 时返回“跳过”。
-7. **工具列表不再随模型变化**：删掉 `observedTools.ListTools` 的 vision 过滤；`VisionGate` 保留给 chat `:image`、ACP 提示、llm 回退与 `file_read` 执行时判断。收益量级：单次请求少 762 字符 schema（实测 `json.Marshal(schema)`）≈195 token，占固定前缀工具块（27,383 字符 ≈ 7.0k token）的 2.8%；`file_read` 描述加一句读图纸质上净节省约 550 字符。
+7. **工具列表不再随模型变化**（主要收益是工具集稳定、模型少走一次弯路；token 节省是次要的，约占固定前缀 1.7%）：删掉 `observedTools.ListTools` 的 vision 过滤；`VisionGate` 保留给 chat `:image`、ACP 提示、llm 回退与 `file_read` 执行时判断。收益量级：单次请求少 762 字符 schema（实测 `json.Marshal(schema)`）≈195 token，占固定前缀工具块（27,383 字符 ≈ 7.0k token）的 2.8%；`file_read` 描述加一句读图纸质上净节省约 550 字符。
 8. **兼容**：旧会话历史里的 `view_image` 调用、按工具名写的 hook / 审批 / `tools.disabled`、chat 摘要、ACP、`ExtraTools`、文档与 skills 逐项处理；建议**保留 `view_image` 作为隐藏别名一个版本**（可调用，但 `ListTools`/manifest/`tool_search` 不列），下一版删除。
 9. 8 个待批决定紧接本节（Q1–Q8）。
 
@@ -187,7 +188,7 @@ type PrefetchExempt interface { SkipPrefetch(args map[string]any) bool }
 - 做法：`view_image` 仍在 catalog 与 registry 里（`catalog.go` 的 spec 保留），执行直接复用 `file_read` 的图片分支（同一个函数，避免两条管线漂移），但 `ListTools`、manifest、`tool_search` 都不列（`tools.Meta` 加 `Hidden` 一类标记，或维护一张别名表）。
 - 理由：① 续接旧会话时模型常沿用历史里的工具名，报“工具不存在”会让它反复试；② 用户 hooks/审批/`tools.disabled` 里按名写的配置不会因为名字消失而报“未知工具”；③ 成本很小（一个已存在的对象，只是不列）。
 - 代价：一个版本内要维护“别名与主工具同义”的约束与测试；`tools.disabled` 的语义分裂（见上表），文档要写清楚。
-- 下一版：删别名，同步清理 `chat/tool_summary.go` 的映射、`tools_disabled` 白名单、`view_image_test.go` 与文档。
+- 删除别名的条件（评审 F1）：不按版本号，而是等 trace 里连续 30 天没有 `view_image` 调用（`suga inspect`/stats 可查）后再删；删除时同时保留一个兜底——对未知工具名 `view_image` 的调用返回一句非错误说明“`view_image` 已并入 `file_read`，请用 `file_read <同一路径>`”，因为旧会话历史里的省略提示（`internal/personal/images.go:124` 生成的“需要时 view_image <ref>”）不会被改写。删除时同步清理 `chat/tool_summary.go` 的映射、`tools_disabled` 白名单、`view_image_test.go` 与文档。
 
 ## 风险
 
