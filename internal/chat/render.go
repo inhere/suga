@@ -383,9 +383,10 @@ func (r *Renderer) EndTurnAgents() {
 // beginAgent records the agent tool call of event, so the status line counts
 // the sub-agent's tool calls under that call. The call ID is the key and the
 // description is only its label: two children with the same description stay
-// two entries.
+// two entries. A provider that sends no call id leaves only the description as a
+// key (the turn's end still clears such an entry).
 func (r *Renderer) beginAgent(event personal.Event) {
-	if event.ToolName != "agent" || event.CallID == "" {
+	if event.ToolName != "agent" {
 		return
 	}
 	description, background := agentCallDetails(event.Text)
@@ -393,8 +394,17 @@ func (r *Renderer) beginAgent(event personal.Event) {
 		return
 	}
 	r.agentMu.Lock()
-	r.agentProgress[event.CallID] = &agentProgressState{description: description, started: time.Now(), background: background}
+	r.agentProgress[agentEntryKey(event.CallID, description)] = &agentProgressState{description: description, started: time.Now(), background: background}
 	r.agentMu.Unlock()
+}
+
+// agentEntryKey is the entry of an agent call: its call ID, or a key built from
+// the description when the provider sent no call id.
+func agentEntryKey(callID, description string) string {
+	if callID != "" {
+		return callID
+	}
+	return "desc:" + description
 }
 
 func agentCallDetails(text string) (string, bool) {
@@ -418,8 +428,12 @@ func (r *Renderer) finishAgent(event personal.Event) {
 		return
 	}
 	summary := event.AgentSummary
+	key := event.CallID
+	if key == "" && summary != nil {
+		key = agentEntryKey("", summary.Description)
+	}
 	r.agentMu.Lock()
-	state := r.agentProgress[event.CallID]
+	state := r.agentProgress[key]
 	background := (state != nil && state.background) || (summary != nil && summary.Background)
 	calls := 0
 	if state != nil {
@@ -432,8 +446,8 @@ func (r *Renderer) finishAgent(event personal.Event) {
 		if state != nil && summary != nil {
 			state.taskID = summary.TaskID
 		}
-	case event.CallID != "":
-		delete(r.agentProgress, event.CallID)
+	case key != "":
+		delete(r.agentProgress, key)
 	}
 	r.agentMu.Unlock()
 	if background || summary == nil || summary.Description == "" {
@@ -562,7 +576,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		// not know must not create one, or the status line would count an agent
 		// nothing ever ends.
 		r.agentMu.Lock()
-		if state := r.agentProgress[event.CallID]; state != nil {
+		if state := r.agentProgress[agentEntryKey(event.CallID, event.Agent)]; state != nil {
 			state.calls++
 		}
 		r.agentMu.Unlock()

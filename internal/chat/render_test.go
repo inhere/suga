@@ -533,6 +533,16 @@ func TestRendererAgentStatusLifecycle(t *testing.T) {
 		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
 	})
 
+	t.Run("a provider without call ids falls back to the description", func(t *testing.T) {
+		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
+		r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", Text: `{"description":"survey"}`})
+		r.Handle(personal.Event{Kind: "agent_progress", Agent: "survey", ToolName: "file_grep"})
+		assert.StrContains(t, r.agentStatusLabel(), "survey 1 次调用")
+		r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", Text: "report",
+			AgentSummary: &personal.AgentSummary{Description: "survey", ToolCalls: 1}})
+		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+	})
+
 	t.Run("the same description stays two entries", func(t *testing.T) {
 		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
 		r.Handle(agentCall("c1", false))
