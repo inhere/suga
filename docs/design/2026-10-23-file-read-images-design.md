@@ -26,7 +26,7 @@
 8. **兼容**：旧会话历史里的 `view_image` 调用、按工具名写的 hook / 审批 / `tools.disabled`、chat 摘要、ACP、`ExtraTools`、文档与 skills 逐项处理；建议**保留 `view_image` 作为隐藏别名一个版本**（可调用，但 `ListTools`/manifest/`tool_search` 不列），下一版删除。
 9. 8 个待批决定紧接本节（Q1–Q8）。
 
-## 待批决定（优先看）
+## 决策（待批，优先看）
 
 | # | 问题 | 建议 | 理由 |
 |---|---|---|---|
@@ -166,6 +166,23 @@ type PrefetchExempt interface { SkipPrefetch(args map[string]any) bool }
   - 少一个工具：实测 `view_image` schema 762 字符 ≈ 195 token（3.9 字符/token，同研究口径），`file_read` 描述会多出约 200 字符 ≈ 50 token，净省约 140 token/次调用；84 次调用 ≈ 12k prompt token。
   - 换模型时工具块不再变化：只在“同一 provider / 同一 API 端点内切模型且前缀缓存跨模型共享”时才兑现成缓存命中；多数情况下换模型本来就会让缓存变冷（研究里 t18 的缓存失效原因未定，见其“没做到/未验证”）。这一点按“减少一个工具 + 少一处随模型变化的前缀成分”表述，不承诺具体命中率。
 
+## 架构
+
+- `pkg/agentcore/tools/native`：`file_read` 增加图片分支（新文件 `file_read_image.go`），与 chat `:image`、`run --image`、ACP 共用同一条图片管线（`sniffImage` → `prepareImage`，即今天 `view_image.go` 的实现，拆成共享函数）；`view_image` 只剩隐藏别名，执行时调用同一个图片分支。
+- `pkg/agentcore/tools`：新增可选接口 `PrefetchExempt`，`Registry.Prefetch` 按调用参数跳过图片调用的预取（§7）。
+- `internal/wiring` / `catalog.go`：把 `Vision`、`imagesDirFn`、`ImageMaxSide` 接到 `file_read`；`internal/personal/observe.go` 删除按模型过滤工具表与对 `view_image` 的预先拒绝（§8）。
+- 不变：provider 映射、图片落盘（`AppendMessages`）、单请求图片上限、`VisionGate` 的其他用途。
+
+## 关键流程
+
+读一个路径时（单 `path`、无行范围）：
+
+1. 解析路径（工作区 / 只读根 / 已加目录，或会话图片 ref `images/<sha256>.<ext>`）→ 失败为 error（与现状一致）。
+2. `Peek` 文件头 → `sniffImage` 命中：当前模型能看图 → `prepareImage` 缩放编码 → 返回文本说明 + 1 个 image part；不能看图 → 返回非错误的文字说明（格式、尺寸、如何换模型）。
+3. 未命中但扩展名像图片 → 照常按文本/二进制读，第一行加“文件头不是支持的图片格式”提示。
+4. 其余文件 → 逐字节保持今天的文本窗口 / `[binary file: …]` 行为。
+5. 预取阶段：参数里出现图片扩展名或 `images/` ref 的 `file_read` 调用不预取，其余照常并行预取。
+
 ## 兼容清单
 
 | 对象 | 现状 | 合并后 | 处理 |
@@ -190,6 +207,12 @@ type PrefetchExempt interface { SkipPrefetch(args map[string]any) bool }
 - 代价：一个版本内要维护“别名与主工具同义”的约束与测试；`tools.disabled` 的语义分裂（见上表），文档要写清楚。
 - 删除别名的条件（评审 F1）：不按版本号，而是等 trace 里连续 30 天没有 `view_image` 调用（`suga inspect`/stats 可查）后再删；删除时同时保留一个兜底——对未知工具名 `view_image` 的调用返回一句非错误说明“`view_image` 已并入 `file_read`，请用 `file_read <同一路径>`”，因为旧会话历史里的省略提示（`internal/personal/images.go:124` 生成的“需要时 view_image <ref>”）不会被改写。删除时同步清理 `chat/tool_summary.go` 的映射、`tools_disabled` 白名单、`view_image_test.go` 与文档。
 
+## 待确认事项
+
+- Q7 中“是否新增 `images.enabled` 总开关”：本版建议不加，等真实需求。
+- §7 中 `view_image` 注释所说的“预取产生孤儿文件”是否成立：实施时实测后证实或改掉注释。
+- 别名删除的观察窗口（建议 30 天无 `view_image` 调用）是否合适，由用户在批准时确认或调整。
+
 ## 风险
 
 1. **`vision` 推断错**：把能看图的模型判成不能看 → 模型会读到说明、多走一次调用（可见、可恢复）；判成能看而实际不能 → 请求带 image part 被 provider 拒（现状同样如此，没变差）。
@@ -200,7 +223,11 @@ type PrefetchExempt interface { SkipPrefetch(args map[string]any) bool }
 6. **`tools.disabled: [view_image]` 语义变化**（见兼容表）：若有人靠它省钱，合并后会失效；本稿建议文档说明，不加隐式联动。
 7. **模型把图片当文本重读**：`file_read` 读图失败（格式不支持）时给说明而不是错误，模型可能再试一次；说明里写明支持的格式与“用单 path 读”。
 
-## 不做
+## 范围与不做
+
+范围：`file_read` 读图（单张）、`view_image` 隐藏别名、预取豁免、工具表不再随模型变化、文档与测试同步。
+
+不做：
 
 - 多图/批量读图（`paths` 里的图片只给说明）。
 - OCR、图片生成、缩略图缓存文件、按 provider 选不同编码格式。
@@ -233,6 +260,11 @@ type PrefetchExempt interface { SkipPrefetch(args map[string]any) bool }
 **伪终端冒烟**：新增 `scripts/ptysmoke/` 场景（fake 模型调 `file_read` 读一张图 → 断言工具行渲染 + trace 里有 `file_read` 与图片事件；不能看图时断言说明），加入 `make smoke-chat`。本机是 Windows、无 pty，**脚本未运行，待监督在 Linux 容器验证**。
 
 **反向验证**（实施后各做一次）：去掉魔数探测 → “图片返回 image part”失败；去掉预取豁免 → “图片不被预取”失败；把“不能看图”改回 error → 对应断言失败；把 `ListTools` 过滤加回去 → “工具列表与模型无关”失败。
+
+## 人工 Gate
+
+- 本设计需用户批准（批准只授权进入规划）；随后实施计划需单独批准并给出执行请求。
+- 删除 `view_image` 别名是后续单独的决定，不随本设计批准。
 
 ## 实施拆分（批准计划后，每步一个本地提交）
 
