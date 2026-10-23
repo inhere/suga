@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.1.1 -->
 # file_read 并入 view_image（读图合并）设计
 
-> 状态：Draft 0.2 / 待用户批准（0.2 按评审 `docs/review/2026-10-23-file-read-images-design-review.md` 的 F1–F3 修订）
+> 状态：Approved 0.2（2026-10-23 用户：“批准读图合并设计 0.2”；设计批准只授权进入规划）（0.2 按评审 `docs/review/2026-10-23-file-read-images-design-review.md` 的 F1–F3 修订）
 > 日期：2026-10-23
 > 关联 issue：`suga-yri4`；前序设计 `docs/design/2026-10-19-image-input-design.md`（图片输入 0.3，`view_image` 的来源）；成本依据 `docs/research/2026-10-22-longsession-cost-analysis.md`（固定前缀占 prompt 29%）
 
