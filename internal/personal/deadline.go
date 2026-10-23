@@ -32,12 +32,12 @@ import (
 // the hint must keep the same position and the same bytes on every request,
 // or the replayed thinking blocks of an earlier step stop validating
 // ("Invalid signature in thinking block. The block is bound to a different
-// conversation", 2026-10-23). deadlineHook therefore freezes the text on a
-// turn's first request and inserts the message always right after the last
-// plain user message (the turn's own prompt, or a request-only wrap-up
-// instruction, which the runtime appends at the end) instead of at the very
-// end: messages the runtime stores for later steps of the turn (tool calls
-// and results) are appended after that point, but must not precede the hint.
+// conversation", 2026-10-23). deadlineHook therefore freezes both the text
+// and the position on a turn's first request (the end of that request, right
+// after the turn's own prompt) and inserts the message at that same index on
+// every later request: messages the runtime stores for later steps of the
+// turn (tool calls and results, and a request-only wrap-up instruction at the
+// end) come after it and never move it.
 
 // nearDeadlineLeft is the absolute remaining time below which the hint asks
 // for an immediate wrap-up (in addition to the window share).
@@ -150,8 +150,8 @@ func (s *deadlineState) hint() string {
 // run), so turnHint freezes the hint text on the turn's first request: the
 // remaining minutes change between steps, and a provider that binds thinking
 // signatures to the request prefix (Anthropic 2026) rejects the replay of an
-// earlier step's thinking when the prefix bytes differ. The message rides
-// right after the last plain user message instead of at the very end, so
+// earlier step's thinking when the prefix bytes differ. turnAt freezes the
+// position the same way: the hint stays where the first request put it, so
 // messages stored for later steps of the turn never move in front of it.
 type deadlineHook struct {
 	agentcore.NopHook
@@ -159,6 +159,9 @@ type deadlineHook struct {
 	// turnHint is the frozen text of the current turn, "" until the turn's
 	// first model request and also when the deadline hint is disabled.
 	turnHint string
+	// turnAt is the index the hint took on the turn's first request (the end
+	// of that request); -1 until then.
+	turnAt int
 }
 
 func (h *deadlineHook) BeforeModel(_ context.Context, event *agentcore.ModelEvent, _ *agentcore.Control) error {
@@ -169,22 +172,15 @@ func (h *deadlineHook) BeforeModel(_ context.Context, event *agentcore.ModelEven
 		// One computation per turn: the wording ("剩余约 N 分钟") would drift
 		// between requests and invalidate replayed thinking signatures.
 		h.turnHint = h.state.hint()
+		h.turnAt = len(event.Request.Messages)
 	}
 	if h.turnHint == "" {
 		return nil
 	}
 	msgs := event.Request.Messages
-	// Insert after the last plain user message (no tool call and no result on
-	// it): that is the turn's own prompt, or the runtime's request-only wrap-up
-	// instruction when one is there. Without one the hint is appended, the
-	// first request's shape.
-	at := len(msgs)
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == "user" && msgs[i].ToolCall == nil && msgs[i].ToolResult == nil {
-			at = i + 1
-			break
-		}
-	}
+	// The position of the turn's first request; a shorter request (a segment
+	// cut inside the turn rebuilt the view) appends instead.
+	at := min(h.turnAt, len(msgs))
 	hint := agentcore.Message{Role: "user", Content: h.turnHint}
 	if at == len(msgs) {
 		event.Request.Messages = append(msgs, hint)

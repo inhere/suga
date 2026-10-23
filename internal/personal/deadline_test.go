@@ -187,7 +187,7 @@ func TestDeadlineHookStableWithinTurn(t *testing.T) {
 	state := &deadlineState{deadline: time.Date(2026, 1, 1, 22, 28, 0, 0, time.FixedZone("CST", 8*3600)),
 		now: fixedClock(time.Date(2026, 1, 1, 21, 40, 0, 0, time.FixedZone("CST", 8*3600)))}
 	t.Run("text frozen and repositioned after the turn's prompt on replay", func(t *testing.T) {
-		hook := &deadlineHook{state: state}
+		hook := &deadlineHook{state: state, turnAt: -1}
 		ctx := context.Background()
 		// First request: the plain prompt; the hint is appended.
 		first := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{Messages: []agentcore.Message{
@@ -207,9 +207,21 @@ func TestDeadlineHookStableWithinTurn(t *testing.T) {
 		assert.Eq(t, "user", second.Request.Messages[1].Role)
 		assert.Eq(t, "assistant", second.Request.Messages[2].Role)
 		assert.Eq(t, 4, len(second.Request.Messages))
+		// A wrap-up step: the runtime appends a request-only instruction at
+		// the end. The hint must not move behind it - the earlier steps'
+		// thinking was created with the hint right after the prompt.
+		third := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{Messages: []agentcore.Message{
+			{Role: "user", Content: "start"},
+			{Role: "assistant", ToolCall: &agentcore.ToolCall{CallID: "t1", Name: "file_read"}},
+			{Role: "tool", ToolResult: &agentcore.ToolResult{CallID: "t1", Content: "x"}},
+			{Role: "user", Content: "请收尾"}}}}
+		assert.Require(t, assert.NoErr(t, hook.BeforeModel(ctx, third, agentcore.NewControl())))
+		assert.Eq(t, 5, len(third.Request.Messages))
+		assert.Eq(t, first.Request.Messages[1].Content, third.Request.Messages[1].Content)
+		assert.Eq(t, "请收尾", third.Request.Messages[4].Content)
 	})
 	t.Run("a disabled hint stays out and freezes nothing", func(t *testing.T) {
-		hook := &deadlineHook{state: &deadlineState{}}
+		hook := &deadlineHook{state: &deadlineState{}, turnAt: -1}
 		event := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{Messages: []agentcore.Message{
 			{Role: "user", Content: "start"}}}}
 		assert.Require(t, assert.NoErr(t, hook.BeforeModel(context.Background(), event, agentcore.NewControl())))
