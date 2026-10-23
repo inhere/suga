@@ -27,7 +27,9 @@ func (r *schemaRegistry) ExecuteTool(_ context.Context, call agentcore.ToolCall)
 	return &api.ToolResult{CallID: call.CallID, Name: call.Name, Content: "ok"}, nil
 }
 
-var visionToolSchemas = []agentcore.ToolSchema{{Name: "file_read"}, {Name: "file_list"}}
+// visionToolSchemas is what the wrapped registry lists: the layer above must
+// hand it through untouched, view_image included (design 2026-10-23 section 8).
+var visionToolSchemas = []agentcore.ToolSchema{{Name: "file_read"}, {Name: "view_image"}, {Name: "file_list"}}
 
 // registryToolNames lists the tool names a registry offers.
 func registryToolNames(t *testing.T, registry agentcore.ToolRegistry) []string {
@@ -49,12 +51,14 @@ func TestObservedToolsToolTableIsModelIndependent(t *testing.T) {
 	t.Run("a model without vision gets the same table", func(t *testing.T) {
 		gate := tools.NewVisionGate(false)
 		inner := &schemaRegistry{schemas: visionToolSchemas}
-		assert.Eq(t, []string{"file_read", "file_list"}, registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
+		assert.Eq(t, []string{"file_read", "view_image", "file_list"},
+			registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
 	})
 	t.Run("a model with vision gets the same table", func(t *testing.T) {
 		gate := tools.NewVisionGate(true)
 		inner := &schemaRegistry{schemas: visionToolSchemas}
-		assert.Eq(t, []string{"file_read", "file_list"}, registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
+		assert.Eq(t, []string{"file_read", "view_image", "file_list"},
+			registryToolNames(t, (&recorder{vision: gate}).observeTools(inner)))
 	})
 	t.Run("a model switch changes nothing", func(t *testing.T) {
 		gate := tools.NewVisionGate(true)
