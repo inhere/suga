@@ -102,6 +102,22 @@ network:
 - `tools.web_fetch.proxy` 是仅作用于 `web_fetch` 的旧配置，只在 `network.proxy.url` 为空时生效（已废弃，建议迁移到全局配置）。
 - `web_fetch` 的私网限制不因代理放松：走代理前仍按目标 host 做本地 DNS 检查（IP 直写也检查），每次跳转重新检查；代理自身是否为可信配置由用户负责。
 
+### 内置工具按需加载（`tools.deferred_native` / `tools.deferred_apply`）
+
+默认关闭，行为与以往逐字节一致：
+
+```yaml
+tools:
+  deferred: auto           # 既有键：MCP 工具的判据（auto/always/never）；never 连 native 一起关掉
+  deferred_native: auto    # 新增：auto = 内置 9 个低频工具 | never（默认）| [名字…] 显式名单
+  deferred_apply: segment  # 新增：segment（默认，只作用于 native）| immediate（MCP 现状）
+```
+
+- `deferred_native: auto` 延迟 `agent`、`file_symbols`、`memory`、`recall`、`session_search`、`session_message`、`skill`、`suga_manifest`、`web_fetch`：它们不进每次请求的工具表，段上下文里保留一行用途清单，模型用 `tool_search`（或 `select:name1,name2`）加载。高频的 `file_*` 与 `shell_exec` 永不进默认名单。
+- 名单里的名字必须是内置工具名；未注册（只读模式、未启 skill/agents）时忽略并记 debug，`tool_search`、隐藏别名与宿主工具不允许进名单。`tools.deferred: never` 高于该键，一律不延迟。
+- `segment` 模式下，加载只写会话的 `loaded_tools`，工具表在本段内不变（前缀缓存友好）；段内已加载的工具用常驻的 `tool_call {name, arguments}` 调用，审批、只读模式、hook、taint 与 trace 都按真实工具名走；换段/resume 时它们原生入表（按名排序）。
+- 子 agent（独立 registry + 白名单）不参与延迟。
+
 ## 环境变量
 
 - `${VAR}` 在 `api_key`、`base_url`、`headers` 中展开，来源为进程环境或 `$SUGA_HOME/.env`（默认 `~/.suga/.env`）。

@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- native（内置）工具按需加载（设计 2026-10-23 0.2，默认关）：新增 `tools.deferred_native: auto | never | [名字…]`（默认 `never`）与 `tools.deferred_apply: segment | immediate`（默认 `segment`，只作用于 native，MCP 行为不变）。配成 `auto` 时 9 个低频工具（`agent`、`file_symbols`、`memory`、`recall`、`session_search`、`session_message`、`skill`、`suga_manifest`、`web_fetch`）不进每次请求的工具表，改由段上下文清单（每个一行用途）加 `tool_search` 发现；命中后记入 `loaded_tools`，段内用常驻的 `tool_call {name, arguments}` 代理调用（换段时再原生入表），审批、只读模式、PreToolUse hook、taint 与 trace 都按真实工具名走。T1 探针（三个真实 provider）确认模型不会调用未声明的工具，因此取代理工具方案。`context` 事件新增 `deferred_native`/`deferred_loaded` 计数，`tool_search` 事件新增 `newly_loaded_kinds`。默认 `never` 时工具表、段上下文与请求字节不变。
+
 ### 变更
 
 - 工具描述精简第一批（只改措辞，参数名/类型/required/默认值与行为不变；依据 `docs/research/2026-10-23-fixed-prefix-tools-report.md` 第三节 29 处）：`file_refs`、`file_symbols` 删去解析器与语言支持细节（`approx`/`class`/`pkg:` 标记已在每条结果行里）；`memory` 描述不再复述四类 kind 与「不要记」清单（会每段携带的记忆索引 note 已写同一套，两份文案此前已出现中英文漂移）；`file_grep` 删去 `exclude`/`glob`/`context`/`literal` 参数的复述（各参数自己的说明为准）；`shell_exec` 的 background/watch 段缩为一句（task 工具与 `every`/`watch_paths` 参数自带完整说明）；`file_read`、`web_fetch`、`file_remove`、`file_edit`、`agent`、`file_list`、`file_find` 删去 system 提示或运行结果已覆盖的句子；`no_ignore`（5 个工具）与 `include_tests`（2 个工具）的参数说明统一为一句，忽略规则的默认值改在 system 提示的稳定部分统一声明（新增一行，前缀缓存重建一次后字节稳定）。实测固定前缀（隔离 `SUGA_HOME` + 默认配置 + 假 provider 抓真实请求体）：工具 schema 总量 28,219 → 24,206 字符，system 3,391 → 3,559，净省 3,845 字符 ≈ 986 token/次调用；suga 自算口径（`context` 事件）`tools` 27,951 → 23,938、`est_tokens` 8,694 → 7,733。新增 `internal/wiring` 的 `TestToolSchemaBudget`：按 wire 口径给每个工具 schema 设上限（总量 24,800），防止日后回涨。
