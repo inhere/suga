@@ -19,12 +19,13 @@ compact_after: [2]
 checks:
   # 第 2 轮必须给出被折叠输出里的 rid。
   - {type: answer_contains, text: 'Q7XK-2291', turn: 2}
-  # 干扰行里的 rid 不得被当成答案。
+  # 干扰行里的 rid（status=500 的另一条）不得被当成 503 行的答案。
   - {type: answer_not_contains, text: 'Q7XK-0000', turn: 2}
 generate:
   - path: logs/access.log
     count: 6000
-    line: "2026-10-23T09:00:00Z GET /api/items/{i} status=200 bytes=512 rid=Q7XK-0000 ua=probe/1.0 latency=4ms"
+    line: "2026-10-23T09:00:00Z GET /api/items/{i} status=200 bytes=512 rid=- ua=probe/1.0 latency=4ms"
     inserts:
+      - {at: 917, text: "2026-10-23T09:14:02Z GET /api/billing/retry status=500 bytes=0 rid=Q7XK-0000 ua=probe/1.0 latency=900ms"}
       - {at: 4217, text: "2026-10-23T09:58:37Z GET /api/billing/sync status=503 bytes=0 rid=Q7XK-2291 ua=probe/1.0 latency=30000ms"}
 timeout: 20m
