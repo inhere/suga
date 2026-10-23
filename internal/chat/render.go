@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gookit/cliui/show/symbols"
@@ -155,6 +156,10 @@ type Renderer struct {
 	// the renderer, not in the event stream, so concurrent children cannot share
 	// counts.
 	agentProgress map[string]*agentProgressState
+	// agentMu guards agentProgress: a background sub-agent reports on the
+	// goroutine of the turn that started it while chat's own main loop (:tasks -k,
+	// a task notice) reads and ends entries.
+	agentMu sync.Mutex
 }
 
 // agentProgressState is one running agent tool call: the call ID is the key and
@@ -316,6 +321,8 @@ func (r *Renderer) runningAgents() []agentStatusPart {
 			tasksByID[info.ID] = info
 		}
 	}
+	r.agentMu.Lock()
+	defer r.agentMu.Unlock()
 	parts := make([]agentStatusPart, 0, len(r.agentProgress)+len(tasksByID))
 	for id, state := range r.agentProgress {
 		if state == nil {
@@ -363,11 +370,13 @@ func (r *Renderer) refreshAgentStatus() { r.spin.SetLabel(r.agentStatusLabel()) 
 // sub-agent ends with its turn (a cancelled turn leaves no tool result, a failed
 // one no summary), so the status line of the next turn starts clean.
 func (r *Renderer) EndTurnAgents() {
+	r.agentMu.Lock()
 	for id, state := range r.agentProgress {
 		if state == nil || state.taskID == "" {
 			delete(r.agentProgress, id)
 		}
 	}
+	r.agentMu.Unlock()
 	r.refreshAgentStatus()
 }
 
@@ -383,7 +392,9 @@ func (r *Renderer) beginAgent(event personal.Event) {
 	if description == "" {
 		return
 	}
+	r.agentMu.Lock()
 	r.agentProgress[event.CallID] = &agentProgressState{description: description, started: time.Now(), background: background}
+	r.agentMu.Unlock()
 }
 
 func agentCallDetails(text string) (string, bool) {
@@ -407,22 +418,29 @@ func (r *Renderer) finishAgent(event personal.Event) {
 		return
 	}
 	summary := event.AgentSummary
+	r.agentMu.Lock()
 	state := r.agentProgress[event.CallID]
-	if (state != nil && state.background) || (summary != nil && summary.Background) {
+	background := (state != nil && state.background) || (summary != nil && summary.Background)
+	calls := 0
+	if state != nil {
+		calls = state.calls
+	}
+	switch {
+	case background:
+		// The task keeps the entry alive (runningAgents); its id is how the
+		// manager's task list is matched against it.
 		if state != nil && summary != nil {
 			state.taskID = summary.TaskID
 		}
-		return
-	}
-	if event.CallID != "" {
+	case event.CallID != "":
 		delete(r.agentProgress, event.CallID)
 	}
-	if summary == nil || summary.Description == "" {
+	r.agentMu.Unlock()
+	if background || summary == nil || summary.Description == "" {
 		return
 	}
-	calls := summary.ToolCalls
-	if state != nil && calls < state.calls {
-		calls = state.calls
+	if summary.ToolCalls > calls {
+		calls = summary.ToolCalls
 	}
 	if r.agentProgressMode() == "summary" {
 		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(summary.Description, 40), calls, formatElapsed(summary.Duration))
@@ -431,6 +449,8 @@ func (r *Renderer) finishAgent(event personal.Event) {
 
 // dropAgentTask forgets the entry of a background agent task that ended.
 func (r *Renderer) dropAgentTask(taskID string) {
+	r.agentMu.Lock()
+	defer r.agentMu.Unlock()
 	for id, state := range r.agentProgress {
 		if state != nil && state.taskID == taskID {
 			delete(r.agentProgress, id)
@@ -541,9 +561,11 @@ func (r *Renderer) Handle(event personal.Event) {
 		// counted on that call's entry only: an event of a call the renderer does
 		// not know must not create one, or the status line would count an agent
 		// nothing ever ends.
+		r.agentMu.Lock()
 		if state := r.agentProgress[event.CallID]; state != nil {
 			state.calls++
 		}
+		r.agentMu.Unlock()
 		if r.agentProgressMode() == "full" {
 			r.live.Finish()
 			line := "  · " + event.ToolName
