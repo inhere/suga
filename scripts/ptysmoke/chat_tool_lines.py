@@ -77,9 +77,11 @@ def scenario(s):
 
     m = s.mark()
     s.line(":help")
-    s.check(":help still lists :add-dir", s.until(r":add-dir/:dirs/:rm-dir", m))
+    # One command per line since the usage table (:help lists name + summary;
+    # the details are :<command> -h).
+    s.check(":help still lists :add-dir", s.until(r":add-dir ", m) and s.until(r":rm-dir ", m))
     s.check(":help still lists :checkpoints", s.until(r":checkpoints", m))
-    s.check(":help still lists :undo", s.until(r":undo \[N\] \[force\]", m))
+    s.check(":help still lists :undo", s.until(r":undo ", m))
 
     m = s.mark()
     time.sleep(0.3)
