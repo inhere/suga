@@ -28,6 +28,22 @@ func TestFirstMainCall(t *testing.T) {
 	})
 }
 
+// TestProviderFaultMs covers the failed-attempt time read from the trace: the
+// duration of every model event that failed plus the backoff it waited.
+func TestProviderFaultMs(t *testing.T) {
+	trace := `{"kind":"model","status":"ok","duration_ms":900,"attrs":{"retries":2,"retry_wait_ms":300}}
+{"kind":"model","status":"error","duration_ms":400,"attrs":{"retry_wait_ms":600,"fallback":"next"}}
+{"kind":"model","status":"error","duration_ms":100}
+{"kind":"model","status":"ok","duration_ms":500}
+{"kind":"tool","status":"error","duration_ms":100}
+`
+	assert.Eq(t, int64(1100), providerFaultMs([]byte(trace)))
+
+	t.Run("no model event", func(t *testing.T) {
+		assert.Eq(t, int64(0), providerFaultMs([]byte("{\"kind\":\"plan\",\"plan\":[]}\n")))
+	})
+}
+
 func TestAggregateProbe(t *testing.T) {
 	rs := []ProbeRun{
 		{Group: "same", Input: 1000, CacheRead: 800, Uncached: 200, WarmInput: 1000},
