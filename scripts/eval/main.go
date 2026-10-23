@@ -288,11 +288,13 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	if o.agent == "omp" {
 		r.SessionID = ""
 		runOmp(ctx, o, t, timeout, ws, filepath.Join(root, "omp-sessions"), &r)
+		fillBreakdown(&r) // no per-turn record: the whole run is turn time
 		return r, nil
 	}
 	if o.agent == "claude" {
 		r.SessionID = ""
 		runClaude(ctx, o, t, timeout, ws, filepath.Join(root, "claude-home"), &r)
+		fillBreakdown(&r)
 		return r, nil
 	}
 	// The web policy goes into the temp SUGA_HOME config suga actually reads (its
