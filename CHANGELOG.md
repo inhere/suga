@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- Claude provider：多轮工具调用时回传的 `tool_use.input` 不再是 `null`（参数被参数规整清空且元数据克隆丢失空 map 后），原先 /v1/messages 会以 `Invalid input at messages.2.content` 拒收第二轮请求（2026-10-23 claude-haiku-5-5 经网关复现，含带 thinking 块的现场）。
+
 ### 新增
 
 - `file_read` 也能读图（设计 2026-10-23，读图合并）：按文件头识别 PNG/JPEG/GIF 首帧/WebP（不看扩展名，且排在 NUL 二进制嗅探之前），单个 `path` 调用返回 1 个 image part 加一行说明（格式、原始像素、发送尺寸）；长边只由 `images.max_side` 决定，`max_side` 参数退休但旧调用传了也只忽略。不能看图的模型不再报错，而是得到一段说明（格式、像素、字节数与“用 `:model` 换能看图的模型再读一次”）。一次调用最多附一张图：`paths` 里的图片条目、带行范围的条目只给一行说明；`offset`/`limit`/`outline` 对图片忽略并写明；会话图片 ref（`images/<sha256>.<ext>`）照旧可读。扩展名像图片但文件头不是（截断的下载、改了名的文本）时照常按文本/二进制读，首行提示“文件头不是支持的图片格式”。文本文件、普通二进制文件与目录的结果逐字节不变。trace 的读图事件新增 `images` / `image_bytes` 属性。

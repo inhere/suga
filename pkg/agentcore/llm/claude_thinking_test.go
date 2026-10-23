@@ -126,3 +126,34 @@ func TestClaudeThinkingBlocksRoundTrip(t *testing.T) {
 		check(t, res)
 	})
 }
+
+// TestClaudeToolUseInputReplay: a call whose arguments were all dropped replays
+// an "input" object and never null, which /v1/messages rejects with "Invalid
+// input at messages.2.content" (2026-10-23 claude-haiku-5-5 via a gateway).
+func TestClaudeToolUseInputReplay(t *testing.T) {
+	p := NewClaudeProvider(ClaudeConfig{})
+	result := agentcoreapi.Message{Role: "tool", ToolResult: &agentcoreapi.ToolResult{CallID: "t1", Content: "x"}}
+	for name, args := range map[string]map[string]any{
+		"nil after coercion": nil,
+		"empty object":       {},
+		"kept arguments":     {"path": "a.txt"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			call := agentcoreapi.Message{Role: "assistant", ToolCall: &agentcoreapi.ToolCall{CallID: "t1", Name: "file_list", Arguments: args}}
+			msgs := p.buildRequestBody(&agentcoreapi.GenerateRequest{
+				Messages: []agentcoreapi.Message{{Role: "user", Content: "go"}, call, result},
+			}, "claude-opus-5-5")["messages"].([]map[string]any)
+			raw, err := json.Marshal(msgs[1]["content"].([]map[string]any)[0]["input"])
+			assert.Require(t, assert.NoErr(t, err))
+			var input any
+			assert.Require(t, assert.NoErr(t, json.Unmarshal(raw, &input)))
+			obj, ok := input.(map[string]any)
+			assert.Require(t, ok) // an object, not null
+			if len(args) == 0 {
+				assert.Eq(t, 0, len(obj))
+			} else {
+				assert.Eq(t, args, obj)
+			}
+		})
+	}
+}
