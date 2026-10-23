@@ -143,6 +143,7 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
 	python3 -I scripts/ptysmoke/chat_idle.py --bin tmp/smoke/suga --work tmp/smoke-idle
 	python3 -I scripts/ptysmoke/chat_observe.py --bin tmp/smoke/suga --work tmp/smoke-observe
+	python3 -I scripts/ptysmoke/chat_deferred_native.py --bin tmp/smoke/suga --work tmp/smoke-deferred
 	python3 -I scripts/ptysmoke/chat_pretool.py --bin tmp/smoke/suga --work tmp/smoke-pretool
 	python3 -I scripts/ptysmoke/chat_retry.py --bin tmp/smoke/suga --work tmp/smoke-retry
 	python3 -I scripts/ptysmoke/chat_interrupt.py --bin tmp/smoke/suga --work tmp/smoke-interrupt

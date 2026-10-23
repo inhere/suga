@@ -48,6 +48,10 @@ Modes (--mode):
         sentence that promises to continue), without running any command: the
         turn hits both "stopped too early" rules, so chat shows its gray hint
         (chat_nudge.py). Chat never pushes the model back, so the turn ends here.
+  deferred
+        one tool_search {"select": "memory"}, then one tool_call of the loaded
+        memory tool (the deferred-native proxy), then the text --reply: the
+        smoke of tools.deferred_native: auto (chat_deferred_native.py).
 
 --delay seconds are slept before each response, so a test can type while a
 turn is running. --chunk splits a streamed text reply into pieces of that many
@@ -355,6 +359,16 @@ def make_handler(args):
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": "file_read", "arguments": json.dumps({"path": args.read_path or "shot.png"})}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            # deferred mode: load a native tool through tool_search and call it
+            # through the tool_call proxy of the segment apply mode.
+            deferred_calls = [("tool_search", {"query": "select:memory"}),
+                              ("tool_call", {"name": "memory",
+                                             "arguments": {"action": "search", "query": "smoke"}})]
+            if args.mode == "deferred" and step < len(deferred_calls):
+                name, arguments = deferred_calls[step]
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": name, "arguments": json.dumps(arguments)}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             elif args.mode == "adddir" and step < len(adddir_calls):
                 name, arguments = adddir_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
@@ -527,7 +541,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge", "image"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge", "image", "deferred"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")
