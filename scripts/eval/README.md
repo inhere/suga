@@ -24,6 +24,9 @@ go run ./scripts/eval --model opencode-go/deepseek-v4.1-flash --config-from ~/.s
 终端输出汇总表；`<out>/results.jsonl` 每任务一行（成败、checks 明细、答案、调用/token/命中率/成本/工具调用数、
 `tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga inspect stats` 提供之前为 null；
 `web` 记录本次是否禁网、`removed_tests` 记录判分前移出模型自写的测试）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
+耗时拆成 `turn_ms`（各回合 `suga run` 的墙钟之和）、`compaction_ms`（强制换段 `suga compact` 之和）与
+`overhead_ms`（运行器在回合之间花的），三者相加等于 `duration_ms`；`provider_fault_ms` 是 `turn_ms` 里花在失败重试/切换上的部分
+（取自 trace 的 model 事件，见“耗时拆分”）。准备与判分在 `duration_ms` 之外，不计入拆分。
 `--model` 未传时，suga 运行会问一次 `suga config get model`，把临时 SUGA_HOME 解析出的实际模型写进 `model` 字段
 （以前为空，suga-h5vn）；汇总表在 AGENT 之后新增 MODEL 列显示同一个值（超过 32 字符截断，取不到为 `-`）。
 
@@ -119,7 +122,7 @@ task.yaml 写 `keep_tests: true`，本题不做清理。
   （后两个是正则，用来表达确定性的约束，如“不许出现中文”`[\p{Han}]`、“必须是 Markdown 列表”`(?m)^[-*] `）；
   文件与命令检查照旧，它们只跑一次，算作最后一轮的检查。
 - 报告：主表之后给“长会话”（带 `compact_after` 或 ≥ 3 轮的任务）逐任务打印 `long sessions (per turn; ...)`：每轮一行（PASS/FAIL、该轮的检查、
-  该轮的换段 `[compacted ~A -> ~B tokens, segment N]`、耗时），最后给出 `long sessions: passed N/M` 的长会话通过率（两轮、无换段的任务仍只进主表）。
+  该轮的换段 `[compacted ~A -> ~B tokens, segment N, 耗时]`、该轮耗时），最后给出 `long sessions: passed N/M` 的长会话通过率（两轮、无换段的任务仍只进主表）。
 - 运行：`go run ./scripts/eval --fake --bin tmp/smoke/suga --task 'longsession-*'`
   （任务的 `fake_reply` 让假模型给出确定回答，`--fake` 用来验证多轮、换段、逐轮检查的管线；
   真实模型的通过率另跑）。
@@ -269,12 +272,34 @@ go run ./scripts/eval --task repo-t9-schedule --model <model> --config-from ~/.s
 - `--suga-set dotted.key=value`（可重复）：改写临时 SUGA_HOME 的 config.yaml（值按 YAML 标量解析），例如 `--suga-set "tools.shell=C:/Program Files/Git/usr/bin/bash.exe"`；同样记入 `agent_args`。
 - `tool_counts`（results.jsonl，`map[工具名]次数`，无工具调用时省略；表格不加列）：suga 取 `suga inspect stats --session <id> --json` 的 `tools[].name/calls`；
   omp 取事件流 `tool_execution_start` 的 `toolName`，没有该事件时退回统计 assistant 消息里 toolCall 块的 `name`。
-- `--repeat N`（默认 1）：每个任务依次跑 N 轮。N>1 时输出目录为 `<out>/<task>-r<i>/`（N=1 保持 `<out>/<task>/`），session id 同样带 `-r<i>`；
-  results.jsonl 每轮一行，新增 `round`（从 1 起）。表格逐轮显示（TASK 列为 `<task>-r<i>`），每个任务末尾追加一行 `<task> (avg)`：
-  RESULT 为通过轮数/总轮数，CALLS、TOOLS、PROMPT、TOKENS(in/out)（未缓存输入/输出）与 TIME 为各轮平均，其余列为 `-`。
+- `--repeat N`（默认 1）：每个任务独立跑 N 次，每次都新建隔离的 home 与工作区。N>1 时输出目录为 `<out>/<task>-r<i>/`（N=1 保持 `<out>/<task>/`），session id 同样带 `-r<i>`；
+  results.jsonl 每轮一行，新增 `repeat`（从 1 起）。表格逐轮显示（TASK 列为 `<task>-r<i>`），每个任务末尾追加一行 `<task> (avg)`：
+  RESULT 为通过轮数/总轮数（如 `2/3`），CALLS、TOOLS、PROMPT、TOKENS(in/out)（未缓存输入/输出）与 TIME 为各轮
+  **均值加最小–最大**（如 `5.0 (4-6)`、`12.0s (10.0-14.5s)`），其余列为 `-`。N=1 时表格与以前逐字节一致（`aggregate_test.go` 的
+  `TestPrintTableSingleRun` 守住）。
 
 ```bash
 go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--no-project-rules"
+```
+
+## 耗时拆分（turn / compaction / fault）
+
+长会话单次运行的波动很大，只看 `duration_ms` 分不清时间花在哪。每行结果因此把墙钟拆开（单次运行也记录，
+主表之后多一段 `timing (...)`，每行一个任务）：
+
+- `turn_ms`：各回合 `suga run` 的墙钟之和（suga 有逐轮记录；omp/claude 没有逐轮记录，整段运行都算回合时间）。
+- `compaction_ms`：强制换段 `suga compact <会话>` 的墙钟之和，逐次的耗时另记在 `turns[].compacted.duration_ms`，
+  长会话逐轮输出里显示为 `[compacted ~A -> ~B tokens, segment N, 耗时]`。
+- `overhead_ms`：运行器在回合之间花的（cli 之间的小间隔）；`turn_ms + compaction_ms + overhead_ms = duration_ms`。
+  工作区准备、判分与 `inspect` 调用在 `duration_ms` 之外，不计入拆分。
+- `provider_fault_ms`：`turn_ms` **里面**花在 provider 失败上的部分，来自 `suga inspect trace --json` 的 model 事件：
+  每个 `status != ok` 事件的 `duration_ms` 加上它之后的 `attrs.retry_wait_ms`（重试退避）。
+  provider 在一次成功调用内部自己重试（`status=ok` 且 `attrs.retries>0`）的等待与该次调用无法分开，不计入。
+  所以这些数字里 `fault` 是 `turn` 的子集，不是第四项相加项；omp/claude 读不到 trace，记为 0。
+
+```
+timing (turn + compaction + overhead = duration; provider faults are inside turns):
+  longsession-hard-naming-rules-r1  turn 612.4s  compaction 18.0s  fault 12.3s  overhead 0.4s  = 630.8s
 ```
 
 ## variant 对比
@@ -292,8 +317,9 @@ go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--n
 variant 的 `name` 默认取目录名；目录重复时（同名）启动即报错。有 `--variant` 时输出为 `<out>/<variant>/<task>[-r<i>]/`，
 session id 带 `<variant>-` 前缀，`results.jsonl` 每行多一个 `variant` 字段；结束时打印并写 `<out>/compare.md`：
 各 variant 的通过率、平均 CALLS、平均 prompt（未缓存+缓存读写）、平均未缓存输入、总 prompt、缓存命中率与平均耗时，
-WEB 列记录该 variant 本次是否禁网（`off`/`on`/`unsupported`，多个用 `+` 连接）：
-以及逐任务一行（PASS/FAIL/TIMEOUT、CALLS、prompt、耗时），variant 之间结果不同的任务在“结果不一致”列标为 **是**。
+WEB 列记录该 variant 本次是否禁网（`off`/`on`/`unsupported`，多个用 `+` 连接），
+以及平均 turn/compact/fault 耗时（见“耗时拆分”）；逐任务一行（PASS/FAIL/TIMEOUT、CALLS、prompt、耗时）在 repeat 时给出通过轮数与均值的最小–最大，
+variant 之间结果不同的任务在“结果不一致”列标为 **是**。
 不给 `--variant` 时输出结构与以前完全一致（无 variant 字段、无 compare.md）。任务必须用 `--agent suga`（且与
 `--probe-prefix` 互斥）。
 

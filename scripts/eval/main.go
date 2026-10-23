@@ -48,23 +48,33 @@ func (s *setFlags) Set(v string) error { *s = append(*s, v); return nil }
 
 // Result is one results.jsonl line.
 type Result struct {
-	Task        string  `json:"task"`
-	Round       int     `json:"round"`
-	Agent       string  `json:"agent"`
-	AgentArgs   string  `json:"agent_args,omitempty"`
-	Passed      bool    `json:"passed"`
-	Error       string  `json:"error,omitempty"`
-	SessionID   string  `json:"session_id"`
-	Mode        string  `json:"mode"`
-	Model       string  `json:"model"`
-	Fake        bool    `json:"fake"`
-	DurationMs  int64   `json:"duration_ms"`
-	Calls       int     `json:"calls"`
-	InputTokens int64   `json:"input_tokens"`
-	OutputToks  int64   `json:"output_tokens"`
-	CacheRead   int64   `json:"cache_read_tokens"`
-	CacheWrite  int64   `json:"cache_write_tokens"`
-	CacheHit    float64 `json:"cache_hit_rate"`
+	Task       string `json:"task"`
+	Repeat     int    `json:"repeat"`
+	Agent      string `json:"agent"`
+	AgentArgs  string `json:"agent_args,omitempty"`
+	Passed     bool   `json:"passed"`
+	Error      string `json:"error,omitempty"`
+	SessionID  string `json:"session_id"`
+	Mode       string `json:"mode"`
+	Model      string `json:"model"`
+	Fake       bool   `json:"fake"`
+	DurationMs int64  `json:"duration_ms"`
+	// The wall-clock split of DurationMs: TurnMs covers the agent's turns,
+	// CompactionMs the forced segment breaks (`suga compact`), OverheadMs what
+	// the runner spent between them; the three add up to DurationMs.
+	TurnMs       int64 `json:"turn_ms"`
+	CompactionMs int64 `json:"compaction_ms"`
+	OverheadMs   int64 `json:"overhead_ms"`
+	// ProviderFaultMs is the part of TurnMs spent on failed provider attempts
+	// (their own duration plus the retry backoff), read from the trace's model
+	// events; 0 for an agent whose trace the eval cannot read.
+	ProviderFaultMs int64   `json:"provider_fault_ms"`
+	Calls           int     `json:"calls"`
+	InputTokens     int64   `json:"input_tokens"`
+	OutputToks      int64   `json:"output_tokens"`
+	CacheRead       int64   `json:"cache_read_tokens"`
+	CacheWrite      int64   `json:"cache_write_tokens"`
+	CacheHit        float64 `json:"cache_hit_rate"`
 	// FirstUncached is the uncached input of the first main-loop model call
 	// (suga: input - cache_read - cache_write from the trace; omp: usage.input).
 	// nil when unavailable (no usable model event).
@@ -231,7 +241,8 @@ func runTaskSet(o *options, bin, runID string, tasks []*Task, variants []*Varian
 		}
 	}
 	printTable(os.Stdout, results, o.repeat > 1)
-	printTurnDetail(os.Stdout, results)
+	printTiming(os.Stdout, results, o.repeat > 1)
+	printTurnDetail(os.Stdout, results, o.repeat > 1)
 	printWebNote(os.Stdout, results)
 	if len(variants) > 0 {
 		if err := writeCompare(o.out, variants, results); err != nil {
@@ -254,7 +265,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		suffix = "-" + v.Name
 	}
 	sid := "eval-" + runID + suffix + "-" + name
-	r := Result{Task: t.Name, Round: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake, Variant: variantName(v)}
+	r := Result{Task: t.Name, Repeat: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake, Variant: variantName(v)}
 	r.Web = webPolicy(o, t)
 	switch o.agent {
 	case "omp":
@@ -277,11 +288,13 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	if o.agent == "omp" {
 		r.SessionID = ""
 		runOmp(ctx, o, t, timeout, ws, filepath.Join(root, "omp-sessions"), &r)
+		fillBreakdown(&r) // no per-turn record: the whole run is turn time
 		return r, nil
 	}
 	if o.agent == "claude" {
 		r.SessionID = ""
 		runClaude(ctx, o, t, timeout, ws, filepath.Join(root, "claude-home"), &r)
+		fillBreakdown(&r)
 		return r, nil
 	}
 	// The web policy goes into the temp SUGA_HOME config suga actually reads (its
@@ -328,11 +341,15 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		if !t.compactsAfter(i + 1) {
 			continue
 		}
+		compStart := time.Now()
 		comp, err := forceCompact(ctx, bin, sid, ws, env)
 		if err != nil {
 			runErr = err
 			break
 		}
+		// The break costs time outside the turn it follows; record it so the
+		// long-session report can show what a compaction costs.
+		comp.DurationMs = time.Since(compStart).Milliseconds()
 		turns[len(turns)-1].Compacted = &comp
 	}
 	r.DurationMs = time.Since(start).Milliseconds()
@@ -340,6 +357,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		r.Error = runErr.Error()
 	}
 	r.Turns = turns
+	fillBreakdown(&r)
 	if len(answers) > 0 {
 		r.Answer = answers[len(answers)-1]
 	}
@@ -359,6 +377,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 			v := c.uncached()
 			r.FirstUncached = &v
 		}
+		r.ProviderFaultMs = providerFaultMs(tout)
 	}
 	return r, nil
 }
@@ -698,20 +717,15 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 		if r.FirstUncached != nil {
 			first = fmt.Sprint(*r.FirstUncached)
 		}
-		label := r.Task
-		if repeated {
-			label = fmt.Sprintf("%s-r%d", r.Task, r.Round)
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\t%s\n", label, r.Agent, truncArgs(r.Model, 32), status, r.Calls, r.ToolCalls, r.Spilled,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\t%s\n", resultLabel(r, repeated), r.Agent, truncArgs(r.Model, 32), status, r.Calls, r.ToolCalls, r.Spilled,
 			first, prompt, r.InputTokens, r.OutputToks, r.CacheHit*100, r.CostUSD, float64(r.DurationMs)/1000, r.Web, truncArgs(r.AgentArgs, 24))
-		if repeated && (i == len(rs)-1 || rs[i+1].Task != r.Task) {
-			j := i
-			for j > 0 && rs[j-1].Task == r.Task {
-				j--
-			}
-			a := averageRounds(rs[j : i+1])
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d/%d\t%.1f\t%.1f\t-\t-\t%.0f\t%.0f/%.0f\t-\t-\t%.1fs\t%s\t%s\n", r.Task+" (avg)", r.Agent, truncArgs(r.Model, 32), a.Passed, a.Rounds,
-				a.Calls, a.ToolCalls, a.Prompt, a.Uncached, a.Out, a.Seconds, r.Web, truncArgs(r.AgentArgs, 24))
+		if repeated && (i == len(rs)-1 || rs[i+1].Task != r.Task || rs[i+1].Variant != r.Variant) {
+			// One avg row per task and variant: pass count over the rounds
+			// plus mean and min-max of calls, tokens and time.
+			s := statRounds(roundGroup(rs, i))
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d/%d\t%s\t%s\t-\t-\t%s\t%s/%s\t-\t-\t%s\t%s\t%s\n", avgLabel(r), r.Agent, truncArgs(r.Model, 32), s.Passed, s.Rounds,
+				formatCount(s.Calls), formatCount(s.ToolCalls), formatTokens(s.Prompt), formatTokens(s.Uncached), formatTokens(s.Out),
+				formatSeconds(s.Seconds), r.Web, truncArgs(r.AgentArgs, 24))
 		}
 	}
 	_ = tw.Flush()
@@ -730,24 +744,9 @@ type Average struct {
 
 // averageRounds averages the rounds of one task.
 func averageRounds(rs []Result) Average {
-	a := Average{Rounds: len(rs)}
-	if len(rs) == 0 {
-		return a
-	}
-	for _, r := range rs {
-		if r.Passed {
-			a.Passed++
-		}
-		a.Calls += float64(r.Calls)
-		a.ToolCalls += float64(r.ToolCalls)
-		a.Prompt += float64(r.InputTokens + r.CacheRead + r.CacheWrite)
-		a.Uncached += float64(r.InputTokens)
-		a.Out += float64(r.OutputToks)
-		a.Seconds += float64(r.DurationMs) / 1000
-	}
-	n := float64(len(rs))
-	a.Calls, a.ToolCalls, a.Prompt, a.Uncached, a.Out, a.Seconds = a.Calls/n, a.ToolCalls/n, a.Prompt/n, a.Uncached/n, a.Out/n, a.Seconds/n
-	return a
+	s := statRounds(rs)
+	return Average{Rounds: s.Rounds, Passed: s.Passed, Calls: s.Calls.Mean, ToolCalls: s.ToolCalls.Mean,
+		Prompt: s.Prompt.Mean, Uncached: s.Uncached.Mean, Out: s.Out.Mean, Seconds: s.Seconds.Mean}
 }
 
 func truncArgs(s string, n int) string {

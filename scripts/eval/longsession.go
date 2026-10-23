@@ -61,9 +61,9 @@ func longSession(r Result) bool {
 
 // printTurnDetail writes the long-session report: one block per long session,
 // one line per turn with its checks and its compaction (tokens before ->
-// after), then the pass rate over those tasks. A run without a long session
-// prints nothing.
-func printTurnDetail(w io.Writer, rs []Result) {
+// after and how long the break cost), then the pass rate over those tasks. A
+// run without a long session prints nothing.
+func printTurnDetail(w io.Writer, rs []Result, repeated bool) {
 	var long []Result
 	for _, r := range rs {
 		if longSession(r) {
@@ -91,13 +91,13 @@ func printTurnDetail(w io.Writer, rs []Result) {
 			}
 		}
 		fmt.Fprintf(w, "  %s  %s  (%d turns, %d compactions, %.1fs, %d checks)\n",
-			r.Task, status, len(r.Turns), compactions, float64(r.DurationMs)/1000, len(r.Checks))
+			runLabel(r, repeated), status, len(r.Turns), compactions, float64(r.DurationMs)/1000, len(r.Checks))
 		for _, t := range r.Turns {
 			ts := turnStatus(checks[t.Turn])
 			fmt.Fprintf(w, "    t%d %s  %s", t.Turn, ts, checkSummary(checks[t.Turn]))
 			if t.Compacted != nil {
-				fmt.Fprintf(w, "  [compacted ~%d -> ~%d tokens, segment %d]",
-					t.Compacted.TokensBefore, t.Compacted.TokensAfter, t.Compacted.Segment)
+				fmt.Fprintf(w, "  [compacted ~%d -> ~%d tokens, segment %d, %.1fs]",
+					t.Compacted.TokensBefore, t.Compacted.TokensAfter, t.Compacted.Segment, secs(t.Compacted.DurationMs))
 			}
 			fmt.Fprintf(w, "  (%.1fs)\n", float64(t.DurationMs)/1000)
 		}
