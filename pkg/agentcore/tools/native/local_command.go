@@ -142,15 +142,19 @@ func (c *LocalCommand) Run(ctx context.Context, command string, stream io.Writer
 			return res, fmt.Errorf("start %s: %w", c.shell.name(), err)
 		}
 		res.ExitCode = -1
-	} else {
-		if serr := tree.Started(); serr != nil {
-			// Started kills the suspended shell when it cannot join the job: reap
-			// it and report why nothing ran.
-			_ = cmd.Wait()
-			tree.Close()
-			res.ExitCode = -1
+	} else if serr := tree.Started(); serr != nil {
+		// Started kills the suspended shell when it cannot join the job: reap it
+		// and report why nothing ran - unless the run's context ended between
+		// Start and Started (a busy machine): exec's Cancel already killed the
+		// suspended shell, so resuming it failed, and that is the cancellation or
+		// the timeout reported below, not a start failure.
+		_ = cmd.Wait()
+		tree.Close()
+		res.ExitCode = -1
+		if runCtx.Err() == nil {
 			return res, fmt.Errorf("run %s: %w", c.shell.name(), serr)
 		}
+	} else {
 		waitErr := cmd.Wait()
 		tree.Close() // also ends background children left behind by the command
 		res.ExitCode = cmd.ProcessState.ExitCode()
