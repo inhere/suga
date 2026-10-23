@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img">
+  <title>suga app icon</title>
+  <desc>A solid tile with the S thread cut out of it.</desc>
+  <mask id="cut">
+    <rect width="512" height="512" fill="#fff"/>
+    <path d="M 130 0 H -84 A 68 68 0 0 0 -84 136 H 84 A 68 68 0 0 1 84 272 H -130" transform="translate(267 120)" fill="none" stroke="#000" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+  </mask>
+  <rect width="512" height="512" rx="112" fill="currentColor" mask="url(#cut)"/>
+</svg>
