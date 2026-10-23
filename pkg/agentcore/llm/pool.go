@@ -92,6 +92,7 @@ func (p *Pool) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) 
 		// The attempt is reported after the decision below, so its model event
 		// can say what the pool did with the failure (Attempt.Fallback).
 		attempt := &attemptCollector{obs: obs}
+		start := time.Now()
 		res, err := GenerateObserved(attemptCtx, prov, req, i+1, attempt.observer())
 		if err == nil {
 			attempt.deliver(ctx, "")
@@ -100,7 +101,7 @@ func (p *Pool) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) 
 		next := nextProviderIndex(providers, i, err)
 		decision := decideFallback(err, next < 0)
 		attempt.deliver(ctx, decision.Reason)
-		coolDownAfterConnectFailure(prov, attempt, err)
+		coolDownAfterConnectFailure(prov, time.Since(start), err)
 		if !decision.Next {
 			slog.Warn("llm provider failed, not trying another", "provider", prov.Name(), "reason", decision.Reason, "err", err)
 			if i == 0 {
@@ -155,6 +156,7 @@ func (p *Pool) Stream(ctx context.Context, req *agentcoreapi.GenerateRequest, em
 		if i+1 < len(providers) {
 			attemptCtx = withFallbackAvailable(ctx)
 		}
+		start := time.Now()
 		res, err := StreamObserved(attemptCtx, streaming, req, tracked, i+1, attempt.observer())
 		if err == nil {
 			attempt.deliver(ctx, "")
@@ -171,7 +173,7 @@ func (p *Pool) Stream(ctx context.Context, req *agentcoreapi.GenerateRequest, em
 		next := nextProviderIndex(providers, i, err)
 		decision := decideFallback(err, next < 0)
 		attempt.deliver(ctx, decision.Reason)
-		coolDownAfterConnectFailure(prov, attempt, err)
+		coolDownAfterConnectFailure(prov, time.Since(start), err)
 		if !decision.Next {
 			slog.Warn("llm provider stream failed, not trying another", "provider", prov.Name(), "reason", decision.Reason, "err", err)
 			if i == 0 {
@@ -190,16 +192,16 @@ func (p *Pool) Stream(ctx context.Context, req *agentcoreapi.GenerateRequest, em
 
 // coolDownAfterConnectFailure cools a candidate down after an attempt that never
 // reached the provider, so the following steps of this run ask a working model
-// first (cooldown.go). The log line carries the phase and the attempt's
-// duration, which the trace shows as well.
-func coolDownAfterConnectFailure(prov Provider, attempt *attemptCollector, err error) {
+// first (cooldown.go). The log line carries the phase and how long the attempt
+// took, which the trace shows as well.
+func coolDownAfterConnectFailure(prov Provider, elapsed time.Duration, err error) {
 	if !isConnectFailure(err) {
 		return
 	}
 	markConnectFailed(prov)
 	slog.Warn("llm provider connect failed, cooling the candidate down", "provider", prov.Name(),
 		"endpoint", providerEndpoint(prov), "reason", phaseConnectFailed,
-		"cool_for", ConnectFailureCooldown.String(), "elapsed", attempt.attempt.Duration.Round(time.Millisecond), "err", err)
+		"cool_for", ConnectFailureCooldown.String(), "elapsed", elapsed.Round(time.Millisecond), "err", err)
 }
 
 // nextProviderIndex is the index of the provider the pool would ask after
