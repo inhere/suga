@@ -27,10 +27,14 @@ type FileListTool struct {
 }
 
 func (t *FileListTool) Name() string { return "file_list" }
+
+// Description skips the "the result says which" parenthetical: the no_ignore
+// parameter and the result's own note carry it (docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #22).
 func (t *FileListTool) Description() string {
 	return "List a workspace directory. Directories end with /, symlinks with @ (not followed). " +
 		"depth>1 lists recursively as relative paths; .git, node_modules, vendor, dist and .gitignore'd directories are " +
-		"shown but not entered (the result says which; no_ignore enters them, except .git)."
+		"shown but not entered."
 }
 
 // ToolMeta marks the tool as a read-only read.
@@ -58,7 +62,7 @@ func (t *FileListTool) Schema() api.ToolSchema {
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
-					"description": "Also enter .gitignore'd directories and node_modules/vendor/dist (.git is never entered)",
+					"description": "Also enter ignored directories (.git stays out)",
 				},
 			},
 		},

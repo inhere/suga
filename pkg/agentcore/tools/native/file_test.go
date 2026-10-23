@@ -48,7 +48,13 @@ func TestFileReadDescription(t *testing.T) {
 	desc := (&FileReadTool{}).Description()
 	assert.StrContains(t, desc, "To look at several places at once, prefer paths (up to 10) over path")
 	assert.StrContains(t, desc, `paths: ["a.go:10-30", "b.go:40-60,90-110"]`)
-	assert.StrContains(t, desc, "Use outline=true only to see which declarations a source file over 300 lines holds")
+	// The outline restatement moved to the parameter's own description
+	// (2026-10-23 fixed-prefix report section 三 #14); the description keeps
+	// only the "text only" caveat.
+	assert.StrNotContains(t, desc, "Use outline=true only to see")
+	assert.StrContains(t, desc, "offset, limit and outline apply to text only")
+	props := (&FileReadTool{}).Schema().InputSchema["properties"].(map[string]any)
+	assert.StrContains(t, props["outline"].(map[string]any)["description"].(string), "a source file over 300 lines")
 }
 
 func TestFileTools_ReturnToolResultsWithStableMetadata(t *testing.T) {

@@ -63,18 +63,16 @@ func NewMemoryTool(store memory.Store, opts MemoryToolOptions) *MemoryTool {
 
 func (t *MemoryTool) Name() string { return memoryToolName }
 
-// Description is the tool contract for the model (design D5): the four
-// kinds, what is worth storing and what to leave out, and facts-vs-procedures.
+// Description is the tool contract for the model (design D5): what is worth
+// storing and actions vs summary rules. The four kinds and the do-not-store
+// list are not restated here: the memory-index note every segment context
+// carries already states both (internal/personal/memory.go), and the two texts
+// had started to drift (docs/research/2026-10-23-fixed-prefix-tools-report.md
+// 三 #10-#11).
 func (t *MemoryTool) Description() string {
 	return "Long-term memory shared across sessions. Each segment's context message carries a snapshot of the memory " +
 		"index (ids, kinds and titles), frozen until the next segment; writes are searchable immediately with " +
 		"action=search, and action=get reads an entry's body.\n" +
-		"Kinds: user (who the user is: role, preferences, expertise), feedback (corrections and confirmed " +
-		"choices about how to work), project (goals, constraints, decisions and progress the code and git " +
-		"do not show), reference (where external resources live: URLs, dashboards, tickets).\n" +
-		"Do NOT store: what the repository already states or makes derivable (code, README, git history); " +
-		"what AGENTS.md or other rule files already say; secrets, tokens or passwords; this turn's " +
-		"transient state, including a question you are waiting for the user to answer.\n" +
 		"Worth storing: what will come up again, is not trivial, and is cheaper to look up than to work " +
 		"out again. A dead end counts (the path and why it failed). For experience, state the conditions " +
 		"it applies under (versions, environment, endpoints).\n" +

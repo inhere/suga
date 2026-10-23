@@ -20,12 +20,16 @@ type FileEditTool struct {
 }
 
 func (t *FileEditTool) Name() string { return "file_edit" }
+
+// Description skips the "prefer this over file_write" sentence: the stable
+// system prompt already says it (docs/research/
+// 2026-10-23-fixed-prefix-tools-report.md 三 #20).
 func (t *FileEditTool) Description() string {
 	return "Edit a workspace file by replacing an exact string. Read the file first: old_string must match the " +
 		"file text exactly (without file_read's line-number prefix) and be unique unless replace_all is set; " +
 		"include surrounding lines to make it unique. For several changes to the same file pass them all in " +
 		"edits (one call, applied in order, all or nothing) instead of old_string/new_string. " +
-		"The file's line endings (LF/CRLF) are kept. Prefer this over rewriting the whole file with file_write."
+		"The file's line endings (LF/CRLF) are kept."
 }
 
 // ToolMeta marks the tool as an edit: it changes workspace files.

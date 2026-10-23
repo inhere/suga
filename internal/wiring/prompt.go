@@ -52,6 +52,11 @@ func basePrompt() string {
 	b.WriteString("You are suga, a personal coding agent working in the user's workspace through tools.\n\n")
 	b.WriteString("# Working conventions\n")
 	b.WriteString("- Use the file tools to read, list and search files rather than shell commands.\n")
+	// One statement of the search defaults (docs/research/
+	// 2026-10-23-fixed-prefix-tools-report.md 三 #23-#29): five tools restated
+	// the no_ignore convention and two the include_tests one; their parameters
+	// now point here instead of carrying it five times.
+	b.WriteString("- File searches and listings skip .git, node_modules, vendor, dist and .gitignore'd paths by default; pass no_ignore to include them, and include_tests for test files.\n")
 	// Step-count review (docs/research/2026-10-11-suag-vs-omp-loop-analysis.md,
 	// suag-jz0l): exploration took one tool per step, and most extra steps came
 	// after the tests already passed.

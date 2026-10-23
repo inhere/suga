@@ -38,20 +38,21 @@ type FileRefsTool struct {
 }
 
 func (t *FileRefsTool) Name() string { return "file_refs" }
+
+// Description keeps the call contract (what goes in, what a result line looks
+// like, how a qualified name is narrowed) and drops the parser/language
+// mechanics: the result still marks every match approx/class/pkg:, so the
+// model learns the difference from one answer instead of ones in the prefix
+// (docs/research/2026-10-23-fixed-prefix-tools-report.md 三 #1-#4).
 func (t *FileRefsTool) Description() string {
 	return "Find where a name is used: who calls X, who uses X, where is X referenced. " +
 		"Searches a file, a directory (recursive) or the workspace and answers one `path:line class[(qualifier)] text` " +
-		"line each, sorted by path and line. Use it instead of guessing file_grep patterns for a call chain. " +
+		"line each, sorted by path and line. " +
 		"Pass context: 3 to also show the source lines around each match, so a call site can be read without a file_read. " +
 		"A qualified name narrows the result to the uses of that type or package: name: \"Runner.Run\" keeps the " +
 		"definitions of type Runner and the Runner.x / pkg.Run uses, and a longer path such as s.runner.Run keeps " +
 		"its last segment. " +
-		"Go is parsed exactly (class def, call, sel or ref; sel/call carry the X of X.name, with pkg:X when X is an " +
-		"imported package) but without type checking, so a match may be another local, field or another package's " +
-		"symbol - the shown line decides. " + codeintel.MaskedLineLanguages() + " match word-bounded text with " +
-		"comments and strings masked and are marked approx; a YAML/TOML file keeps its string values visible (a config " +
-		"names things by their values) and labels the line that defines the name as a key def; universal-ctags offers declarations, not references, so " +
-		"it is not used here. Other text files use word-boundary text matching (approx, comments and strings are not masked). Markdown/text documentation (.md, .txt, .rst) is not searched. " +
+		"Markdown/text documentation (.md, .txt, .rst) is not searched. " +
 		fmt.Sprintf("Directories skip test files unless include_tests is set, and a result stops at %d matches.", defaultRefLimit)
 }
 
@@ -78,11 +79,11 @@ func (t *FileRefsTool) Schema() api.ToolSchema {
 				},
 				"include_tests": map[string]any{
 					"type":        "boolean",
-					"description": "Also search *_test.go, *.test.ts, test_*.py, *Test.java and *Test.php (default false)",
+					"description": "Also search test files (default false)",
 				},
 				"no_ignore": map[string]any{
 					"type":        "boolean",
-					"description": "Also search .gitignore matches and node_modules/vendor/dist (.git is always skipped)",
+					"description": "Also search ignored paths (.git stays skipped)",
 				},
 				"limit": map[string]any{
 					"type":        "integer",
