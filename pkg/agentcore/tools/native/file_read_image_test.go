@@ -189,6 +189,11 @@ func TestFileReadPictureSessionRef(t *testing.T) {
 		assert.Contains(t, res.Content, "not attached")
 		assert.Contains(t, res.Content, "session images directory")
 	})
+	t.Run("the same ref inside paths is a note too", func(t *testing.T) {
+		res := execFileRead(t, newPictureFileRead(dir, nil, 0), map[string]any{"paths": []any{"images/abc.png", "b.txt"}})
+		assert.Eq(t, 0, len(res.Images))
+		assert.Contains(t, res.Content, "not attached: session image images/abc.png")
+	})
 	t.Run("a ref that leaves the directory is refused", func(t *testing.T) {
 		_, err := newPictureFileRead(dir, nil, 0).Execute(context.Background(),
 			api.ToolCall{Arguments: map[string]any{"path": "../images/x.png"}})

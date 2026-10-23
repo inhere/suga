@@ -189,6 +189,21 @@ func TestOutput(t *testing.T) {
 		assert.Nil(t, mcpBig.res.Metadata[OutputMetaKey])
 	})
 
+	t.Run("a picture result keeps its image part", func(t *testing.T) {
+		// Design 2026-10-23 risk 2: file_read is Rereadable, so the output layer must
+		// neither truncate its text nor drop the image part.
+		part := api.ImagePart{MediaType: "image/jpeg", Width: 4, Height: 2, Data: []byte("jpeg")}
+		reread.res.Images = []api.ImagePart{part}
+		t.Cleanup(func() { reread.res.Images = nil })
+		sp := &fakeSpiller{}
+		res, err := NewOutput(reg, OutputConfig{Spiller: sp}).ExecuteTool(ctx, api.ToolCall{CallID: "c10", Name: "file_read"})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, big, res.Content)
+		assert.Require(t, assert.Eq(t, 1, len(res.Images)))
+		assert.Eq(t, "image/jpeg", res.Images[0].MediaType)
+		assert.Eq(t, 0, sp.calls)
+	})
+
 	t.Run("rereadable tool passes through untouched", func(t *testing.T) {
 		sp := &fakeSpiller{}
 		res, err := NewOutput(reg, OutputConfig{Spiller: sp}).ExecuteTool(ctx, api.ToolCall{CallID: "c3", Name: "file_read"})

@@ -131,6 +131,10 @@ func (t *FileReadTool) readPicture(item readItem, probe imageProbe, offset, limi
 	if !attach {
 		data, _, err := reader.read(item.path)
 		if err != nil {
+			if isSessionImageRef(item.path) {
+				// Same as a single-path ref: a missing session directory is a note.
+				return fmt.Sprintf("[image: %s - not attached: %s]", item.arg, err), nil, nil
+			}
 			return "", nil, err
 		}
 		format, size := imageSummary(data)
