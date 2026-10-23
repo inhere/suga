@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.46.0] - 2026-10-23
+
+输出契约一期（`suga run --output-schema` 与 SDK `Prompt.OutputSchema`）；`suga memory lint`；长会话：交接包按小节预算且不再越换越大、收工检查认得解释器跑脚本；会话消息来源标签防冒充、经人工批准的工具调用在结果里注明；Windows 进程树挂起启动后再入 Job。
+
 ### 修复
 
 - nudge 的 `unverified-write` 内置白名单认得的验证命令加上「用解释器跑工作区里的脚本」（2026-10-22 长会话开销分析 #5：5 次提醒里 4 次误报）：写完脚本后 `python|python3|py <路径>.py`、`go run <路径>`、`node <路径>.js|ts|…`、`deno run`、`bun`、`pwsh|powershell -File <路径>.ps1`、`bash|sh|zsh <路径>.sh`、`ruby <路径>.rb` 都算验证过改动；`ls`/`dir`/`Get-ChildItem`/`cat`/`Get-Content` 这类只读查看仍不算（写 `notes_index.md` 后只列目录、没核对内容的那次真缺口仍然提醒）。用户自定义 `check_command` 不受影响。
@@ -1113,7 +1117,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.45.1...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.46.0...HEAD
+[0.46.0]: https://github.com/inhere/suga/compare/v0.45.1...v0.46.0
 [0.45.1]: https://github.com/inhere/suga/compare/v0.45.0...v0.45.1
 [0.45.0]: https://github.com/inhere/suga/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/inhere/suga/compare/v0.43.0...v0.44.0
