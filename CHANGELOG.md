@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.48.0] - 2026-10-24
+
+回答确认提问后输入行残留、子 agent 状态行残留修复；`:tasks` 与每个 chat 命令的 `-h` 和新选项；工具描述精简（每次调用约省 920 token）；native 工具按需加载（默认关闭，`tools.deferred_native: auto` 开启）；Windows 取消竞态修复。
+
 ### 变更
 
 - 工具描述精简第一批（只改措辞，参数名/类型/required/默认值与行为不变；依据 `docs/research/2026-10-23-fixed-prefix-tools-report.md` 第三节 29 处）：`file_refs`、`file_symbols` 删去解析器与语言支持细节（`approx`/`class`/`pkg:` 标记已在每条结果行里）；`memory` 描述不再复述四类 kind 与「不要记」清单（会每段携带的记忆索引 note 已写同一套，两份文案此前已出现中英文漂移）；`file_grep` 删去 `exclude`/`glob`/`context`/`literal` 参数的复述（各参数自己的说明为准）；`shell_exec` 的 background/watch 段缩为一句（task 工具与 `every`/`watch_paths` 参数自带完整说明）；`file_read`、`web_fetch`、`file_remove`、`file_edit`、`agent`、`file_list`、`file_find` 删去 system 提示或运行结果已覆盖的句子；`no_ignore`（5 个工具）与 `include_tests`（2 个工具）的参数说明统一为一句，忽略规则的默认值改在 system 提示的稳定部分统一声明（新增一行，前缀缓存重建一次后字节稳定）。实测固定前缀（隔离 `SUGA_HOME` + 默认配置 + 假 provider 抓真实请求体）：工具 schema 总量 28,219 → 24,206 字符，system 3,391 → 3,559，净省 3,845 字符 ≈ 986 token/次调用；suga 自算口径（`context` 事件）`tools` 27,951 → 23,938、`est_tokens` 8,694 → 7,733。新增 `internal/wiring` 的 `TestToolSchemaBudget`：按 wire 口径给每个工具 schema 设上限（总量 24,800），防止日后回涨。
@@ -11,6 +15,7 @@
 
 ### 修复
 
+- Windows：命令在启动后、加入 Job 之前被取消（机器繁忙时 Ctrl-C 或超时恰好落在这一瞬间）时，`shell` 前台命令报“启动失败（The parameter is incorrect）”而不是取消/超时；现在按取消/超时报告。
 - chat 状态行的“子 agent：N 个运行中”残留（2026-10-23 用户遇到：状态行一直显示 4 个运行中，而 `:tasks` 里没有任何运行中的任务）：子 agent 改为按**工具调用 ID** 记账（`description` 只用于显示，同名子 agent 不再共享一个条目；provider 未给调用 ID 时退回按 description 记账），`agent_progress` 事件带上所属调用的 ID，未知调用的进度不再凭空新建条目；前台子 agent 的工具调用一结束（成功、失败或没有报告）就删除条目，回合结束时清空所有没有后台任务关联的前台条目（Ctrl-C 取消、工具调用被中断的回合也能清）；后台子 agent 的“运行中”以 tasks 管理器里该会话状态为运行中的 agent 任务为准，任务结束、失败或被 `:tasks -k` 终止都立即不再计数，不再依赖任务通知是否投递。
 - chat 中回答过确认提问（工具审批、记忆写入询问）的回合结束后，下一轮输入行不再残留插话提示符与提问宽度（用户报 suga-9ew7，显示成 `↳ ： …`）：提问借回合的输入读读答案，回答结束这个读也结束，回合结束后的下一次读取是全新的一道，旧逻辑只重画被“接住的旧读”的屏上块，全新读站在现有块上不重画，输入行就停在 `↳` 和提问的宽度上。现在 lineedit 记住屏上块画的是哪个提示符，新读到一块没有读持有且提示符已变时清行后原地重画成新提示符；提问与插话本身的功能与已有冒烟不变。
 
@@ -1152,7 +1157,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.47.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.48.0...HEAD
+[0.48.0]: https://github.com/inhere/suga/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/inhere/suga/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/inhere/suga/compare/v0.45.1...v0.46.0
 [0.45.1]: https://github.com/inhere/suga/compare/v0.45.0...v0.45.1
