@@ -9,7 +9,7 @@ require (
 	github.com/gookit/cliui v0.5.3
 	github.com/gookit/color v1.6.3
 	github.com/gookit/config/v2 v2.2.9
-	github.com/gookit/gopty v0.1.1
+	github.com/gookit/gopty v0.1.2
 	github.com/gookit/goutil v0.8.3
 	github.com/gookit/ini/v2 v2.3.2
 	github.com/gookit/rotatefile v0.3.3
@@ -18,7 +18,7 @@ require (
 	golang.org/x/image v0.22.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.49.0
-	golang.org/x/term v0.46.0
+	golang.org/x/term v0.47.0
 	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.60.1
 )
