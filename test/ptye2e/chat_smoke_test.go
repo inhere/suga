@@ -27,6 +27,10 @@ type fakeChat struct {
 	mode             string
 	delay            time.Duration
 	blockUntilCancel bool
+	// command is what the tool modes pass to shell_exec, and background starts it
+	// as a background task instead of waiting for it.
+	command    string
+	background bool
 
 	mu       sync.Mutex
 	lastUser string
@@ -85,30 +89,51 @@ func (f *fakeChat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if f.mode == "approval" && !toolDone {
-		writeStream(w, map[string]any{
-			"choices": []any{
-				map[string]any{
-					"delta": map[string]any{
-						"tool_calls": []any{
-							map[string]any{
-								"index": 0, "id": fmt.Sprintf("call-%d", callID),
-								"function": map[string]any{"name": "file_write", "arguments": fmt.Sprintf(`{"path":%q,"content":"APPROVED"}`, approvalPath(lastUser))},
-							},
-						},
-					},
-				},
-			},
+		writeToolCall(w, callID, "file_write", map[string]any{
+			"path": approvalPath(lastUser), "content": "APPROVED",
 		})
 		return
 	}
 
+	if f.mode == "shell" && !toolDone {
+		args := map[string]any{"command": f.command}
+		if f.background {
+			args["background"] = true
+		}
+		writeToolCall(w, callID, "shell_exec", args)
+		return
+	}
+
 	reply := "收到：" + lastUser
-	if f.mode == "approval" {
+	switch f.mode {
+	case "approval":
 		reply = "工具处理完成"
+	case "shell":
+		reply = "命令完成"
 	}
 	writeStream(w, map[string]any{"choices": []any{map[string]any{
 		"delta": map[string]any{"content": reply},
 	}}})
+}
+
+// writeToolCall streams one call the model made: its name and the JSON arguments
+// the provider sends for it.
+func writeToolCall(w http.ResponseWriter, callID int, name string, args map[string]any) {
+	raw, _ := json.Marshal(args)
+	writeStream(w, map[string]any{
+		"choices": []any{
+			map[string]any{
+				"delta": map[string]any{
+					"tool_calls": []any{
+						map[string]any{
+							"index": 0, "id": fmt.Sprintf("call-%d", callID),
+							"function": map[string]any{"name": name, "arguments": string(raw)},
+						},
+					},
+				},
+			},
+		},
+	})
 }
 
 // approvalPath gives the rejection turn a separate path, allowing the smoke to
@@ -324,6 +349,14 @@ func buildSuga(t *testing.T) string {
 
 func startChat(t *testing.T, binary, baseURL, home, work string) *ptytest.Session {
 	t.Helper()
+	return startChatSpec(t, binary, baseURL, home, work, nil, "")
+}
+
+// startChatSpec is startChat with extra arguments for the child and extra lines
+// under tools: (e.g. approvalAuto), so a scenario can resume a session or run a
+// tool without a question.
+func startChatSpec(t *testing.T, binary, baseURL, home, work string, args []string, toolsExtra string) *ptytest.Session {
+	t.Helper()
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +368,7 @@ providers:
     api_key: test
 tools:
   allow_write: true
-memory:
+%smemory:
   project:
     backend: files
 chat:
@@ -344,7 +377,7 @@ chat:
   highlight_input: false
   terminal_title: false
   history: false
-`, baseURL)
+`, baseURL, toolsExtra)
 	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +387,7 @@ chat:
 
 	spec := gopty.Spec{
 		Command: binary,
-		Args:    []string{"chat"},
+		Args:    append([]string{"chat"}, args...),
 		Dir:     work,
 		Env:     testEnv(home),
 		Cols:    100,
