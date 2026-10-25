@@ -1,0 +1,19 @@
+{
+  "max_tokens": 4096,
+  "messages": [
+    {
+      "content": "First think about what makes a good short answer, then reply with exactly one short sentence.",
+      "role": "user"
+    }
+  ],
+  "model": "claude-haiku-5-5",
+  "output_config": {
+    "effort": "high"
+  },
+  "stream": true,
+  "system": "You are a helpful assistant. Keep answers to one or two sentences.",
+  "thinking": {
+    "display": "summarized",
+    "type": "adaptive"
+  }
+}

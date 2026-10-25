@@ -1,0 +1,8 @@
+data: {"id":"chatcmpl-91cc3d5a831ef844b38a9cc78d77d2e7","object":"chat.completion.chunk","created":1792931418,"model":"z-ai/glm-5.3-flash","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}
+
+data: {"id":"chatcmpl-91cc3d5a831ef844b38a9cc78d77d2e7","object":"chat.completion.chunk","created":1792931418,"model":"z-ai/glm-5.3-flash","choices":[{"index":0,"delta":{"tool_calls":[{"id":"chatcmpl-tool-a4267870ef856984","type":"function","index":0,"function":{"name":"list_files","arguments":"{\"directory\": \"fixtures\"}"}}]},"logprobs":null,"finish_reason":"tool_calls","token_ids":null}]}
+
+data: {"id":"chatcmpl-91cc3d5a831ef844b38a9cc78d77d2e7","object":"chat.completion.chunk","created":1792931418,"model":"z-ai/glm-5.3-flash","system_fingerprint":"vllm-0.30.1rc1.dev396+gac68c3087-dp2-ep-b767b38d","choices":[],"usage":{"prompt_tokens":179,"total_tokens":191,"completion_tokens":12,"prompt_tokens_details":{"cached_tokens":0,"created_cache_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

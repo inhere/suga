@@ -1,0 +1,10 @@
+data: {"id":"chatcmpl-03e50e29597164fdd0581677f7539cbc","object":"chat.completion.chunk","created":1792931419,"model":"z-ai/glm-5.3-flash","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}
+
+data: {"id":"chatcmpl-03e50e29597164fdd0581677f7539cbc","object":"chat.completion.chunk","created":1792931419,"model":"z-ai/glm-5.3-flash","choices":[{"index":0,"delta":{"content":"Here are the files in the `fixtures` directory:\n\n- notes.md\n- main.go"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-03e50e29597164fdd0581677f7539cbc","object":"chat.completion.chunk","created":1792931419,"model":"z-ai/glm-5.3-flash","choices":[{"index":0,"delta":{"content":"\n- go.mod"},"logprobs":null,"finish_reason":"stop","token_ids":null}]}
+
+data: {"id":"chatcmpl-03e50e29597164fdd0581677f7539cbc","object":"chat.completion.chunk","created":1792931419,"model":"z-ai/glm-5.3-flash","system_fingerprint":"vllm-0.30.1rc1.dev396+gac68c3087-dp2-ep-b767b38d","choices":[],"usage":{"prompt_tokens":213,"total_tokens":237,"completion_tokens":24,"prompt_tokens_details":{"cached_tokens":0,"created_cache_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

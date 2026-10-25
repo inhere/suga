@@ -1,0 +1,72 @@
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgNxnH7xKUnu6Sn56mBRK","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":57,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":3,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}        }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}             }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"I need to cra"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"ft ex"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"actly one conc"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"ise sentence, something like def"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"ining a good short answer as dire"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"ct, complete, and free of"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" unnecessary detail."}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\n"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSmgkKEAgTGAI4AUIIdGhpbmtpbmcSDDjuJgwCqjf1zVyopBoMPjn+4N2nG1u38h3KIjAKEN3M5ELHaCIFatrynEbCLDMfO9n1NLp1RYuiOwVjKQQevUw5uXU3Ys0ZHbygSQkqtwg8ZKlUUf7vWgFj02VWlJiCMEQs65PHmdSIGU7gzR3tIsj4EK7NxJc58kwklcxSc5J3Xj/ZcM0rRIatSBCvjqrU73ciiowRILVR8lpygE8xDSXkT8gjvikQ/0xnLedzPXxYEBE5pTh3ikzb+MB1MEIr6yl8VO6Fw9TsY6uEUbjxoxNGLZlzaY8godjxeOuGkAErtigi2ubOYRSIrIx19zzsS65PXhIVEziUoewZDjPvPgTkVnSfIw37qpAUR1o60wA4bIkLjtZdXk3C12QqT1AdQ/LazAMSoGZW79A9f2cHEjSs7ERjBOLEMX6mq2yLWaz2M1LXr4Oe+yQh3cQZjSjIECTReLgdWzBTG9VjbWEvU53bIHg+J7Vd1dbFG9dSHmiJQmU21zNzfnDuCy4p/BmeToILvW+fDkNjMJxL+iSGGwHx0r3KitDp+dmJNGsk9hRqfl12kkPl/0Jy0mReH9RZOfeezQsvPJ4C5No7hrVyHC82BhhxBS6vU6V11kj/ffWlHUmOsVI6XMrUrjWSkIYNTjTiNAFxgH3A/zpVf7GyKR9r96uksbl7PdktQ1d+7y7p5xaStSzJFbNxNT3GOsNuHTFgoa/JtaeYeetH7NvRT0MGDS3EAxJADFnbUKGOvN0yh9PPzd8vGnENPYYXSblagGfv2mUd8FWjFG552N3qdDygIz8ijSbZvI5se0F79+6N5CMjYuCqKme7G4RHPWyqkBs8BLiR1bpB+cjF+6mkpUZu4VgFBosFmDUtyHxCa5XBGASLLWaC/HnqiaE2HnZ3x3YzUU44Sez19JmtJT/u7wrbTZN1+R73NcfGvJLTyeaSWCKG7iiVcqa7liNoObCztVQSwDy9RhPJiBrccgKty8jvtHOnBZGYWor0tjeImVRhiSBlvgiZQEGKUFxv8n8kRJJI9qrJkMdmvj9I7PYtGscyfsVbXRaOheU8WnvPZ6GKj72Gf/BLwrY8qPbwygik3hi7II61DvMZLyHVuPk4fYD3zns8IDmhxUJ7/fEO9/nQ7/OAMV+UvpbSIisblcqsw7yE8iFdu5hdYRRNgsy8GYBEJOvFV2nQsqcH6MIYHO0UlIxZbiQYR+TY5Ayx2p0dlTbTEj+q3TgNgY+Gwr0E1QaY14Ub+vricIHFkY2zxz54QU7QtZKsfmFhDuJJsx/+nnVzZdr2gWAiPW+NIr6JAcpZAX+YYQ5KMfaO9CPB/o45gL1OA8qa9JmFPivrnbIHl04SNbtyt1LR0CTJYkuTEQv1JlIuaOqvv1kyDmdsJmxI/IazkhxCufRWXlqYiXby72Q2aUnwldZSiEGTA9DWkR7rFPWcVMU895tmkiifVtAWP5/Tunqsw0wfwo8eMMZSabWZ6O7VLhAGxNcqPoKwbsKbXI+gIP/Ee0YNUpclSxfaCJRIsiV4qM5qRDb/gAboQoibakZchhgB"}             }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0               }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"A good short answer states"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the key"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" point directly, includ"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"es only what's"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" essential, and is"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" easy to understand at"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a glance."}     }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1             }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":57,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":204,"output_tokens_details":{"thinking_tokens":170}}      }
+
+event: message_stop
+data: {"type":"message_stop" }
+

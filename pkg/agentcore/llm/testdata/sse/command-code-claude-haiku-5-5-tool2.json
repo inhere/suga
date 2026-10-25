@@ -1,0 +1,57 @@
+{
+  "max_tokens": 4096,
+  "messages": [
+    {
+      "content": "First work out which files to look for in your thinking block, then call the list_files tool to list the files of the directory named fixtures.",
+      "role": "user"
+    },
+    {
+      "content": [
+        {
+          "id": "toolu_016tNffeNRdCJ37ydm1xUV9A",
+          "input": {
+            "directory": "fixtures"
+          },
+          "name": "list_files",
+          "type": "tool_use"
+        }
+      ],
+      "role": "assistant"
+    },
+    {
+      "content": [
+        {
+          "content": "notes.md,\nmain.go,\ngo.mod",
+          "tool_use_id": "toolu_016tNffeNRdCJ37ydm1xUV9A",
+          "type": "tool_result"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "claude-haiku-5-5",
+  "output_config": {
+    "effort": "high"
+  },
+  "stream": true,
+  "system": "You are a helpful assistant. Keep answers to one or two sentences.",
+  "thinking": {
+    "display": "summarized",
+    "type": "adaptive"
+  },
+  "tools": [
+    {
+      "description": "List the files of a directory",
+      "input_schema": {
+        "properties": {
+          "directory": {
+            "description": "The directory to list",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_files"
+    }
+  ]
+}

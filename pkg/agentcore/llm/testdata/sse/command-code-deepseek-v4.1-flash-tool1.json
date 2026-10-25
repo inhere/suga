@@ -1,0 +1,32 @@
+{
+  "max_tokens": 2048,
+  "messages": [
+    {
+      "content": "Call the list_files tool to list the files of the directory named fixtures.",
+      "role": "user"
+    }
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "stream": true,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "list_files",
+        "description": "List the files of a directory",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "directory": {
+              "type": "string",
+              "description": "The directory to list"
+            }
+          },
+          "required": [
+            "directory"
+          ]
+        }
+      }
+    }
+  ]
+}
