@@ -2,9 +2,11 @@ package llm
 
 import (
 	"context"
+	"net"
 	"net/http"
-	"net/http/httptest"
+	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
@@ -62,19 +64,37 @@ func TestProviderRequestTimeouts(t *testing.T) {
 
 // A request that outlives RequestTimeout fails instead of hanging; the error is
 // shaped like a transient failure, which is what the retry policy expects.
+// Runs inside a synctest bubble on a net.Pipe connection (no sockets): the
+// 300ms slow sender and the 50ms client timeout both run on the fake clock, so
+// the timeout fires at exactly the configured bound in zero real time.
 func TestRequestTimeoutEndsASlowRequest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(300 * time.Millisecond)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"late"},"finish_reason":"stop"}]}`))
-	}))
-	t.Cleanup(server.Close)
-
-	p := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: server.URL, Model: "m",
-		RequestTimeout: 50 * time.Millisecond, Retry: RetryPolicy{MaxAttempts: 1}})
-	_, err := p.Generate(context.Background(), &agentcoreapi.GenerateRequest{
-		Messages: []agentcoreapi.Message{{Role: "user", Content: "hi"}}})
-	assert.Err(t, err)
-	assert.ErrMsgContains(t, err, "request failed after 1 attempts")
-	assert.ErrIs(t, err, context.DeadlineExceeded)
+	synctest.Test(t, func(t *testing.T) {
+		body := `{"choices":[{"message":{"role":"assistant","content":"late"},"finish_reason":"stop"}]}`
+		slow := make(chan struct{})
+		transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			c1, c2 := net.Pipe()
+			// The slow sender: someone who answers only after RequestTimeout. It
+			// leaves when the client deadline cancelled the request (slow).
+			go func() {
+				defer c2.Close()
+				select {
+				case <-time.After(300 * time.Millisecond):
+					_, err := c2.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+						strconv.Itoa(len(body)) + "\r\n\r\n" + body))
+					_ = err // a write after the cancellation only fails
+				case <-slow:
+				}
+			}()
+			return c1, nil
+		}}
+		defer func() { close(slow); transport.CloseIdleConnections() }()
+		p := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: "http://fixture", Model: "m",
+			RequestTimeout: 50 * time.Millisecond, Retry: RetryPolicy{MaxAttempts: 1}})
+		p.client = &http.Client{Timeout: 50 * time.Millisecond, Transport: transport}
+		_, err := p.Generate(context.Background(), &agentcoreapi.GenerateRequest{
+			Messages: []agentcoreapi.Message{{Role: "user", Content: "hi"}}})
+		assert.Err(t, err)
+		assert.ErrMsgContains(t, err, "request failed after 1 attempts")
+		assert.ErrIs(t, err, context.DeadlineExceeded)
+	})
 }

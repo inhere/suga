@@ -1,0 +1,55 @@
+{
+  "input": [
+    {
+      "content": [
+        {
+          "text": "Call the list_files tool to list the files of the directory named fixtures.",
+          "type": "input_text"
+        }
+      ],
+      "role": "user"
+    },
+    {
+      "arguments": "{\"directory\":\"fixtures\"}",
+      "call_id": "call_280db3fcd814495d84e96ef1199f2624",
+      "name": "list_files",
+      "type": "function_call"
+    },
+    {
+      "call_id": "call_280db3fcd814495d84e96ef1199f2624",
+      "output": "notes.md,\nmain.go,\ngo.mod",
+      "type": "function_call_output"
+    },
+    {
+      "content": [
+        {
+          "text": "Now answer with the file list you received.",
+          "type": "input_text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "max_output_tokens": 2048,
+  "model": "gpt-6-luna",
+  "stream": true,
+  "tools": [
+    {
+      "description": "List the files of a directory",
+      "name": "list_files",
+      "parameters": {
+        "properties": {
+          "directory": {
+            "description": "The directory to list",
+            "type": "string"
+          }
+        },
+        "required": [
+          "directory"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    }
+  ]
+}

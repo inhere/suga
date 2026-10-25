@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
@@ -100,6 +101,26 @@ func flakyServer(t *testing.T, statuses []int, retryAfter, ok string, hits *atom
 	return server
 }
 
+// statusRoundTripper answers each request with the next status (the last one
+// repeats) and a JSON error body; used with a synctest bubble where the retry
+// waits run on the fake clock.
+type statusRoundTripper struct {
+	statuses []int
+	hits     atomic.Int32
+}
+
+func (rt *statusRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	n := int(rt.hits.Add(1))
+	i := n - 1
+	if i >= len(rt.statuses) {
+		i = len(rt.statuses) - 1
+	}
+	header := http.Header{}
+	header.Set("Content-Type", "application/json")
+	return &http.Response{StatusCode: rt.statuses[i], Header: header,
+		Body: io.NopCloser(strings.NewReader(`{"error":{"message":"busy"}}`)), Request: req}, nil
+}
+
 func TestProviderRetries(t *testing.T) {
 	req := &agentcoreapi.GenerateRequest{Messages: []agentcoreapi.Message{{Role: "user", Content: "hi"}}}
 	okOpenAI := `{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`
@@ -146,15 +167,21 @@ func TestProviderRetries(t *testing.T) {
 		assert.True(t, time.Since(start) < time.Second)
 	})
 	t.Run("cancel during the wait", func(t *testing.T) {
-		var hits atomic.Int32
-		server := flakyServer(t, []int{503, 503}, "", okOpenAI, &hits)
-		p := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: server.URL, Model: "m",
-			Retry: RetryPolicy{BaseDelay: time.Minute}})
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
-		_, err := p.Generate(ctx, req)
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.Eq(t, int32(1), hits.Load())
+		synctest.Test(t, func(t *testing.T) {
+			// The two 503s are served from memory (no sockets), so the whole
+			// round trip runs on the bubble's fake clock: the 1-minute retry
+			// wait and the 50ms request deadline resolve in zero real time,
+			// and the earlier deadline is the one that fires.
+			rt := &statusRoundTripper{statuses: []int{503, 503}}
+			p := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: "http://fixture", Model: "m",
+				Retry: RetryPolicy{BaseDelay: time.Minute}})
+			p.client = &http.Client{Transport: rt}
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
+			_, err := p.Generate(ctx, req)
+			assert.ErrIs(t, err, context.DeadlineExceeded)
+			assert.Eq(t, int32(1), rt.hits.Load())
+		})
 	})
 	t.Run("claude stream: 529 announced, then streams", func(t *testing.T) {
 		var hits atomic.Int32

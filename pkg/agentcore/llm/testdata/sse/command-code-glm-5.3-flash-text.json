@@ -1,0 +1,11 @@
+{
+  "max_tokens": 2048,
+  "messages": [
+    {
+      "content": "Reply with exactly one short sentence and no tool call.",
+      "role": "user"
+    }
+  ],
+  "model": "z-ai/glm-5.3-flash",
+  "stream": true
+}

@@ -1,0 +1,72 @@
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgNxniYebPf2fQPEnxSj7","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":497,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":6,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}             }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}           }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"I found"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" three files matching what"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" I needed, so I can"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" move"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" forward and"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" answer with"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" a brief response based on them"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"."}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\n"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQStwYKEAgTGAI4AUIIdGhpbmtpbmcSDLtMiqgurR2z6GMkYRoMDmUJYi6cQIbPYNwpIjDW0Tc/pUZM+QhAvlvbueLj9Hi4J+2LRkZk7/PiqEqWZVc6wZySWDGgNHS4VgwoDkgq1AW0k+It9Kc3yqmI+iz05qaMUv4hOKd5N3cbOYt/A/cvCLYxxlNEDtS6n23CmCSbOEU8KjfRH87tiKwat5NhnRV7Ig/NbGRcdjxwRi+GyQUpsIR0j/XZAalJ9AR07CCt63KLBFRxmLrH93Bb8Mzg9rClVeZj6/yRY2JgBkbVDWyPxMciMw2K6jBA8HKHMiYV1WSoDPm+xtIAICVSYINmA+5U1RbTzsExjb5A3+neGmmVebEOZLPDuI9lidtLUiXXAwCfFOz+nvrwaOgBfRzqlgoEPoVXz0yKulvo040B9yzUZ/cyeEu5fFr9f4+B2fUp8PVwH8VoEPB6rek5i36forlBeHsPMR3otsL4v1BgK/aUF2ZdLZ3bVxnpWTvvrjEaRWfL2zordJH+cX7dfUTQrz7tM4Hvw+7fGN0AmVx6GQt1UfWFy0wM2v3AmjVUT1e8gHma1lCCLvruLtnS81XmZKTWq80/qM97YGUBGEkZWdmhtaSk9cDRU1V5Pk7gNBUfT9nNQdDzYM85TJTCxgiyJEqM9dgO8/nuUFwlGa4usQiPSJpz8vlgAMtCWvkfPlRZ7Ox56vQzGog5BDBcYRaz5k3MCu2r/VCPVSDexImlUraSIMOxUXJsg6HNeKTvIPqQa1oW3+iGWSdRGeRGFT2AdzQVV1KP73+EUsutSnckZTbLFafXQpZoAocY9M7WjYGrIM35c+sCAPEwkyG6LTNARqIOSLGcyAf07kxDzDRkFU4BjYlCMux89GOwap1LIvTfxgW3MvW3viq5buyh+BBUuJOBa1WvRAYhku7u9A9351eFGo2Xn+V9fvaH4pQGn7qjiFTUpg62NDrGNgMcloCb7F8Pks7dbec2YP6fsLOmlHewXsBAGxKmoKNxY9ELEc9aIuqdIVZr0Zu2H9kxHES4io/+vuQHwm1j4IvySnnMT+oOZ4Rs/KXd56EdIYCexCBpdlhoQuz8GAE="}     }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0     }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The `"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"fixtures` directory cont"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ains three files: `notes."}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"md`, `main.go`"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":", and `go.mod`"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1   }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":497,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":98,"output_tokens_details":{"thinking_tokens":61}}}
+
+event: message_stop
+data: {"type":"message_stop"          }
+

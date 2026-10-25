@@ -1,0 +1,16 @@
+{
+  "input": [
+    {
+      "content": [
+        {
+          "text": "Reply with exactly one short sentence and no tool call.",
+          "type": "input_text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "max_output_tokens": 2048,
+  "model": "gpt-6-luna",
+  "stream": true
+}

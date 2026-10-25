@@ -1,0 +1,55 @@
+{
+  "max_tokens": 2048,
+  "messages": [
+    {
+      "content": "Call the list_files tool to list the files of the directory named fixtures.",
+      "role": "user"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "function": {
+            "arguments": "{\"directory\": \"fixtures\"}",
+            "name": "list_files"
+          },
+          "id": "call_00_f6lyq89cqmwot84ph7lban0y",
+          "type": "function"
+        }
+      ]
+    },
+    {
+      "content": "notes.md,\nmain.go,\ngo.mod",
+      "role": "tool",
+      "tool_call_id": "call_00_f6lyq89cqmwot84ph7lban0y"
+    },
+    {
+      "content": "Now answer with the file list you received.",
+      "role": "user"
+    }
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "stream": true,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "list_files",
+        "description": "List the files of a directory",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "directory": {
+              "type": "string",
+              "description": "The directory to list"
+            }
+          },
+          "required": [
+            "directory"
+          ]
+        }
+      }
+    }
+  ]
+}
