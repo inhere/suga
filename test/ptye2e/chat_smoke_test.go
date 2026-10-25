@@ -309,9 +309,9 @@ func TestChatPTYSmoke(t *testing.T) {
 		if got != "first\nsecond" {
 			t.Fatalf("pasted message = %q", got)
 		}
-		s.SendCtrlC()
-		s.SendCtrlC()
-		waitExit(t, s)
+		// exitChat presses Ctrl-C until chat leaves: a press that lands right as a
+		// turn ends can be taken before the prompt's read starts (flaky on ConPTY).
+		exitChat(t, s)
 
 	})
 
@@ -326,9 +326,9 @@ func TestChatPTYSmoke(t *testing.T) {
 		s.Send("queued\t")
 		expect(t, s, `排队`, mark)
 		expect(t, s, `收到：first`, mark)
-		s.SendCtrlC()
-		s.SendCtrlC()
-		waitExit(t, s)
+		// exitChat presses Ctrl-C until chat leaves: a press that lands right as a
+		// turn ends can be taken before the prompt's read starts (flaky on ConPTY).
+		exitChat(t, s)
 	})
 }
 
