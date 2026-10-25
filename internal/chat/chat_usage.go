@@ -2,6 +2,8 @@ package chat
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -195,6 +197,35 @@ var chatCommandSpecs = []chatCommandSpec{
 		Options: []string{"-h"},
 	},
 	{
+		Names:   []string{":skills"},
+		Summary: "列出已加载的 skills",
+		Usage: `用法：:skills [--only-names] [-n N]
+  列出本会话加载的 skills：名字、一句说明与来源（项目/内置/用户），按名字排序。
+  --only-names  只列名字
+  -n N          最多列 N 条（默认全部，末尾提示还有几条）
+
+示例：
+  :skills
+  :skills --only-names -n 10`,
+		TakesArgs: true,
+		Options:   []string{"--only-names", "-n", "-h"},
+	},
+	{
+		Names:   []string{":context"},
+		Summary: "列出当前上下文的构成",
+		Usage: `用法：:context [--files]
+  列出当前上下文的构成与估算 token：系统提示、工具 schema（含按需加载与已加载数量）、
+  常驻的段上下文（环境、规则、记忆索引、skills、附加提示等）、交接包与历史消息；
+  数字口径与 context trace 事件一致。
+  --files  只列出上下文已加载的文件（file_read 读过的文件、规则文件），最近使用在前
+
+示例：
+  :context
+  :context --files`,
+		TakesArgs: true,
+		Options:   []string{"--files", "-h"},
+	},
+	{
 		Names:   []string{":tasks"},
 		Summary: "后台任务：运行中+最近结束（-a 全部，-k 终止）",
 		Usage: `用法：:tasks [选项]
@@ -225,6 +256,101 @@ const chatHelpKeys = `!<命令> 本地执行；!!<命令> 执行并附给下一�
 
 // chatHelpHint tells where a single command's usage is.
 const chatHelpHint = "查看命令详情：:<命令> -h（如 :queue -h），或 :help <命令>"
+
+// commandLinePattern matches the lines that are commands rather than ordinary
+// text: a ":" followed by a lowercase command word and nothing else. It is
+// what keeps a colon at the start of a message sendable —
+// ":)" (an emoticon), ": 说明" (a colon and a space), ":中文" and URLs such as
+// "::1" all fail it and go to the model, only a single "word" token after the
+// colon is treated as an attempted command (suga-okbt).
+var commandLinePattern = regexp.MustCompile(`^:[a-z][a-z0-9-]*$`)
+
+// unknownCommandSuggestions is how many near misses a hint names.
+const unknownCommandSuggestions = 3
+
+// unknownCommandHint is the answer to a line that looks like a command but
+// names none (":sessio"): chat prints it instead of sending the line to the
+// model, so a typo does not become a message. An empty answer means the line is
+// no attempted command (see commandLinePattern) or names one.
+func unknownCommandHint(line string) string {
+	if !commandLinePattern.MatchString(line) {
+		return ""
+	}
+	if _, ok := lookupCommand(line); ok {
+		return ""
+	}
+	suggestions := similarCommands(line)
+	if len(suggestions) == 0 {
+		return "未知命令 " + line + "；:help 列出全部命令"
+	}
+	return "未知命令 " + line + "，是否想用 " + suggestions[0] + "？（相近：" +
+		strings.Join(suggestions, "、") + "；:help 列出全部命令）"
+}
+
+// similarCommands ranks the commands of the table against name by edit
+// distance (closest first, at most unknownCommandSuggestions). A command whose
+// name is this close is what the person most likely meant; nothing within
+// reach means the hint only points at :help.
+func similarCommands(name string) []string {
+	type candidate struct {
+		cmd  string
+		dist int
+	}
+	var ranked []candidate
+	for _, cmd := range chatCommands {
+		dist := editDistance(name, cmd)
+		if dist > suggestionDistance(cmd) {
+			continue
+		}
+		ranked = append(ranked, candidate{cmd: cmd, dist: dist})
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].dist != ranked[j].dist {
+			return ranked[i].dist < ranked[j].dist
+		}
+		return ranked[i].cmd < ranked[j].cmd
+	})
+	out := make([]string, 0, unknownCommandSuggestions)
+	for _, c := range ranked {
+		if len(out) == unknownCommandSuggestions {
+			break
+		}
+		out = append(out, c.cmd)
+	}
+	return out
+}
+
+// suggestionDistance is how far a typo may be from a command name to count as
+// one: one edit for short names (":dirs"), two for longer ones ("contxt").
+func suggestionDistance(cmd string) int {
+	name := strings.TrimPrefix(cmd, ":")
+	if len(name) <= 5 {
+		return 1
+	}
+	return 2
+}
+
+// editDistance is the Levenshtein distance of a and b over runes.
+func editDistance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	cur := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, min(cur[j-1]+1, prev[j-1]+cost))
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(rb)]
+}
 
 // chatCommands is every command name in table order (Tab completion).
 var chatCommands = chatCommandNames()

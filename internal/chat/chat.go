@@ -174,6 +174,12 @@ type Options struct {
 	// prints each once, on stderr, when the session is open; they never change
 	// what the model receives. A nil slice prints nothing.
 	ContextNotices []string
+	// Skills lists the loaded skills for :skills; nil marks the command as
+	// unavailable in this process (a chat without the skill registry).
+	Skills func() []SkillInfo
+	// ContextParts reports the resident context composition for :context; nil
+	// leaves the command with the tool table, history and handoff only.
+	ContextParts func(context.Context) ContextReport
 }
 
 // markInteractivelyUsed records that this chat continued a session a
@@ -416,6 +422,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		stats: &stats, sessionID: sessionID,
 		createdAtStartup: createdAtStartup, dirs: opts.Dirs,
 		modelOptions: opts.ModelOptions, modelSwitch: opts.ModelSwitch,
+		skills: opts.Skills, contextParts: opts.ContextParts,
 		modelInfo: ModelOption{Provider: provider, Model: model, Thinking: opts.Thinking, ContextWindow: contextWindow, MaxOutputTokens: maxOutputTokens},
 		readImage: opts.ReadImage, vision: opts.Vision, readClip: opts.PasteImage,
 		steering: steering, local: opts.Local, tasks: opts.Tasks, notifier: newChatNotifier(opts.Notify, opts.NotifyAfter, stdout, inputSource.terminal != nil),
@@ -559,6 +566,10 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		// An injected line never reaches it (its case below runs first), and a "!"
 		// line or a plain message names no command of the table.
 		usageReply := commandUsageReply(line, state.dirs != nil)
+		// A ":word" that names no command is a typo, not a message: chat answers
+		// it here instead of spending a turn on it (suga-okbt). Ordinary text
+		// that starts with a colon (":)", ": 说明", "::1") returns no hint.
+		commandHint := unknownCommandHint(line)
 		switch {
 		case line == "":
 			continue
@@ -574,6 +585,9 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			continue
 		case usageReply != "":
 			fmt.Fprintln(inputSource, usageReply)
+			continue
+		case commandHint != "":
+			fmt.Fprintln(inputSource, commandHint)
 			continue
 		case line == ":quit", line == ":exit":
 			// Both spellings leave chat; :exit is the familiar one from other REPLs.
@@ -601,6 +615,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			render.ShowCode(strings.TrimPrefix(line, codeCmd))
 			continue
 		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), isTasksCommand(line),
+			isSkillsCommand(line), isContextCommand(line),
 			line == ":help", strings.HasPrefix(line, ":help "), line == ":usage":
 			// The reference, this session's usage and its background tasks
 			// (chat_commands.go); like every : command, keyboard only.

@@ -184,6 +184,72 @@ func skillsPrompt(reg *capskills.Registry, pol skillPolicy) (string, personal.Sk
 	return b.String(), stats
 }
 
+// SkillInfo is one loaded skill as chat's :skills lists it: its name, the
+// one-line description, where it came from and the SKILL.md it was read from.
+type SkillInfo struct {
+	Name        string
+	Description string
+	// Source is the kind of the root the skill was found in: 项目 (a workspace
+	// skills directory), 内置 (the skills released into SUGA_HOME) or 用户 (the
+	// user's own ~/.agents/skills).
+	Source     string
+	Path       string
+	AlwaysLoad bool
+}
+
+// source names of SkillInfo.Source.
+const (
+	SkillSourceProject = "项目"
+	SkillSourceBuiltin = "内置"
+	SkillSourceUser    = "用户"
+)
+
+// SkillInfos lists the registered skills sorted by name (Registry.List order)
+// with the source of each. The registry keeps no source itself: it is derived
+// from the root a skill was found under, and a workspace skill wins the name,
+// so Workspace decides 项目 and SUGA_HOME/skills holds the released built-ins.
+func SkillInfos(reg *capskills.Registry) []SkillInfo {
+	if reg == nil {
+		return nil
+	}
+	sugaHome, _ := appconfig.ResolveSugaHome()
+	builtinRoot := ""
+	if strings.TrimSpace(sugaHome) != "" {
+		builtinRoot = filepath.Join(sugaHome, builtinSkillsRoot)
+	}
+	out := make([]SkillInfo, 0, reg.Len())
+	for _, s := range reg.List() {
+		out = append(out, SkillInfo{
+			Name: s.Name, Description: s.Description, Source: skillSource(s, builtinRoot),
+			Path: s.Path, AlwaysLoad: s.AlwaysLoad,
+		})
+	}
+	return out
+}
+
+// skillSource classifies one skill by the root it lives in.
+func skillSource(s capskills.Skill, builtinRoot string) string {
+	if s.Workspace {
+		return SkillSourceProject
+	}
+	if builtinRoot != "" && pathWithin(s.Path, builtinRoot) {
+		return SkillSourceBuiltin
+	}
+	return SkillSourceUser
+}
+
+// pathWithin reports whether p is under dir (both cleaned, separator aware).
+func pathWithin(p, dir string) bool {
+	if p == "" || dir == "" {
+		return false
+	}
+	rel, err := filepath.Rel(dir, p)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // skillPlan is how the skills listing presents the installed skills.
 type skillPlan struct {
 	preload, listed []capskills.Skill

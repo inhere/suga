@@ -75,10 +75,15 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		report := runtime.Resident(ctx)
 		contextNotices = wiring.ContextNotices(report.Context, report.Skills)
 	}
+	// :skills and :context read the runtime's skill registry and its resident
+	// context measurement; chat only renders them, so the numbers stay those of
+	// the manifest and the start notice.
+	chatSkills := chatSkillInfos(runtime.Skills)
+	contextParts := chatContextParts(runtime.ContextReport)
 	return chat.Run(ctx, runtime.Runner, chat.Options{
 		SessionID: opts.SessionID, ResumeID: opts.ResumeID, FromID: opts.FromID,
-		ContextNotices: contextNotices,
-		Asker:          runtime.Asker, WriteTools: runtime.WriteTools,
+		ContextNotices: contextNotices, Skills: chatSkills, ContextParts: contextParts,
+		Asker: runtime.Asker, WriteTools: runtime.WriteTools,
 		Thinking: runtime.Thinking, ContextWindow: runtime.ContextWindow,
 		Markdown:       appconfig.ChatMarkdownEnabled(),
 		Spinner:        appconfig.ChatSpinnerEnabled(),
@@ -120,6 +125,45 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		// through the approval layer, which decides on the arguments it rewrote.
 		SetCallRewriter: runtime.SetCallRewriter,
 	}, stdin, stdout, stderr, hooks)
+}
+
+// chatSkillInfos adapts the runtime's skill listing to chat's own type (chat
+// does not import wiring): nil in, nil out, so :skills stays unavailable rather
+// than listing nothing.
+func chatSkillInfos(list func() []wiring.SkillInfo) func() []chat.SkillInfo {
+	if list == nil {
+		return nil
+	}
+	return func() []chat.SkillInfo {
+		infos := list()
+		out := make([]chat.SkillInfo, 0, len(infos))
+		for _, info := range infos {
+			out = append(out, chat.SkillInfo{Name: info.Name, Description: info.Description,
+				Source: info.Source, Path: info.Path, AlwaysLoad: info.AlwaysLoad})
+		}
+		return out
+	}
+}
+
+// chatContextParts adapts the runtime's context composition to chat's own type
+// (see chatSkillInfos); nil in, nil out.
+func chatContextParts(report func(context.Context) wiring.ContextReport) func(context.Context) chat.ContextReport {
+	if report == nil {
+		return nil
+	}
+	return func(ctx context.Context) chat.ContextReport {
+		rep := report(ctx)
+		out := chat.ContextReport{Deferred: rep.Deferred, Loaded: rep.Loaded}
+		for _, part := range rep.Parts {
+			converted := chat.ContextPart{Name: part.Name, Bytes: part.Bytes, Tokens: part.Tokens, Note: part.Note}
+			for _, file := range part.Files {
+				converted.Files = append(converted.Files, chat.ContextFile{Path: file.Path, Bytes: file.Bytes,
+					Truncated: file.Truncated, Included: file.Included})
+			}
+			out.Parts = append(out.Parts, converted)
+		}
+		return out
+	}
 }
 
 // RunPersonalChat gives the terminal REPL the same persistent session engine as run mode.

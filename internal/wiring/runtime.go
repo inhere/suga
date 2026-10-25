@@ -165,6 +165,13 @@ type Runtime struct {
 	// environment, rules, memory index, skills, append prompt, deferred tools)
 	// for the manifest and the chat start notice; nil leaves both without it.
 	Resident func(context.Context) ResidentReport
+	// Skills lists the runtime's loaded skills for chat's :skills; nil leaves
+	// the command without a listing.
+	Skills func() []SkillInfo
+	// ContextReport reports the resident context parts and the deferred native
+	// tool counts for chat's :context (same measurement as Resident); nil
+	// leaves the command without it.
+	ContextReport func(context.Context) ContextReport
 
 	repo         *store.Store
 	capabilities defaultCapabilities
@@ -717,7 +724,18 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		}
 	}
 	rt := &Runtime{Runner: runner, Registry: capabilities.Registry, PreferredTools: preferredTools,
-		Resident:      resident,
+		Resident: resident,
+		// :skills lists what the registry holds right now; :context reports the
+		// same resident parts the manifest and the start notice measure, plus what
+		// the visibility layer deferred (the tool table leaves those out).
+		Skills: func() []SkillInfo { return SkillInfos(skillReg) },
+		ContextReport: func(rctx context.Context) ContextReport {
+			deferred, loaded := 0, 0
+			if vis != nil {
+				deferred, loaded = vis.DeferredStats(rctx)
+			}
+			return BuildContextReport(resident(rctx), deferred, loaded)
+		},
 		approvalLayer: approvalLayer,
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string) {
 			policyAction, hit := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
