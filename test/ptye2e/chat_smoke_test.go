@@ -196,7 +196,7 @@ func TestChatPTYSmoke(t *testing.T) {
 			s.Send("first\x1b\rsecond\r")
 		}
 		expect(t, s, `收到：first`, mark)
-		expect(t, s, `❯`, mark)
+		waitTurnEnd(t, s, mark)
 		fake.mu.Lock()
 		got := fake.lastUser
 		fake.mu.Unlock()
@@ -225,6 +225,9 @@ func TestChatPTYSmoke(t *testing.T) {
 		s.SendCtrlC()
 		expect(t, s, `❯`, mark)
 
+		// Let the prompt's read start before the first exit press (a press that
+		// lands while chat is still settling is taken as something else).
+		time.Sleep(300 * time.Millisecond)
 		mark = s.Mark()
 		s.SendCtrlC()
 		expect(t, s, `再按一次 Ctrl\+C 退出`, mark)
@@ -267,10 +270,21 @@ func TestChatPTYSmoke(t *testing.T) {
 		s := startChat(t, binary, server.URL, t.TempDir(), t.TempDir())
 		mark := s.Mark()
 		expect(t, s, `❯ `, mark)
-		for _, command := range []string{":help", ":session -h", ":tasks", ":skills", ":context", ":sessio"} {
+		// Wait for each command's own output, not for "❯": the echo of the typed
+		// command ("❯ :help") already matches that, and the next line would then be
+		// typed while the output is still being drawn.
+		for _, step := range []struct{ command, output string }{
+			{":help", `查看命令详情`},
+			{":session -h", `用法：:session`},
+			{":tasks", `没有后台任务|任务 t\d`},
+			{":skills", `已加载 \d+ 个 skill`},
+			{":context", `上下文构成`},
+			{":sessio", `未知命令 :sessio`},
+		} {
 			mark = s.Mark()
-			s.SendLine(command)
-			expect(t, s, `❯`, mark)
+			s.SendLine(step.command)
+			expect(t, s, step.output, mark)
+			time.Sleep(200 * time.Millisecond)
 		}
 		mark = s.Mark()
 		s.SendLine(":)")
@@ -281,6 +295,7 @@ func TestChatPTYSmoke(t *testing.T) {
 		if got != ":)" {
 			t.Fatalf("colon text was not sent as a message: %q", got)
 		}
+		waitTurnEnd(t, s, mark)
 		s.SendLine(":quit")
 		waitExit(t, s)
 	})
@@ -302,7 +317,7 @@ func TestChatPTYSmoke(t *testing.T) {
 		}
 		s.Send("\r")
 		expect(t, s, `收到：first`, mark)
-		expect(t, s, `❯`, mark)
+		waitTurnEnd(t, s, mark)
 		fake.mu.Lock()
 		got := fake.lastUser
 		fake.mu.Unlock()

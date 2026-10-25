@@ -176,6 +176,11 @@ func TestChatPTYSmokeTurns(t *testing.T) {
 		expect(t, s, `❯ `, mark)
 		s.SendLine("hello")
 		expect(t, s, `收到：hello`, mark)
+		// The reply text shows before the turn ends: wait for its status line and
+		// the next prompt, and let the prompt's read start, so the first Ctrl-C is
+		// the first exit press and not a cancel of the ending turn (flaky on the
+		// windows-latest runner).
+		waitTurnEnd(t, s, mark)
 
 		mark = s.Mark()
 		s.SendCtrlC()
@@ -263,6 +268,16 @@ func waitFile(path string, timeout time.Duration) bool {
 // command. A Ctrl-C on a non-empty input line only clears it and one during a turn
 // only ends that turn, so up to four presses are sent, stopping as soon as chat has
 // left (a press to a child that already exited would fail the session's write).
+// waitTurnEnd waits for the end of the turn started after mark - its status
+// line (tokens · …) - and lets the next prompt's read start. Waiting for "❯"
+// alone is not enough: the echo of the line that started the turn ("❯ first")
+// already matches, and input sent then lands in the running turn as a steer.
+func waitTurnEnd(t *testing.T, s *ptytest.Session, mark int) {
+	t.Helper()
+	expect(t, s, `tokens · `, mark)
+	time.Sleep(300 * time.Millisecond)
+}
+
 func exitChat(t *testing.T, s *ptytest.Session) {
 	t.Helper()
 	mark := s.Mark()
