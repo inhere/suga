@@ -190,8 +190,10 @@ func TestRepeatEndToEnd(t *testing.T) {
 		assert.NoErr(t, json.Unmarshal([]byte(line), &r))
 		assert.Eq(t, i+1, r.Repeat)
 		assert.True(t, r.Passed, r.Checks)
-		// The stub keeps no per-turn record, so the whole run is turn time.
-		assert.True(t, r.DurationMs > 0, r.DurationMs)
+		// The stub keeps no per-turn record, so the whole run is turn time. A fast
+		// machine runs the stub in under a millisecond, so the duration may be 0;
+		// what matters is that the split adds up.
+		assert.True(t, r.DurationMs >= 0, r.DurationMs)
 		assert.Eq(t, r.DurationMs, r.TurnMs+r.CompactionMs+r.OverheadMs)
 		if _, serr := os.Stat(filepath.Join(out, fmt.Sprintf("rep-r%d", i+1), "ws")); serr != nil {
 			t.Fatalf("round %d has its own workspace: %v", i+1, serr)
