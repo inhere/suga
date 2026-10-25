@@ -1,5 +1,8 @@
 // Command eval runs the suga evaluation tasks in scripts/eval/testdata/tasks
 // in isolated temporary workspaces and SUGA_HOMEs. See README.md.
+//
+// Its `compare` subcommand (eval compare <base> <cand>) aligns two finished
+// runs by task, classifies the difference and appends to the ledger.
 package main
 
 import (
@@ -37,7 +40,8 @@ type options struct {
 	sugaSet                           setFlags // --suga-set key=value config overrides
 	variants                          variantFlags
 	repeat                            int
-	allowWeb                          bool // keep web_fetch/web_search on for every task
+	allowWeb                          bool   // keep web_fetch/web_search on for every task
+	commit                            string // git commit of this tree, recorded in every result row
 }
 
 // setFlags collects repeated key=value flags.
@@ -101,6 +105,11 @@ type Result struct {
 	Web string `json:"web"`
 	// Variant names the --variant dir this run belongs to ("" = no --variant).
 	Variant string `json:"variant,omitempty"`
+	// Commit is the git commit of the eval tree the run started from (empty when
+	// git is unavailable). compare reads it to tell two runs of different suga
+	// binaries apart (confounded check); results.jsonl files written before it
+	// existed simply lack the field.
+	Commit string `json:"commit,omitempty"`
 }
 
 func main() {
@@ -111,6 +120,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "compare" {
+		return runCompare(os.Args[2:], os.Stdout)
+	}
 	var o options
 	flag.StringVar(&o.bin, "bin", filepath.Join("tmp", "smoke", "suga"), "suga executable (.exe is added on Windows)")
 	flag.StringVar(&o.task, "task", "*", "glob of task names")
@@ -173,6 +185,7 @@ func run() error {
 		return fmt.Errorf("unknown --agent %q (suga|omp|claude)", o.agent)
 	}
 	runID := time.Now().Format("20060102-150405")
+	o.commit = headCommit()
 	if o.out == "" {
 		o.out = filepath.Join("tmp", "eval", runID)
 	}
@@ -265,7 +278,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		suffix = "-" + v.Name
 	}
 	sid := "eval-" + runID + suffix + "-" + name
-	r := Result{Task: t.Name, Repeat: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake, Variant: variantName(v)}
+	r := Result{Task: t.Name, Repeat: round, Agent: o.agent, SessionID: sid, Mode: t.Mode, Model: o.model, Fake: o.fake, Variant: variantName(v), Commit: o.commit}
 	r.Web = webPolicy(o, t)
 	switch o.agent {
 	case "omp":

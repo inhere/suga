@@ -8,6 +8,7 @@
 
 - chat 新增 `:skills [--only-names] [-n N]`：列出本会话已加载的 skills（名字、一句说明、来源项目/内置/用户，按名排序；`--only-names` 只列名字，`-n N` 最多 N 条并在末尾提示还有几个），来源由 skill 所在根目录判定（`internal/wiring.SkillInfos`），无 skill 时给出清楚提示；`:skills` 与 `:context` 都进命令表（`internal/chat/chat_usage.go`），`-h`/`:help <命令>`/Tab 补全和未知参数提示自动生效。
 - chat 新增 `:context [--files]`：列出当前上下文的构成与估算 token——系统提示、工具 schema（工具数、MCP 数、按需加载与已加载数量）、常驻段上下文（环境、规则、记忆索引、skills 列表、附加提示、宿主上下文、延迟工具列表，规则部分带文件数）、交接包、历史消息、上一回合消息与上一回合请求的估算/窗口；数字全部来自已有计算（runtime 常驻上下文报告、`ListTools` 的 schema JSON、`loadHistory` 与 `context` trace 事件），不重复实现估算。`--files` 只列出上下文里已加载的文件：file_read/file_edit/file_write/view_image 读过的文件（按工具事件记录，最近使用在前，带轮次与字节数）与规则文件。
+- 评测新增台账：`go run ./scripts/eval compare <基线目录> <候选目录>`（每侧可用 glob）按任务对齐两次已完成的结果（各自可多次 `--repeat`），输出通过率、调用数、工具调用数、prompt 总量、每次调用 prompt、未命中输入、耗时（含 turn/compaction/fault 拆分）与逐工具调用次数差异，差异带最小–最大与 bootstrap 95% 区间；每个任务与总体给出 `helped`/`hurt`/`no observed effect`/`confounded`/`insufficient samples` 结论（门槛常量在 `scripts/eval/compare_class.go`：调用数 ±5%、prompt ±10%、耗时 ±20%、每侧至少 3 轮），并追加一行到台账 `tmp/eval/ledger.jsonl`（时间、两组目录、变体、git sha、每任务结论）；`results.jsonl` 新增 `commit` 字段，供后续比较判断二进制版本是否不同。README 增「台账（`compare` 子命令）」一节。
 
 ### 修复
 
