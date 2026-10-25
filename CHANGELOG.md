@@ -10,6 +10,7 @@
 - chat 新增 `:context [--files]`：列出当前上下文的构成与估算 token——系统提示、工具 schema（工具数、MCP 数、按需加载与已加载数量）、常驻段上下文（环境、规则、记忆索引、skills 列表、附加提示、宿主上下文、延迟工具列表，规则部分带文件数）、交接包、历史消息、上一回合消息与上一回合请求的估算/窗口；数字全部来自已有计算（runtime 常驻上下文报告、`ListTools` 的 schema JSON、`loadHistory` 与 `context` trace 事件），不重复实现估算。`--files` 只列出上下文里已加载的文件：file_read/file_edit/file_write/view_image 读过的文件（按工具事件记录，最近使用在前，带轮次与字节数）与规则文件。
 - 评测新增台账：`go run ./scripts/eval compare <基线目录> <候选目录>`（每侧可用 glob）按任务对齐两次已完成的结果（各自可多次 `--repeat`），输出通过率、调用数、工具调用数、prompt 总量、每次调用 prompt、未命中输入、耗时（含 turn/compaction/fault 拆分）与逐工具调用次数差异，差异带最小–最大与 bootstrap 95% 区间；每个任务与总体给出 `helped`/`hurt`/`no observed effect`/`confounded`/`insufficient samples` 结论（门槛常量在 `scripts/eval/compare_class.go`：调用数 ±5%、prompt ±10%、耗时 ±20%、每侧至少 3 轮），并追加一行到台账 `tmp/eval/ledger.jsonl`（时间、两组目录、变体、git sha、每任务结论）；`results.jsonl` 新增 `commit` 字段，供后续比较判断二进制版本是否不同。README 增「台账（`compare` 子命令）」一节。
 - 新增 Windows/ConPTY 可运行的 Go 版终端冒烟（`go test -tags ptye2e ./test/ptye2e`）：覆盖审批后提示符恢复、本地命令与未知冒号文本、多行粘贴等终端敏感行为；Python `scripts/ptysmoke` 仍负责 Linux/macOS。
+- 上述 Go 版终端冒烟补齐回合里的交互（`test/ptye2e/chat_turn_test.go`，每个场景一个子测试）：回答确认提问（`y`/`n`/`a`，含 `a` 之后的规则写回提问）后输入行恢复成普通 `❯` 提示符、接着输入的文字自成一提示符行（suga-9ew7 的回归守卫）；Ctrl-C 取消正在运行的长 shell 命令（回合报 `已中断本轮`、提示符回来、几秒内结束，且命令的完成标记文件不出现，说明进程树随回合被杀）；Tab 排队两条消息后 `:queue` 列出两条、`:queue -d 1` 后只剩一条且被删那条不再运行；后台任务下 `:tasks` 显示 `running`、`:tasks -k` 终止后再 `-k` 提示“已结束（killed），无需终止”；两次 Ctrl-C 退出时打印的 `suga chat --resume …` 能真正续接该会话（用它再起一个 chat 验证）。
 
 ### 修复
 
