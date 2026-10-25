@@ -86,23 +86,29 @@ type classInput struct {
 }
 
 // gatedMetric is one cost metric of the compare's main table: how to read it
-// from a results.jsonl row and the relative change that counts as a signal.
+// from a results.jsonl row and the relative change that counts as a signal. An
+// ungated metric is printed for the reader but never decides a verdict.
 type gatedMetric struct {
 	Key, Label string
 	Gate       float64
 	Value      func(Result) float64
+	Ungated    bool
 }
 
 // costMetrics are the metrics a verdict is made of; the pass rate is judged on
-// its own. Keys are stable: the ledger records them, so a renamed key breaks
-// the trend of an existing ledger.
+// its own. Cache reads/writes are reported but ungated: the prompt total above
+// already contains them, and the cache split is a provider-side fact a tool or
+// prompt change rarely moves by itself. Keys are stable: the ledger records
+// them, so a renamed key breaks the trend of an existing ledger.
 var costMetrics = []gatedMetric{
-	{"calls", "调用数（模型）", callsGate, func(r Result) float64 { return float64(r.Calls) }},
-	{"tool_calls", "工具调用数", callsGate, func(r Result) float64 { return float64(r.ToolCalls) }},
-	{"prompt_total", "prompt 总量", tokenGate, promptTokens},
-	{"prompt_per_call", "每次调用 prompt", tokenGate, promptPerCall},
-	{"uncached", "未命中输入", tokenGate, func(r Result) float64 { return float64(r.InputTokens) }},
-	{"duration", "耗时（秒）", durationGate, func(r Result) float64 { return secs(r.DurationMs) }},
+	{Key: "calls", Label: "调用数（模型）", Gate: callsGate, Value: func(r Result) float64 { return float64(r.Calls) }},
+	{Key: "tool_calls", Label: "工具调用数", Gate: callsGate, Value: func(r Result) float64 { return float64(r.ToolCalls) }},
+	{Key: "prompt_total", Label: "prompt 总量", Gate: tokenGate, Value: promptTokens},
+	{Key: "prompt_per_call", Label: "每次调用 prompt", Gate: tokenGate, Value: promptPerCall},
+	{Key: "uncached", Label: "未命中输入", Gate: tokenGate, Value: func(r Result) float64 { return float64(r.InputTokens) }},
+	{Key: "cache_read", Label: "缓存读", Ungated: true, Value: func(r Result) float64 { return float64(r.CacheRead) }},
+	{Key: "cache_write", Label: "缓存写", Ungated: true, Value: func(r Result) float64 { return float64(r.CacheWrite) }},
+	{Key: "duration", Label: "耗时（秒）", Gate: durationGate, Value: func(r Result) float64 { return secs(r.DurationMs) }},
 }
 
 // metricDiff is one metric compared between the two groups: the mean (min-max)
@@ -168,7 +174,7 @@ func compareMetric(base, cand []Result, m gatedMetric) metricDiff {
 		d.Delta = d.Cand.Mean/d.Base.Mean - 1
 		d.Lo, d.Hi, d.HasCI = bootstrapDelta(bv, cv)
 	}
-	if d.Rounds >= 2 && math.Abs(d.Delta) >= m.Gate {
+	if d.Rounds >= 2 && !m.Ungated && math.Abs(d.Delta) >= m.Gate {
 		d.Dir = 1
 		if d.Delta < 0 {
 			d.Dir = -1

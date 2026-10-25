@@ -315,9 +315,9 @@ func renderCompare(base, cand *compareGroup, diffs []taskDiff, overall []metricD
 		passText(passedCount(base.Rows), len(base.Rows)), passText(passedCount(cand.Rows), len(cand.Rows)),
 		passDeltaText(passedCount(base.Rows), len(base.Rows), passedCount(cand.Rows), len(cand.Rows)), passWord(base.Rows, cand.Rows, passMixed(diffs)))
 	for _, m := range overall {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | ±%s | %s |\n",
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s |\n",
 			m.Label, statText(m.Base, m.Key == "duration"), statText(m.Cand, m.Key == "duration"),
-			formatRel(m.Delta), intervalText(m), formatGate(m.Gate), metricWord(m.Dir))
+			formatRel(m.Delta), intervalText(m), gateCell(m), metricWord(m))
 	}
 	fmt.Fprintf(&b, "\n成本拆分：%s\n", costSplit(verdict, overall))
 
@@ -342,6 +342,19 @@ func renderCompare(base, cand *compareGroup, diffs []taskDiff, overall []metricD
 	fmt.Fprintf(&b, "\n逐任务理由：\n\n")
 	for _, d := range diffs {
 		fmt.Fprintf(&b, "- **%s** — %s：%s\n", d.Task, d.Verdict.Label, strings.Join(d.Verdict.Reasons, "；"))
+	}
+
+	fmt.Fprintf(&b, "\n## 逐任务耗时拆分（秒，每轮均值）\n\n")
+	fmt.Fprintln(&b, "| 任务 | turn | compaction | provider fault（turn 内） |")
+	fmt.Fprintln(&b, "|---|---|---|---|")
+	for _, d := range diffs {
+		if len(d.Base) == 0 || len(d.Cand) == 0 {
+			fmt.Fprintf(&b, "| %s | - | - | - |\n", d.Task)
+			continue
+		}
+		bt, bc, bf := meanTiming(d.Base)
+		ct, cc, cf := meanTiming(d.Cand)
+		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", d.Task, splitCell(bt, ct), splitCell(bc, cc), faultCell(bf, cf))
 	}
 
 	fmt.Fprintf(&b, "\n## 工具调用差异（每轮均值；**%s** 为 |Δ|≥%.1f 且 ≥%s 的变化）\n\n",

@@ -354,12 +354,14 @@ go run ./scripts/eval compare "tmp/eval/deferred-off-*" "tmp/eval/deferred-on-*"
 
 markdown 报告的内容：
 
-- 总体指标表：通过率、调用数（模型）、工具调用数、prompt 总量、每次调用 prompt、未命中输入、耗时。
+- 总体指标表：通过率、调用数（模型）、工具调用数、prompt 总量、每次调用 prompt、未命中输入、缓存读/写（后两项只列出、不参与判定，
+prompt 总量已含它们）、耗时。
   每格是均值与最小–最大，差异是均值相对变化，区间是两侧各自有放回重采样的 bootstrap 95% 区间
   （固定随机种子，重跑同一份结果打印同样的区间）；“成本拆分”一行把有利与不利的指标分开列出——
   “调用涨、单次 prompt 降”这类相反方向的结果看这一行。
-- 耗时拆分：总耗时、turn、compaction、provider fault（fault 是 turn 的子集，见“耗时拆分”）。
-- 逐任务表与逐任务理由、逐工具调用次数差异（|Δ|≥0.5 且 ≥20% 的标 **）、两组一致性（confounded 检查）。
+- 耗时拆分：总耗时、turn、compaction、provider fault（fault 是 turn 的子集，见“耗时拆分”），总体一张与逐任务一张。
+- 逐任务表（通过率、调用数、每次调用 prompt、耗时、结论）与逐任务理由、逐工具调用次数差异（|Δ|≥0.5 且 ≥20% 的标 **）、
+  两组一致性（confounded 检查）。
 
 ### 结论分类
 

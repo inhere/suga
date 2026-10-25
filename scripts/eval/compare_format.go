@@ -47,23 +47,54 @@ func statText(s Stat, isSeconds bool) string {
 	return fmt.Sprintf("%s%s (%s-%s%s)", statValue(s.Mean), suffix, statValue(s.Min), statValue(s.Max), suffix)
 }
 
-// intervalText renders the bootstrap interval of the relative change.
+// intervalText renders the bootstrap interval of the relative change; a metric
+// with fewer than two rounds per side has none ("样本不足"), and a zero baseline
+// mean has no relative change to bracket ("-").
 func intervalText(m metricDiff) string {
-	if !m.HasCI {
+	if m.HasCI {
+		return formatRel(m.Lo) + "…" + formatRel(m.Hi)
+	}
+	if m.Rounds < 2 {
 		return "样本不足"
 	}
-	return formatRel(m.Lo) + "…" + formatRel(m.Hi)
+	return "-"
 }
 
-// metricWord is the 判定 cell of one metric row.
-func metricWord(dir int) string {
-	switch dir {
+// metricWord is the 判定 cell of one metric row; an ungated metric (gate 0) has
+// no verdict of its own.
+func metricWord(m metricDiff) string {
+	if m.Gate == 0 {
+		return "-"
+	}
+	switch m.Dir {
 	case 1:
 		return "**上升**"
 	case -1:
 		return "**下降**"
 	}
 	return "噪声内"
+}
+
+// gateCell is the 门槛 cell of one metric row ("-" for an ungated metric).
+func gateCell(m metricDiff) string {
+	if m.Gate == 0 {
+		return "-"
+	}
+	return "±" + formatGate(m.Gate)
+}
+
+// splitCell renders one column of the per-task timing table.
+func splitCell(base, cand float64) string {
+	return fmt.Sprintf("%s → %s (%s)", secsText(base), secsText(cand), relText(base, cand))
+}
+
+// faultCell renders the provider-fault change of one task as an absolute
+// difference (a zero baseline makes a relative change meaningless).
+func faultCell(base, cand float64) string {
+	if base == 0 && cand == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%s → %s (%s)", secsText(base), secsText(cand), faultText(base, cand))
 }
 
 // metricArrow renders one metric of a task row as "基线 → 候选 (差异)".
