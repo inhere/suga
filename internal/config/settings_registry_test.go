@@ -204,6 +204,13 @@ func TestValidateConfigKeyUsesExistingReaders(t *testing.T) {
 		assert.StrContains(t, err.Error(), "chat.history_size")
 	})
 
+	t.Run("chat reader rejects invalid history scope", func(t *testing.T) {
+		loadYAML(t, "chat:\n  history_scope: everyone\n")
+		err := ValidateConfigKey("chat.history_scope")
+		assert.Err(t, err)
+		assert.StrContains(t, err.Error(), "project")
+	})
+
 	t.Run("simple key without reader still validates", func(t *testing.T) {
 		loadYAML(t, "tools:\n  allow_write: false\n")
 		err := ValidateConfigKey("tools.allow_write")

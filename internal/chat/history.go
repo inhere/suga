@@ -32,13 +32,29 @@ type inputHistory struct {
 	entries    []historyEntry
 	enabled    bool
 	maxEntries int
+	// projectScoped is chat.history_scope: project makes Up/Down only recall the
+	// current project's lines, all keeps the old cross-project recall.
+	projectScoped bool
+	// resolved maps stored workspace strings to their project root, so old
+	// entries are compared with the same normalization as the current one
+	// without walking the filesystem again per line.
+	resolved map[string]string
 }
 
-func newInputHistory(workspace string, enabled bool, maxEntries int) (*inputHistory, error) {
+func newInputHistory(workspace, scope string, enabled bool, maxEntries int) (*inputHistory, error) {
 	if maxEntries < 1 {
 		maxEntries = defaultHistorySize
 	}
-	h := &inputHistory{workspace: workspace, enabled: enabled, maxEntries: maxEntries}
+	// Records and comparisons both use the normalized project root, so starting
+	// from a subdirectory of a git repository counts as the same project.
+	root := projectRoot(workspace)
+	h := &inputHistory{
+		workspace:     root,
+		projectScoped: scope != appconfig.ChatHistoryScopeAll,
+		resolved:      map[string]string{root: root},
+		enabled:       enabled,
+		maxEntries:    maxEntries,
+	}
 	if !enabled {
 		return h, nil
 	}
@@ -191,6 +207,57 @@ func (h *inputHistory) trimLatest() ([]historyEntry, error) {
 	return entries, nil
 }
 
+// projectRoot normalizes a start directory into the stable identity of the
+// project behind it: the nearest enclosing git repository's root (a .git entry,
+// a directory for a normal clone, a file for a worktree or submodule), or the
+// directory itself outside a git repository. Paths stay unresolved by symlinks
+// and absolute, so what is stored in the file compares equal later.
+func projectRoot(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
+	}
+	abs = filepath.Clean(abs)
+	for at := abs; ; {
+		if hasGitDir(at) {
+			return at
+		}
+		parent := filepath.Dir(at)
+		if parent == at {
+			// No git repository above dir: the directory itself is the project,
+			// never the drive root (which would collapse unrelated projects).
+			return abs
+		}
+		at = parent
+	}
+}
+
+// hasGitDir reports whether dir holds .git — a directory (a normal clone) or a
+// file (a worktree or submodule checkout).
+func hasGitDir(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
+// sameProject compares two normalized project roots. Windows paths are
+// case-insensitive, so "C:\Work" and "c:\work" must match; on case-sensitive
+// systems treating them alike costs nothing.
+func sameProject(a, b string) bool {
+	return strings.EqualFold(a, b)
+}
+
+// entryRoot resolves a stored entry's workspace to its project root. Old files
+// hold the start directory as it was (a subdirectory of a git repository), so
+// entries go through the same root lookup as the current workspace.
+func (h *inputHistory) entryRoot(workspace string) string {
+	if root, ok := h.resolved[workspace]; ok {
+		return root
+	}
+	root := projectRoot(workspace)
+	h.resolved[workspace] = root
+	return root
+}
+
 func (h *inputHistory) lines() []string {
 	if h == nil {
 		return nil
@@ -198,11 +265,22 @@ func (h *inputHistory) lines() []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := make([]string, 0, len(h.entries))
-	// The editor expects oldest-to-newest entries. Keep the current workspace
-	// group first so Up reaches it before entries from other workspaces.
+	// The editor expects oldest-to-newest entries. Under project scope, only the
+	// current project's lines are recalled — a project can keep few entries in
+	// the shared, globally capped history file (chat.history_size applies to the
+	// whole file). Under all scope, the current project's group comes first so
+	// Up reaches it before entries from other projects.
+	if h.projectScoped {
+		for _, entry := range h.entries {
+			if sameProject(h.entryRoot(entry.Workspace), h.workspace) {
+				out = append(out, entry.Text)
+			}
+		}
+		return out
+	}
 	for pass := 0; pass < 2; pass++ {
 		for _, entry := range h.entries {
-			same := entry.Workspace == h.workspace
+			same := sameProject(h.entryRoot(entry.Workspace), h.workspace)
 			if (pass == 0) != same {
 				continue
 			}

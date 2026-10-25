@@ -130,6 +130,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "images.max_side", Type: ConfigTypeInt, Writable: true, Reader: "images"},
 	{Pattern: "chat.history", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.history_size", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
+	{Pattern: "chat.history_scope", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
 	{Pattern: "chat.markdown", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.spinner", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.agent_progress", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
@@ -463,6 +464,8 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = ThinkingStyles
 	case key == "chat.agent_progress":
 		allowed = []string{ChatAgentProgressSummary, ChatAgentProgressFull, ChatAgentProgressOff}
+	case key == "chat.history_scope":
+		allowed = []string{ChatHistoryScopeProject, ChatHistoryScopeAll}
 	case key == "chat.notify":
 		allowed = []string{"auto", "bell", "osc9", "off"}
 	case key == "chat.win32_input_mode":

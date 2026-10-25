@@ -28,6 +28,28 @@ func ChatHistorySize() (int, error) {
 	return n, nil
 }
 
+// ChatHistoryScope* are the values chat.history_scope accepts: project | all.
+const (
+	ChatHistoryScopeProject = "project"
+	ChatHistoryScopeAll     = "all"
+)
+
+// ChatHistoryScope reads chat.history_scope: project (the default) makes the
+// Up/Down history only recall lines typed in the current project; all keeps the
+// old behaviour, where the current project comes first and the other projects'
+// lines follow once its lines are exhausted.
+func ChatHistoryScope() (string, error) {
+	value := strings.ToLower(strings.TrimSpace(gkconfig.String("chat.history_scope")))
+	if value == "" {
+		return ChatHistoryScopeProject, nil
+	}
+	switch value {
+	case ChatHistoryScopeProject, ChatHistoryScopeAll:
+		return value, nil
+	}
+	return "", fmt.Errorf("chat.history_scope must be project or all, got %q", value)
+}
+
 // ChatMarkdownEnabled reports whether chat renders the model's markdown in the
 // terminal (chat.markdown, on by default). The key accepts a bool or a string;
 // "off"/"false" turn the rendering off and show the exact model text instead.

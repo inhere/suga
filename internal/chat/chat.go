@@ -304,7 +304,11 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		if sizeErr != nil {
 			return sizeErr
 		}
-		inputHistory, historyErr := newInputHistory(cwd, appconfig.ChatHistoryEnabled(), size)
+		scope, scopeErr := appconfig.ChatHistoryScope()
+		if scopeErr != nil {
+			return scopeErr
+		}
+		inputHistory, historyErr := newInputHistory(cwd, scope, appconfig.ChatHistoryEnabled(), size)
 		if historyErr != nil {
 			return historyErr
 		}
