@@ -51,7 +51,7 @@ suga chat                                         # 在当前目录开启交互�
 详细说明：[references/chat.md](skills/suga-guide/references/chat.md)
 
 - **本地命令**：`:session`、`:compact`、`:quit`/`:exit`、`:diff [N]`、`:model [p/m]`、`:add-dir`/`:dirs`/`:rm-dir`、`:help`、`:usage`、`:tasks [-a|-k <ID>]`（运行中+最近结束；`-a` 全部，`-k` 终止）；只认本地键盘输入。
-- **输入**：Up/Down 历史、Ctrl+R 反查、`:` 命令与目录 Tab 补全；多行输入用 `Ctrl+Enter`/`Ctrl+J`（Windows）或 `Alt+Enter`。
+- **输入**：Up/Down 历史（默认只翻当前项目的输入，`chat.history_scope: all` 恢复跨项目翻动）、Ctrl+R 反查、`:` 命令与目录 Tab 补全；多行输入用 `Ctrl+Enter`/`Ctrl+J`（Windows）或 `Alt+Enter`。
 - **插话（steering）**：模型干活时提示符变成 `↳ `，回车把这句插进当前回合；`Tab` 把这句排到本轮结束后（下一条用户消息，`:queue` 列出、`:queue clear` 清空）；`Esc` 只中止本轮，3 秒内两次 `Ctrl-C` 才退出。
 - **`!` 本地命令**：`!cmd` 直接在本地 shell 执行、不叫模型；`!!cmd` 把结果附在下一条消息里给模型。
 - **续接预览**：续接时先显示上一次模型回复；被强杀留下的 `running` 会话会自动恢复。

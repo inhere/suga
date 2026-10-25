@@ -415,6 +415,35 @@ func chatConfigLoader(t *testing.T) func(t *testing.T, body string) {
 	}
 }
 
+// TestChatHistoryScope: chat.history_scope 默认 project，接收 project/all，
+// 其他值报错而不是静默改默认行为。
+func TestChatHistoryScope(t *testing.T) {
+	load := chatConfigLoader(t)
+	t.Run("default project", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		got, err := ChatHistoryScope()
+		assert.NoErr(t, err)
+		assert.Eq(t, "project", got)
+	})
+	t.Run("project", func(t *testing.T) {
+		load(t, "chat:\n  history_scope: project\n")
+		got, err := ChatHistoryScope()
+		assert.NoErr(t, err)
+		assert.Eq(t, "project", got)
+	})
+	t.Run("all", func(t *testing.T) {
+		load(t, "chat:\n  history_scope: all\n")
+		got, err := ChatHistoryScope()
+		assert.NoErr(t, err)
+		assert.Eq(t, "all", got)
+	})
+	t.Run("invalid", func(t *testing.T) {
+		load(t, "chat:\n  history_scope: everyone\n")
+		_, err := ChatHistoryScope()
+		assert.Err(t, err)
+	})
+}
+
 func TestChatNotifySettings(t *testing.T) {
 	load := chatConfigLoader(t)
 	t.Run("defaults", func(t *testing.T) {

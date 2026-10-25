@@ -60,7 +60,7 @@
 
 - 支持 Up/Down 历史、Ctrl+R 增量反查（Enter 采用、Ctrl+G/Esc 取消），以及行首 `:` 命令和 `:add-dir`/`:rm-dir` 目录的 Tab 补全。
 - `!` 本地命令也会记录到同一历史文件；投递消息不会记录。
-- 历史文件：`chat.history`、`chat.history_size`（默认开启、最多 1000 条），保存在 `$SUGA_HOME/history.jsonl`；只记录键盘输入并先脱敏。
+- 历史文件：`chat.history`、`chat.history_size`（默认开启、最多 1000 条，上限对整个文件计），保存在 `$SUGA_HOME/history.jsonl`；只记录键盘输入并先脱敏。上下翻动默认只取当前项目的条目（`chat.history_scope: project`，项目即所在 git 仓库的根，无 git 时是启动目录；子目录启动算同一项目）：改为 `chat.history_scope: all` 恢复旧行为——当前项目优先，翻完再继续翻其他项目。
 
 ## 多行输入
 

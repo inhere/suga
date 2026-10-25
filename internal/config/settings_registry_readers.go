@@ -18,6 +18,7 @@ type ChatSettings struct {
 	AskOutsideDirs, UndoConfirm                bool
 	AgentProgress                              string
 	HistorySize, DiffLines                     int
+	HistoryScope                               string
 	CodeHighlight                              bool
 	CodeMaxLines                               int
 	Notify                                     string
@@ -28,6 +29,10 @@ type ChatSettings struct {
 
 func ReadChatSettings() (ChatSettings, error) {
 	historySize, err := ChatHistorySize()
+	if err != nil {
+		return ChatSettings{}, err
+	}
+	historyScope, err := ChatHistoryScope()
 	if err != nil {
 		return ChatSettings{}, err
 	}
@@ -66,6 +71,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		AskOutsideDirs: ChatAskOutsideDirs(), UndoConfirm: ChatUndoConfirmEnabled(),
 		AgentProgress: agentProgress,
 		HistorySize:   historySize, DiffLines: diffLines, Notify: notify, NotifyAfter: notifyAfter,
+		HistoryScope:  historyScope,
 		CodeHighlight: ChatCodeHighlightEnabled(), CodeMaxLines: codeMaxLines,
 		Win32InputMode: win32InputMode, Theme: theme,
 	}, nil
@@ -228,7 +234,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.At, true, nil
 		}
 		return settings.Keep, true, nil
-	case "chat.history", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme":
+	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -405,6 +411,8 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.UndoConfirm
 	case "chat.history_size":
 		return settings.HistorySize
+	case "chat.history_scope":
+		return settings.HistoryScope
 	case "chat.diff_lines":
 		return settings.DiffLines
 	case "chat.code_highlight":
