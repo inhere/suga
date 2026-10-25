@@ -164,13 +164,14 @@ func TestChatPTYSmoke(t *testing.T) {
 		expect(t, s, `❯ `, mark)
 
 		if runtime.GOOS == "windows" {
-			// ConPTY delivers Ctrl+J as a bare LF; CR remains the final Enter.
-			s.Send("first\nsecond\r")
+			// ConPTY accepts Alt+Enter for an embedded newline.
+			s.Send("first\x1b\rsecond\r")
 		} else {
-			// Unix uses Alt+Enter (ESC, CR) because LF is ordinary Enter there.
+			// Unix uses Alt+Enter (ESC, CR) because LF is ordinary Enter.
 			s.Send("first\x1b\rsecond\r")
 		}
 		expect(t, s, `收到：first`, mark)
+		expect(t, s, `❯`, mark)
 		fake.mu.Lock()
 		got := fake.lastUser
 		fake.mu.Unlock()
@@ -232,6 +233,76 @@ func TestChatPTYSmoke(t *testing.T) {
 			t.Fatalf("rejected write exists or stat failed: %v; terminal tail:\n%s", err, tail(s.Text()))
 		}
 		s.SendLine(":quit")
+		waitExit(t, s)
+	})
+	t.Run("local commands and unknown colon input", func(t *testing.T) {
+		fake := &fakeChat{mode: "text"}
+		server := httptest.NewServer(fake)
+		defer server.Close()
+		s := startChat(t, binary, server.URL, t.TempDir(), t.TempDir())
+		mark := s.Mark()
+		expect(t, s, `❯ `, mark)
+		for _, command := range []string{":help", ":session -h", ":tasks", ":skills", ":context", ":sessio"} {
+			mark = s.Mark()
+			s.SendLine(command)
+			expect(t, s, `❯`, mark)
+		}
+		mark = s.Mark()
+		s.SendLine(":)")
+		expect(t, s, `收到：\:\)`, mark)
+		fake.mu.Lock()
+		got := fake.lastUser
+		fake.mu.Unlock()
+		if got != ":)" {
+			t.Fatalf("colon text was not sent as a message: %q", got)
+		}
+		s.SendLine(":quit")
+		waitExit(t, s)
+	})
+
+	t.Run("bracketed paste is one message", func(t *testing.T) {
+		fake := &fakeChat{mode: "text"}
+		server := httptest.NewServer(fake)
+		defer server.Close()
+		s := startChat(t, binary, server.URL, t.TempDir(), t.TempDir())
+		mark := s.Mark()
+		expect(t, s, `❯ `, mark)
+		s.Send("\x1b[200~first\nsecond\x1b[201~")
+		time.Sleep(250 * time.Millisecond)
+		fake.mu.Lock()
+		calls := fake.calls
+		fake.mu.Unlock()
+		if calls != 0 {
+			t.Fatalf("paste submitted before Enter, calls=%d", calls)
+		}
+		s.Send("\r")
+		expect(t, s, `收到：first`, mark)
+		expect(t, s, `❯`, mark)
+		fake.mu.Lock()
+		got := fake.lastUser
+		fake.mu.Unlock()
+		if got != "first\nsecond" {
+			t.Fatalf("pasted message = %q", got)
+		}
+		s.SendCtrlC()
+		s.SendCtrlC()
+		waitExit(t, s)
+
+	})
+
+	t.Run("steering input is visible while a turn runs", func(t *testing.T) {
+		server := httptest.NewServer(&fakeChat{mode: "text", delay: 700 * time.Millisecond})
+		defer server.Close()
+		s := startChat(t, binary, server.URL, t.TempDir(), t.TempDir())
+		mark := s.Mark()
+		expect(t, s, `❯`, mark)
+		s.SendLine("first")
+		expect(t, s, `↳`, mark)
+		s.Send("queued\t")
+		expect(t, s, `排队`, mark)
+		expect(t, s, `收到：first`, mark)
+		s.SendCtrlC()
+		s.SendCtrlC()
 		waitExit(t, s)
 	})
 }

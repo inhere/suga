@@ -72,3 +72,7 @@ jobs:
       run: |
         go test -coverprofile="profile.cov" ${{ matrix.os == 'ubuntu-latest' && matrix.go_version == 'stable' && '-race' || '' }} ./...
 
+    - name: Run Go pty smoke
+      timeout-minutes: 5
+      run: go test -tags ptye2e -count=1 ./test/ptye2e/
+
