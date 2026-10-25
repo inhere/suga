@@ -334,6 +334,89 @@ go run ./scripts/eval --task fix-failing-test --model opencode-go/deepseek-v4.1-
   --config-from ~/.suga --variant variants/fold-off --variant variants/fold-on --repeat 2
 ```
 
+## 台账（`compare` 子命令）
+
+两次已完成的结果可以按任务对齐比较，结论追加进台账，不用每次人工抄 `results.jsonl`：
+
+```bash
+# 每组一个目录、一个 results.jsonl 文件，或一个 glob（按任务分次跑时结果散在多个输出目录）
+go run ./scripts/eval compare tmp/eval/longsession-hard-v047-r3 tmp/eval/longsession-hard-trim-r3
+go run ./scripts/eval compare "tmp/eval/deferred-off-*" "tmp/eval/deferred-on-*" \
+  --ledger tmp/eval/ledger.jsonl --report tmp/eval/compare-deferred.md
+```
+
+参数：两个位置参数（基线、候选，可用 glob，如按需加载那批每组散在 5–6 个输出目录里）、
+`--ledger`（默认 `tmp/eval/ledger.jsonl`，每次比较追加一行）、`--report`（另存 markdown，默认只打印）。
+没有结果行的目录（跑失败的那次）跳过并在报告里列出。
+
+对齐：两侧全部行按 `task` 对齐，所以每侧可以是多次 `--repeat` 累加的行（如 3 轮 × 多个输出目录）。
+只有一侧有的任务不参与总体结论（记为该次比较 confounded 的原因），逐任务表里照旧列出并判 confounded。
+
+markdown 报告的内容：
+
+- 总体指标表：通过率、调用数（模型）、工具调用数、prompt 总量、每次调用 prompt、未命中输入、缓存读/写（后两项只列出、不参与判定，
+prompt 总量已含它们）、耗时。
+  每格是均值与最小–最大，差异是均值相对变化，区间是两侧各自有放回重采样的 bootstrap 95% 区间
+  （固定随机种子，重跑同一份结果打印同样的区间）；“成本拆分”一行把有利与不利的指标分开列出——
+  “调用涨、单次 prompt 降”这类相反方向的结果看这一行。
+- 耗时拆分：总耗时、turn、compaction、provider fault（fault 是 turn 的子集，见“耗时拆分”），总体一张与逐任务一张。
+- 逐任务表（通过率、调用数、每次调用 prompt、耗时、结论）与逐任务理由、逐工具调用次数差异（|Δ|≥0.5 且 ≥20% 的标 **）、
+  两组一致性（confounded 检查）。
+
+### 结论分类
+
+| 结论 | 判定 |
+|---|---|
+| `helped` | 通过率上升且没有任务下降（成本变化写进理由）；或通过率持平而某个成本指标显著下降 |
+| `hurt` | 通过率下降；或通过率没有上升（持平、或净上升但有任务下降）而某个成本指标显著上升 |
+| `no observed effect` | 通过率相同，成本差异都在门槛内 |
+| `confounded` | 两组模型 / agent / 二进制 commit / web 策略不一致或组内不一致、每任务样本数不同、任务集不同，或一组 provider 故障耗时占回合 >20% 而另一组 <5% |
+| `insufficient samples` | 每组每任务少于 3 轮：不给数值结论（2 轮时通过率只有 0/2、1/2、2/2 三种，一轮抖动就翻转结论） |
+
+门槛是 `scripts/eval/compare_class.go` 顶部的常量，理由写在注释里，也抄在下面：
+
+- 调用数 ±5%：与按需加载设计的“调用 +8%”同一量级；同一二进制重跑的调用数波动 2–4%。
+- prompt 类（总量 / 每次调用 / 未命中输入）±10%：同一二进制重跑的 prompt 总量波动 5–15%，
+  而工具描述精简的目标效果是每次调用 −14%。
+- 耗时 ±20%：provider 延迟与重试的波动最大（同一任务的重跑 580s 对 776s）。
+- 耗时单涨而调用数没涨按 provider 延迟处理，不计入成本判定（只留在表里）。
+
+`--suga-set` / `--variant` 的差异**不算** confounded：它是被比较的处理本身，记录在台账的 `variant` 字段里供人工核对。
+
+### 台账文件
+
+`--ledger` 每次比较一行 JSONL（追加，不重写）：
+
+```json
+{"time":"2026-10-25T20:29:50+08:00","base":["tmp/eval/deferred-off-r3"],"cand":["…"],
+ "variant":"基线 - / 候选 --suga-args/--suga-set=tools.deferred_native=auto",
+ "git_sha":"unknown（结果里没有 commit 字段）","compare_head":"2f57fd71…",
+ "verdict":"hurt","reasons":["通过率 13/15 → 14/15（有任务下降）","调用数（模型） 上升 8.3%（门槛 ±5%）"],
+ "metrics":{"calls":0.0829,"prompt_per_call":-0.1686,"pass_rate_pp":0.0667},
+ "tasks":[{"task":"longsession-hard-naming-rules","verdict":"hurt","base_passed":3,"base_rounds":3,"cand_passed":3,"cand_rounds":3,"reasons":["…"]}]}
+```
+
+- `git_sha`：两组结果每行新写的 `commit` 字段（跑评测时仓库的 HEAD）；旧结果没有该字段时为 `unknown`，
+  两组都有且不同时 compare 判 confounded。`compare_head` 是比较时仓库的 HEAD。
+- `metrics`：总体相对变化（键与报告表格同名），`pass_rate_pp` 是通过率变化（百分点），便于以后按时间看趋势。
+- `variant`：`--variant` 目录名或 `--suga-set` / `--suga-args` 的内容（每行 `agent_args`）。
+
+### 真实数据的两组结论
+
+2026-10-25 用主机上已有的结果（`D:/work/inhere/my-tools-dev/inhere-tools/suga/tmp/eval/`，全程只读）跑 `compare`：
+
+| 对比 | 结论 | 关键数字 |
+|---|---|---|
+| `deferred-off-*` → `deferred-on-*`（native 按需加载开/关，5 个 longsession-hard 任务 × 3 轮） | `hurt` | 通过率 13/15 → 14/15（distractor 1/3→3/3、topic-cycles 3/3→2/3：净上升但**有任务下降**）；调用 +8.3%、工具调用 +11.9%（超门槛，不利），每次调用 prompt −16.9%（超门槛，有利） |
+| `longsession-hard-v047-r3` → `longsession-hard-trim-r3`（工具描述精简前后，4 个任务 × 3 轮） | `helped` | 通过率 10/12 → 12/12；调用 +7.9%、工具调用 +10.6%（代价，写进理由）；单任务 `naming-rules` 是 `hurt`（调用 +23.6%、prompt 总量 +20.2%） |
+
+与监督之前的人工结论对照：按需加载那次人工记的是“通过率持平、调用 +8%、prompt −14%”——
+`compare` 判 `hurt` 并写清“通过率 13/15 → 14/15（有任务下降）”“每次调用 prompt 下降 16.9%”：
+同一组数字，人工的 −14% 就是“每次调用 prompt”这一项（prompt 总量只 −6.8%，被多出来的调用抵掉了）；
+按判定规则，通过率没有干净的上升时由成本决定，调用 +8.3% 超门槛即 `hurt`，省下的单次前缀写在“成本拆分”里。
+精简那次人工记的是“通过 10/12 → 12/12、naming 调用上升”，`compare` 判 `helped`，
+并把 naming-rules 的单任务成本上升单列为 `hurt`（总体通过率确实干净上升，成本代价仍逐条列出）。
+
 ## 历史折叠与思考档位
 
 - suga 默认不折叠历史（`context.fold_every: 0`）；折叠组加 `--suga-set context.fold_every=10`。每轮的 `suga inspect trace` 中 `fold` 行给出折叠点与视图字符数。
