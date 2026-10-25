@@ -1,6 +1,6 @@
 # ptysmoke
 
-在伪终端（PTY）里驱动真实的 `suga` 二进制做端到端冒烟，覆盖单元测试测不到的终端行为：raw/cooked 切换、提示符重绘、回合中提前输入、Ctrl-C、确认交互等。仅 Linux/macOS（依赖 Python `pty`）；Windows 控制台行为需人工确认。
+在伪终端（PTY）里驱动真实的 `suga` 二进制做端到端冒烟，覆盖 raw/cooked 切换、提示符重绘、回合中提前输入、Ctrl-C、确认交互等终端行为。Python `scripts/ptysmoke` 仅在 Linux/macOS 运行，是完整场景与行为依据；Windows 用 Go `test/ptye2e` 通过 ConPTY 运行精简的高风险回归（审批后重绘、本地命令、未知冒号文本、多行粘贴）。
 
 | 文件 | 作用 |
 |---|---|
@@ -47,7 +47,7 @@
 | `preferred_tools.py` | 配置优先 command/MCP，检查 manifest 的 found/missing/configured reason、chat 环境过滤、`tools.deferred: always` 下 preferred MCP 直显且仍需审批，以及 trace 只记录名字；反向验证见脚本 docstring |
 | `chat_commands.py` | 本地命令与终端通知：`:help` 列全部命令并在末尾指向 `:<命令> -h`，`:session -h`/`:queue -h`/`:checkpoints -h` 各打印用法，`:help :queue` 打印同一段用法，`:queue -d 1`（空队列）与 `:checkpoints 3`/`:tasks -h`/`:tasks -x` 的处理，`:usage` 与 `:tasks` 默认视图；一轮后台任务结束时响铃（非 TTY 不响）。反向验证：去掉 `chat_usage.go` 的命令表或 `-h` 分发，用法相关检查失败。**本机无 pty，本次未运行，待在 Linux 容器验证** |
 
-运行：
+- `make smoke-pty-go`：运行 `test/ptye2e` 的 Go `ptytest` 场景；Windows 使用 ConPTY，Linux/macOS 使用 Unix pty。若宿主不允许 ConPTY，测试框架会跳过并打印原因。
 
 ```bash
 make smoke-chat
