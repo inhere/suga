@@ -342,6 +342,12 @@ func (s *chatState) runChatCommand(line string) bool {
 		}
 	case line == ":usage":
 		fmt.Fprintln(s.source, BuildChatUsage(*s.stats))
+	case isSkillsCommand(line):
+		// :skills [--only-names] [-n N]: the skills this session loaded.
+		s.runSkillsCommand(line)
+	case isContextCommand(line):
+		// :context [--files]: what the current context is made of.
+		s.runContextCommand(line)
 	case isQueueCommand(line):
 		// The messages queued with Tab during a turn (followup.go).
 		s.runQueueCommand(line)

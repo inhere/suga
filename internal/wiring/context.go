@@ -308,6 +308,57 @@ func loadResidentContext(workspace string, preferred []PreferredToolStatus, skil
 	}
 }
 
+// ContextPart is one measured part of the context composition chat's :context
+// lists; the figures are the manifest's, so the command, `suga inspect
+// manifest` and the context trace event describe the same strings.
+type ContextPart struct {
+	Name   string
+	Bytes  int
+	Tokens int
+	Note   string
+	Files  []ContextFile
+}
+
+// ContextFile is one file inside a part: the rule sources a session reads at
+// start, with what each contributed.
+type ContextFile struct {
+	Path      string
+	Bytes     int
+	Truncated bool
+	Included  bool
+}
+
+// ContextReport is what chat's :context prints of the resident context, plus
+// the deferred native tools the session has not loaded yet (Deferred) and how
+// many of them it loaded (Loaded).
+type ContextReport struct {
+	Parts    []ContextPart
+	Deferred int
+	Loaded   int
+}
+
+// BuildContextReport turns a resident report into the ordered parts :context
+// lists; deferred and loaded are the visibility layer's native deferred counts.
+func BuildContextReport(rep ResidentReport, deferred, loaded int) ContextReport {
+	c := rep.Context
+	part := func(name string, p ManifestContextPart) ContextPart {
+		out := ContextPart{Name: name, Bytes: p.Bytes, Tokens: p.Tokens, Note: p.Note}
+		for _, f := range p.Files {
+			out.Files = append(out.Files, ContextFile{Path: f.Path, Bytes: f.Bytes, Truncated: f.Truncated, Included: f.Included})
+		}
+		return out
+	}
+	return ContextReport{
+		Parts: []ContextPart{
+			part("system_prompt", c.SystemPrompt), part("environment", c.Environment),
+			part("rules", c.Rules), part("memory_index", c.MemoryIndex), part("skills", c.Skills),
+			part("append_prompt", c.AppendPrompt), part("host_context", c.HostContext),
+			part("deferred_tools", c.DeferredTools),
+		},
+		Deferred: deferred, Loaded: loaded,
+	}
+}
+
 // deferredToolsNote names the deferred tools by source and the ones the session
 // already loaded. The listing text alone does not separate "deferred but never
 // loaded" from "nothing deferred", which is what a manifest has to show when the

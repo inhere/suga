@@ -4,6 +4,15 @@
 
 ## [未发布]
 
+### 新增
+
+- chat 新增 `:skills [--only-names] [-n N]`：列出本会话已加载的 skills（名字、一句说明、来源项目/内置/用户，按名排序；`--only-names` 只列名字，`-n N` 最多 N 条并在末尾提示还有几个），来源由 skill 所在根目录判定（`internal/wiring.SkillInfos`），无 skill 时给出清楚提示；`:skills` 与 `:context` 都进命令表（`internal/chat/chat_usage.go`），`-h`/`:help <命令>`/Tab 补全和未知参数提示自动生效。
+- chat 新增 `:context [--files]`：列出当前上下文的构成与估算 token——系统提示、工具 schema（工具数、MCP 数、按需加载与已加载数量）、常驻段上下文（环境、规则、记忆索引、skills 列表、附加提示、宿主上下文、延迟工具列表，规则部分带文件数）、交接包、历史消息、上一回合消息与上一回合请求的估算/窗口；数字全部来自已有计算（runtime 常驻上下文报告、`ListTools` 的 schema JSON、`loadHistory` 与 `context` trace 事件），不重复实现估算。`--files` 只列出上下文里已加载的文件：file_read/file_edit/file_write/view_image 读过的文件（按工具事件记录，最近使用在前，带轮次与字节数）与规则文件。
+
+### 修复
+
+- chat 将 `:word` 单 token 形式的未知命令（如 `:sessio`、`:contxt`）按输错处理：不再作为普通消息发给模型，而是提示“未知命令 :sessio，是否想用 :session？”（按编辑距离最多 3 个相近命令，无相近则指向 `:help`）；以冒号开头的正常文本（`:)`、`: 文本`、`:中文`、`::1`）仍照常发送，判定规则写在 `chat_usage.go` 的注释与测试里。
+
 ## [0.48.0] - 2026-10-24
 
 回答确认提问后输入行残留、子 agent 状态行残留修复；`:tasks` 与每个 chat 命令的 `-h` 和新选项；工具描述精简（每次调用约省 920 token）；native 工具按需加载（默认关闭，`tools.deferred_native: auto` 开启）；Windows 取消竞态修复。

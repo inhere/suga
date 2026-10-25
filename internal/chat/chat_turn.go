@@ -43,6 +43,12 @@ type chatState struct {
 	stats       *chatStats
 	sessionID   string
 	sessionName string
+	// skills lists the loaded skills (:skills) and contextParts reports the
+	// resident context composition (:context); both come from the runtime and a
+	// nil field means the process has no such data (the tests build a state
+	// directly).
+	skills       func() []SkillInfo
+	contextParts func(context.Context) ContextReport
 
 	// waiting is the Stop hook wait of the turn that just ran: runTurn starts
 	// it, the next iteration of Run's loop consumes it.
