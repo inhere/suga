@@ -18,6 +18,7 @@
 
 ### 变更
 
+- chat 的上下输入历史默认按项目隔离（`chat.history_scope: project`，新选项）：Up/Down 只翻当前项目的条目——“项目”指启动目录所在 git 仓库的根（无 git 时为启动目录），子目录启动与根目录启动视为同一项目，旧记录里存的启动目录会按同一规则归到仓库根后再比对，`$SUGA_HOME/history.jsonl` 不变也不用迁移，`chat.history_size` 的含义不变（整个文件最多 N 条，按项目过滤后当前项目的可用条目可能变少）。需要旧行为（当前项目优先、翻完继续翻其他项目）时配置 `chat.history_scope: all`。
 - provider 协议回放夹具（suga-9k4t）：新增 `scripts/sserecord` 录制工具，把四条真实网关模型（command-code/deepseek-v4.1-flash、command-code/glm-5.3-flash、command-code/claude-haiku-5-5（Anthropic 流，含 thinking 与签名）、openai-codex/gpt-6-luna（Responses 流））的原始 SSE 响应体与请求体（纯文本回答 + 两步工具调用）落到 `pkg/agentcore/llm/testdata/sse/`（单个 < 64KB，只落响应/请求体，不带任何密钥头）；新增 `sse_replay_test.go` 用 httptest 原样回放并断言解析结果（文本、reasoning、工具调用名与真实网关的分片参数、usage 各字段、finish/stop 原因、截断标志），其中 Claude 两步回传检查（thinking 块与签名逐字节回传、`tool_use.input` 恒为对象）即 v0.47 修复的回归网；新增 `FuzzSseParsers` fuzz 目标（种子即夹具，对三个流解析入口喂任意字节，不 panic、不挂起，60 秒 fuzz 26 万余次执行无崩溃）。
 - 测试计时：`TestStreamIdleTimeoutRetries`（4 个子用例）、`TestProviderRetries/cancel-during-the-wait`、`TestRequestTimeoutEndsASlowRequest` 改用 `testing/synctest` 假时钟（内存中的 scripted body / net.Pipe 连接，不动产品代码），空闲超时、重试退避与请求超时不再真实等待（此前一个包 0.58 秒，现在毫秒级）且结果确定。
 
