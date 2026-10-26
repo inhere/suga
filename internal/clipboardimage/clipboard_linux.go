@@ -5,7 +5,6 @@ package clipboardimage
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"os/exec"
 
