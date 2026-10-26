@@ -55,6 +55,11 @@ type Report struct {
 	Tools       []ToolStat  `json:"tools"`
 	Compactions int         `json:"compactions"`
 	ToolSearch  int         `json:"tool_searches"`
+	// CacheBuckets splits the model calls by cache bucket (see CacheBucket*).
+	// BuildReport leaves it nil - its SQL pass is bucket-blind - and the stats
+	// command fills it from BuildCacheBuckets, so a caller that wants only the
+	// model and tool rows pays nothing for it.
+	CacheBuckets []CacheBucketStat `json:"cache_buckets,omitempty"`
 }
 
 // reportKinds are the event kinds `suga inspect stats` aggregates.
@@ -94,10 +99,14 @@ func (s *Store) BuildReport(ctx context.Context, f EventFilter) (Report, error) 
 // reportFilter builds the WHERE clause shared by the report queries: the filter
 // of ListEvents with the report's fixed kind list (ListEvents would also honour
 // f.Kinds; the report always asks for exactly reportKinds).
-func reportFilter(f EventFilter) (string, []any) {
-	q := `kind IN (` + placeholders(len(reportKinds)) + `)`
-	args := make([]any, 0, len(reportKinds)+4)
-	for _, k := range reportKinds {
+func reportFilter(f EventFilter) (string, []any) { return kindFilter(reportKinds, f) }
+
+// kindFilter builds the WHERE clause of a per-kind aggregation: the fixed kind
+// list plus the session, turn and since narrowing of ListEvents.
+func kindFilter(kinds []string, f EventFilter) (string, []any) {
+	q := `kind IN (` + placeholders(len(kinds)) + `)`
+	args := make([]any, 0, len(kinds)+4)
+	for _, k := range kinds {
 		args = append(args, k)
 	}
 	if f.SessionID != "" && f.WithAgents {

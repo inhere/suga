@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 缓存命中率按桶统计（suga-jh7b 第一步，只加统计、不改请求行为）：把每次模型调用归入 `cold`（会话首次调用）、`segment_start`（换段后首次）、`after_fold`（旧工具结果折叠、截断、加载延迟工具、系统提示或重写等改动前缀之后首次）、`steady`（段内只追加的连续调用，95% 目标针对它）、`handoff`（写交接包的那次调用）、`unknown`（新进程或旧会话无法判定，计数不丢）；`suga inspect stats` 与 `inspect trace --analyze` 及其 `--json` 输出给出每桶调用数、prompt、cache_read 与命中率（provider 未报缓存显示 `-`），`--analyze` 还列出 steady 桶中低于 90% 的调用（序号、未命中 token、与上一次调用之间发生的事件）；`scripts/eval` 汇总与 `compare` 增加按桶命中率（steady 与总体并列）与低命中调用列表。口径见 `docs/research/2026-10-26-cache-hit-buckets.md`。
 - 演示录屏（README/博客用）：新增 `scripts/demo/record.py`，在伪终端里按固定时间轴驱动真实 `suga chat`（启动 → 读一个小项目并回答 → 模型作答时 Tab 排队一句 → 改文件弹出审批并答 `y` → `:context` → `:quit` 打印续接命令），把 pty 输出录成 asciicast v2 `docs/demo/suga-chat.cast`（100×28、总长上限 60 秒、工作区与 SUGA_HOME 的真实绝对路径替换掉）；配套 `scripts/ptysmoke/fakellm.py` 新增 `demo` 模式，`make demo-cast` 一条命令重录，说明与 `agg` 转 GIF 的方法见 `docs/demo/README.md`。
 
 ## [0.49.0] - 2026-10-26

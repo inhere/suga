@@ -76,7 +76,14 @@ type TraceAnalysis struct {
 	UncachedRebuilt  map[string]int64 `json:"uncached_rebuilt,omitempty"`
 	UncachedProvider int64            `json:"uncached_provider"`
 	PrefixBreaks     map[string]int   `json:"prefix_breaks,omitempty"`
-	Compactions      int              `json:"compactions"`
+	// CacheBuckets splits the model calls by cache bucket (store.BucketCold,
+	// BucketSteady, ...): the class says what happened to the request prefix since
+	// the previous call, which decides how much of it a prompt cache can serve.
+	// SteadyLowHit lists the first steady calls below the target hit rate with the
+	// events that preceded them: where a low hit rate is investigated.
+	CacheBuckets []store.CacheBucketStat `json:"cache_buckets,omitempty"`
+	SteadyLowHit []store.CacheLowHit     `json:"steady_low_hit,omitempty"`
+	Compactions  int                     `json:"compactions"`
 	// Retries are the model request retries after transient failures (every
 	// model call, side calls included) and RetryWaitMs the time waited.
 	Retries     int   `json:"retries"`
@@ -332,6 +339,10 @@ func AnalyzeTrace(events []store.Event) TraceAnalysis {
 		}
 	}
 	closeStep()
+	// The cache buckets classify every model call of the same events (see
+	// store.ClassifyEvents); the low-hit list is capped for the report.
+	buckets := store.AggregateCacheBuckets(store.ClassifyEvents(events), steadyLowHitListed)
+	a.CacheBuckets, a.SteadyLowHit = buckets.Buckets, buckets.LowSteady
 	// The background runs that met foreground work: the time the loop spent in
 	// model and tool calls while a task ran in the background. Each task adds
 	// its own share, so tasks running at the same time count their shared time
@@ -394,6 +405,39 @@ func (a *TraceAnalysis) agentSpent(attrs map[string]any) {
 	}
 }
 
+// steadyLowHitListed caps the steady low-hit calls the trace analysis lists.
+const steadyLowHitListed = 5
+
+// cacheBucketSummary renders the per-bucket hit rates: one entry per bucket
+// with its calls, hit rate and the tokens behind them.
+func cacheBucketSummary(buckets []store.CacheBucketStat) string {
+	parts := make([]string, 0, len(buckets))
+	for _, b := range buckets {
+		hit := "-" // the provider reported no cache
+		if b.CacheReported {
+			hit = fmt.Sprintf("%.1f%%", b.CacheHitRate*100)
+		}
+		parts = append(parts, fmt.Sprintf("%s %d calls hit %s (prompt %s, cache read %s)", b.Bucket, b.Calls,
+			hit, human(b.InputTokens+b.CacheRead+b.CacheWrite), human(b.CacheRead)))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// cacheLowHitSummary renders the steady calls under the target hit rate: the
+// step, its uncached input and what happened between the previous call and it.
+func cacheLowHitSummary(hits []store.CacheLowHit) string {
+	parts := make([]string, 0, len(hits))
+	for _, h := range hits {
+		events := "no fold/segment/tool event in between"
+		if len(h.Events) > 0 {
+			events = "after " + strings.Join(h.Events, "+")
+		}
+		parts = append(parts, fmt.Sprintf("step %d uncached %s of %s (%.1f%%, %s)", h.Step,
+			human(h.Uncached), human(h.Prompt), h.HitRate*100, events))
+	}
+	return fmt.Sprintf("%d steady calls under %.0f%%: %s", len(hits), store.SteadyLowHitBelow*100, strings.Join(parts, "; "))
+}
+
 // attributeCache splits one model call's uncached input by cause (see
 // TraceAnalysis.Uncached*): the reported input tokens are spread over the
 // request's reused, rebuilt and fresh parts by their JSON sizes; what the
@@ -449,6 +493,12 @@ func WriteTraceAnalysis(w io.Writer, a TraceAnalysis, asJSON bool) error {
 		a.ExploreSteps, phaseSteps(a.WriteToGreenSteps), phaseSteps(a.AfterGreenSteps))
 	row("edit steps", "%d, %d with a single change (one file_edit replacement or one file_write)", a.EditSteps, a.SingleEditSteps)
 	row("uncached input", "%s", uncachedSummary(a))
+	if len(a.CacheBuckets) > 0 {
+		row("cache by bucket", "%s", cacheBucketSummary(a.CacheBuckets))
+	}
+	if len(a.SteadyLowHit) > 0 {
+		row("steady low hit", "%s", cacheLowHitSummary(a.SteadyLowHit))
+	}
 	row("spills / folds", "%d / %d (compactions %d, tidied outputs %d)", a.Spills, a.Folds, a.Compactions, a.Minimized)
 	row("model retries", "%d (waited %.1fs)", a.Retries, float64(a.RetryWaitMs)/1000)
 	row("background tasks", "%d (ran %.1fs in all)", a.BackgroundTasks, float64(a.BackgroundMs)/1000)

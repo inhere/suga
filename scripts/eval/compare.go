@@ -15,10 +15,13 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 	fmt.Fprintf(&b, "# 评测对比（variants）\n\n生成：`--variant` 对比，%d 个 variant，共 %d 条结果。状态含义:\nPASS/FAIL=通过/失败判定；TIMEOUT=运行器侧超时（error 含 deadline）；p/n=多轮部分通过。\n\n",
 		len(variants), len(rs))
 
-	// Per-variant totals.
+	// Per-variant totals. The hit rates are pooled over the variant's runs:
+	// 缓存命中% counts every call, steady 命中% only the steady bucket (an unchanged
+	// context inside one segment, the 95% target), so a low overall rate can be
+	// told apart from a low in-context one.
 	fmt.Fprintf(&b, "## variant 总览\n\n")
-	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | 平均耗时 | 平均 turn/compact/fault | WEB |")
-	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|---|")
+	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | steady 命中% | 平均耗时 | 平均 turn/compact/fault | WEB |")
+	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|---|---|")
 	for _, v := range variants {
 		sub := variantResults(rs, v.Name)
 		if len(sub) == 0 {
@@ -27,10 +30,11 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 		a := averageRounds(sub)
 		total, hit := totals(sub)
 		turn, compact, fault := meanTiming(sub)
-		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %.1fs | %.1f/%.1f/%.1fs | %s |\n",
-			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, a.Seconds, turn, compact, fault, webLabel(sub))
+		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %s | %.1fs | %.1f/%.1f/%.1fs | %s |\n",
+			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, steadyCell(sub), a.Seconds, turn, compact, fault, webLabel(sub))
 	}
 	fmt.Fprintln(&b)
+	writeCompareBuckets(&b, variants, rs)
 
 	// One line per task, variants side by side.
 	fmt.Fprintf(&b, "## 逐任务对比\n\n")
@@ -71,6 +75,70 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 	fmt.Printf("\n%s\n", b.String())
 	fmt.Printf("compare: %s\n", path)
 	return nil
+}
+
+// steadyCell is the pooled hit rate of the steady bucket of rs ("-" when no
+// row carries bucket data or the bucket reported no cache tokens).
+func steadyCell(rs []Result) string {
+	for _, b := range poolBuckets(rs) {
+		if b.Bucket == "steady" && b.CacheReported && b.prompt() > 0 {
+			return fmt.Sprintf("%.1f", b.Hit*100)
+		}
+	}
+	return "-"
+}
+
+// writeCompareBuckets appends the per-bucket hit rate of every variant, pooled
+// over its runs, one column per variant: the steady bucket beside the overall
+// sum shows whether a variant lost its cache inside a segment or at the breaks.
+func writeCompareBuckets(b *strings.Builder, variants []*Variant, rs []Result) {
+	buckets := poolBuckets(rs)
+	if len(buckets) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "## 按桶命中率（steady = 段内未变上下文，目标 95%%）\n\n")
+	b.WriteString("| bucket |")
+	for _, v := range variants {
+		fmt.Fprintf(b, " %s |", v.Name)
+	}
+	b.WriteString("\n|---|")
+	for range variants {
+		b.WriteString("---|")
+	}
+	b.WriteString("\n")
+	for _, name := range cacheBucketNames() {
+		present := false
+		cells := make([]string, 0, len(variants))
+		for _, v := range variants {
+			cell := bucketCellFor(variantResults(rs, v.Name), name)
+			present = present || cell != "-"
+			cells = append(cells, cell)
+		}
+		if present {
+			fmt.Fprintf(b, "| %s | %s |\n", name, strings.Join(cells, " | "))
+		}
+	}
+	// The overall row over every call, so the steady bucket has its reference.
+	cells := make([]string, 0, len(variants))
+	for _, v := range variants {
+		cells = append(cells, bucketCellFor(variantResults(rs, v.Name), "overall"))
+	}
+	fmt.Fprintf(b, "| overall | %s |\n\n", strings.Join(cells, " | "))
+}
+
+// bucketCellFor renders one pooled bucket of rs: the hit rate as a percentage,
+// "-" when the rows carry no such bucket or it reported no cache tokens.
+func bucketCellFor(rs []Result, name string) string {
+	for _, b := range poolBuckets(rs) {
+		if b.Bucket != name {
+			continue
+		}
+		if !b.CacheReported || b.prompt() == 0 {
+			return "-"
+		}
+		return fmt.Sprintf("%.1f", b.Hit*100)
+	}
+	return "-"
 }
 
 // webLabel summarises the Result.Web values of one variant's rows ("off",
