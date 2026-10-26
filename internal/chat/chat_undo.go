@@ -17,8 +17,9 @@ const (
 	checkpointsCmd = ":checkpoints"
 	undoCmd        = ":undo"
 	undoForceArg   = "force"
-	// undoBusyHint is shared with the refusal steering.go prints for a local
-	// command typed during a turn (that prompt is not this file's text).
+	// undoBusyHint is the hint the refusal steering.go prints for a local command
+	// typed during a turn (that prompt is not this file's text); the text itself
+	// comes from the catalog (status.undo.busy), this is what the tests expect.
 	undoBusyHint = "回合进行中，等它结束再执行本地命令"
 )
 
@@ -121,7 +122,7 @@ func (s *chatState) runCheckpoints(arg string) {
 	}
 	rows, err := s.checkpoints(limit)
 	if err != nil {
-		fmt.Fprintln(s.errWriter(), formatCommandError(checkpointsCmd, err))
+		fmt.Fprintln(s.errWriter(), formatCommandError(s.tr(), checkpointsCmd, err))
 		return
 	}
 	fmt.Fprintln(s.source, BuildCheckpoints(s.tr(), rows))
@@ -147,7 +148,7 @@ func checkpointLimit(arg string) (int, bool) {
 func (s *chatState) runUndo(command undoCommand) {
 	rows, snapshots, err := s.selectUndo(command)
 	if err != nil {
-		fmt.Fprintln(s.errWriter(), formatCommandError(undoCmd, err))
+		fmt.Fprintln(s.errWriter(), formatCommandError(s.tr(), undoCmd, err))
 		return
 	}
 	fmt.Fprintln(s.source, BuildUndoPlan(s.tr(), rows, command))
@@ -167,12 +168,12 @@ func (s *chatState) runUndo(command undoCommand) {
 	}
 	sessionsDir, err := appconfig.ResolveSessionsDir()
 	if err != nil {
-		fmt.Fprintln(s.errWriter(), formatCommandError(undoCmd, err))
+		fmt.Fprintln(s.errWriter(), formatCommandError(s.tr(), undoCmd, err))
 		return
 	}
 	result, err := s.runner.Undo(s.ctx, snapshots, sessionsDir, s.sessionID, command.n, command.force)
 	if err != nil {
-		fmt.Fprintln(s.errWriter(), formatCommandError(undoCmd, err))
+		fmt.Fprintln(s.errWriter(), formatCommandError(s.tr(), undoCmd, err))
 		return
 	}
 	fmt.Fprintln(s.source, BuildUndoResult(s.tr(), result, rows))

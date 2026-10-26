@@ -10,6 +10,7 @@ import (
 	gkconfig "github.com/gookit/config/v2"
 
 	axconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore/memory"
 	"github.com/inhere/suga/pkg/agentcore/redact"
@@ -193,10 +194,12 @@ type chatMemoryConfirmer struct {
 	mu    sync.Mutex
 	// always holds the sessions answered "a".
 	always map[string]bool
+	// translator renders the question the person reads.
+	translator i18n.Translator
 }
 
-func newChatMemoryConfirmer(asker tools.Asker) *chatMemoryConfirmer {
-	return &chatMemoryConfirmer{asker: asker, always: map[string]bool{}}
+func newChatMemoryConfirmer(asker tools.Asker, translator i18n.Translator) *chatMemoryConfirmer {
+	return &chatMemoryConfirmer{asker: asker, always: map[string]bool{}, translator: translator}
 }
 
 func (c *chatMemoryConfirmer) confirm(ctx context.Context, s memory.Scope, op memory.Op) error {
@@ -206,7 +209,7 @@ func (c *chatMemoryConfirmer) confirm(ctx context.Context, s memory.Scope, op me
 	if session != "" && c.always[session] {
 		return nil
 	}
-	answer, err := c.asker.Ask(ctx, memoryQuestion(s, op))
+	answer, err := c.asker.Ask(ctx, memoryQuestion(c.translator, s, op))
 	if errors.Is(err, tools.ErrCannotAsk) {
 		return errors.New("无法确认写入记忆（标准输入不是终端）")
 	}
@@ -230,27 +233,34 @@ const memoryBodyPreviewRunes = 200
 
 // memoryQuestion shows what would be written. Confirm gets the op before the
 // governance layer sanitizes it, so each field is cleaned (redact.Clean) and
-// made display-safe here; the body is cut to a preview.
-func memoryQuestion(s memory.Scope, op memory.Op) tools.Question {
-	details := []string{"会话读过外部内容，写入记忆需要确认", "范围：" + s.String(), "操作：" + string(op.Action)}
+// made display-safe here; the body is cut to a preview. tr is the
+// startup-resolved host catalog (the ACP permission request uses the same keys,
+// see acpserver/memory_confirm.go).
+func memoryQuestion(tr i18n.Translator, s memory.Scope, op memory.Op) tools.Question {
+	t := approvalTr(tr)
+	details := []string{
+		t.T("host.memory.need_confirm"),
+		t.T("host.memory.label.scope", map[string]any{"scope": s.String()}),
+		t.T("host.memory.label.action", map[string]any{"action": string(op.Action)}),
+	}
 	if op.Kind != "" {
-		details = append(details, "类型："+string(op.Kind))
+		details = append(details, t.T("host.memory.label.kind", map[string]any{"kind": string(op.Kind)}))
 	}
 	if op.ID != "" {
-		details = append(details, "id："+op.ID)
+		details = append(details, t.T("host.memory.label.id", map[string]any{"id": op.ID}))
 	}
 	if op.Title != "" {
-		details = append(details, "标题："+redact.Clean(op.Title))
+		details = append(details, t.T("host.memory.label.title", map[string]any{"title": redact.Clean(op.Title)}))
 	}
 	if op.Body != "" {
 		body := []rune(redact.Clean(op.Body))
 		if len(body) > memoryBodyPreviewRunes {
 			body = append(body[:memoryBodyPreviewRunes], '…')
 		}
-		details = append(details, "正文："+string(body))
+		details = append(details, t.T("host.memory.label.body", map[string]any{"body": string(body)}))
 	}
 	for i, d := range details {
 		details[i] = displaySafe(d)
 	}
-	return tools.Question{Tool: "memory", Details: details, Prompt: "写入记忆？[y]是 [N]否 [a]本会话不再问："}
+	return tools.Question{Tool: "memory", Details: details, Prompt: t.T("host.memory.prompt")}
 }

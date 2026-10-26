@@ -22,14 +22,14 @@ func TestBuildReplayTruncatesOldest(t *testing.T) {
 	}
 
 	t.Run("under the limit", func(t *testing.T) {
-		updates := buildReplay(hist, 1<<20)
+		updates := buildReplay(nil, hist, 1<<20)
 		assert.Eq(t, 5, len(updates)) // summary note + 4 messages
 		assert.Require(t, assert.True(t, updates[0].AgentThoughtChunk != nil))
 		assert.StrContains(t, textOf(updates[0].AgentThoughtChunk.Content), "前情提要")
 	})
 
 	t.Run("over the limit keeps the newest", func(t *testing.T) {
-		updates := buildReplay(hist, 2600)
+		updates := buildReplay(nil, hist, 2600)
 		// summary note, truncation note, then the two newest messages
 		assert.Eq(t, 4, len(updates))
 		note := textOf(updates[1].AgentThoughtChunk.Content)

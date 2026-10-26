@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/acp-go-sdk"
 	"github.com/inhere/suga/internal/diffview"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/mcp"
@@ -129,6 +130,9 @@ type permissionHook struct {
 	// package-level compatibility tests on the historical read/ask behavior.
 	policy  PolicyDecision
 	session *sessionPolicy
+	// translator renders the questions this hook asks the client (memory write
+	// confirmation); set right after the runtime opens.
+	translator i18n.Translator
 
 	mu    sync.Mutex
 	calls map[acp.ToolCallId]*pendingCall

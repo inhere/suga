@@ -145,7 +145,7 @@ func (rt *Runtime) PasteImageCallback() func() (agentcore.ImagePart, string, err
 	if rt == nil || rt.sessionDirs == nil {
 		return nil
 	}
-	read := clipboardimage.Reader()
+	read := clipboardimage.Reader(rt.Translator)
 	maxSide := imageMaxSide()
 	return func() (agentcore.ImagePart, string, error) {
 		data, name, err := read()

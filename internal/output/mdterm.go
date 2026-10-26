@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gookit/color"
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // Terminal markdown rendering, used by chat only. The model answers in
@@ -110,6 +111,9 @@ type MDTerm struct {
 	// renderer, which knows where a line starts, do it.
 	prefix  string
 	started bool // the current message already printed its prefix
+	// translator renders the notices the renderer writes itself (the folded-code
+	// line); nil keeps the historical Chinese text.
+	translator i18n.Translator
 }
 
 // NewMDTerm returns an MDTerm writing rendered lines to w; color styles them,
@@ -117,6 +121,10 @@ type MDTerm struct {
 func NewMDTerm(w io.Writer, color bool) *MDTerm {
 	return &MDTerm{w: w, color: color, theme: mdThemes["dark"]}
 }
+
+// SetTranslator installs the host UI catalog of the lines the renderer writes
+// itself (the folded-code notice); nil keeps the historical Chinese text.
+func (t *MDTerm) SetTranslator(tr i18n.Translator) { t.translator = tr }
 
 // SetTheme switches the palette the elements are painted with (chat.theme,
 // "dark" or "light"); an unknown name keeps the previous one.
@@ -324,7 +332,7 @@ func (t *MDTerm) endCode() {
 	}
 	if t.codeFolded > 0 {
 		t.extra = append(t.extra, t.paint(t.theme.dim,
-			fmt.Sprintf("… 还有 %d 行（:code 查看全部）", t.codeFolded)))
+			trOrFallback(t.translator).T("host.md.code_folded", map[string]any{"lines": t.codeFolded})))
 	}
 	t.code, t.codeLang, t.codeText, t.codeLines, t.codeFolded = nil, "", nil, 0, 0
 }

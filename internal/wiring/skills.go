@@ -13,6 +13,7 @@ import (
 	gkconfig "github.com/gookit/config/v2"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	capskills "github.com/inhere/suga/pkg/agentcore/skills"
 	builtinskills "github.com/inhere/suga/skills"
@@ -189,26 +190,27 @@ func skillsPrompt(reg *capskills.Registry, pol skillPolicy) (string, personal.Sk
 type SkillInfo struct {
 	Name        string
 	Description string
-	// Source is the kind of the root the skill was found in: 项目 (a workspace
-	// skills directory), 内置 (the skills released into SUGA_HOME) or 用户 (the
-	// user's own ~/.agents/skills).
+	// Source is the translated label of the root the skill was found in: project
+	// (a workspace skills directory), builtin (the skills released into
+	// SUGA_HOME) or user (the user's own ~/.agents/skills).
 	Source     string
 	Path       string
 	AlwaysLoad bool
 }
 
-// source names of SkillInfo.Source.
+// catalog keys of SkillInfo.Source, one per kind of root (translated by SkillInfos).
 const (
-	SkillSourceProject = "项目"
-	SkillSourceBuiltin = "内置"
-	SkillSourceUser    = "用户"
+	SkillSourceProject = "host.skills.source.project"
+	SkillSourceBuiltin = "host.skills.source.builtin"
+	SkillSourceUser    = "host.skills.source.user"
 )
 
 // SkillInfos lists the registered skills sorted by name (Registry.List order)
 // with the source of each. The registry keeps no source itself: it is derived
 // from the root a skill was found under, and a workspace skill wins the name,
-// so Workspace decides 项目 and SUGA_HOME/skills holds the released built-ins.
-func SkillInfos(reg *capskills.Registry) []SkillInfo {
+// so Workspace decides the project source and SUGA_HOME/skills holds the
+// released built-ins. tr is the startup-resolved host catalog.
+func SkillInfos(tr i18n.Translator, reg *capskills.Registry) []SkillInfo {
 	if reg == nil {
 		return nil
 	}
@@ -223,6 +225,9 @@ func SkillInfos(reg *capskills.Registry) []SkillInfo {
 			Name: s.Name, Description: s.Description, Source: skillSource(s, builtinRoot),
 			Path: s.Path, AlwaysLoad: s.AlwaysLoad,
 		})
+	}
+	for i := range out {
+		out[i].Source = approvalTr(tr).T(out[i].Source)
 	}
 	return out
 }

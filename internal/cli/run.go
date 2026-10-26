@@ -15,6 +15,7 @@ import (
 	"github.com/inhere/suga/internal/adddir"
 	"github.com/inhere/suga/internal/chat"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
@@ -97,6 +98,9 @@ type personalOptions struct {
 	// tasks is the run's background task manager (set by RunPersonalCLI, not
 	// a flag); nil in tests that build a runner themselves.
 	tasks *tasks.Manager
+	// translator is the startup-resolved host catalog of the text-mode notices
+	// on stderr (wrap-up, output limit, retry); nil keeps the Chinese text.
+	translator i18n.Translator
 }
 
 // RunPersonalCLI is the shared headless and interactive entry, independent of the old Web host.
@@ -215,6 +219,7 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 		}
 		opts.contract, opts.schemaText = contract, schema
 	}
+	opts.translator = runtime.Translator
 	return executePersonalRun(ctx, runtime.Runner, opts, stdout, stderr)
 }
 
@@ -373,6 +378,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		fmt.Fprintln(stderr, "model:", termtext.Clean(chat.ModelLabel(runner.ProviderName(), runner.Model())))
 	}
 	live := output.NewLiveText(stdout)
+	live.SetTranslator(opts.translator)
 	var budget *personal.BudgetSnapshot
 	emit := func(_ context.Context, event personal.Event) error {
 		if event.Budget != nil {
@@ -384,13 +390,13 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 			// The session was left running by a process that died mid-turn and has
 			// been taken back to open before this turn (personal/recovery.go);
 			// stdout keeps the answer alone, like the retry notice below.
-			fmt.Fprintln(stderr, personal.SessionRecoveredNotice)
+			fmt.Fprintln(stderr, personal.SessionRecoveredNoticeWithTranslator(i18n.Fallback())) // run has no translator wiring yet; preserve legacy fallback.
 			return nil
 		}
 		if encoder == nil {
 			live.Handle(event) // text mode prints the answer as it streams
 			if event.Kind == string(agentcore.StreamEventRetry) {
-				fmt.Fprintln(stderr, output.RetryNotice(event)) // stdout stays the answer only
+				fmt.Fprintln(stderr, output.RetryNotice(opts.translator, event)) // stdout stays the answer only
 			}
 			return nil
 		}
@@ -449,15 +455,15 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	if encoder == nil {
 		// Text mode: a wrap-up names its reason on stderr, so a short answer
 		// is not read as a finished one; stdout stays the answer only.
-		if notice := output.WrapUpNotice(result.WrapUp, runner.MaxSteps()); notice != "" {
+		if notice := output.WrapUpNotice(opts.translator, result.WrapUp, runner.MaxSteps()); notice != "" {
 			fmt.Fprintln(stderr, notice)
 		}
 		// A wrap-up can itself be truncated by the per-request output limit;
 		// keep that distinct from an ordinary truncated answer.
 		if result.Truncated && result.WrapUp != "" {
-			fmt.Fprintln(stderr, output.WrapUpTruncatedNotice(result.OutputLimit))
+			fmt.Fprintln(stderr, output.WrapUpTruncatedNotice(opts.translator, result.OutputLimit))
 		} else if result.Truncated {
-			fmt.Fprintln(stderr, output.OutputLimitNotice(result.OutputLimit))
+			fmt.Fprintln(stderr, output.OutputLimitNotice(opts.translator, result.OutputLimit))
 		}
 		// Text mode: a usage summary on stderr (stdout stays the answer only).
 		fmt.Fprintln(stderr, runSummary(runner, result, time.Since(runStart), budget))

@@ -39,9 +39,6 @@ const (
 	// reports the process-wide 已中断 with exit 130, and run, ACP and stream-json
 	// keep the raw error text.
 	interruptNotice = "已中断本轮"
-	// interruptText is that wording for an interrupted command (:compact), which
-	// is not a turn.
-	interruptText = "已中断"
 
 	// replyTailLines caps how much of a continued session's last reply chat shows
 	// above the first prompt: the tail is what the person goes on from, and the
@@ -182,13 +179,14 @@ type agentProgressState struct {
 func newRenderer(opts rendererOptions) *Renderer {
 	r := &Renderer{opts: opts, agentProgress: make(map[string]*agentProgressState)}
 	r.spin = newThinkingSpinner(spinnerConfig{
-		enabled: opts.Spinner && opts.Color,
-		out:     opts.Out,
-		status:  opts.Status,
-		paint:   r.paintDim,
-		speed:   spinnerSpeed,
-		now:     opts.spinnerNow,
-		ticks:   opts.spinnerTicks,
+		enabled:    opts.Spinner && opts.Color,
+		out:        opts.Out,
+		status:     opts.Status,
+		paint:      r.paintDim,
+		speed:      spinnerSpeed,
+		now:        opts.spinnerNow,
+		ticks:      opts.spinnerTicks,
+		translator: opts.Translator,
 	})
 	r.resetLive()
 	return r
@@ -250,6 +248,9 @@ func (r *Renderer) BeginTurn() {
 // resetLive resets the per-turn text streaming state.
 func (r *Renderer) resetLive() {
 	r.live = output.NewPrefixedLiveText(r.opts.Out, r.answerPrefix())
+	// The renderer's own lines (the retry notice, the folded-code line) use the
+	// language chat was started with.
+	r.live.SetTranslator(r.tr())
 	// Whole lines first: the markdown renderer is built knowing whether it prints the
 	// message prefix itself.
 	r.live.SetWholeLines(r.opts.InputLineUp)
@@ -282,13 +283,13 @@ func (r *Renderer) toolRunning(name string) {
 		r.spin.Stop()
 		return
 	}
-	r.spin.SetLabel(toolLabel(name))
+	r.spin.SetLabel(toolLabel(r.tr(), name))
 }
 
 // toolCallArgs is the package's toolCallArgs (tool_summary.go) with the path
 // handling of this chat: paths inside the workspace are shown relative to it.
 func (r *Renderer) toolCallArgs(name, text string, full map[string]any) string {
-	return toolCallArgs(name, text, full, r.opts.Workspace)
+	return toolCallArgs(r.tr(), name, text, full, r.opts.Workspace)
 }
 
 // stopThinking clears the renderer's own waiting line before a write of this
@@ -384,7 +385,7 @@ func (r *Renderer) Handle(event personal.Event) {
 			r.startThinking()
 		}
 	case string(agentcore.StreamEventRetry):
-		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, output.RetryNotice(event)))
+		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, output.RetryNotice(r.tr(), event)))
 		r.startThinking() // the request is retried: still waiting for the model
 	case "loop_guard":
 		// The loop guard reminds the model not to repeat an identical tool call
@@ -397,7 +398,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		// been taken back to open before this turn (personal/recovery.go): say so
 		// on a line of its own, then keep waiting for the model.
 		r.stopThinking()
-		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, personal.SessionRecoveredNotice))
+		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, personal.SessionRecoveredNoticeWithTranslator(r.tr())))
 		r.startThinking()
 	}
 }
@@ -653,6 +654,7 @@ func (r *Renderer) Status(result personal.RunResult, elapsed time.Duration, stee
 		Elapsed: elapsed, EndTime: r.localNow(), Steers: steers,
 		// An answer cut off at the output limit is named in the status line.
 		Truncated: result.Truncated, OutputLimit: result.OutputLimit,
+		Translator: r.tr(),
 	}))
 	r.memory = nil
 }
@@ -673,6 +675,7 @@ func (r *Renderer) LastReply(text, sessionID string, incomplete bool) {
 	}
 	printLayout(r.opts.Out, r.opts.Color, BuildLastReplyNotices(LastReplyInfo{
 		Incomplete: incomplete, Omitted: omitted, SessionID: sessionID,
+		Translator: r.tr(),
 	}))
 	// The same marker and markdown rendering as a streamed answer.
 	r.Answer(strings.Join(body, "\n"))
@@ -696,6 +699,7 @@ func (r *Renderer) Banner() {
 		Provider: r.opts.Provider, Model: r.opts.Model,
 		Thinking: r.opts.Thinking, ContextWindow: r.opts.ContextWindow,
 		SessionName: r.opts.SessionName, WriteTools: r.opts.WriteTools,
+		Translator: r.tr(),
 	}))
 }
 

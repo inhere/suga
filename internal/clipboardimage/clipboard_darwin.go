@@ -3,20 +3,27 @@
 package clipboardimage
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // macOS clipboard reading: osascript knows «class PNGf» and can write those
-// bits to a file, which reads back as the PNG body (pbpaste is text-only).
-func platformReader() ImageReader { return readDarwinClipboard }
+// bits to a file, which reads back as the PNG body (pbpaste is text-only). tr
+// renders the reported name and the failure reasons.
+func platformReader(tr i18n.Translator) ImageReader {
+	return func() ([]byte, string, error) { return readDarwinClipboard(tr) }
+}
 
-func readDarwinClipboard() ([]byte, string, error) {
+func readDarwinClipboard(tr i18n.Translator) ([]byte, string, error) {
+	t := trOrFallback(tr)
 	f, err := os.CreateTemp("", "suga-clipboard-*.png")
 	if err != nil {
-		return nil, "", fmt.Errorf("无法创建剪贴板暂存文件：%w", err)
+		return nil, "", errors.New(t.T("host.clipboard.temp_create_failed", map[string]any{"err": err}))
 	}
 	name := f.Name()
 	_ = f.Close()
@@ -34,17 +41,19 @@ close access fd`, name)
 			// as «class PNGf»" failing: no picture then, not a broken setup.
 			return nil, "", ErrNoClipboardImage
 		}
-		return nil, "", fmt.Errorf("读取剪贴板失败（osascript）：%s", strings.TrimSpace(string(out)))
+		return nil, "", errors.New(t.T("host.clipboard.osascript_failed", map[string]any{"err": strings.TrimSpace(string(out))}))
 	}
 	if info, err := os.Stat(name); err == nil && info.Size() > maxClipboardBytes {
-		return nil, "", fmt.Errorf("剪贴板数据 %d 字节，超过 %d 字节，不读取", info.Size(), maxClipboardBytes)
+		return nil, "", errors.New(t.T("host.clipboard.darwin_too_large", map[string]any{
+			"bytes": info.Size(), "limit": maxClipboardBytes,
+		}))
 	}
 	data, err := os.ReadFile(name)
 	if err != nil {
-		return nil, "", fmt.Errorf("读取剪贴板暂存文件：%w", err)
+		return nil, "", errors.New(t.T("host.clipboard.read_temp_failed", map[string]any{"err": err}))
 	}
 	if len(data) == 0 {
 		return nil, "", ErrNoClipboardImage
 	}
-	return data, "剪贴板", nil
+	return data, t.T("host.clipboard.name"), nil
 }
