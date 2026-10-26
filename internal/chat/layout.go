@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -84,6 +85,8 @@ type BannerInfo struct {
 	// which keeps it off the head line.
 	SessionName string
 	// WriteTools selects the tool line: write and shell available, or read only.
+	// Translator is the host UI catalog; nil preserves legacy Chinese output.
+	Translator i18n.Translator
 	WriteTools bool
 }
 
@@ -99,7 +102,8 @@ const (
 // BuildBanner builds the chat header: the model in use, the commands, and
 // whether the tools can write.
 func BuildBanner(info BannerInfo) []LayoutLine {
-	head := "Suga chat"
+	t := trOf(info.Translator)
+	head := t.T("status.banner.title")
 	if label := modelLabel(info.Provider, info.Model); label != "" {
 		head += " · " + label
 	}
@@ -110,15 +114,15 @@ func BuildBanner(info BannerInfo) []LayoutLine {
 		head += " · ctx " + formatTokens(info.ContextWindow)
 	}
 	if info.SessionName != "" {
-		head += " · 会话 " + info.SessionName
+		head += " · " + t.T("status.banner.session", map[string]any{"name": info.SessionName})
 	}
-	tools := bannerReadOnlyText
+	tools := t.T("status.banner.read_only")
 	if info.WriteTools {
-		tools = bannerWriteToolsText
+		tools = t.T("status.banner.write_tools")
 	}
 	return []LayoutLine{
 		{Text: head, Color: color.Cyan},
-		{Text: bannerHelpText, Color: color.Gray},
+		{Text: t.T("status.banner.help"), Color: color.Gray},
 		{Text: tools, Color: color.Gray},
 	}
 }
@@ -130,9 +134,10 @@ type LastReplyInfo struct {
 	Incomplete bool
 	// Omitted is how many leading lines of a long reply are not shown (0: the
 	// whole reply is); a positive count adds the hint naming the trace command.
-	Omitted int
-	// SessionID only names the trace command of that hint.
+	Omitted   int
 	SessionID string
+	// Translator is the host UI catalog; nil preserves legacy Chinese output.
+	Translator i18n.Translator
 }
 
 // BuildLastReplyNotices builds the lines chat prints above the last reply of a
@@ -140,13 +145,14 @@ type LastReplyInfo struct {
 // fresh answer, then the notes about that reply. The reply body is not part of
 // them: the caller streams it like an answer (marker, markdown).
 func BuildLastReplyNotices(info LastReplyInfo) []LayoutLine {
-	lines := []LayoutLine{{Text: "上一次回复：", Color: color.Gray}}
+	t := trOf(info.Translator)
+	lines := []LayoutLine{{Text: t.T("status.last_reply.label"), Color: color.Gray}}
 	if info.Incomplete {
-		lines = append(lines, LayoutLine{Text: "上一回合未正常结束", Color: color.Gray})
+		lines = append(lines, LayoutLine{Text: t.T("status.last_reply.incomplete"), Color: color.Gray})
 	}
 	if info.Omitted > 0 {
 		lines = append(lines, LayoutLine{
-			Text:  fmt.Sprintf("已截断前 %d 行，完整记录见 suga inspect trace %s", info.Omitted, info.SessionID),
+			Text:  t.T("status.last_reply.truncated", map[string]any{"lines": info.Omitted, "session": info.SessionID}),
 			Color: color.Gray,
 		})
 	}
@@ -180,7 +186,9 @@ type TurnStatus struct {
 	// Truncated marks an answer the model cut off at the output token limit
 	// (personal.RunResult.Truncated); OutputLimit is that limit in tokens
 	// (0 = neither the configuration nor the provider named one).
-	Truncated   bool
+	Truncated bool
+	// Translator is the host UI catalog; nil preserves legacy Chinese output.
+	Translator  i18n.Translator
 	OutputLimit int
 }
 
@@ -188,6 +196,7 @@ type TurnStatus struct {
 // the turn, then the grey status line (model, token usage, how full the context
 // is, elapsed time, the local time the turn ended at, inserted messages).
 func BuildTurnStatus(s TurnStatus) []LayoutLine {
+	t := trOf(s.Translator)
 	lines := make([]LayoutLine, 0, len(s.Memory)+1)
 	for _, memory := range s.Memory {
 		lines = append(lines, LayoutLine{Text: memory, Color: color.Green})
@@ -211,7 +220,7 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 	// Inserted messages (steering) only, so the line is unchanged for a turn
 	// nobody typed into.
 	if s.Steers > 0 {
-		parts = append(parts, fmt.Sprintf("插话 %d", s.Steers))
+		parts = append(parts, t.T("status.turn.steers", map[string]any{"count": s.Steers}))
 	}
 	// Keep budget at the end of the ordinary status fields, as a persistent
 	// meter; a wrap-up reason or truncation note follows it when present.
@@ -225,9 +234,9 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 	// a finished one, and the limit names the setting that can raise it.
 	if s.Truncated {
 		if s.OutputLimit > 0 {
-			parts = append(parts, fmt.Sprintf("输出达到上限（%d tokens），回答被截断", s.OutputLimit))
+			parts = append(parts, t.T("status.turn.truncated_limit", map[string]any{"limit": s.OutputLimit}))
 		} else {
-			parts = append(parts, "输出达到上限，回答被截断")
+			parts = append(parts, t.T("status.turn.truncated"))
 		}
 	}
 	return append(lines, LayoutLine{Text: strings.Join(parts, " · "), Color: color.Gray})
