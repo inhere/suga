@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	capskills "github.com/inhere/suga/pkg/agentcore/skills"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -213,27 +214,34 @@ func TotalSuggestion() string { return totalSuggestion }
 // ContextNotices returns the resident context problems chat prints once when it
 // opens a session. Each line names what is wrong and the command that shows the
 // details; run and ACP log the same facts instead (see Runtime.ResidentReport).
-func ContextNotices(c ManifestContext, skills ManifestSkills) []string {
+func ContextNotices(tr i18n.Translator, c ManifestContext, skills ManifestSkills) []string {
+	t := approvalTr(tr)
 	var out []string
-	if t := c.Rules.Truncated; t != nil {
-		out = append(out, fmt.Sprintf("提示：项目规则已截断（原 %d 字节，保留 %d）；运行 suga inspect manifest 查看各来源文件。",
-			t.OriginalBytes, t.KeptBytes))
+	if cuts := c.Rules.Truncated; cuts != nil {
+		out = append(out, t.T("host.context.rules_truncated", map[string]any{
+			"original": cuts.OriginalBytes, "kept": cuts.KeptBytes,
+		}))
 	}
 	if len(c.OverBudget) > 0 {
 		var parts []string
 		for _, name := range c.OverBudget {
 			if name == "total" {
-				parts = append(parts, fmt.Sprintf("合计 %d/%d 字节", c.TotalBytes, ResidentTotalSoftBytes))
+				parts = append(parts, t.T("host.context.over_budget_total", map[string]any{
+					"bytes": c.TotalBytes, "limit": ResidentTotalSoftBytes,
+				}))
 				continue
 			}
 			part := c.Part(name)
-			parts = append(parts, fmt.Sprintf("%s %d/%d 字节", name, part.Bytes, part.LimitBytes))
+			parts = append(parts, t.T("host.context.over_budget_part", map[string]any{
+				"name": name, "bytes": part.Bytes, "limit": part.LimitBytes,
+			}))
 		}
-		out = append(out, fmt.Sprintf("提示：常驻上下文超过软阈值（%s）；运行 suga inspect manifest 查看分布与建议。", strings.Join(parts, ", ")))
+		out = append(out, t.T("host.context.over_budget", map[string]any{"parts": strings.Join(parts, ", ")}))
 	}
 	if n := len(skills.Skipped) + len(skills.Shadowed); n > 0 {
-		out = append(out, fmt.Sprintf("提示：%d 个 SKILL.md 被跳过、%d 个 skill 被同名遮蔽；运行 suga inspect manifest 查看原因与来源。",
-			len(skills.Skipped), len(skills.Shadowed)))
+		out = append(out, t.T("host.context.skills_skipped", map[string]any{
+			"skipped": len(skills.Skipped), "shadowed": len(skills.Shadowed),
+		}))
 	}
 	return out
 }

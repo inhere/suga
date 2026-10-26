@@ -9,11 +9,22 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // ErrNoClipboardImage is what a reader returns when this process could see a
 // clipboard but no picture is on it (chat shows it verbatim).
 var ErrNoClipboardImage = errors.New("剪贴板里没有图片")
+
+// trOrFallback keeps the historical Chinese hints when a caller did not pass the
+// startup-resolved catalog (the platform readers take it as a parameter).
+func trOrFallback(tr i18n.Translator) i18n.Translator {
+	if tr == nil {
+		return i18n.Fallback()
+	}
+	return tr
+}
 
 // fakeClipboardEnv gives the pseudo-terminal smoke a fake clipboard: the
 // environment names a picture file the reader hands over instead of touching
@@ -28,8 +39,9 @@ type ImageReader func() (data []byte, name string, err error)
 // Reader returns this platform's reader; with the fake clipboard named in the
 // environment it returns a file reader instead, so the smoke tests the whole
 // Alt+V flow without a real clipboard. maxClipboardBytes bounds what a reader
-// may hand back.
-func Reader() ImageReader {
+// may hand back. tr is the host UI catalog of the platform hints (the name the
+// picture is reported under, the reasons a read fails).
+func Reader(tr i18n.Translator) ImageReader {
 	if p := os.Getenv(fakeClipboardEnv); p != "" {
 		return func() ([]byte, string, error) {
 			data, err := os.ReadFile(p)
@@ -39,7 +51,7 @@ func Reader() ImageReader {
 			return data, filepath.Base(p), nil
 		}
 	}
-	return platformReader()
+	return platformReader(tr)
 }
 
 // maxClipboardBytes is the largest thing a clipboard read hands over (well

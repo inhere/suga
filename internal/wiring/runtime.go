@@ -272,7 +272,7 @@ func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
 		})
 		approver = chatGate
 		// Memory writes of tainted sessions are confirmed at the same terminal.
-		opts.MemoryConfirm = newChatMemoryConfirmer(asker).confirm
+		opts.MemoryConfirm = newChatMemoryConfirmer(asker, opts.Translator).confirm
 		opts.approvalSnapshot = func() approvalPolicy {
 			chatGate.mu.Lock()
 			defer chatGate.mu.Unlock()
@@ -316,6 +316,12 @@ func toolsAllowWrite() (bool, error) {
 		return false, fmt.Errorf("tools.allow_write must be a boolean (true or false), got %v", value)
 	}
 }
+
+// AssembleTranslator resolves the startup UI catalog from configuration and
+// SUGA_LANGUAGE, the way Open and the manifest do. The ACP server resolves it
+// once at startup, before any runtime is opened, for the notices it sends the
+// client itself.
+func AssembleTranslator() (i18n.Translator, ManifestLanguage, error) { return assembleTranslator() }
 
 func assembleTranslator() (i18n.Translator, ManifestLanguage, error) {
 	configured := ""
@@ -774,7 +780,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// the log once per process, so stdout and the ACP stream stay unchanged.
 	if !opts.ChatMode {
 		report := resident(ctx)
-		for _, notice := range ContextNotices(report.Context, report.Skills) {
+		for _, notice := range ContextNotices(translator, report.Context, report.Skills) {
 			slog.Warn("resident context", "notice", notice)
 		}
 	}
@@ -784,7 +790,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		// :skills lists what the registry holds right now; :context reports the
 		// same resident parts the manifest and the start notice measure, plus what
 		// the visibility layer deferred (the tool table leaves those out).
-		Skills: func() []SkillInfo { return SkillInfos(skillReg) },
+		Skills: func() []SkillInfo { return SkillInfos(translator, skillReg) },
 		ContextReport: func(rctx context.Context) ContextReport {
 			deferred, loaded := 0, 0
 			if vis != nil {

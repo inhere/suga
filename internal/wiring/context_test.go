@@ -145,7 +145,7 @@ func TestBuildManifestSkillsDiagnostics(t *testing.T) {
 // at the manifest, and nothing is said when everything is in budget.
 func TestContextNotices(t *testing.T) {
 	t.Run("none", func(t *testing.T) {
-		assert.Len(t, ContextNotices(ManifestContext{}, ManifestSkills{}), 0)
+		assert.Len(t, ContextNotices(nil, ManifestContext{}, ManifestSkills{}), 0)
 	})
 
 	t.Run("truncated and over budget and skills", func(t *testing.T) {
@@ -158,7 +158,7 @@ func TestContextNotices(t *testing.T) {
 			Skipped:  []ManifestSkillSkipped{{Path: "/s/bad/SKILL.md", Err: "x"}},
 			Shadowed: []ManifestSkillShadow{{Name: "dup", Winner: "/a", Loser: "/b"}},
 		}
-		notices := ContextNotices(c, sk)
+		notices := ContextNotices(nil, c, sk)
 		assert.Require(t, assert.Len(t, notices, 3))
 		for _, notice := range notices {
 			assert.StrContains(t, notice, "suga inspect manifest")

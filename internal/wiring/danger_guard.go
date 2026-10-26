@@ -3,7 +3,6 @@ package wiring
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -60,13 +59,14 @@ func (g *dangerGuard) confirm(ctx context.Context, call agentcore.ToolCall, reas
 	defer a.mu.Unlock()
 	command, _ := call.Arguments["command"].(string)
 	asked := time.Now()
+	t := approvalTr(a.translator)
 	answer, err := a.asker.Ask(ctx, tools.Question{
 		Tool: call.Name,
 		Details: []string{
-			"命令：" + displaySafe(redact.Secrets(command)),
-			"⚠ 危险删除：" + displaySafe(reason) + "，删除后无法恢复",
+			t.T("host.danger.command", map[string]any{"command": displaySafe(redact.Secrets(command))}),
+			t.T("host.danger.detail", map[string]any{"reason": displaySafe(reason)}),
 		},
-		Prompt: fmt.Sprintf("确认执行 %s？输入 yes 执行，其它任意输入拒绝：", call.Name),
+		Prompt: t.T("host.danger.prompt", map[string]any{"tool": call.Name}),
 	})
 	if errors.Is(err, tools.ErrCannotAsk) {
 		return tools.Denied("已拒绝危险删除（无法向用户确认）：" + reason)

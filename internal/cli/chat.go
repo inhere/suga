@@ -73,7 +73,7 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 	var contextNotices []string
 	if runtime.Resident != nil {
 		report := runtime.Resident(ctx)
-		contextNotices = wiring.ContextNotices(report.Context, report.Skills)
+		contextNotices = wiring.ContextNotices(runtime.Translator, report.Context, report.Skills)
 	}
 	// :skills and :context read the runtime's skill registry and its resident
 	// context measurement; chat only renders them, so the numbers stay those of
