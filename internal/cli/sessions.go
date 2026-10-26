@@ -247,6 +247,7 @@ func emptyScopeHint(dir string, otherDirs int) string {
 // An empty result also names the host-managed sessions the default origin
 // filter hid, when there are any.
 func writeEmptyHint(errOut io.Writer, sameDirScope bool, here string, otherDirs, hiddenXhen int, rows []sessionRow) {
+	tr := cliTranslator()
 	if len(rows) > 0 {
 		return
 	}
@@ -254,15 +255,16 @@ func writeEmptyHint(errOut io.Writer, sameDirScope bool, here string, otherDirs,
 		fmt.Fprintln(errOut, emptyScopeHint(here, otherDirs))
 	}
 	if hiddenXhen > 0 {
-		fmt.Fprintf(errOut, "另有 %d 个 origin=xhen 的会话未列出（--origin xhen 查看，--origin all 列出全部来源）\n", hiddenXhen)
+		fmt.Fprintf(errOut, "%s\n", cliText(tr, "cli.sessions.xhen_hidden", map[string]any{"count": hiddenXhen}))
 	}
 }
 
 // writeSessionRows renders the table; the header names the scope, so a list
 // read from another directory never looks like the whole catalog.
 func writeSessionRows(out io.Writer, rows []sessionRow, total int, here string, sameDirScope bool) error {
+	tr := cliTranslator()
 	if sameDirScope {
-		fmt.Fprintf(out, "当前目录 %s 的会话（--all 列出全部）\n", here)
+		fmt.Fprintln(out, cliText(tr, "cli.sessions.header", map[string]any{"cwd": here}))
 	}
 	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "UPDATED\tID\tMODEL\tSUGA\tTITLE\tDIRECTORY")
@@ -285,7 +287,7 @@ func writeSessionRows(out io.Writer, rows []sessionRow, total int, here string, 
 		return err
 	}
 	if total > len(rows) {
-		_, err := fmt.Fprintf(out, "%d of %d sessions; -n 0 shows all\n", len(rows), total)
+		_, err := fmt.Fprintln(out, cliText(tr, "cli.sessions.total", map[string]any{"shown": len(rows), "total": total}))
 		return err
 	}
 	return nil

@@ -63,13 +63,13 @@ func compileOutputSchema(value string, stdin io.Reader) (*outschema.Contract, []
 // contractSummary is text mode's closing line of a contract that never passed:
 // how many correction rounds ran and the first error. stdout stays the answer.
 func contractSummary(rep personal.ContractReport) string {
-	detail := "回答里没有找到 JSON 值"
+	tr := cliTranslator()
+	detail := cliText(tr, "cli.schema.no_json")
 	if len(rep.Errors) > 0 {
 		detail = rep.Errors[0].String()
 		if len(rep.Errors) > 1 {
 			detail = fmt.Sprintf("%s（共 %d 条）", detail, len(rep.Errors))
 		}
 	}
-	return fmt.Sprintf("[output schema] 回答不符合调用方的 JSON Schema（已纠正 %d 次）：%s",
-		max(rep.Rounds-1, 0), detail)
+	return cliText(tr, "cli.schema.invalid", map[string]any{"rounds": max(rep.Rounds-1, 0), "detail": detail})
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gookit/goutil/cflag/capp"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 )
 
@@ -63,58 +64,59 @@ func runDataUsage(ctx context.Context, out io.Writer, asJSON bool, top int) erro
 // commands use: one block per question, with the command that acts on it. The
 // file path stands on its own line so a long home does not stretch the table.
 func writeDataUsage(out io.Writer, rep store.UsageReport) error {
-	fmt.Fprintf(out, "库文件 %s（%s）\n", rep.File.Path, humanBytes(rep.File.Bytes))
+	tr := cliTranslator()
+	fmt.Fprintln(out, cliText(tr, "cli.data.usage.file", map[string]any{"path": rep.File.Path, "bytes": humanBytes(rep.File.Bytes)}))
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "  页\t%d × %d 页\t\n", rep.File.PageSize, rep.File.Pages)
-	fmt.Fprintf(tw, "  空闲页\t%d 页\t%s\n", rep.File.FreePages, humanBytes(rep.File.FreeBytes))
-	fmt.Fprintf(tw, "  WAL\t\t%s\n", humanBytes(rep.File.WALBytes))
+	fmt.Fprintf(tw, "  %s\t%d × %d %s\t\n", cliText(tr, "cli.data.usage.pages"), rep.File.PageSize, rep.File.Pages, cliText(tr, "cli.data.usage.pages"))
+	fmt.Fprintf(tw, "  %s\t%d %s\t%s\n", cliText(tr, "cli.data.usage.free_pages"), rep.File.FreePages, cliText(tr, "cli.data.usage.pages"), humanBytes(rep.File.FreeBytes))
+	fmt.Fprintf(tw, "  %s\t\t%s\n", cliText(tr, "cli.data.usage.wal"), humanBytes(rep.File.WALBytes))
 	// entries
-	fmt.Fprintf(tw, "entries\t%d 条\t%s\n", rep.Entries.Rows, humanBytes(rep.Entries.Bytes))
+	fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.entries"), rep.Entries.Rows, humanBytes(rep.Entries.Bytes))
 	for _, stat := range rep.Entries.Types {
 		fmt.Fprintf(tw, "  %s\t%d 条\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
 	}
 	if rep.Entries.Assistant.Rows > 0 {
-		fmt.Fprintf(tw, "assistant 字段（库内）\t%d 条\t%s\n", rep.Entries.Assistant.Rows, humanBytes(rep.Entries.Assistant.Bytes))
+		fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.assistant"), rep.Entries.Assistant.Rows, humanBytes(rep.Entries.Assistant.Bytes))
 		for _, stat := range rep.Entries.Assistant.Fields {
 			fmt.Fprintf(tw, "  %s\t\t%s\n", stat.Name, humanBytes(stat.Bytes))
 		}
 	}
 	if len(rep.Entries.Assistant.MetadataKeys) > 0 {
-		fmt.Fprintln(tw, "Metadata 键（库内）\t\t")
+		fmt.Fprintln(tw, cliText(tr, "cli.data.usage.metadata")+"\t\t")
 		for _, stat := range rep.Entries.Assistant.MetadataKeys {
 			fmt.Fprintf(tw, "  %s\t\t%s\n", stat.Name, humanBytes(stat.Bytes))
 		}
 	}
 	if len(rep.Entries.Assistant.Tools) > 0 {
-		fmt.Fprintln(tw, "工具调用参数（库内）\t调用次数\t")
+		fmt.Fprintln(tw, cliText(tr, "cli.data.usage.tool_args")+"\t调用次数\t")
 		for _, stat := range rep.Entries.Assistant.Tools {
 			fmt.Fprintf(tw, "  %s\t%d 次\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
 		}
 	}
 	if rep.Entries.Tool.Stub.Rows+rep.Entries.Tool.Inline.Rows > 0 {
-		fmt.Fprintf(tw, "tool 结果（桩）\t%d 条\t%s\n", rep.Entries.Tool.Stub.Rows, humanBytes(rep.Entries.Tool.Stub.Bytes))
-		fmt.Fprintf(tw, "tool 结果（库内）\t%d 条\t%s\n", rep.Entries.Tool.Inline.Rows, humanBytes(rep.Entries.Tool.Inline.Bytes))
+		fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.tool_stub"), rep.Entries.Tool.Stub.Rows, humanBytes(rep.Entries.Tool.Stub.Bytes))
+		fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.tool_inline"), rep.Entries.Tool.Inline.Rows, humanBytes(rep.Entries.Tool.Inline.Bytes))
 	}
 	// The bodies that left the ledger live in the session files: their count and
 	// the file bytes say how much the ledger no longer holds.
 	if rep.Entries.Tool.Stub.Rows+rep.Entries.MovedAssistant.Rows > 0 {
-		fmt.Fprintf(tw, "已移出到文件\ttool %d 条 / assistant %d 条\t%s\n",
+		fmt.Fprintf(tw, "%s\ttool %d 条 / assistant %d 条\t%s\n", cliText(tr, "cli.data.usage.moved"),
 			rep.Entries.Tool.Stub.Rows, rep.Entries.MovedAssistant.Rows, humanBytes(rep.Sessions.Tools.Bytes))
 	}
 	// events
-	fmt.Fprintf(tw, "events（attrs_json + error）\t%d 条\t%s\n", rep.Events.Rows, humanBytes(rep.Events.Bytes))
+	fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.events"), rep.Events.Rows, humanBytes(rep.Events.Bytes))
 	for _, stat := range rep.Events.Kinds {
 		fmt.Fprintf(tw, "  %s\t%d 条\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
 	}
 	// FTS
-	fmt.Fprintf(tw, "全文索引\t%d 行\t%s\n", rep.FTS.Rows, humanBytes(rep.FTS.Bytes))
+	fmt.Fprintf(tw, "%s\t%d 行\t%s\n", cliText(tr, "cli.data.usage.fts"), rep.FTS.Rows, humanBytes(rep.FTS.Bytes))
 	fmt.Fprintf(tw, "  entries_fts_data\t\t%s\n", humanBytes(rep.FTS.DataBytes))
 	fmt.Fprintf(tw, "  entries_fts_content\t\t%s\n", humanBytes(rep.FTS.ContentBytes))
 	for _, stat := range rep.FTS.Roles {
 		fmt.Fprintf(tw, "  role=%s\t%d 行\t\n", stat.Name, stat.Rows)
 	}
 	// sessions directory
-	fmt.Fprintf(tw, "会话目录\t%d 个（库内 %d 个会话）\t\n", rep.Sessions.Dirs, rep.Sessions.InStore)
+	fmt.Fprintf(tw, "%s\t%d 个（库内 %d 个会话）\t\n", cliText(tr, "cli.data.usage.sessions"), rep.Sessions.Dirs, rep.Sessions.InStore)
 	// One line per body file name found: a store restored from an old backup can
 	// hold both tools.jsonl and bodies.jsonl.
 	for _, stat := range rep.Sessions.BodyFiles {
@@ -124,11 +126,11 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	fmt.Fprintf(tw, "  images/\t%d 个文件\t%s\n", rep.Sessions.Images.Files, humanBytes(rep.Sessions.Images.Bytes))
 	fmt.Fprintf(tw, "  snapshots/\t%d 个文件\t%s\n", rep.Sessions.Snapshots.Files, humanBytes(rep.Sessions.Snapshots.Bytes))
 	if rep.Sessions.Other.Files > 0 {
-		fmt.Fprintf(tw, "  其他\t%d 个文件\t%s\n", rep.Sessions.Other.Files, humanBytes(rep.Sessions.Other.Bytes))
+		fmt.Fprintf(tw, "  %s\t%d 个文件\t%s\n", cliText(tr, "cli.data.usage.other"), rep.Sessions.Other.Files, humanBytes(rep.Sessions.Other.Bytes))
 	}
 	// dbstat: the real page usage of each table and index.
 	if rep.DBStat {
-		fmt.Fprintln(tw, "表/索引（dbstat）\t\t")
+		fmt.Fprintln(tw, cliText(tr, "cli.data.usage.tables")+"\t\t")
 		for _, table := range rep.Tables {
 			fmt.Fprintf(tw, "  %s\t\t%s\n", table.Name, humanBytes(table.Bytes))
 		}
@@ -141,12 +143,11 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	if err := writeUsageTopSessions(out, rep.Sessions.Top); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "合计 %s：库文件 %s + 会话目录 %s\n", humanBytes(rep.TotalBytes),
-		humanBytes(rep.File.Bytes), humanBytes(rep.TotalBytes-rep.File.Bytes))
+	fmt.Fprintln(out, cliText(tr, "cli.data.usage.total", map[string]any{"total": humanBytes(rep.TotalBytes), "file": humanBytes(rep.File.Bytes), "sessions": humanBytes(rep.TotalBytes - rep.File.Bytes)}))
 	if !rep.DBStat {
-		fmt.Fprintln(out, "本次构建的 SQLite 没有 dbstat：上面的条目字节不含 B 树与页内开销")
+		fmt.Fprintln(out, cliText(tr, "cli.data.usage.no_dbstat"))
 	}
-	writeUsageSuggestions(out, rep)
+	writeUsageSuggestions(out, rep, tr)
 	return nil
 }
 
@@ -156,7 +157,7 @@ func writeUsageTopSessions(out io.Writer, sessions []store.UsageSession) error {
 	if len(sessions) == 0 {
 		return nil
 	}
-	fmt.Fprintln(out, "最大的会话（库内 + 目录）：")
+	fmt.Fprintln(out, cliText(cliTranslator(), "cli.data.usage.largest"))
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	for _, session := range sessions {
 		title := session.Title
@@ -180,7 +181,7 @@ func truncateTitle(title string) string {
 
 // writeUsageSuggestions prints the "what now" line of every section that found
 // something to do.
-func writeUsageSuggestions(out io.Writer, rep store.UsageReport) {
+func writeUsageSuggestions(out io.Writer, rep store.UsageReport, tr i18n.Translator) {
 	var hints []string
 	for _, hint := range []string{
 		rep.File.Suggestion, rep.Entries.Suggestion, rep.Events.Suggestion,
@@ -193,7 +194,7 @@ func writeUsageSuggestions(out io.Writer, rep store.UsageReport) {
 	if len(hints) == 0 {
 		return
 	}
-	fmt.Fprintln(out, "可处理：")
+	fmt.Fprintln(out, cliText(tr, "cli.data.usage.actionable"))
 	for _, hint := range hints {
 		fmt.Fprintf(out, "  - %s\n", hint)
 	}

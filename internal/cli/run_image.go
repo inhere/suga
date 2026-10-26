@@ -37,6 +37,7 @@ func prepareRunImages(rt *wiring.Runtime, paths []string) ([]agentcore.ImagePart
 // names the model in the "cannot see" error; the reader failures already name
 // the path.
 func loadRunImages(read imageReader, gate visionGate, paths []string, modelRef string) ([]agentcore.ImagePart, error) {
+	tr := cliTranslator()
 	if len(paths) == 0 {
 		return nil, nil
 	}
@@ -45,11 +46,10 @@ func loadRunImages(read imageReader, gate visionGate, paths []string, modelRef s
 	// silently discard an image): the CLI carries no :model switch, the caller
 	// picks the model with --model or the config's vision setting.
 	if gate != nil && !gate.CanSee() {
-		return nil, fmt.Errorf("当前模型 %s 不支持看图，无法使用 --image 附图；请用 --model 指定支持看图的模型，或在配置中为该模型开启 vision",
-			termtext.Clean(modelRef))
+		return nil, fmt.Errorf("%s", cliText(tr, "cli.run.image_vision", map[string]any{"model": termtext.Clean(modelRef)}))
 	}
 	if len(paths) > maxRunImages {
-		return nil, fmt.Errorf("--image 最多 %d 张，收到 %d 张", maxRunImages, len(paths))
+		return nil, fmt.Errorf("%s", cliText(tr, "cli.run.image_too_many", map[string]any{"max": maxRunImages, "count": len(paths)}))
 	}
 	images := make([]agentcore.ImagePart, 0, len(paths))
 	for i, path := range paths {
@@ -57,7 +57,7 @@ func loadRunImages(read imageReader, gate visionGate, paths []string, modelRef s
 		if err != nil {
 			// One unreadable picture fails the whole run: the model must never
 			// answer without knowing a picture was meant to be there.
-			return nil, fmt.Errorf("读取 --image 第 %d 个（%s）失败：%v", i+1, path, err)
+			return nil, fmt.Errorf("%s", cliText(tr, "cli.run.image_read_failed", map[string]any{"index": i + 1, "path": path, "error": err}))
 		}
 		images = append(images, part)
 	}

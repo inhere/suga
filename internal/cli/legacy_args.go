@@ -154,16 +154,17 @@ func removedDataHint(args []string) string {
 	if !ok {
 		return ""
 	}
-	hint := "提示：suga data " + form + " 已在 " + dataCommandRemoval + " 移除"
+	tr := cliTranslator()
 	if replacement != "" {
-		return hint + "，改用 " + replacement
+		return cliText(tr, "cli.legacy.data_hint", map[string]any{"form": form, "version": dataCommandRemoval, "replacement": replacement})
 	}
-	return hint + "；它只用于把 v0.35 及更早的库迁移到当前格式，若需迁移旧库请用 v0.40"
+	return cliText(tr, "cli.legacy.data_migration", map[string]any{"form": form, "version": dataCommandRemoval})
 }
 
 // hintFor formats the hint shown when an old command form is typed.
 func hintFor(old, new string) string {
-	return "提示：suga " + old + " 已改为 suga " + new + "，旧写法已在 " + legacyCommandRemoval + " 移除"
+	tr := cliTranslator()
+	return cliText(tr, "cli.legacy.hint", map[string]any{"old": old, "new": new, "version": legacyCommandRemoval})
 }
 
 // containsArg reports whether the exact flag is among the arguments.
