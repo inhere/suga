@@ -33,19 +33,20 @@ func newInitCommand(stdout, stderr io.Writer) *capp.Cmd {
 }
 
 func writeInitResult(out io.Writer, result appconfig.BootstrapResult) error {
+	tr := cliTranslator()
 	if result.Source == "explicit" {
-		_, err := fmt.Fprintf(out, "已指定 SUGA_CONFIG=%s，未写入 home config\n", os.Getenv("SUGA_CONFIG"))
+		_, err := fmt.Fprintf(out, "%s\n", cliText(tr, "cli.init.explicit", map[string]any{"path": os.Getenv("SUGA_CONFIG")}))
 		return err
 	}
 	if result.Backup != "" {
-		if _, err := fmt.Fprintf(out, "已备份 %s -> %s\n", result.Config, result.Backup); err != nil {
+		if _, err := fmt.Fprintf(out, "%s\n", cliText(tr, "cli.init.backup", map[string]any{"config": result.Config, "backup": result.Backup})); err != nil {
 			return err
 		}
 	}
 	if result.CreatedConfig {
-		_, err := fmt.Fprintf(out, "已写入 %s\n", result.Config)
+		_, err := fmt.Fprintf(out, "%s\n", cliText(tr, "cli.init.written", map[string]any{"config": result.Config}))
 		return err
 	}
-	_, err := fmt.Fprintf(out, "已存在 %s，未覆盖\n", result.Config)
+	_, err := fmt.Fprintf(out, "%s\n", cliText(tr, "cli.init.exists", map[string]any{"config": result.Config}))
 	return err
 }

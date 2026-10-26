@@ -16,6 +16,7 @@ import (
 // newBackupCommand registers the archive command. Archive implementation and
 // validation live in personal/backup so non-CLI callers use the same format.
 func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version string) *capp.Cmd {
+	tr := cliTranslator()
 	var output string
 	var includeSpill bool
 	cmd := capp.NewCmd("backup", "Create a verified suga data backup archive", func(c *capp.Cmd) error {
@@ -38,7 +39,7 @@ func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version str
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(stdout, "备份完成：%d 个文件（tool 正文文件 %d 个），spill=%s，归档=%s\n", len(manifest.Files), manifest.ToolBodies.FileCount, manifest.Spill.Policy, output)
+		_, err = fmt.Fprintf(stdout, "%s\n", cliText(tr, "cli.backup.done", map[string]any{"files": len(manifest.Files), "tool_files": manifest.ToolBodies.FileCount, "spill": manifest.Spill.Policy, "archive": output}))
 		return err
 	})
 	cmd.SetOutput(stderr)
@@ -48,6 +49,7 @@ func newBackupCommand(ctx context.Context, stdout, stderr io.Writer, version str
 }
 
 func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, version string) *capp.Cmd {
+	tr := cliTranslator()
 	var dryRun, noAuto bool
 	cmd := capp.NewCmd("restore", "Restore a verified suga data backup archive", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) != 0 {
@@ -63,11 +65,11 @@ func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(stdout, "校验通过：%d 个文件，spill=%s（dry-run，未写入）\n", len(manifest.Files), manifest.Spill.Policy)
+			_, err = fmt.Fprintf(stdout, "%s\n", cliText(tr, "cli.backup.valid", map[string]any{"files": len(manifest.Files), "spill": manifest.Spill.Policy}))
 			return err
 		}
 		if noAuto {
-			if _, err := fmt.Fprintln(stderr, "已禁用恢复前自动备份。请输入 YES 确认继续："); err != nil {
+			if _, err := fmt.Fprintln(stderr, cliText(tr, "cli.backup.no_auto")); err != nil {
 				return err
 			}
 			line, readErr := bufio.NewReader(stdin).ReadString('\n')
@@ -75,7 +77,7 @@ func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 				return readErr
 			}
 			if strings.TrimSpace(line) != "YES" {
-				return fmt.Errorf("restore cancelled: --no-auto-backup requires YES")
+				return fmt.Errorf("%s", cliText(tr, "cli.backup.cancelled"))
 			}
 		}
 		// Restore replaces the ledger: the same exclusive window as `gc --vacuum`
@@ -93,22 +95,23 @@ func newRestoreCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 		if err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(stdout, "恢复完成：备份创建时间 %s\n", when); err != nil {
+		if _, err := fmt.Fprintf(stdout, "%s\n", cliText(tr, "cli.backup.restore_done", map[string]any{"when": when})); err != nil {
 			return err
 		}
 		// The session files hold the only copy of a moved tool body, so verify them
 		// against the restored ledger before the command reports success.
 		report, err := backup.ToolBodyCheck(ctx, home)
 		if err != nil {
-			return fmt.Errorf("恢复已完成，但 tool 正文校验未能运行: %w", err)
+			return fmt.Errorf("%s", cliText(tr, "cli.backup.done_check", map[string]any{"error": err}))
 		}
-		if _, err := fmt.Fprintf(stdout, "tool 正文校验：检查 %d 条，缺失 %d 条，无引用的记录 %d 条（%d 字节）\n",
-			report.Checked, report.Missing, report.OrphanRecords, report.OrphanBytes); err != nil {
-			return err
+		if _, err := fmt.Fprintf(stdout, "%s\n", cliText(tr, "cli.backup.check", map[string]any{"checked": report.Checked, "missing": report.Missing, "orphans": report.OrphanRecords, "bytes": report.OrphanBytes})); err != nil {
+			if err != nil {
+				return err
+			}
 		}
 		if !report.OK() {
 			for _, problem := range report.Problems {
-				if _, err := fmt.Fprintf(stderr, "缺少 tool 正文: %s\n", problem); err != nil {
+				if _, err := fmt.Fprintf(stderr, "%s\n", cliText(tr, "cli.backup.missing", map[string]any{"problem": problem})); err != nil {
 					return err
 				}
 			}

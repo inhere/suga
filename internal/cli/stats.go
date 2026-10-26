@@ -122,9 +122,9 @@ func writeStatsText(out io.Writer, rep store.Report) error {
 		}
 		model := termtext.Clean(m.Provider + "/" + m.Model)
 		if hasEstimated {
-			fmt.Fprintf(tw, "%s\t%d\t%.1f\t%dms\t%dms\t%s\t%d\t%d\t%d\t%d\t%.1f\t$%.4f\t%d 次估算\n",
+			fmt.Fprintf(tw, "%s\t%d\t%.1f\t%dms\t%dms\t%s\t%d\t%d\t%d\t%d\t%.1f\t$%.4f\t%s\n",
 				model, m.Calls, m.ErrorRate*100, m.P50Ms, m.P95Ms, ttft,
-				m.InputTokens, m.OutputTokens, m.CacheRead, m.CacheWrite, m.CacheHitRate*100, m.CostUSD, m.EstimatedCalls)
+				m.InputTokens, m.OutputTokens, m.CacheRead, m.CacheWrite, m.CacheHitRate*100, m.CostUSD, cliText(cliTranslator(), "cli.stats.estimated", map[string]any{"count": m.EstimatedCalls}))
 		} else {
 			fmt.Fprintf(tw, "%s\t%d\t%.1f\t%dms\t%dms\t%s\t%d\t%d\t%d\t%d\t%.1f\t$%.4f\n",
 				model, m.Calls, m.ErrorRate*100, m.P50Ms, m.P95Ms, ttft,

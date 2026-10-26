@@ -239,7 +239,7 @@ func writeManifestContext(b *strings.Builder, c wiring.ManifestContext) {
 		fmt.Fprintf(b, "  rule file %s: %d bytes ~%d tokens%s\n", f.Path, f.Bytes, f.Tokens, flags)
 	}
 	if t := c.Rules.Truncated; t != nil {
-		fmt.Fprintf(b, "  rules truncated: 已截断（原 %d 字节，保留 %d）\n", t.OriginalBytes, t.KeptBytes)
+		fmt.Fprintf(b, "  %s\n", cliText(cliTranslator(), "cli.manifest.truncated", map[string]any{"original": t.OriginalBytes, "kept": t.KeptBytes}))
 	}
 	if c.MemoryIndex.Note != "" {
 		fmt.Fprintf(b, "  memory_index note: %s\n", c.MemoryIndex.Note)

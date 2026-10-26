@@ -74,6 +74,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 	var sendWait, sendSteer, sendWaitProcessed bool
 	var sendImages []string
 	send := capp.NewCmd("send", "Send text to a local Suga chat process", func(c *capp.Cmd) error {
+		tr := cliTranslator()
 		// The session check runs before any stdin read, so a missing --session
 		// fails at once instead of blocking on input.
 		if strings.TrimSpace(sendSession) == "" {
@@ -134,8 +135,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		if errors.Is(err, personalprocess.ErrImagesUnsupported) {
 			// The receiver does not know Request.Images at all: nothing of the message
 			// was taken (design send --image D2).
-			return processExitError{code: 5, err: fmt.Errorf("目标会话 %s（进程 %d）的 suga 版本不支持附图，未投递消息；请在新版本里重新打开该会话：%w",
-				record.SessionID, record.PID, err)}
+			return processExitError{code: 5, err: fmt.Errorf("%s", cliText(tr, "cli.send.image_unsupported", map[string]any{"session": record.SessionID, "pid": record.PID, "error": err}))}
 		}
 		if err != nil {
 			return err
@@ -143,7 +143,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		if response.Warning != "" {
 			// Accepted with a caveat (the model cannot see pictures, so they became a
 			// text note): the sender shows it and still exits 0.
-			fmt.Fprintln(stderr, "提示："+response.Warning)
+			fmt.Fprintln(stderr, cliText(tr, "cli.send.warning", map[string]any{"warning": response.Warning}))
 		}
 		// A --wait-processed sender learns the message's terminal state: one that failed
 		// (or was discarded on the way) exits 3, like --wait does for a discarded
@@ -152,11 +152,11 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 		if sendWaitProcessed {
 			// The state is what the sender was waiting for: processed, held (a failed
 			// turn moved it to the person's next turn) or a failure (exit 3).
-			fmt.Fprintf(stderr, "状态：%s\n", response.State)
+			fmt.Fprintf(stderr, "%s\n", cliText(tr, "cli.send.state", map[string]any{"state": response.State}))
 			switch response.State {
 			case personalprocess.StateFailed, personalprocess.StateDiscarded:
 				fmt.Fprintf(stderr, "id: %s\n", messageID)
-				return processExitError{code: 3, err: fmt.Errorf("消息未处理（%s）", response.State)}
+				return processExitError{code: 3, err: fmt.Errorf("%s", cliText(tr, "cli.send.failed", map[string]any{"state": response.State}))}
 			}
 		}
 		switch {
@@ -168,7 +168,7 @@ func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {
 			if sendSteer {
 				// A --steer that met no turn it could be inserted into is queued for the
 				// next turn, like a plain delivery.
-				fmt.Fprintln(stderr, "未插入当前回合，已排队")
+				fmt.Fprintln(stderr, cliText(tr, "cli.send.steer_queued"))
 			} else {
 				fmt.Fprintln(stderr, "queued")
 			}

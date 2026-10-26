@@ -20,13 +20,12 @@ const maxSendImages = 16
 // pictures, design send --image D2/D3); the pictures then go into the target
 // session's images directory below $SUGA_HOME/sessions/<sid>/images.
 func sendImageRefs(record personalprocess.Record, paths []string) ([]personalprocess.ImageRef, error) {
+	tr := cliTranslator()
 	if len(paths) == 0 {
 		return nil, nil
 	}
 	if !record.HasFeature(personalprocess.FeatureImages) {
-		return nil, processExitError{code: 5, err: fmt.Errorf(
-			"目标会话 %s（进程 %d）的 suga 版本不支持附图，未投递消息；请在新版本里重新打开该会话",
-			record.SessionID, record.PID)}
+		return nil, processExitError{code: 5, err: fmt.Errorf("%s", cliText(tr, "cli.send.image_unsupported_short", map[string]any{"session": record.SessionID, "pid": record.PID}))}
 	}
 	sessionsDir, err := appconfig.ResolveSessionsDir()
 	if err != nil {
@@ -54,22 +53,23 @@ func sendImageRefs(record personalprocess.Record, paths []string) ([]personalpro
 // Any failure explains that nothing was delivered: a half-delivered message
 // (text without its picture) is worse than no message.
 func prepareSendImages(paths []string, cwd, sessionsDir, sessionID string) ([]personalprocess.ImageRef, error) {
+	tr := cliTranslator()
 	if len(paths) == 0 {
 		return nil, nil
 	}
 	if len(paths) > maxSendImages {
-		return nil, fmt.Errorf("--image 最多 %d 张，收到 %d 张；未投递任何内容", maxSendImages, len(paths))
+		return nil, fmt.Errorf("%s", cliText(tr, "cli.image.too_many", map[string]any{"max": maxSendImages, "count": len(paths)}))
 	}
 	imagesDir := store.SessionImagesDir(sessionsDir, sessionID)
 	refs := make([]personalprocess.ImageRef, 0, len(paths))
 	for i, path := range paths {
 		part, _, err := wiring.ReadImageAt(cwd, path)
 		if err != nil {
-			return nil, fmt.Errorf("读取 --image 第 %d 个（%s）失败：%v；未投递任何内容", i+1, path, err)
+			return nil, fmt.Errorf("%s", cliText(tr, "cli.image.read_failed", map[string]any{"index": i + 1, "path": path, "error": err}))
 		}
 		stored, err := store.StoreImage(imagesDir, part.Data, part.MediaType)
 		if err != nil {
-			return nil, fmt.Errorf("写入目标会话的图片目录失败：%v；未投递任何内容", err)
+			return nil, fmt.Errorf("%s", cliText(tr, "cli.image.write_failed", map[string]any{"error": err}))
 		}
 		refs = append(refs, personalprocess.ImageRef{
 			Ref: stored.Ref, SHA256: stored.SHA256, MediaType: stored.MediaType,

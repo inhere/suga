@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 )
@@ -50,6 +51,11 @@ const (
 // empty cwd in on the next turn).
 func guardResumeCwd(ctx context.Context, opts personalOptions, current string,
 	interactive bool, stdin io.Reader, stderr io.Writer) (resumeCwdAction, error) {
+	return guardResumeCwdWithTranslator(ctx, opts, current, interactive, stdin, stderr, cliTranslator())
+}
+
+func guardResumeCwdWithTranslator(ctx context.Context, opts personalOptions, current string,
+	interactive bool, stdin io.Reader, stderr io.Writer, tr i18n.Translator) (resumeCwdAction, error) {
 	if opts.FromID != "" {
 		// A handoff starts a new session; its directory is the one this process
 		// works in, and the source session is only read.
@@ -73,9 +79,9 @@ func guardResumeCwd(ctx context.Context, opts personalOptions, current string,
 		return cwdUseCurrent, nil
 	}
 	if !interactive {
-		return cwdAgreed, cwdMismatchError(sessionID, recorded, current)
+		return cwdAgreed, cwdMismatchErrorWithTranslator(sessionID, recorded, current, tr)
 	}
-	return askResumeCwd(sessionID, recorded, current, stdin, stderr)
+	return askResumeCwdWithTranslator(sessionID, recorded, current, stdin, stderr, tr)
 }
 
 // recordedSessionCwd reads the working directory stored on a session. A missing
@@ -101,12 +107,15 @@ func recordedSessionCwd(ctx context.Context, sessionID string) (string, error) {
 // cwdMismatchError is the failure of a continue in another directory without a
 // terminal to ask at: it names both directories and both ways to go on.
 func cwdMismatchError(sessionID, recorded, current string) error {
+	return cwdMismatchErrorWithTranslator(sessionID, recorded, current, cliTranslator())
+}
+
+func cwdMismatchErrorWithTranslator(sessionID, recorded, current string, tr i18n.Translator) error {
 	dir := recorded
 	if !isDir(recorded) {
-		dir += "（该目录已不存在）"
+		dir += cliText(tr, "cli.cwd.gone")
 	}
-	return fmt.Errorf("会话 %s 的工作目录是 %s，当前工作目录是 %s；"+
-		"请先 `cd %s` 再续接，或加 --allow-cwd-change 明确在当前目录继续", sessionID, dir, current, recorded)
+	return fmt.Errorf("%s", cliText(tr, "cli.cwd.mismatch", map[string]any{"session": sessionID, "recorded": dir, "current": current}))
 }
 
 // askResumeCwd asks at the terminal what to do with a session created in
@@ -115,29 +124,29 @@ func cwdMismatchError(sessionID, recorded, current string) error {
 // session's short name all follow), continue here (the recorded directory is
 // moved), or cancel without touching anything. The three answers are the only
 // accepted input; EOF (Ctrl-D) cancels, like the third one.
-func askResumeCwd(sessionID, recorded, current string, stdin io.Reader, stderr io.Writer) (resumeCwdAction, error) {
+func askResumeCwdWithTranslator(sessionID, recorded, current string, stdin io.Reader, stderr io.Writer, tr i18n.Translator) (resumeCwdAction, error) {
 	// The directory is checked once: the question itself says when going back is
 	// no longer possible.
 	back := isDir(recorded)
-	fmt.Fprintf(stderr, "会话 %s 创建于目录 %s\n当前工作目录是 %s\n", sessionID, recorded, current)
+	fmt.Fprintln(stderr, cliText(tr, "cli.cwd.header", map[string]any{"session": sessionID, "recorded": recorded, "current": current}))
 	if back {
-		fmt.Fprintf(stderr, "  1) 切到 %s 续接\n", recorded)
+		fmt.Fprintln(stderr, "  "+cliText(tr, "cli.cwd.choice.back", map[string]any{"recorded": recorded}))
 	} else {
-		fmt.Fprintf(stderr, "  1) 切到原目录续接（%s 已不存在，不可选）\n", recorded)
+		fmt.Fprintln(stderr, "  "+cliText(tr, "cli.cwd.choice.back_gone", map[string]any{"recorded": recorded}))
 	}
-	fmt.Fprintf(stderr, "  2) 在 %s 继续（把会话目录改为这里）\n", current)
-	fmt.Fprintf(stderr, "  3) 取消（直接退出，不改动任何数据）\n")
+	fmt.Fprintln(stderr, "  "+cliText(tr, "cli.cwd.choice.current", map[string]any{"current": current}))
+	fmt.Fprintln(stderr, "  "+cliText(tr, "cli.cwd.choice.cancel"))
 	for {
-		fmt.Fprint(stderr, "请选择 [1/2/3]: ")
+		fmt.Fprint(stderr, cliText(tr, "cli.cwd.prompt")+" ")
 		answer, err := readChoice(stdin)
 		switch strings.TrimSpace(answer) {
 		case "1":
 			if !back {
-				fmt.Fprintf(stderr, "原目录 %s 已不存在，只能选 2 或 3。\n", recorded)
+				fmt.Fprintln(stderr, cliText(tr, "cli.cwd.unavailable", map[string]any{"recorded": recorded}))
 				continue
 			}
 			if cerr := os.Chdir(recorded); cerr != nil {
-				return cwdAgreed, fmt.Errorf("切换到会话目录 %s 失败：%w（可改选 2 或 3）", recorded, cerr)
+				return cwdAgreed, fmt.Errorf("%s", cliText(tr, "cli.cwd.chdir_failed", map[string]any{"recorded": recorded, "error": cerr}))
 			}
 			return cwdUseSession, nil
 		case "2":
@@ -149,7 +158,7 @@ func askResumeCwd(sessionID, recorded, current string, stdin io.Reader, stderr i
 			// End of input (Ctrl-D): leave, like the third answer.
 			return cwdCancelled, nil
 		}
-		fmt.Fprintln(stderr, "请输入 1、2 或 3。")
+		fmt.Fprintln(stderr, cliText(tr, "cli.cwd.invalid"))
 	}
 }
 

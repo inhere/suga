@@ -152,7 +152,7 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 		return err
 	}
 	if cwdAction == cwdCancelled {
-		fmt.Fprintln(stderr, "已取消，未改动任何数据。")
+		fmt.Fprintln(stderr, cliText(cliTranslator(), "cli.cwd.cancelled"))
 		return nil
 	}
 	// Background tasks (write modes): chat wakes on a task end while it

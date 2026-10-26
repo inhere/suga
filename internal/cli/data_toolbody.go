@@ -109,8 +109,9 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 
 // runMoveToolBodies moves the historical tool bodies out in batches.
 func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
+	tr := cliTranslator()
 	if before.PendingRows == 0 {
-		fmt.Fprintln(out, "tool 正文无需移出：没有超过阈值的库内 tool 结果")
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.none_tool"))
 		return nil
 	}
 	fmt.Fprintf(out, "开始移出：%d 条 tool 结果（%s）将写入会话文件，Ctrl-C 可中断，重跑续上\n",
@@ -134,9 +135,10 @@ func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, be
 // own checkpoint (move_assistant), so it runs even when the tool pass of the same
 // database finished already.
 func runMoveAssistantBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
+	tr := cliTranslator()
 	if before.AssistantPendingRows == 0 {
-		fmt.Fprintln(out, "assistant 正文无需移出：没有超过阈值的库内推理内容或工具调用参数")
-		fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`；会话文件在备份里始终包含")
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.none_assistant"))
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.files_note"))
 		return nil
 	}
 	fmt.Fprintf(out, "开始移出：%d 条 assistant 条目（库内 %s）将写入会话文件，Ctrl-C 可中断，重跑续上\n",
@@ -153,7 +155,7 @@ func runMoveAssistantBodies(ctx context.Context, out io.Writer, repo *store.Stor
 		return err
 	}
 	fmt.Fprintf(out, "移出完成：%d 条 assistant 条目（%s）写入会话文件，%d 个写事务\n", report.Rows, humanBytes(report.Bytes), report.Batches)
-	fmt.Fprintln(out, "库文件缩小要等 `suga data vacuum`；会话文件在备份里始终包含")
+	fmt.Fprintln(out, cliText(tr, "cli.data.bodies.files_note"))
 	return nil
 }
 

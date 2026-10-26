@@ -12,6 +12,7 @@ import (
 
 	"github.com/gookit/goutil/cflag/capp"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/internal/personal/store"
@@ -87,7 +88,7 @@ func runGC(ctx context.Context, out io.Writer, cutoff time.Time, apply bool) err
 		}
 		fmt.Fprintf(out, "warning: clean snapshots: %v\n", err)
 	}
-	reportSnapshotCleanup(out, snapshotReport)
+	reportSnapshotCleanupWithTranslator(out, snapshotReport, cliTranslator())
 
 	repo, err := openCoreStore()
 	if err != nil {
@@ -136,10 +137,14 @@ func runGC(ctx context.Context, out io.Writer, cutoff time.Time, apply bool) err
 // skipped call records (missing or corrupt meta.json) and stale half-written
 // directories removed. Both are the repair path for a damaged snapshot tree.
 func reportSnapshotCleanup(out io.Writer, report personal.SnapshotCleanupReport) {
+	reportSnapshotCleanupWithTranslator(out, report, cliTranslator())
+}
+
+func reportSnapshotCleanupWithTranslator(out io.Writer, report personal.SnapshotCleanupReport, tr i18n.Translator) {
 	if report.SkippedRecords == 0 && report.RepairedPartials == 0 {
 		return
 	}
-	fmt.Fprintf(out, "snapshots: 跳过 %d 个缺元数据的记录，清理 %d 个半成品目录\n", report.SkippedRecords, report.RepairedPartials)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.gc.snapshots_report", map[string]any{"skipped": report.SkippedRecords, "repaired": report.RepairedPartials}))
 }
 
 // sessionDir returns sessions/<id> when id is a plain single path element; an
@@ -153,6 +158,7 @@ func sessionDir(sessionsDir, id string) (string, bool) {
 }
 
 func writeGCReport(out io.Writer, report store.GCReport, cutoff time.Time) {
+	tr := cliTranslator()
 	for _, session := range report.Sessions {
 		title := session.Title
 		if title == "" {
@@ -164,8 +170,7 @@ func writeGCReport(out io.Writer, report store.GCReport, cutoff time.Time) {
 	if report.Applied {
 		verb = "已删除"
 	}
-	fmt.Fprintf(out, "%s %d 个会话（%s 之前未更新，含其 transcript 文件与会话目录）与 %d 条事件记录，含 snapshots %d 字节",
-		verb, len(report.Sessions), cutoff.Local().Format("2006-01-02 15:04"), report.Events, report.SnapshotBytes)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.gc.summary", map[string]any{"verb": verb, "sessions": len(report.Sessions), "before": cutoff.Local().Format("2006-01-02 15:04"), "events": report.Events, "bytes": report.SnapshotBytes}))
 	if !report.Applied {
 		fmt.Fprint(out, "；加 --apply 执行")
 	} else {
@@ -305,18 +310,18 @@ func runGCRetention(ctx context.Context, out io.Writer, apply bool) error {
 // bytes) and then what the run removes. The estimate is not a reclaim promise:
 // only a VACUUM returns space to the disk.
 func writeRetentionReport(out io.Writer, report store.GCRetentionReport) {
+	tr := cliTranslator()
 	for _, class := range report.Classes() {
-		name := "非交互会话"
+		name := cliText(tr, "cli.data.retention.noninteractive")
 		if class.Interactive {
-			name = "交互会话"
+			name = cliText(tr, "cli.data.retention.interactive")
 		}
-		fmt.Fprintf(out, "%s（保留 %s）：%d 个会话，%d 条条目，预计 %s\n",
-			name, humanDuration(class.Retention), len(class.Sessions), class.Entries, humanBytes(class.EstimatedBytes))
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.class", map[string]any{"name": name, "retention": humanDuration(class.Retention), "sessions": len(class.Sessions), "entries": class.Entries, "bytes": humanBytes(class.EstimatedBytes)}))
 	}
 	if n := len(report.HostManaged); n > 0 {
 		// Host-managed sessions (origin xhen) are not cleaned by period: the host
 		// decides how long a topic lives. An explicit --older-than still removes one.
-		fmt.Fprintf(out, "由宿主管理（origin=xhen）：未清理 %d 个会话（生命周期由宿主决定；--older-than 显式清理仍会删除）\n", n)
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.host", map[string]any{"count": n}))
 	}
 	verb := "将删除"
 	if report.Applied {

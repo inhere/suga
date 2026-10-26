@@ -59,6 +59,7 @@ func runConfigGet(out io.Writer, c *capp.Cmd) error {
 }
 
 func runConfigSet(out io.Writer, c *capp.Cmd) error {
+	tr := cliTranslator()
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config set <key> <value>")
 	}
@@ -79,17 +80,18 @@ func runConfigSet(out io.Writer, c *capp.Cmd) error {
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "已写入 %s\n", result.Path); err != nil {
+	if _, err := fmt.Fprintf(out, "%s\n", cliText(tr, "cli.config.written", map[string]any{"path": result.Path})); err != nil {
 		return err
 	}
 	resolved, err := appconfig.ReadConfigValue(key)
 	if err != nil {
-		return fmt.Errorf("read updated %s: %w", key, err)
+		return fmt.Errorf("%s: %w", cliText(tr, "cli.config.read_updated", map[string]any{"key": key}), err)
 	}
 	return writeConfigValue(out, resolved)
 }
 
 func runConfigUnset(out io.Writer, c *capp.Cmd) error {
+	tr := cliTranslator()
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config unset <key>")
 	}
@@ -107,7 +109,7 @@ func runConfigUnset(out io.Writer, c *capp.Cmd) error {
 		}
 		return err
 	}
-	_, err = fmt.Fprintf(out, "已删除 %s\n", key)
+	_, err = fmt.Fprintln(out, cliText(tr, "cli.config.deleted", map[string]any{"key": key}))
 	return err
 }
 
