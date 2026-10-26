@@ -8,23 +8,28 @@ import (
 	"strings"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 )
 
 const (
-	checkpointsCmd     = ":checkpoints"
-	undoCmd            = ":undo"
-	undoForceArg       = "force"
-	noUndoHint         = "没有可回滚的快照（本会话没有写工具改动，或快照已按 tools.snapshots 清理）。"
-	undoConflictReason = "冲突：快照之后被改动过"
-	undoBusyHint       = "回合进行中，等它结束再执行本地命令"
-	undoConfirm        = "执行？[y] 回滚 [N] 取消："
+	checkpointsCmd = ":checkpoints"
+	undoCmd        = ":undo"
+	undoForceArg   = "force"
+	// undoBusyHint is shared with the refusal steering.go prints for a local
+	// command typed during a turn (that prompt is not this file's text).
+	undoBusyHint = "回合进行中，等它结束再执行本地命令"
 )
 
-// undoUsageHint answers a :undo line whose arguments do not parse; the text is
-// the :undo entry of the command table (chat_usage.go).
-var undoUsageHint = commandUsageText(undoCmd)
+// Catalog keys of the :undo answers; the checkpoint listing and the undo plan
+// and result are shared with the CLI "suga undo" display.
+const (
+	undoNoHintKey    = "cmd.undo.none"
+	undoConflictKey  = "cmd.undo.conflict"
+	undoConfirmKey   = "cmd.undo.confirm"
+	undoCancelledKey = "cmd.undo.cancelled"
+)
 
 type undoCommand struct {
 	n     int
@@ -100,7 +105,7 @@ func (s *chatState) selectUndo(command undoCommand) ([]personal.Checkpoint, *per
 		return nil, nil, err
 	}
 	if command.n > snapshots.Limits().KeepTurns {
-		return nil, nil, fmt.Errorf("最多只能回滚最近 %d 个回合", snapshots.Limits().KeepTurns)
+		return nil, nil, fmt.Errorf("%s", s.tr().T("cmd.undo.max", map[string]any{"count": snapshots.Limits().KeepTurns}))
 	}
 	rows, err := s.runner.SelectUndoCheckpoints(s.ctx, snapshots, sessionsDir, s.sessionID, command.n)
 	return rows, snapshots, err
@@ -111,7 +116,7 @@ func (s *chatState) selectUndo(command undoCommand) ([]personal.Checkpoint, *per
 func (s *chatState) runCheckpoints(arg string) {
 	limit, ok := checkpointLimit(arg)
 	if !ok {
-		fmt.Fprintln(s.errWriter(), commandUsageText(checkpointsCmd))
+		fmt.Fprintln(s.errWriter(), commandUsageText(s.tr(), checkpointsCmd))
 		return
 	}
 	rows, err := s.checkpoints(limit)
@@ -119,7 +124,7 @@ func (s *chatState) runCheckpoints(arg string) {
 		fmt.Fprintln(s.errWriter(), formatCommandError(checkpointsCmd, err))
 		return
 	}
-	fmt.Fprintln(s.source, BuildCheckpoints(rows))
+	fmt.Fprintln(s.source, BuildCheckpoints(s.tr(), rows))
 }
 
 // checkpointLimit reads the :checkpoints argument: no argument lists every turn,
@@ -145,18 +150,18 @@ func (s *chatState) runUndo(command undoCommand) {
 		fmt.Fprintln(s.errWriter(), formatCommandError(undoCmd, err))
 		return
 	}
-	fmt.Fprintln(s.source, BuildUndoPlan(rows, command))
+	fmt.Fprintln(s.source, BuildUndoPlan(s.tr(), rows, command))
 	if !hasUndoSnapshots(rows) {
 		return
 	}
 	if appconfig.ChatUndoConfirmEnabled() {
 		if s.source.terminal == nil {
-			fmt.Fprintln(s.source, "已取消（当前输入不是终端，回滚需要确认）")
+			fmt.Fprintln(s.source, s.tr().T("cmd.undo.cancelled.notty"))
 			return
 		}
-		answer, askErr := s.source.Ask(s.ctx, "", undoConfirm)
+		answer, askErr := s.source.Ask(s.ctx, "", s.tr().T(undoConfirmKey))
 		if askErr != nil || !undoConfirmed(answer) {
-			fmt.Fprintln(s.source, "已取消")
+			fmt.Fprintln(s.source, s.tr().T(undoCancelledKey))
 			return
 		}
 	}
@@ -170,7 +175,7 @@ func (s *chatState) runUndo(command undoCommand) {
 		fmt.Fprintln(s.errWriter(), formatCommandError(undoCmd, err))
 		return
 	}
-	fmt.Fprintln(s.source, BuildUndoResult(result, rows))
+	fmt.Fprintln(s.source, BuildUndoResult(s.tr(), result, rows))
 }
 
 func undoConfirmed(answer string) bool {
@@ -189,40 +194,51 @@ func hasUndoSnapshots(rows []personal.Checkpoint) bool {
 
 // BuildCheckpoints renders the read-only checkpoint list. Every value originating
 // from a path, event, or model call is cleaned before it can reach the terminal.
-func BuildCheckpoints(rows []personal.Checkpoint) string {
+func BuildCheckpoints(tr i18n.Translator, rows []personal.Checkpoint) string {
 	if len(rows) == 0 {
-		return noUndoHint
+		return tr.T(undoNoHintKey)
 	}
 	var b strings.Builder
-	b.WriteString("快照点（最近的回合在前；快照在写操作执行前记录）：\n")
+	b.WriteString(tr.T("cmd.undo.checkpoints.header") + "\n")
 	totalFiles, totalBytes := 0, int64(0)
 	for _, row := range rows {
-		fmt.Fprintf(&b, "  %s  %s  %d 次写调用 / %d 个文件 / %s", cleanText(row.TurnID), row.StartedAt.Local().Format("01-02 15:04"), row.Calls, row.Files, formatBytes(row.Bytes))
+		b.WriteString("  " + tr.T("cmd.undo.checkpoints.row", map[string]any{
+			"turn":    cleanText(row.TurnID),
+			"started": row.StartedAt.Local().Format("01-02 15:04"),
+			"calls":   row.Calls,
+			"files":   row.Files,
+			"bytes":   formatBytes(row.Bytes),
+		}))
 		if row.State == personal.SnapshotStateUndone {
-			b.WriteString("  [已回滚]")
+			b.WriteString("  " + tr.T("cmd.undo.state.undone"))
 		} else if row.State == personal.SnapshotStatePartial {
-			b.WriteString("  [部分回滚]")
+			b.WriteString("  " + tr.T("cmd.undo.state.partial"))
 		}
 		if row.ShellOnly {
-			b.WriteString("  [仅 shell_exec，未纳入回滚]")
+			b.WriteString("  " + tr.T("cmd.undo.state.shell_only"))
 		}
 		b.WriteByte('\n')
 		for _, item := range row.Items {
-			fmt.Fprintf(&b, "    %s %s%s%s\n", actionLabel(item.Action), cleanText(item.Meta.Rel), sizeSuffix(item.Meta.Size), reasonSuffix(item.Reason))
+			fmt.Fprintf(&b, "    %s %s%s%s\n", actionLabel(tr, item.Action), cleanText(item.Meta.Rel), sizeSuffix(item.Meta.Size), reasonSuffix(item.Reason))
 		}
 		for _, shell := range row.Shell {
-			fmt.Fprintf(&b, "    shell_exec：%s%s（改动不在快照范围内）\n", cleanText(shell.Command), taskSuffix(shell.TaskID))
+			b.WriteString("    " + shellRow(tr, shell.Command, shell.TaskID) + "\n")
 		}
 		totalFiles += row.Files
 		totalBytes += row.Bytes
 	}
-	fmt.Fprintf(&b, "合计 %d 个文件 / %s；保留最近 %d 个回合或 %d 天（tools.snapshots）", totalFiles, formatBytes(totalBytes), personal.DefaultSnapshotKeepTurns, personal.DefaultSnapshotKeepDays)
+	b.WriteString(tr.T("cmd.undo.checkpoints.total", map[string]any{
+		"files": totalFiles,
+		"bytes": formatBytes(totalBytes),
+		"turns": personal.DefaultSnapshotKeepTurns,
+		"days":  personal.DefaultSnapshotKeepDays,
+	}))
 	return b.String()
 }
 
-func BuildUndoPlan(rows []personal.Checkpoint, command undoCommand) string {
+func BuildUndoPlan(tr i18n.Translator, rows []personal.Checkpoint, command undoCommand) string {
 	if !hasUndoSnapshots(rows) {
-		return noUndoHint + renderShellRows(rows)
+		return tr.T(undoNoHintKey) + renderShellRows(tr, rows)
 	}
 	var b strings.Builder
 	for _, row := range rows {
@@ -230,7 +246,7 @@ func BuildUndoPlan(rows []personal.Checkpoint, command undoCommand) string {
 			continue
 		}
 		for _, shell := range row.Shell {
-			fmt.Fprintf(&b, "shell_exec：%s%s（改动不在快照范围内）\n", cleanText(shell.Command), taskSuffix(shell.TaskID))
+			b.WriteString(shellRow(tr, shell.Command, shell.TaskID) + "\n")
 		}
 	}
 	first := true
@@ -239,7 +255,11 @@ func BuildUndoPlan(rows []personal.Checkpoint, command undoCommand) string {
 			continue
 		}
 		if first {
-			fmt.Fprintf(&b, "将回滚最近 %d 个回合（从 %s 开始%s）：\n", command.n, cleanText(row.TurnID), forceSuffix(command.force))
+			b.WriteString(tr.T("cmd.undo.plan.header", map[string]any{
+				"count": command.n,
+				"turn":  cleanText(row.TurnID),
+				"force": forceSuffix(tr, command.force),
+			}) + "\n")
 			first = false
 		}
 		for _, item := range row.Items {
@@ -247,53 +267,57 @@ func BuildUndoPlan(rows []personal.Checkpoint, command undoCommand) string {
 			if item.Conflict {
 				// Undo skips a target changed after the snapshot unless forced
 				// (personal.contentConflict); force covers it and says so.
-				reason = undoConflictReason
+				reason = tr.T(undoConflictKey)
 				if !command.force {
 					action = personal.CheckpointActionSkip
 				}
 			}
-			fmt.Fprintf(&b, "  %s %s%s%s\n", actionLabel(action), cleanText(item.Meta.Rel), sizeSuffix(item.Meta.Size), reasonSuffix(reason))
+			fmt.Fprintf(&b, "  %s %s%s%s\n", actionLabel(tr, action), cleanText(item.Meta.Rel), sizeSuffix(item.Meta.Size), reasonSuffix(reason))
 		}
 		for _, shell := range row.Shell {
-			fmt.Fprintf(&b, "  shell_exec：%s%s（改动不在快照范围内）\n", cleanText(shell.Command), taskSuffix(shell.TaskID))
+			b.WriteString("  " + shellRow(tr, shell.Command, shell.TaskID) + "\n")
 		}
 	}
 	if first {
-		return noUndoHint + renderShellRows(rows)
+		return tr.T(undoNoHintKey) + renderShellRows(tr, rows)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func BuildUndoResult(result personal.UndoResult, rows []personal.Checkpoint) string {
+func BuildUndoResult(tr i18n.Translator, result personal.UndoResult, rows []personal.Checkpoint) string {
 	parts := []string{}
 	if result.Restored > 0 {
-		parts = append(parts, fmt.Sprintf("已回滚 %d 个文件", result.Restored))
+		parts = append(parts, tr.T("cmd.undo.result.restored", map[string]any{"count": result.Restored}))
 	}
 	if result.Deleted > 0 {
-		parts = append(parts, fmt.Sprintf("删除 %d 个新建文件", result.Deleted))
+		parts = append(parts, tr.T("cmd.undo.result.deleted", map[string]any{"count": result.Deleted}))
 	}
 	if result.Skipped > 0 {
-		parts = append(parts, fmt.Sprintf("跳过 %d 个冲突", result.Skipped))
+		parts = append(parts, tr.T("cmd.undo.result.skipped", map[string]any{"count": result.Skipped}))
 	}
 	if result.Unrecoverable > 0 {
-		parts = append(parts, fmt.Sprintf("%d 个文件无法恢复", result.Unrecoverable))
+		parts = append(parts, tr.T("cmd.undo.result.unrecoverable", map[string]any{"count": result.Unrecoverable}))
 	}
 	if len(parts) == 0 {
-		parts = append(parts, "没有文件被恢复")
+		parts = append(parts, tr.T("cmd.undo.result.nothing"))
 	}
 	text := strings.Join(parts, "、") + "。"
-	text += renderShellRows(rows)
+	text += renderShellRows(tr, rows)
 	if hasGitRoot(rows) {
-		text += "\n工作区是 git 仓库：可用 git -C <workspace> status --short / git diff 核对其余改动。"
+		text += "\n" + tr.T("cmd.undo.result.git")
 	}
 	return text
 }
 
-func renderShellRows(rows []personal.Checkpoint) string {
+func renderShellRows(tr i18n.Translator, rows []personal.Checkpoint) string {
 	var b strings.Builder
 	for _, row := range rows {
 		for _, shell := range row.Shell {
-			fmt.Fprintf(&b, "\n本回合还运行了 shell_exec：%s%s；改动不在快照范围内：suga inspect trace <session> --turn %s", cleanText(shell.Command), taskSuffix(shell.TaskID), cleanText(row.TurnID))
+			b.WriteString("\n" + tr.T("cmd.undo.shell.note", map[string]any{
+				"command": cleanText(shell.Command),
+				"task":    taskSuffix(tr, shell.TaskID),
+				"turn":    cleanText(row.TurnID),
+			}))
 		}
 	}
 	return b.String()
@@ -310,17 +334,23 @@ func hasGitRoot(rows []personal.Checkpoint) bool {
 	return false
 }
 
-func actionLabel(action personal.CheckpointAction) string {
+func actionLabel(tr i18n.Translator, action personal.CheckpointAction) string {
 	switch action {
 	case personal.CheckpointActionRestore:
-		return "恢复"
+		return tr.T("cmd.undo.action.restore")
 	case personal.CheckpointActionDelete:
-		return "删除"
+		return tr.T("cmd.undo.action.delete")
 	case personal.CheckpointActionUnrecoverable:
-		return "无法恢复"
+		return tr.T("cmd.undo.action.unrecoverable")
 	default:
-		return "跳过"
+		return tr.T("cmd.undo.action.skip")
 	}
+}
+
+// shellRow is one shell_exec line outside the snapshots; the caller writes the
+// indent, since the listing and the plan indent it differently.
+func shellRow(tr i18n.Translator, command, taskID string) string {
+	return tr.T("cmd.undo.shell.line", map[string]any{"command": cleanText(command), "task": taskSuffix(tr, taskID)})
 }
 
 func cleanText(value string) string { return strings.Join(strings.Fields(termtext.Clean(value)), " ") }
@@ -339,16 +369,16 @@ func reasonSuffix(reason string) string {
 	return "  " + cleanText(reason)
 }
 
-func taskSuffix(taskID string) string {
+func taskSuffix(tr i18n.Translator, taskID string) string {
 	if taskID == "" {
 		return ""
 	}
-	return "（task " + cleanText(taskID) + "）"
+	return tr.T("cmd.undo.task_suffix", map[string]any{"id": cleanText(taskID)})
 }
 
-func forceSuffix(force bool) string {
+func forceSuffix(tr i18n.Translator, force bool) string {
 	if force {
-		return "，涵盖内容冲突"
+		return tr.T("cmd.undo.plan.force")
 	}
 	return ""
 }

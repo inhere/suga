@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
@@ -19,31 +20,39 @@ const tasksCmd = ":tasks"
 const chatTasksRecent = 10
 
 const (
-	chatUsageHint  = ":usage 用量：本次 %d 轮 · 输入 %d / 输出 %d · 缓存读 %d / 写 %d · 成本 $%.6f；会话累计输入 %d / 输出 %d · 成本 $%.6f"
-	chatTasksEmpty = "没有后台任务"
+	chatUsageHintKey  = "cmd.usage.stats"
+	chatTasksEmptyKey = "cmd.tasks.empty"
 )
 
 // BuildChatHelp returns the complete local-command and keyboard help text.
-func BuildChatHelp() string { return chatHelpText }
+func BuildChatHelp(tr i18n.Translator) string { return buildChatHelp(tr) }
 
 // BuildChatUsage renders process and session usage using the same counters as the exit summary.
-func BuildChatUsage(stats chatStats) string {
-	return fmt.Sprintf(chatUsageHint, stats.turns, stats.usage.InputTokens, stats.usage.OutputTokens,
-		stats.usage.CacheReadTokens, stats.usage.CacheWriteTokens, stats.usage.CostUSD,
-		stats.session.InputTokens, stats.session.OutputTokens, stats.session.CostUSD)
+func BuildChatUsage(tr i18n.Translator, stats chatStats) string {
+	return tr.T(chatUsageHintKey, map[string]any{
+		"turns":          stats.turns,
+		"input":          stats.usage.InputTokens,
+		"output":         stats.usage.OutputTokens,
+		"cache_read":     stats.usage.CacheReadTokens,
+		"cache_write":    stats.usage.CacheWriteTokens,
+		"cost":           fmt.Sprintf("$%.6f", stats.usage.CostUSD),
+		"session_input":  stats.session.InputTokens,
+		"session_output": stats.session.OutputTokens,
+		"session_cost":   fmt.Sprintf("$%.6f", stats.session.CostUSD),
+	})
 }
 
 // BuildChatTasks renders the task manager's snapshot for :tasks: by default the
 // running tasks plus the 10 most recently active finished ones and how many are
 // left; showAll lists every task in start order.
-func BuildChatTasks(items []tasks.Info, now time.Time, showAll bool) string {
+func BuildChatTasks(tr i18n.Translator, items []tasks.Info, now time.Time, showAll bool) string {
 	if len(items) == 0 {
-		return chatTasksEmpty
+		return tr.T(chatTasksEmptyKey)
 	}
 	if showAll {
 		lines := make([]string, 0, len(items))
 		for _, item := range items {
-			lines = append(lines, chatTaskLine(item, now))
+			lines = append(lines, chatTaskLine(tr, item, now))
 		}
 		return strings.Join(lines, "\n")
 	}
@@ -69,19 +78,24 @@ func BuildChatTasks(items []tasks.Info, now time.Time, showAll bool) string {
 	}
 	lines := make([]string, 0, len(shown)+1)
 	for _, item := range shown {
-		lines = append(lines, chatTaskLine(item, now))
+		lines = append(lines, chatTaskLine(tr, item, now))
 	}
 	if hidden > 0 {
-		lines = append(lines, fmt.Sprintf("还有 %d 条已结束任务，:tasks -a 查看全部", hidden))
+		lines = append(lines, tr.T("cmd.tasks.more", map[string]any{"count": hidden}))
 	}
 	return strings.Join(lines, "\n")
 }
 
 // chatTaskLine is one task of the :tasks listing.
-func chatTaskLine(item tasks.Info, now time.Time) string {
-	return fmt.Sprintf("%s · %s · %s · 已运行 %s · 最近输出 %s · %s",
-		termtext.Clean(item.ID), termtext.Clean(string(item.Status)), termtext.Clean(item.Summary),
-		formatElapsedAt(item.Duration(), now), taskLastActivity(item).Local().Format("15:04:05"), termtext.Clean(item.Kind))
+func chatTaskLine(tr i18n.Translator, item tasks.Info, now time.Time) string {
+	return tr.T("cmd.tasks.line", map[string]any{
+		"id":      termtext.Clean(item.ID),
+		"status":  termtext.Clean(string(item.Status)),
+		"summary": termtext.Clean(item.Summary),
+		"elapsed": formatElapsedAt(item.Duration(), now),
+		"last":    taskLastActivity(item).Local().Format("15:04:05"),
+		"kind":    termtext.Clean(item.Kind),
+	})
 }
 
 // taskLastActivity is when the task last did something: its end, or the start of
@@ -110,7 +124,7 @@ func (s *chatState) runTasksCommand(line string) {
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
 		case "-h", "--help":
-			fmt.Fprintln(s.source, commandUsageText(tasksCmd))
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), tasksCmd))
 			return
 		case "-a":
 			showAll = true
@@ -119,8 +133,8 @@ func (s *chatState) runTasksCommand(line string) {
 			kills = append(kills, args[i+1:]...)
 			i = len(args)
 		default:
-			fmt.Fprintln(s.source, "未知参数："+arg)
-			fmt.Fprintln(s.source, commandUsageText(tasksCmd))
+			fmt.Fprintln(s.source, s.tr().T("cmd.unknown.arg", map[string]any{"arg": arg}))
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), tasksCmd))
 			return
 		}
 	}
@@ -129,17 +143,17 @@ func (s *chatState) runTasksCommand(line string) {
 		return
 	}
 	if s.tasks == nil {
-		fmt.Fprintln(s.source, chatTasksEmpty)
+		fmt.Fprintln(s.source, s.tr().T(chatTasksEmptyKey))
 		return
 	}
-	fmt.Fprintln(s.source, BuildChatTasks(s.tasks.List(s.sessionID), time.Now(), showAll))
+	fmt.Fprintln(s.source, BuildChatTasks(s.tr(), s.tasks.List(s.sessionID), time.Now(), showAll))
 }
 
 // killTasks kills the named background tasks and says what became of each: a
 // typo and a task that had already ended read differently.
 func (s *chatState) killTasks(ids []string) {
 	if s.tasks == nil {
-		fmt.Fprintln(s.source, chatTasksEmpty)
+		fmt.Fprintln(s.source, s.tr().T(chatTasksEmptyKey))
 		return
 	}
 	killed := false
@@ -152,20 +166,20 @@ func (s *chatState) killTasks(ids []string) {
 	}
 	for _, id := range ids {
 		if prev, ok := before[id]; ok && prev.Status != tasks.Running {
-			fmt.Fprintf(s.source, "任务 %s 已结束（%s），无需终止\n", id, prev.Status)
+			fmt.Fprintln(s.source, s.tr().T("cmd.tasks.kill.ended", map[string]any{"id": id, "status": string(prev.Status)}))
 			continue
 		}
 		info, err := s.tasks.Kill(s.sessionID, id)
 		switch {
 		case errors.Is(err, tasks.ErrUnknownTask):
-			fmt.Fprintf(s.source, "没有任务 %s\n", id)
+			fmt.Fprintln(s.source, s.tr().T("cmd.tasks.kill.unknown", map[string]any{"id": id}))
 		case err != nil:
-			fmt.Fprintf(s.source, "终止任务 %s 失败：%s\n", id, err.Error())
+			fmt.Fprintln(s.source, s.tr().T("cmd.tasks.kill.failed", map[string]any{"id": id, "error": err.Error()}))
 		case info.Status != tasks.Killed:
-			fmt.Fprintf(s.source, "任务 %s 已结束（%s），无需终止\n", id, info.Status)
+			fmt.Fprintln(s.source, s.tr().T("cmd.tasks.kill.ended", map[string]any{"id": id, "status": string(info.Status)}))
 		default:
 			killed = true
-			fmt.Fprintf(s.source, "已终止任务 %s：%s\n", id, truncateLine(info.Summary, resultSummaryLimit))
+			fmt.Fprintln(s.source, s.tr().T("cmd.tasks.kill.ok", map[string]any{"id": id, "summary": truncateLine(info.Summary, resultSummaryLimit)}))
 		}
 	}
 	if killed && s.render != nil {
@@ -192,25 +206,26 @@ const maxPendingImages = 16
 func (s *chatState) attachImage(arg string) {
 	out := s.errWriter()
 	if s.readImage == nil {
-		fmt.Fprintln(out, "图片附件在本进程不可用")
+		fmt.Fprintln(out, s.tr().T("cmd.image.unavailable"))
 		return
 	}
 	if !s.canSeeImages() {
-		fmt.Fprintf(out, "当前模型 %s 不支持看图，无法附图；请用 :model 切换到支持看图的模型\n", s.modelInfo.Ref())
+		fmt.Fprintln(out, s.tr().T("cmd.image.vision", map[string]any{"model": s.modelInfo.Ref()}))
 		return
 	}
 	if len(s.pendingImages) >= maxPendingImages {
-		fmt.Fprintf(out, "待发图片已达上限（%d 张），请先发送或 :image clear\n", maxPendingImages)
+		fmt.Fprintln(out, s.tr().T("cmd.image.limit", map[string]any{"max": maxPendingImages}))
 		return
 	}
 	part, _, err := s.readImage(arg)
 	if err != nil {
-		fmt.Fprintln(out, "读图失败："+err.Error())
+		fmt.Fprintln(out, s.tr().T("cmd.image.read_failed", map[string]any{"error": err.Error()}))
 		return
 	}
 	s.pendingImages = append(s.pendingImages, part)
-	fmt.Fprintf(out, "[已附图 %d：%d×%d %s] 将随下一条消息发送\n",
-		len(s.pendingImages), part.Width, part.Height, part.MediaType)
+	fmt.Fprintln(out, s.tr().T("cmd.image.attached", map[string]any{
+		"count": len(s.pendingImages), "width": part.Width, "height": part.Height, "type": part.MediaType,
+	}))
 }
 
 // attachFromClipboard is the Alt+V paste (design 0.3): one clipboard picture
@@ -219,25 +234,26 @@ func (s *chatState) attachImage(arg string) {
 func (s *chatState) attachFromClipboard() {
 	out := s.errWriter()
 	if s.readClip == nil {
-		fmt.Fprintln(out, "Alt+V 贴图在本进程不可用")
+		fmt.Fprintln(out, s.tr().T("cmd.image.clipboard_unavailable"))
 		return
 	}
 	if !s.canSeeImages() {
-		fmt.Fprintf(out, "当前模型 %s 不支持看图，无法附图；请用 :model 切换到支持看图的模型\n", s.modelInfo.Ref())
+		fmt.Fprintln(out, s.tr().T("cmd.image.vision", map[string]any{"model": s.modelInfo.Ref()}))
 		return
 	}
 	if len(s.pendingImages) >= maxPendingImages {
-		fmt.Fprintf(out, "待发图片已达上限（%d 张），请先发送或 :image clear\n", maxPendingImages)
+		fmt.Fprintln(out, s.tr().T("cmd.image.limit", map[string]any{"max": maxPendingImages}))
 		return
 	}
 	part, _, err := s.readClip()
 	if err != nil {
-		fmt.Fprintln(out, "Alt+V："+err.Error())
+		fmt.Fprintln(out, s.tr().T("cmd.image.clipboard_failed", map[string]any{"error": err.Error()}))
 		return
 	}
 	s.pendingImages = append(s.pendingImages, part)
-	fmt.Fprintf(out, "[已附图 %d：%d×%d %s] 将随下一条消息发送\n",
-		len(s.pendingImages), part.Width, part.Height, part.MediaType)
+	fmt.Fprintln(out, s.tr().T("cmd.image.attached", map[string]any{
+		"count": len(s.pendingImages), "width": part.Width, "height": part.Height, "type": part.MediaType,
+	}))
 }
 
 // takePendingImages hands the queued images to the message being sent and
@@ -268,12 +284,16 @@ func modelRefs(options []ModelOption) []string {
 }
 
 // BuildChatModel renders the current effective model and the configured choices.
-func BuildChatModel(current ModelOption, options []ModelOption) string {
+func BuildChatModel(tr i18n.Translator, current ModelOption, options []ModelOption) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "当前模型：%s\n思考级别：%s\n上下文窗口：%d\n输出上限 max_output_tokens：%d\n可选模型：",
-		current.Ref(), displayThinking(current.Thinking), current.ContextWindow, current.MaxOutputTokens)
+	b.WriteString(tr.T("cmd.model.current", map[string]any{
+		"model":      current.Ref(),
+		"thinking":   displayThinking(tr, current.Thinking),
+		"window":     current.ContextWindow,
+		"max_output": current.MaxOutputTokens,
+	}))
 	if len(options) == 0 {
-		b.WriteString("无")
+		b.WriteString(tr.T("cmd.model.none"))
 		return b.String()
 	}
 	for _, option := range options {
@@ -287,9 +307,9 @@ func BuildChatModel(current ModelOption, options []ModelOption) string {
 	return b.String()
 }
 
-func displayThinking(level string) string {
+func displayThinking(tr i18n.Translator, level string) string {
 	if level == "" {
-		return "默认"
+		return tr.T("cmd.model.thinking.default")
 	}
 	return level
 }
@@ -298,50 +318,52 @@ func displayThinking(level string) string {
 func (s *chatState) runChatCommand(line string) bool {
 	// A help ask (":queue -h", ":queue --help") is answered from the table of
 	// chat_usage.go before the command itself looks at its line.
-	if reply := commandUsageReply(line, s.dirs != nil); reply != "" {
+	if reply := commandUsageReply(s.tr(), line, s.dirs != nil); reply != "" {
 		fmt.Fprintln(s.source, reply)
 		return true
 	}
 	switch {
 	case line == ":help" || strings.HasPrefix(line, ":help "):
 		// :help alone lists every command, :help <命令> shows one command's usage.
-		fmt.Fprintln(s.source, chatHelpFor(strings.TrimPrefix(line, ":help")))
+		fmt.Fprintln(s.source, chatHelpFor(s.tr(), strings.TrimPrefix(line, ":help")))
 	case isModelCommand(line) && !isCheckpointCommand(line) && !isUndoCommand(line):
 		arg := strings.TrimSpace(strings.TrimPrefix(line, ":model"))
 		if arg == "" {
-			fmt.Fprintln(s.source, BuildChatModel(s.modelInfo, s.modelOptions))
+			fmt.Fprintln(s.source, BuildChatModel(s.tr(), s.modelInfo, s.modelOptions))
 			return true
 		}
 		if s.modelSwitch == nil {
-			fmt.Fprintln(s.source, "模型切换不可用")
+			fmt.Fprintln(s.source, s.tr().T("cmd.model.switch.unavailable"))
 			return true
 		}
 		info, err := s.modelSwitch(s.ctx, s.sessionID, arg)
 		if err != nil {
-			fmt.Fprintln(s.source, "模型切换失败："+err.Error())
+			fmt.Fprintln(s.source, s.tr().T("cmd.model.switch.failed", map[string]any{"error": err.Error()}))
 			return true
 		}
 		s.modelInfo = info
 		s.render.SetModel(info.Provider, info.Model, info.Thinking, info.ContextWindow)
-		fmt.Fprintf(s.source, "已切换模型：%s（下一回合生效）\n", info.Ref())
+		fmt.Fprintln(s.source, s.tr().T("cmd.model.switch.ok", map[string]any{"model": info.Ref()}))
 	case isImageCommand(line):
 		out := s.errWriter()
 		arg := strings.TrimSpace(strings.TrimPrefix(line, ":image"))
 		switch {
 		case arg == "" && len(s.pendingImages) == 0:
-			fmt.Fprintln(out, "没有待发的图片")
+			fmt.Fprintln(out, s.tr().T("cmd.image.none"))
 		case arg == "":
 			for i, part := range s.pendingImages {
-				fmt.Fprintf(out, "[已附图 %d：%d×%d %s]\n", i+1, part.Width, part.Height, part.MediaType)
+				fmt.Fprintln(out, s.tr().T("cmd.image.line", map[string]any{
+					"index": i + 1, "width": part.Width, "height": part.Height, "type": part.MediaType,
+				}))
 			}
 		case arg == "clear":
 			s.pendingImages = nil
-			fmt.Fprintln(out, "已清空待发图片")
+			fmt.Fprintln(out, s.tr().T("cmd.image.cleared"))
 		default:
 			s.attachImage(arg)
 		}
 	case line == ":usage":
-		fmt.Fprintln(s.source, BuildChatUsage(*s.stats))
+		fmt.Fprintln(s.source, BuildChatUsage(s.tr(), *s.stats))
 	case isSkillsCommand(line):
 		// :skills [--only-names] [-n N]: the skills this session loaded.
 		s.runSkillsCommand(line)
@@ -359,7 +381,7 @@ func (s *chatState) runChatCommand(line string) bool {
 	case isUndoCommand(line):
 		command, ok := parseUndoCommand(line)
 		if !ok {
-			fmt.Fprintln(s.source, undoUsageHint)
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), undoCmd))
 		} else {
 			s.runUndo(command)
 		}

@@ -94,7 +94,7 @@ func TestChatLocalCommandRunsWithoutTheModel(t *testing.T) {
 	out := stdout.String()
 	assert.True(t, outHasLine(out, "local-output-mark"), "the command's output is shown: %q", out)
 	assert.StrContains(t, out, "本地命令退出码 3")
-	assert.StrContains(t, out, localCommandHelp)
+	assert.StrContains(t, out, testTranslator.T(localCommandHelpKey))
 	provider.mu.Lock()
 	assert.Eq(t, 0, len(provider.calls), "a local command never asks the model")
 	provider.mu.Unlock()
@@ -130,7 +130,7 @@ func TestChatLocalCommandSendContext(t *testing.T) {
 	}, "\n") + "\n"
 	assert.NoErr(t, Run(context.Background(), runner, Options{Local: localRunner(t)},
 		strings.NewReader(input), &stdout, &stderr, nil))
-	assert.StrContains(t, stdout.String(), localSendNotice)
+	assert.StrContains(t, stdout.String(), testTranslator.T(localSendNoticeKey))
 
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
@@ -340,7 +340,7 @@ func TestRunLocalCommandStopsOnCtrlC(t *testing.T) {
 	case <-time.After(20 * time.Second):
 		t.Fatal("Ctrl-C did not end the local command")
 	}
-	assert.StrContains(t, h.out.String(), localStoppedNotice)
+	assert.StrContains(t, h.out.String(), testTranslator.T(localStoppedNoticeKey))
 	// Chat is still there: the next prompt read is served.
 	assert.True(t, h.source.Request("❯ "))
 }
@@ -364,7 +364,7 @@ func TestRunLocalCommandCtrlCWithTextOnTheLine(t *testing.T) {
 	case <-time.After(20 * time.Second):
 		t.Fatal("Ctrl-C with text on the line did not end the local command")
 	}
-	assert.StrContains(t, h.out.String(), localStoppedNotice)
+	assert.StrContains(t, h.out.String(), testTranslator.T(localStoppedNoticeKey))
 	// What was typed is not lost: the next prompt read carries it.
 	assert.Eq(t, "半行", h.turnInputLine(t))
 }

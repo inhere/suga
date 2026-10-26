@@ -57,7 +57,7 @@ func TestChatModelCommandUsesNextTurnAndPersists(t *testing.T) {
 }
 
 func TestBuildChatModelIncludesEffectiveLimits(t *testing.T) {
-	text := BuildChatModel(ModelOption{Provider: "p", Model: "m", Thinking: "high", ContextWindow: 64000, MaxOutputTokens: 42},
+	text := BuildChatModel(testTranslator, ModelOption{Provider: "p", Model: "m", Thinking: "high", ContextWindow: 64000, MaxOutputTokens: 42},
 		[]ModelOption{{Provider: "p", Model: "m"}, {Provider: "p", Model: "other"}})
 	assert.StrContains(t, text, "思考级别：high")
 	assert.StrContains(t, text, "上下文窗口：64000")

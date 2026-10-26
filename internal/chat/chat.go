@@ -577,11 +577,11 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		// or an argument a command without options cannot take (":session foo").
 		// An injected line never reaches it (its case below runs first), and a "!"
 		// line or a plain message names no command of the table.
-		usageReply := commandUsageReply(line, state.dirs != nil)
+		usageReply := commandUsageReply(state.tr(), line, state.dirs != nil)
 		// A ":word" that names no command is a typo, not a message: chat answers
 		// it here instead of spending a turn on it (suga-okbt). Ordinary text
 		// that starts with a colon (":)", ": 说明", "::1") returns no hint.
-		commandHint := unknownCommandHint(line)
+		commandHint := unknownCommandHint(state.tr(), line)
 		switch {
 		case line == "":
 			continue

@@ -95,7 +95,7 @@ func TestChatDirCommands(t *testing.T) {
 
 	errOut := stderr.String()
 	assert.StrContains(t, errOut, ":add-dir: \"docs\" is not an absolute path")
-	assert.StrContains(t, errOut, dirCommandHelp)
+	assert.StrContains(t, errOut, dirCommandHelp(testTranslator))
 	assert.StrContains(t, errOut, ":rm-dir："+dir+" 不在附加目录中")
 }
 

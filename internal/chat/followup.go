@@ -27,13 +27,9 @@ const (
 const (
 	// queueCmd names the command that shows and changes the queue.
 	queueCmd = ":queue"
-	// chatQueueEmpty answers :queue (and :queue clear) with nothing queued.
-	chatQueueEmpty = "没有排队的消息"
+	// chatQueueEmptyKey answers :queue (and :queue clear) with nothing queued.
+	chatQueueEmptyKey = "cmd.queue.empty"
 )
-
-// queueUsageHint answers a :queue line it does not know; the text is the :queue
-// entry of the command table (chat_usage.go).
-var queueUsageHint = commandUsageText(queueCmd)
 
 // isQueueCommand recognizes :queue and its arguments.
 func isQueueCommand(line string) bool {
@@ -142,18 +138,18 @@ func (s *chatState) runQueueCommand(line string) {
 	switch args[0] {
 	case "clear":
 		if len(args) > 1 {
-			fmt.Fprintln(s.source, queueUsageHint)
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), queueCmd))
 			return
 		}
 		if n := s.followUps.clear(); n > 0 {
-			fmt.Fprintf(s.source, "已清空 %d 条排队的消息\n", n)
+			fmt.Fprintln(s.source, s.tr().T("cmd.queue.cleared", map[string]any{"count": n}))
 			return
 		}
-		fmt.Fprintln(s.source, chatQueueEmpty)
+		fmt.Fprintln(s.source, s.tr().T(chatQueueEmptyKey))
 	case "-d":
 		s.dropQueued(args[1:])
 	default:
-		fmt.Fprintln(s.source, queueUsageHint)
+		fmt.Fprintln(s.source, commandUsageText(s.tr(), queueCmd))
 	}
 }
 
@@ -161,10 +157,10 @@ func (s *chatState) runQueueCommand(line string) {
 func (s *chatState) printQueue() {
 	pending := s.followUps.pending()
 	if len(pending) == 0 {
-		fmt.Fprintln(s.source, chatQueueEmpty)
+		fmt.Fprintln(s.source, s.tr().T(chatQueueEmptyKey))
 		return
 	}
-	fmt.Fprintf(s.source, "排队的消息（%d 条，本轮结束后按顺序发送）：\n", len(pending))
+	fmt.Fprintln(s.source, s.tr().T("cmd.queue.header", map[string]any{"count": len(pending)}))
 	for i, text := range pending {
 		fmt.Fprintf(s.source, "  %d. %s\n", i+1, truncateLine(text, resultSummaryLimit))
 	}
@@ -173,20 +169,20 @@ func (s *chatState) printQueue() {
 // dropQueued removes the message :queue -d names, counted as :queue lists them.
 func (s *chatState) dropQueued(args []string) {
 	if len(args) != 1 {
-		fmt.Fprintln(s.source, queueUsageHint)
+		fmt.Fprintln(s.source, commandUsageText(s.tr(), queueCmd))
 		return
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil || n < 1 {
-		fmt.Fprintln(s.source, queueUsageHint)
+		fmt.Fprintln(s.source, commandUsageText(s.tr(), queueCmd))
 		return
 	}
 	text, ok := s.followUps.remove(n - 1)
 	if !ok {
-		fmt.Fprintf(s.source, "没有第 %d 条排队的消息（:queue 查看）\n", n)
+		fmt.Fprintln(s.source, s.tr().T("cmd.queue.missing", map[string]any{"index": n}))
 		return
 	}
-	fmt.Fprintf(s.source, "已删除第 %d 条排队的消息：%s\n", n, truncateLine(text, resultSummaryLimit))
+	fmt.Fprintln(s.source, s.tr().T("cmd.queue.dropped", map[string]any{"index": n, "text": truncateLine(text, resultSummaryLimit)}))
 }
 
 // setFollowUp installs (or clears, with nil) what Tab on a non-empty line does
