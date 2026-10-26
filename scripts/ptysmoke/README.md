@@ -46,6 +46,7 @@
 | `chat_session_message.py` | 会话之间互发消息（`session_message` 工具、两个 chat 共用一个 SUGA_HOME）：A 的模型 `send` 给 B，B 自动开一轮并回信，A 再回……第 3 跳（默认 `tools.session_message.max_hops`）到 B 时不再开一轮，B 只显示 `来自会话 <A> 的消息已排队（连续自动回复已达上限…）`，两个会话的回合数与模型请求数都有上限（超时兜底，循环停不下来会判失败）；消息以 `[来自会话 <短名称>（<会话 ID>）的消息] ` 进入对方用户消息；反向验证见脚本 docstring。**本机无 pty，未运行，待在 Linux 容器验证** |
 | `preferred_tools.py` | 配置优先 command/MCP，检查 manifest 的 found/missing/configured reason、chat 环境过滤、`tools.deferred: always` 下 preferred MCP 直显且仍需审批，以及 trace 只记录名字；反向验证见脚本 docstring |
 | `chat_commands.py` | 本地命令与终端通知：`:help` 列全部命令并在末尾指向 `:<命令> -h`，`:session -h`/`:queue -h`/`:checkpoints -h` 各打印用法，`:help :queue` 打印同一段用法，`:queue -d 1`（空队列）与 `:checkpoints 3`/`:tasks -h`/`:tasks -x` 的处理，`:usage` 与 `:tasks` 默认视图；一轮后台任务结束时响铃（非 TTY 不响）。反向验证：去掉 `chat_usage.go` 的命令表或 `-h` 分发，用法相关检查失败。**本机无 pty，本次未运行，待在 Linux 容器验证** |
+| `chat_i18n_en.py` | 英文界面（i18n）：`language: en` 的 SUGA_HOME + 假模型（`--mode tool --reply SMOKE_EN_DONE`），覆盖横幅（标题/帮助行/工具行）、一次需要审批的 shell_exec（英文问句与选项、`Command:` 明细、拒绝后 `Tools denied this turn: shell_exec`、再答 y 执行并作答）、回合结束状态行、`:help`、`:context` 标题、未知命令、退出摘要与续接命令；第二个 home 先是 `language: zh`，跑 `suga config set language en_US` 后检查 CLI 报出规范值 `language = en`、文件里写的是 `en`，随后的 chat 说英文。其余脚本用 `write_home` 固定 `language: zh`，断言不随机器语言变化。**本机无 pty，未运行，待监督在 Linux 容器验证** |
 
 - `make smoke-pty-go`：运行 `test/ptye2e` 的 Go `ptytest` 场景；Windows 使用 ConPTY，Linux/macOS 使用 Unix pty。若宿主不允许 ConPTY，测试框架会跳过并打印原因。
 
@@ -63,3 +64,5 @@ python3 -I scripts/ptysmoke/chat_approval.py --bin tmp/smoke/suga --work tmp/smo
 - 以结果行（如 `⎿ ok: ...`）判断工具是否执行，确认提示本身也会回显命令。
 - 每轮结束以状态行（`tokens · `）为准再进入下一步；场景自己负责启动和停止假服务，不要依赖外部后台进程。
 - 工作目录在本仓库内（有 `.gofer/tracker`），`write_home` 固定 `memory.project.backend: files`，冒烟不会调用真实 gofer。
+- UI 语言由场景自己的 SUGA_HOME 决定：`write_home` 默认写 `language: zh`（与真实用户一致），英文场景传 `language="en"`；不要依赖 `make` 里的环境变量，脚本要能单独跑。`SUGA_LANGUAGE` 优先级高于配置，会盖掉这个固定值。
+- 端口不要写死：`--port` 默认 `0`，`resolve_port(args.port, span)` 在启动假模型前取一个空闲端口（`span` 是场景从 base 派生的 `base+1…base+span` 个数，整段都保证可绑）；显式 `--port N` 仍按 N。
