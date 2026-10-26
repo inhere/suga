@@ -76,12 +76,12 @@ func TestPersonalChatCancelledRunKeepsGoing(t *testing.T) {
 // runner's raw "context canceled"; every other failure keeps its text.
 func TestFormatCommandError(t *testing.T) {
 	t.Run("an interrupted command reads 已中断", func(t *testing.T) {
-		assert.Eq(t, "Compact: 已中断", formatCommandError("Compact", context.Canceled))
+		assert.Eq(t, "Compact: 已中断", formatCommandError(nil, "Compact", context.Canceled))
 	})
 	t.Run("a wrapped cancellation is recognized too", func(t *testing.T) {
-		assert.Eq(t, "Compact: 已中断", formatCommandError("Compact", fmt.Errorf("segment break: %w", context.Canceled)))
+		assert.Eq(t, "Compact: 已中断", formatCommandError(nil, "Compact", fmt.Errorf("segment break: %w", context.Canceled)))
 	})
 	t.Run("another failure keeps its text", func(t *testing.T) {
-		assert.Eq(t, "Compact: boom", formatCommandError("Compact", errors.New("boom")))
+		assert.Eq(t, "Compact: boom", formatCommandError(nil, "Compact", errors.New("boom")))
 	})
 }

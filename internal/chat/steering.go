@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 )
 
@@ -24,10 +25,6 @@ import (
 // steerPrompt is the prompt of the read that stays open during a turn (design
 // D2/Q1).
 const steerPrompt = "↳ "
-
-// steerFullHint is what chat says when the running turn's inbox is full (design
-// D11): the keyboard read and the session socket both report it here.
-const steerFullHint = "插话过多，请等本步结束"
 
 // errExitChat ends the chat REPL: a second Ctrl-C during a turn asked to leave.
 // Run's loop turns it into the same clean exit as the second Ctrl-C at the
@@ -210,7 +207,7 @@ func (t *turnInput) insert(line string) {
 	// next prompt, after the turn. External delivery bypasses insert and stays
 	// ordinary model input.
 	if isUndoCommand(text) || isCheckpointCommand(text) {
-		t.state.render.Hint(undoBusyHint)
+		t.state.render.Hint(t.state.tr().T("status.undo.busy"))
 		t.state.source.putBackLine(line)
 		return
 	}
@@ -225,7 +222,7 @@ func (t *turnInput) insert(line string) {
 	// turn): the line is not inserted as a message either, it goes back to the
 	// input line for the next prompt (the way a message the turn refused does).
 	if _, isLocal := parseLocalCommand(line); isLocal {
-		t.state.render.Hint(localCommandBusyHint)
+		t.state.render.Hint(t.state.tr().T("status.local.command_busy"))
 		t.state.source.putBackLine(line)
 		return
 	}
@@ -236,7 +233,7 @@ func (t *turnInput) insert(line string) {
 	if err != nil {
 		// The inbox holds steerCapacity messages already (design D11): say so, the
 		// message becomes the next input rather than growing the queue further.
-		state.render.Hint(steerFullHint)
+		state.render.Hint(state.tr().T("status.steering.full"))
 		return
 	}
 	if accepted {
@@ -440,12 +437,14 @@ func (s *chatState) putSteersBack(backs []steerReturn) {
 }
 
 // steerBackNotice is what chat appends to a turn's end notice when N inserted
-// messages went back to the input line ("" when there were none).
-func steerBackNotice(n int) string {
+// messages went back to the input line ("" when there were none). The comma it
+// starts with belongs to the notice it is appended to, so it is part of the
+// catalog text.
+func steerBackNotice(t i18n.Translator, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("，%d 条插话已放回输入行", n)
+	return trOf(t).T("status.steering.back_notice", map[string]any{"count": n})
 }
 
 // nextSteerID names one message inserted into a turn of this chat process, so the

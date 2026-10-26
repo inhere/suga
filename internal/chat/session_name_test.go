@@ -25,19 +25,19 @@ func TestResolveChatShortName(t *testing.T) {
 	otherLive := []personalprocess.Record{{PID: 4242, SessionID: "sess-other", Name: "taken-aa"}}
 
 	t.Run("no stored name generates one and asks to save it", func(t *testing.T) {
-		name, save, notice := resolveChatShortName("", nil, filepath.Join("tmp", "My Work"), constant("k7"))
+		name, save, notice := resolveChatShortName("", nil, filepath.Join("tmp", "My Work"), constant("k7"), nil)
 		assert.Eq(t, "mywork-k7", name)
 		assert.Eq(t, true, save)
 		assert.Eq(t, "", notice)
 	})
 	t.Run("a stored name is reused as is", func(t *testing.T) {
-		name, save, notice := resolveChatShortName("ws-k7", otherLive, "other", constant("zz"))
+		name, save, notice := resolveChatShortName("ws-k7", otherLive, "other", constant("zz"), nil)
 		assert.Eq(t, "ws-k7", name)
 		assert.Eq(t, false, save)
 		assert.Eq(t, "", notice)
 	})
 	t.Run("a stored name taken by another process gets a temporary one", func(t *testing.T) {
-		name, save, notice := resolveChatShortName("taken-aa", otherLive, filepath.Join("tmp", "My Work"), constant("k7"))
+		name, save, notice := resolveChatShortName("taken-aa", otherLive, filepath.Join("tmp", "My Work"), constant("k7"), nil)
 		assert.Eq(t, "mywork-k7", name)
 		assert.Eq(t, false, save) // the stored name is never overwritten
 		assert.StrContains(t, notice, "taken-aa")
@@ -45,7 +45,7 @@ func TestResolveChatShortName(t *testing.T) {
 	})
 	t.Run("the own process record does not make a name taken", func(t *testing.T) {
 		own := []personalprocess.Record{{PID: os.Getpid(), SessionID: "sess-me", Name: "ws-k7"}}
-		name, save, _ := resolveChatShortName("ws-k7", own, "other", constant("zz"))
+		name, save, _ := resolveChatShortName("ws-k7", own, "other", constant("zz"), nil)
 		assert.Eq(t, "ws-k7", name)
 		assert.Eq(t, false, save)
 	})

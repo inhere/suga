@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gookit/cliui/progress"
+	"github.com/inhere/suga/internal/i18n"
 )
 
 const (
@@ -20,13 +21,18 @@ const (
 	// writes it once more, so the output that follows starts at column 0 with
 	// no trace of the hint left on screen.
 	spinnerClear = "\r\x1b[2K"
-	// spinnerLabel leads the waiting line; the elapsed seconds follow it.
+	// spinnerLabel leads the waiting line until the renderer says what the turn
+	// waits for; the elapsed seconds follow it. It is the zh catalog's
+	// status.spinner.thinking, kept for a spinner built without a translator.
 	spinnerLabel = "思考中…"
 )
 
 // toolLabel is what the status line says while a tool of the turn runs: the tool's
-// name in between ("执行 shell_exec…"), the elapsed seconds follow it.
-func toolLabel(name string) string { return "执行 " + name + "…" }
+// name in between ("执行 shell_exec…" / "running shell_exec…"), the elapsed
+// seconds follow it.
+func toolLabel(t i18n.Translator, name string) string {
+	return trOf(t).T("status.spinner.tool", map[string]any{"tool": name})
+}
 
 // statusSetter is where the waiting line goes while chat keeps an input line on
 // screen (chat.steering): the row above it (lineedit.Terminal.SetStatus), which the
@@ -95,13 +101,20 @@ type spinnerConfig struct {
 	speed   time.Duration
 	now     func() time.Time
 	ticks   func(time.Duration) (<-chan time.Time, func())
+	// translator renders the line's text; nil keeps the Chinese label
+	// (spinnerLabel), like every other unwired chat text.
+	translator i18n.Translator
 }
 
 func newThinkingSpinner(cfg spinnerConfig) *thinkingSpinner {
+	label := spinnerLabel
+	if cfg.translator != nil {
+		label = trOf(cfg.translator).T("status.spinner.thinking")
+	}
 	s := &thinkingSpinner{
 		enabled: cfg.enabled, out: cfg.out, status: cfg.status, paint: cfg.paint, speed: cfg.speed,
 		now: cfg.now, ticks: cfg.ticks, frame: progress.LoadingWidget(spinnerChars),
-		label: spinnerLabel,
+		label: label,
 	}
 	if s.now == nil {
 		s.now = time.Now

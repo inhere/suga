@@ -122,11 +122,11 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 		// The tool line first, then what the status line says: the output of the turn
 		// goes ahead of the row the line editor draws it around.
 		assert.Eq(t, `out: ⏺ shell_exec echo hi`+"\n", log.all()[before])
-		assert.StrContains(t, log.last(), toolLabel("shell_exec"))
+		assert.StrContains(t, log.last(), toolLabel(nil, "shell_exec"))
 
 		// The elapsed seconds of the tool count from the tool call.
 		clock.tick(2 * time.Second)
-		assert.Require(t, waitStatusContains(t, log, toolLabel("shell_exec")+" 2s"))
+		assert.Require(t, waitStatusContains(t, log, toolLabel(nil, "shell_exec")+" 2s"))
 		assertFrame(t, log, "执行 shell_exec…", "2s")
 	})
 
@@ -139,7 +139,7 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 
 	t.Run("a sub-agent keeps the wording of a waiting turn", func(t *testing.T) {
 		r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c1", Text: `{"description":"survey"}`})
-		assert.StrContains(t, log.last(), toolLabel("agent"))
+		assert.StrContains(t, log.last(), toolLabel(nil, "agent"))
 		r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "survey", ToolName: "file_grep", Text: `{"pattern":"x"}`})
 		assert.StrContains(t, log.last(), "子 agent：1 个运行中")
 		assert.StrNotContains(t, log.last(), "file_grep")

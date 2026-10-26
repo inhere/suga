@@ -190,12 +190,12 @@ func TestToolCallArgsUseTheWholeArguments(t *testing.T) {
 	cut := string([]rune(string(data))[:200]) // what the event's Text holds
 
 	t.Run("whole arguments give the summary", func(t *testing.T) {
-		got := toolCallArgs("shell_exec", cut, full, "")
+		got := toolCallArgs(nil, "shell_exec", cut, full, "")
 		assert.True(t, strings.HasPrefix(got, "go test ./internal/chat/"), got)
 		assert.NotContains(t, got, `{"command"`)
 	})
 	t.Run("without them a cut call falls back to JSON", func(t *testing.T) {
-		got := toolCallArgs("shell_exec", cut, nil, "")
+		got := toolCallArgs(nil, "shell_exec", cut, nil, "")
 		assert.StrContains(t, got, `{"command"`)
 	})
 }
