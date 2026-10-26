@@ -390,7 +390,8 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		agentTasks = func() []tasks.Info { return opts.Tasks.List(sessionID) }
 	}
 	render = newRenderer(rendererOptions{
-		Out: inputSource, Err: errOut,
+		Translator: opts.Translator,
+		Out:        inputSource, Err: errOut,
 		Color: color, ErrColor: colorEnabledFor(stderr),
 		Provider: runner.ProviderName(), Model: runner.Model(),
 		Thinking: opts.Thinking, ContextWindow: opts.ContextWindow,
@@ -427,7 +428,8 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// (`suga send`, `--steer`) is a method of it.
 	provider, model, contextWindow, maxOutputTokens := runner.ModelSettings()
 	state := &chatState{
-		ctx: ctx, runner: runner, hooks: hooks, source: inputSource, render: render,
+		translator: opts.Translator,
+		ctx:        ctx, runner: runner, hooks: hooks, source: inputSource, render: render,
 		stderr: stderr, errOut: errOut, baseEvent: baseEvent, title: title, idle: idle,
 		stats: &stats, sessionID: sessionID,
 		createdAtStartup: createdAtStartup, dirs: opts.Dirs,

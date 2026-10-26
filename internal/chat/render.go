@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/inhere/suga/internal/i18n"
 	"io"
 	"os"
 	"sort"
@@ -54,7 +55,10 @@ const (
 // rendererOptions configures a Renderer. Color switches ANSI styling for Out
 // and ErrColor for Err; both false yields plain text (symbols stay).
 type rendererOptions struct {
-	Out, Err        io.Writer
+	Out, Err io.Writer
+	// Translator renders the human-facing text; nil uses the Chinese fallback
+	// (see trOf in i18n.go).
+	Translator      i18n.Translator
 	Color, ErrColor bool
 	// Provider and Model label the per-turn status line; either may be empty.
 	Provider, Model string

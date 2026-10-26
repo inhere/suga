@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/inhere/suga/internal/i18n"
 	"io"
 	"strings"
 	"sync"
@@ -25,12 +26,14 @@ import (
 // another parameter of Run.
 type chatState struct {
 	// Wiring made once by Run.
-	ctx    context.Context
-	runner *personal.Runner
-	hooks  sugahooks.Client
-	source *chatInputSource
-	render *Renderer
-	stderr io.Writer
+	ctx context.Context
+	// translator renders the human-facing text; nil uses the Chinese fallback (trOf).
+	translator i18n.Translator
+	runner     *personal.Runner
+	hooks      sugahooks.Client
+	source     *chatInputSource
+	render     *Renderer
+	stderr     io.Writer
 	// errOut is where what may land while the input line is on screen goes: a
 	// steer-aware writer (steering.go), set by Run when chat.steering is on, and a
 	// nil field falls back to stderr (the tests build a state directly).
