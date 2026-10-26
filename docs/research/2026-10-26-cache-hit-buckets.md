@@ -22,7 +22,8 @@
 | `after_fold` | 旧工具结果折叠 / 截断 / 加载延迟工具后改变工具表 / 系统提示变化 / 其他改写之后的第一次调用 | `attrs.prefix` 为 `fold`、`system`、`tools`、`rewrite` |
 | `steady` | 段内其余连续调用（请求只是上一次的追加） | `attrs.prefix == append` |
 | `handoff` | 写交接包的那次调用本身（换段过程内的 side call） | `attrs.purpose == compact` |
-| `unknown` | 判定不了的调用，计数不丢 | `attrs.prefix == first` 但不是会话首次调用（新进程续接，provider 缓存状态未知）；若中间有成功的换段事件，归 `segment_start` |
+| `resume` | 新进程续接同一段后的第一次调用（gofer 的 `suga run --resume`、评测逐轮起的进程） | `attrs.prefix == first` 但不是会话首次调用；若中间有成功的换段事件，归 `segment_start` |
+| `unknown` | 判定不了的调用，计数不丢 | `attrs.prefix` 是本代码不认识的取值（不按 steady 猜，免得污染 95% 目标桶） |
 
 补充规则：
 
@@ -64,7 +65,7 @@ go run ./scripts/eval --bin tmp/eval-bin/suga --model opencode-go/deepseek-v4.1-
 | segment_start | 3 | 29.4k | 14.7k | 50.0% |
 | steady | 9 | 122.9k | 102.4k | 83.3% |
 | handoff | 3 | 16.3k | 0 | - |
-| unknown | 10 | 142.6k | 114.2k | 80.1% |
+| resume | 10 | 142.6k | 114.2k | 80.1% |
 | **overall** | 26 | 318.8k | 231.3k | 72.6% |
 
 steady 桶低于 90% 的 4 次调用（`inspect trace <sid> --analyze`，`step` 为段内主循环步号）：
@@ -78,8 +79,8 @@ steady 桶低于 90% 的 4 次调用（`inspect trace <sid> --analyze`，`step` 
 
 读法与注意：
 
-- 本次运行的 14 轮是 14 个 `suga run` 进程（评测逐轮起进程），所以每轮第一次调用都是 `prefix=first`：除会话首次那一次记 `cold`、换段后那几次记 `segment_start` 之外，其余 10 次落在 `unknown`（新进程续接，provider 缓存状态未知）。这 10 次实际仍命中 80.1%，说明 provider 的前缀缓存跨进程有效；单进程的长 chat 会话里这批调用会是 `steady`，对比两种跑法时要把这一点算进去。
-- `unknown` 是「判定不了的计数」，不是错误；如果某天它的占比很高，要先把归因补齐（`prefix` 记录、跨进程缓存状态），而不是直接把 `steady` 当整体。
+- 本次运行的 14 轮是 14 个 `suga run` 进程（评测逐轮起进程），所以每轮第一次调用都是 `prefix=first`：除会话首次那一次记 `cold`、换段后那几次记 `segment_start` 之外，其余 10 次落在 `resume`（新进程续接同一段；初版实现把它们记为 `unknown`，审核时改成单独一桶）。这 10 次实际仍命中 80.1%，说明 provider 的前缀缓存跨进程有效；单进程的长 chat 会话里这批调用会是 `steady`，对比两种跑法时要把这一点算进去。
+- `unknown` 是「判定不了的计数」，不是错误；它只在出现新的 `prefix` 取值时才会有数，出现时先补归类，而不是把它当 `steady`。
 - steady 桶 83.3% 低于 95% 目标，但同一次运行的 `uncached input` 归因是 `71.2k ≈ fresh 71.2k + rebuilt 0 + provider-side 14`：未命中几乎全是「上次请求之后新增的内容」（每轮新 prompt、file_read 的大段结果），而不是前缀被重写或 provider 没写回缓存。所以 steady 桶的命中率还受「单次调用携带多少新内容」影响，不能把 83.3% 直接当成前缀缓存失效；下一步应把 steady 调用按新内容比例（`uncached_fresh` / prompt）再分一层。
 - `handoff` 桶（3 次写交接包）的 prompt 16.3k 全未命中，符合预期：它发的是专用提示词，不是会话。
 

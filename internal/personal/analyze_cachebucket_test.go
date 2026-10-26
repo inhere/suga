@@ -30,7 +30,7 @@ func TestAnalyzeTraceCacheBuckets(t *testing.T) {
 			{Kind: store.EventModel, Status: eventOK, InputTokens: 9000, Attrs: map[string]any{"purpose": "compact"}},
 			{Kind: store.EventCompaction, Name: "compact", Status: eventOK},
 			cacheModel(prefixSegment, 2000, 100),
-			cacheModel(prefixFirst, 2000, 1200), // a new process: unclassifiable
+			cacheModel(prefixFirst, 2000, 1200), // a new process resumed the segment
 		})
 		got := make(map[string]int, len(a.CacheBuckets))
 		for _, b := range a.CacheBuckets {
@@ -41,10 +41,12 @@ func TestAnalyzeTraceCacheBuckets(t *testing.T) {
 		assert.Eq(t, 1, got[store.BucketAfterFold])
 		assert.Eq(t, 1, got[store.BucketHandoff])
 		assert.Eq(t, 1, got[store.BucketSegmentStart])
-		assert.Eq(t, 1, got[store.BucketUnknown])
-		// Report order: cold, then the prefix breaks, then steady.
+		assert.Eq(t, 1, got[store.BucketResume])
+		assert.Eq(t, 0, got[store.BucketUnknown])
+		// Report order: cold, then the prefix breaks and the resume, then steady.
 		assert.Eq(t, store.BucketCold, a.CacheBuckets[0].Bucket)
-		assert.Eq(t, store.BucketSteady, a.CacheBuckets[3].Bucket)
+		assert.Eq(t, store.BucketResume, a.CacheBuckets[3].Bucket)
+		assert.Eq(t, store.BucketSteady, a.CacheBuckets[4].Bucket)
 
 		var out bytes.Buffer
 		assert.NoErr(t, WriteTraceAnalysis(&out, a, false))

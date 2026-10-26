@@ -113,7 +113,7 @@ func poolBuckets(rs []Result) []cacheBucket {
 // (store.Bucket*): the session's first call, the prefix breaks, the steady
 // calls and the buckets that are not a step of the loop.
 func cacheBucketNames() []string {
-	return []string{"cold", "segment_start", "after_fold", "steady", "handoff", "unknown"}
+	return []string{"cold", "segment_start", "after_fold", "resume", "steady", "handoff", "unknown"}
 }
 
 // hitOf is cache read over prompt tokens, 0 when the bucket sent nothing.

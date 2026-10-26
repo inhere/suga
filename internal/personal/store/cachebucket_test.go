@@ -88,14 +88,14 @@ func TestClassifyEvents(t *testing.T) {
 		assert.Eq(t, []string{"truncate"}, calls[1].After)
 	})
 
-	t.Run("unclassifiable calls are unknown, not dropped", func(t *testing.T) {
+	t.Run("a resume in a new process is its own bucket", func(t *testing.T) {
 		calls := ClassifyEvents([]Event{
 			modelCall(prefixReasonFirst, 100, 0, 0),
 			// A resumed session in a new process: prefix=first again, no events.
 			modelCall(prefixReasonFirst, 200, 150, 0),
 		})
 		assert.Eq(t, 2, len(calls))
-		assert.Eq(t, BucketUnknown, calls[1].Bucket)
+		assert.Eq(t, BucketResume, calls[1].Bucket)
 
 		// The same, but a segment break lies in between: that is known.
 		withSegment := ClassifyEvents([]Event{
@@ -104,6 +104,15 @@ func TestClassifyEvents(t *testing.T) {
 			modelCall(prefixReasonFirst, 200, 0, 0),
 		})
 		assert.Eq(t, BucketSegmentStart, withSegment[1].Bucket)
+	})
+
+	t.Run("an unknown prefix reason is counted, not dropped", func(t *testing.T) {
+		calls := ClassifyEvents([]Event{
+			modelCall(prefixReasonFirst, 100, 0, 0),
+			modelCall("not-a-known-reason", 200, 150, 0),
+		})
+		assert.Eq(t, 2, len(calls))
+		assert.Eq(t, BucketUnknown, calls[1].Bucket)
 	})
 
 	t.Run("older sessions fall back to the events", func(t *testing.T) {

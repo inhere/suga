@@ -30,16 +30,19 @@ const (
 	// BucketHandoff is a side call that writes a handoff package
 	// (attrs.purpose=compact): it sends its own prompt, not the conversation.
 	BucketHandoff = "handoff"
-	// BucketUnknown is a call the trace cannot classify: a new process starts
-	// with prefix=first (what the old process left in the provider cache is
-	// unknown) and an older session carries neither prefix attrs nor the
-	// segment/fold events.
+	// BucketResume is the first call of a new process that resumed the session
+	// inside the same segment (prefix=first, no segment break in between): the
+	// history is unchanged, only the provider cache may have cooled. `suga run
+	// --resume` from gofer and the per-turn processes of the eval land here.
+	BucketResume = "resume"
+	// BucketUnknown is a call the trace cannot classify; today only kept for a
+	// prefix reason this code does not know.
 	BucketUnknown = "unknown"
 )
 
 // cacheBucketOrder is the order the buckets are reported in: the first call,
 // then the prefix breaks by cause, then the steady calls and the specials.
-var cacheBucketOrder = []string{BucketCold, BucketSegmentStart, BucketAfterFold, BucketSteady, BucketHandoff, BucketUnknown}
+var cacheBucketOrder = []string{BucketCold, BucketSegmentStart, BucketAfterFold, BucketResume, BucketSteady, BucketHandoff, BucketUnknown}
 
 // SteadyLowHitBelow is the per-call hit rate under which a steady call is
 // listed as a low hit (the target inside one context is higher, see BucketSteady).
@@ -205,11 +208,17 @@ func (r bucketRow) bucketOf(isFirst bool, pending []string) string {
 	case prefixReasonFold, prefixReasonSystem, prefixReasonTools, prefixReasonRewrite:
 		return BucketAfterFold
 	case prefixReasonFirst:
-		// A new process resumed the session: the provider cache may still hold
-		// the prefix, the trace cannot tell. A segment break in between is known.
+		// A new process resumed the session: the history is the same, the
+		// provider cache may still hold the prefix. A segment break in between
+		// makes it a segment start instead.
 		if hasPending(pending, "segment") {
 			return BucketSegmentStart
 		}
+		return BucketResume
+	}
+	if r.Prefix != "" {
+		// A prefix reason this code does not know: count it rather than guess
+		// steady, which would bias the bucket the 95% target is about.
 		return BucketUnknown
 	}
 	// No prefix attr (a session recorded before it existed): the events alone
