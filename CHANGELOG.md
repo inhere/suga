@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+- 新增 MIT `LICENSE`，同步整理中英文 README 的状态、官方 provider 快速开始、定位说明与许可证信息。
+
 ## [0.49.0] - 2026-10-26
 
 chat 新增 `:skills`、`:context`，打错命令会提示相近命令；输入历史默认按项目隔离（`chat.history_scope`）；Windows/ConPTY 可运行的 Go 版终端冒烟、真实 SSE 回放夹具与 fuzz、评测效果台账；依赖升级。
