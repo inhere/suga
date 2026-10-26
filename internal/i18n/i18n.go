@@ -3,7 +3,7 @@ package i18n
 import (
 	"embed"
 	"fmt"
-	"os"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -96,6 +96,11 @@ var catalogFS embed.FS
 // WarningFunc receives a missing-catalog-key diagnostic.
 type WarningFunc func(message string)
 
+// Translator is the read-only UI translation surface passed to host renderers.
+type Translator interface {
+	T(key string, args ...map[string]any) string
+}
+
 // Catalog is an initialized, immutable language catalog.
 type Catalog struct {
 	lang    Language
@@ -117,13 +122,13 @@ func New(lang Language) (*Catalog, error) {
 }
 
 // NewWithLogger creates a catalog and sends missing-key diagnostics to warn.
-// A nil callback writes one diagnostic line to stderr.
+// A nil callback uses the project's slog logger rather than writing to stderr.
 func NewWithLogger(lang Language, warn WarningFunc) (catalog *Catalog, err error) {
 	if lang != LanguageEN && lang != LanguageZH {
 		return nil, fmt.Errorf("unsupported language %q: must be zh or en", lang)
 	}
 	if warn == nil {
-		warn = func(message string) { fmt.Fprintln(os.Stderr, message) }
+		warn = func(message string) { slog.Warn("i18n", "message", message) }
 	}
 	catalog = &Catalog{lang: lang, warn: warn, warned: make(map[string]struct{})}
 	defer func() {
@@ -158,6 +163,31 @@ func (c *Catalog) T(key string, args ...map[string]any) string {
 	return strings.ReplaceAll(value, `\n`, "\n")
 }
 
+// Fallback returns the legacy Chinese catalog for components that have not yet
+// been wired with the startup-resolved translator. Real process assembly must
+// always inject the resolved catalog instead.
+func Fallback() Translator {
+	fallbackOnce.Do(func() {
+		fallbackCatalog, fallbackErr = NewWithLogger(LanguageZH, nil)
+	})
+	if fallbackErr != nil {
+		// Embedded resources are part of the binary; this is only a compatibility
+		// path for old tests and callers, so preserve the historical key behavior.
+		return &Catalog{lang: LanguageZH}
+	}
+	return fallbackCatalog
+}
+
+var (
+	fallbackOnce    sync.Once
+	fallbackCatalog *Catalog
+	fallbackErr     error
+)
+
+// SystemLocale returns the raw locale used by auto resolution.
+func SystemLocale() string { return systemLocale() }
+
+// warnMissing logs a missing key once per catalog.
 func (c *Catalog) warnMissing(key string) {
 	c.warnMu.Lock()
 	defer c.warnMu.Unlock()

@@ -13,6 +13,7 @@ import (
 	"github.com/inhere/suga/internal/chat/lineedit"
 	appconfig "github.com/inhere/suga/internal/config"
 	sugahooks "github.com/inhere/suga/internal/hooks"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
@@ -174,6 +175,8 @@ type Options struct {
 	// prints each once, on stderr, when the session is open; they never change
 	// what the model receives. A nil slice prints nothing.
 	ContextNotices []string
+	// Translator is the host UI catalog; nil callers use the Chinese compatibility fallback.
+	Translator i18n.Translator
 	// Skills lists the loaded skills for :skills; nil marks the command as
 	// unavailable in this process (a chat without the skill registry).
 	Skills func() []SkillInfo
@@ -194,6 +197,9 @@ func markInteractivelyUsed(stderr io.Writer, runner *personal.Runner, sessionID 
 
 // Run drives the interactive chat REPL on top of runner; hooks may be nil.
 func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Reader, stdout, stderr io.Writer, hooks sugahooks.Client) error {
+	if opts.Translator == nil {
+		opts.Translator = i18n.Fallback()
+	}
 	// The PreToolUse hook gates tool calls through the approval layer, which runs
 	// it before its own decision (see hooks_gate.go). Take the gate from the
 	// client itself: the recording wrapper below only forwards Client, so
