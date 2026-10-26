@@ -428,6 +428,8 @@ func testEnv(home string) []string {
 	return append(env,
 		"SUGA_HOME="+home,
 		"SUGA_HOOKS=off",
+		// The scenarios assert the Chinese UI; auto would follow the machine locale.
+		"SUGA_LANGUAGE=zh",
 		"NO_COLOR=1",
 		"TERM=xterm",
 	)
