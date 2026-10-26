@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 )
 
@@ -34,9 +35,9 @@ func isSkillsCommand(line string) bool {
 // BuildChatSkills renders :skills: one line per skill with its description and
 // source, or only the names (--only-names). limit 0 lists every skill; a
 // smaller limit keeps the first ones by name and says how many are left.
-func BuildChatSkills(items []SkillInfo, namesOnly bool, limit int) string {
+func BuildChatSkills(tr i18n.Translator, items []SkillInfo, namesOnly bool, limit int) string {
 	if len(items) == 0 {
-		return "没有加载任何 skill（工作区 .agents/skills、skills 目录以及 SUGA_HOME 与 ~/.agents/skills 下都没有 SKILL.md）；运行 suga inspect manifest 查看 skill 根目录"
+		return tr.T("cmd.skills.empty")
 	}
 	shown := items
 	hidden := 0
@@ -51,27 +52,27 @@ func BuildChatSkills(items []SkillInfo, namesOnly bool, limit int) string {
 		}
 		fmt.Fprintf(&b, "%s", strings.Join(names, ", "))
 		if hidden > 0 {
-			fmt.Fprintf(&b, " …（还有 %d 个，省略 -n 显示全部）", hidden)
+			b.WriteString(" " + tr.T("cmd.skills.names.more", map[string]any{"count": hidden}))
 		}
 		return b.String()
 	}
-	fmt.Fprintf(&b, "已加载 %d 个 skill：", len(items))
+	b.WriteString(tr.T("cmd.skills.header", map[string]any{"count": len(items)}))
 	for _, item := range shown {
 		b.WriteByte('\n')
 		desc := termtext.Clean(strings.Join(strings.Fields(item.Description), " "))
 		if desc == "" {
-			desc = "（无说明）"
+			desc = tr.T("cmd.skills.no_desc")
 		}
 		fmt.Fprintf(&b, "%s — %s", termtext.Clean(item.Name), truncateLine(desc, maxSkillLineDescription))
 		if item.Source != "" {
 			fmt.Fprintf(&b, " · %s", item.Source)
 		}
 		if item.AlwaysLoad {
-			b.WriteString(" · 常驻")
+			b.WriteString(" · " + tr.T("cmd.skills.always"))
 		}
 	}
 	if hidden > 0 {
-		fmt.Fprintf(&b, "\n还有 %d 个未显示：省略 -n 显示全部", hidden)
+		b.WriteString(tr.T("cmd.skills.more", map[string]any{"count": hidden}))
 	}
 	return b.String()
 }
@@ -84,33 +85,33 @@ func (s *chatState) runSkillsCommand(line string) {
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
 		case "-h", "--help":
-			fmt.Fprintln(s.source, commandUsageText(skillsCmd))
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), skillsCmd))
 			return
 		case "--only-names":
 			namesOnly = true
 		case "-n":
 			if i+1 >= len(args) {
-				fmt.Fprintln(s.source, "未知参数：-n 需要一个数字")
-				fmt.Fprintln(s.source, commandUsageText(skillsCmd))
+				fmt.Fprintln(s.source, s.tr().T("cmd.skills.arg.missing"))
+				fmt.Fprintln(s.source, commandUsageText(s.tr(), skillsCmd))
 				return
 			}
 			n, err := strconv.Atoi(args[i+1])
 			if err != nil || n < 0 {
-				fmt.Fprintln(s.source, "未知参数：-n "+args[i+1]+" 需要非负整数")
-				fmt.Fprintln(s.source, commandUsageText(skillsCmd))
+				fmt.Fprintln(s.source, s.tr().T("cmd.skills.arg.invalid", map[string]any{"value": args[i+1]}))
+				fmt.Fprintln(s.source, commandUsageText(s.tr(), skillsCmd))
 				return
 			}
 			limit = n
 			i++
 		default:
-			fmt.Fprintln(s.source, "未知参数："+arg)
-			fmt.Fprintln(s.source, commandUsageText(skillsCmd))
+			fmt.Fprintln(s.source, s.tr().T("cmd.unknown.arg", map[string]any{"arg": arg}))
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), skillsCmd))
 			return
 		}
 	}
 	if s.skills == nil {
-		fmt.Fprintln(s.source, "skill 列表在本进程不可用")
+		fmt.Fprintln(s.source, s.tr().T("cmd.skills.unavailable"))
 		return
 	}
-	fmt.Fprintln(s.source, BuildChatSkills(s.skills(), namesOnly, limit))
+	fmt.Fprintln(s.source, BuildChatSkills(s.tr(), s.skills(), namesOnly, limit))
 }

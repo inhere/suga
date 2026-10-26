@@ -1,23 +1,19 @@
 package chat
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output"
 )
 
 const codeCmd = ":code"
 
 const (
-	codeNoneHint     = "上一条回答里没有代码块"
-	codeNoFoldedHint = "上一条回答没有折叠的代码块（chat.code_max_lines: 0 时不折叠）"
+	codeNoneHintKey     = "cmd.code.none"
+	codeNoFoldedHintKey = "cmd.code.no_folded"
 )
-
-// codeUsageHint answers a :code line whose argument does not parse; the text is
-// the :code entry of the command table (chat_usage.go).
-var codeUsageHint = commandUsageText(codeCmd)
 
 // isCodeCommand recognizes the :code command (and its ":code N" form): the
 // answer's code blocks are kept by the markdown renderer, since a long one is
@@ -31,7 +27,7 @@ func isCodeCommand(line string) bool { return line == codeCmd || strings.HasPref
 func (r *Renderer) ShowCode(arg string) {
 	blocks := r.live.CodeBlocks()
 	if len(blocks) == 0 {
-		r.Hint(codeNoneHint)
+		r.Hint(r.tr().T(codeNoneHintKey))
 		return
 	}
 	index, ok := r.pickCodeBlock(blocks, strings.TrimSpace(arg))
@@ -40,7 +36,9 @@ func (r *Renderer) ShowCode(arg string) {
 	}
 	block := blocks[index]
 	r.stopThinking()
-	r.Hint(fmt.Sprintf("第 %d 个代码块（%s，共 %d 行）", index+1, codeBlockLang(block), len(block.Lines)))
+	r.Hint(r.tr().T("cmd.code.header", map[string]any{
+		"index": index + 1, "lang": codeBlockLang(r.tr(), block), "lines": len(block.Lines),
+	}))
 	term := output.NewMDTerm(r.opts.Out, r.opts.Color)
 	term.SetTheme(r.opts.Theme)
 	// No fold limit: :code shows the whole block.
@@ -58,25 +56,25 @@ func (r *Renderer) pickCodeBlock(blocks []output.CodeBlock, arg string) (int, bo
 				return i, true
 			}
 		}
-		r.Hint(codeNoFoldedHint)
+		r.Hint(r.tr().T(codeNoFoldedHintKey))
 		return 0, false
 	}
 	n, err := strconv.Atoi(arg)
 	if err != nil || n < 1 {
-		r.Hint(codeUsageHint)
+		r.Hint(commandUsageText(r.tr(), codeCmd))
 		return 0, false
 	}
 	if n > len(blocks) {
-		r.Hint(fmt.Sprintf("上一条回答只有 %d 个代码块", len(blocks)))
+		r.Hint(r.tr().T("cmd.code.count", map[string]any{"count": len(blocks)}))
 		return 0, false
 	}
 	return n - 1, true
 }
 
 // codeBlockLang is the language shown in the :code label of a block.
-func codeBlockLang(block output.CodeBlock) string {
+func codeBlockLang(tr i18n.Translator, block output.CodeBlock) string {
 	if block.Lang == "" {
-		return "无语言"
+		return tr.T("cmd.code.no_lang")
 	}
 	return block.Lang
 }

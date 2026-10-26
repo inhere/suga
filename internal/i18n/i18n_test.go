@@ -239,16 +239,20 @@ func TestCatalogManagerIsIndependent(t *testing.T) {
 }
 
 func TestCatalogFilesHaveMatchingNames(t *testing.T) {
-	for _, lang := range []string{"en", "zh"} {
+	// Every language directory carries the same area files, so a file added to
+	// one of them cannot stay untranslated in another.
+	names := func(lang string) []string {
 		files, err := readCatalogFiles(catalogFS, "catalog/"+lang)
 		assert.NoErr(t, err)
-		var names []string
+		result := make([]string, 0, len(files))
 		for _, file := range files {
-			names = append(names, file.file)
+			result = append(result, file.file)
 		}
-		sort.Strings(names)
-		assert.Eq(t, []string{"common.ini"}, names)
+		sort.Strings(result)
+		assert.NotEmpty(t, result)
+		return result
 	}
+	assert.Eq(t, names("en"), names("zh"))
 }
 
 func TestCatalogFSIsEmbedded(t *testing.T) {

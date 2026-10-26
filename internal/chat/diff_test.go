@@ -38,7 +38,7 @@ func replacedLines(tool, rel string, n int) *diffview.Change {
 // diffShown renders the lines of one preview the way chat writes them.
 func diffShown(change *diffview.Change, limit, index int, colorOn bool) string {
 	var b strings.Builder
-	for _, line := range buildDiffLines(change, limit, index) {
+	for _, line := range buildDiffLines(testTranslator, change, limit, index) {
 		b.WriteString(line.Paint(colorOn))
 		b.WriteString("\n")
 	}
@@ -106,7 +106,7 @@ func TestBuildDiffLines(t *testing.T) {
 	})
 
 	t.Run("a change without a file has no lines", func(t *testing.T) {
-		assert.Empty(t, buildDiffLines(nil, 20, 0))
+		assert.Empty(t, buildDiffLines(testTranslator, nil, 20, 0))
 	})
 }
 
@@ -272,19 +272,19 @@ func TestShowDiffCommand(t *testing.T) {
 	t.Run("an argument that is not a number prints the usage", func(t *testing.T) {
 		r, out := withChanges(t, true)
 		r.ShowDiff("x")
-		assert.Eq(t, diffUsageHint+"\n", out.String())
+		assert.Eq(t, commandUsageText(testTranslator, diffCmd)+"\n", out.String())
 	})
 
 	t.Run("a chat without a change says so", func(t *testing.T) {
 		var out bytes.Buffer
 		newRenderer(rendererOptions{Out: &out, Diff: true}).ShowDiff("")
-		assert.Eq(t, diffNoneHint+"\n", out.String())
+		assert.Eq(t, testTranslator.T(diffNoneHintKey)+"\n", out.String())
 	})
 
 	t.Run("with chat.diff off the command says so", func(t *testing.T) {
 		var out bytes.Buffer
 		newRenderer(rendererOptions{Out: &out, Diff: false}).ShowDiff("")
-		assert.Eq(t, diffDisabledHint+"\n", out.String())
+		assert.Eq(t, testTranslator.T(diffDisabledHintKey)+"\n", out.String())
 	})
 }
 
@@ -330,7 +330,7 @@ func TestChatDiffCommandInLoop(t *testing.T) {
 		input := ":diff\nhello\n:quit\n"
 		assert.NoErr(t, Run(context.Background(), runner, Options{Diff: true, DiffLines: 20},
 			strings.NewReader(input), &stdout, &stderr, nil))
-		assert.StrContains(t, stdout.String(), diffNoneHint)
+		assert.StrContains(t, stdout.String(), testTranslator.T(diffNoneHintKey))
 		assert.StrContains(t, stdout.String(), "MODEL_ANSWER")
 	})
 
@@ -359,7 +359,7 @@ func TestChatDiffCommandInLoop(t *testing.T) {
 		_ = writer.Close()
 		assert.NoErr(t, <-done)
 
-		assert.StrNotContains(t, stdout.String(), diffNoneHint)
+		assert.StrNotContains(t, stdout.String(), testTranslator.T(diffNoneHintKey))
 		provider.mu.Lock()
 		defer provider.mu.Unlock()
 		assert.Require(t, assert.Eq(t, 2, len(provider.calls)))

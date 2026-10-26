@@ -26,19 +26,20 @@ const (
 	localRunPrefix  = "!"
 	localSendPrefix = "!!"
 
-	// localCommandHelp is the usage line of a bare "!" or "!!".
-	localCommandHelp = "用法：!<命令> 直接在本地执行（不调用模型）；!!<命令> 执行并把结果附给下一条消息。Ctrl-C/Esc 终止命令"
+	// localCommandHelpKey is the usage line of a bare "!" or "!!".
+	localCommandHelpKey = "cmd.local.help"
 	// localCommandBusyHint answers a "!…" line typed at the ↳ input line while a
 	// turn runs: a command cannot run there, and the line goes back to the input
-	// (the way a message a turn did not deliver does).
+	// (the way a message a turn did not deliver does). It is shared with the
+	// refusal steering.go prints, which is not this file's text.
 	localCommandBusyHint = "回合进行中不能执行本地命令（结束本轮后在提示符处运行）"
-	// localSendNotice tells the person that what the command produced travels to
+	// localSendNoticeKey tells the person that what the command produced travels to
 	// the model with the next message.
-	localSendNotice = "本地命令结果会随下一条消息发给模型"
-	// localStoppedNotice answers a command the person ended with Ctrl-C or Esc.
-	localStoppedNotice = "已终止本地命令"
-	// localTimeoutNotice answers a command that hit tools.shell_timeout_max.
-	localTimeoutNotice = "本地命令超时，已终止进程树（tools.shell_timeout_max）"
+	localSendNoticeKey = "cmd.local.send_notice"
+	// localStoppedNoticeKey answers a command the person ended with Ctrl-C or Esc.
+	localStoppedNoticeKey = "cmd.local.stopped"
+	// localTimeoutNoticeKey answers a command that hit tools.shell_timeout_max.
+	localTimeoutNoticeKey = "cmd.local.timeout"
 )
 
 // localCommandKind is what a "!" line asks for.
@@ -83,7 +84,7 @@ func parseLocalCommand(line string) (localCommand, bool) {
 func (s *chatState) runLocalCommand(cmd localCommand) {
 	command := strings.TrimSpace(cmd.text)
 	if command == "" {
-		s.render.Hint(localCommandHelp)
+		s.render.Hint(s.tr().T(localCommandHelpKey))
 		return
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -105,7 +106,7 @@ func (s *chatState) runLocalCommand(cmd localCommand) {
 
 	if err != nil {
 		if s.ctx.Err() == nil {
-			s.render.Error(fmt.Errorf("本地命令：%w", err))
+			s.render.Error(fmt.Errorf("%s", s.tr().T("cmd.local.error", map[string]any{"error": err.Error()})))
 		}
 		return
 	}
@@ -114,12 +115,14 @@ func (s *chatState) runLocalCommand(cmd localCommand) {
 		// The person ended it (Esc, Ctrl-C), or chat is leaving: say so only in
 		// the first case.
 		if s.ctx.Err() == nil {
-			s.render.Notice(localStoppedNotice)
+			s.render.Notice(s.tr().T(localStoppedNoticeKey))
 		}
 	case res.TimedOut:
-		s.render.Notice(localTimeoutNotice)
+		s.render.Notice(s.tr().T(localTimeoutNoticeKey))
 	case res.ExitCode != 0:
-		s.render.Notice(fmt.Sprintf("本地命令退出码 %d · 耗时 %s", res.ExitCode, formatElapsed(res.Duration)))
+		s.render.Notice(s.tr().T("cmd.local.exit_code", map[string]any{
+			"code": res.ExitCode, "elapsed": formatElapsed(res.Duration),
+		}))
 	}
 	if cmd.kind != localSend {
 		return
@@ -130,7 +133,7 @@ func (s *chatState) runLocalCommand(cmd localCommand) {
 	if res.ModelText != "" {
 		s.localContext = appendContext(s.localContext, res.ModelText)
 	}
-	s.render.Hint(localSendNotice)
+	s.render.Hint(s.tr().T(localSendNoticeKey))
 }
 
 // localKeyWatch is the keyboard read a running local command owns: it carries

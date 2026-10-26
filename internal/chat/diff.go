@@ -7,20 +7,17 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/inhere/suga/internal/diffview"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 )
 
 const diffCmd = ":diff"
 
 const (
-	diffNoneHint     = "本次会话还没有文件改动"
-	diffDisabledHint = "文件改动的 diff 已显示关闭（chat.diff: false）"
-	defaultDiffLines = 20
+	diffNoneHintKey     = "cmd.diff.none"
+	diffDisabledHintKey = "cmd.diff.disabled"
+	defaultDiffLines    = 20
 )
-
-// diffUsageHint answers a :diff line whose argument does not parse; the text is
-// the :diff entry of the command table (chat_usage.go).
-var diffUsageHint = commandUsageText(diffCmd)
 
 func isDiffCommand(line string) bool { return line == diffCmd || strings.HasPrefix(line, diffCmd+" ") }
 
@@ -34,7 +31,7 @@ func diffIndex(arg string) (int, bool) {
 }
 
 // buildDiffLines prepares the bounded preview used below tool results and approvals.
-func buildDiffLines(change *diffview.Change, limit, index int) []LayoutLine {
+func buildDiffLines(tr i18n.Translator, change *diffview.Change, limit, index int) []LayoutLine {
 	if change == nil || change.Rel == "" {
 		return nil
 	}
@@ -44,7 +41,8 @@ func buildDiffLines(change *diffview.Change, limit, index int) []LayoutLine {
 		number = fmt.Sprintf("#%d ", index)
 	}
 	if change.Tool == diffview.ToolRemove {
-		return []LayoutLine{{Text: fmt.Sprintf("  %s删除 %s（%d 行）", number, rel, change.RemovedLines), Color: color.Gray}}
+		head := tr.T("cmd.diff.removed", map[string]any{"number": number, "path": rel, "lines": change.RemovedLines})
+		return []LayoutLine{{Text: "  " + head, Color: color.Gray}}
 	}
 	body := change.Lines()
 	if change.NewFile() {
@@ -52,9 +50,9 @@ func buildDiffLines(change *diffview.Change, limit, index int) []LayoutLine {
 		body = (&diffview.Change{Old: &empty, New: change.New}).Lines()
 	}
 	adds, dels := diffCounts(body)
-	head := fmt.Sprintf("  %sdiff %s（+%d -%d）", number, rel, adds, dels)
+	head := "  " + tr.T("cmd.diff.head", map[string]any{"number": number, "path": rel, "adds": adds, "dels": dels})
 	if change.NewFile() {
-		head = fmt.Sprintf("  %s新文件 %s（共 %d 行）", number, rel, adds)
+		head = "  " + tr.T("cmd.diff.new_file", map[string]any{"number": number, "path": rel, "lines": adds})
 	}
 	shown, omitted := body, 0
 	bodyLimit := limit
@@ -74,7 +72,7 @@ func buildDiffLines(change *diffview.Change, limit, index int) []LayoutLine {
 		lines = append(lines, diffPaintLine(line, width))
 	}
 	if omitted > 0 {
-		lines = append(lines, LayoutLine{Text: fmt.Sprintf("  … 还有 %d 行（%s 查看全部）", omitted, diffCmd), Color: color.Gray})
+		lines = append(lines, LayoutLine{Text: "  " + tr.T("cmd.diff.omitted", map[string]any{"count": omitted, "command": diffCmd}), Color: color.Gray})
 	}
 	return lines
 }
@@ -137,7 +135,7 @@ func (r *Renderer) showToolResult(change *diffview.Change, tool string) {
 		return
 	}
 	r.changes = append(r.changes, change)
-	printLayout(r.opts.Out, r.opts.Color, buildDiffLines(change, r.diffLimit(), 0))
+	printLayout(r.opts.Out, r.opts.Color, buildDiffLines(r.tr(), change, r.diffLimit(), 0))
 }
 
 // ApprovalDiff returns the pending file change before the approval question.
@@ -146,7 +144,7 @@ func (r *Renderer) ApprovalDiff(qTool string) string {
 		return ""
 	}
 	var b strings.Builder
-	for _, line := range buildDiffLines(r.pending, r.diffLimit(), 0) {
+	for _, line := range buildDiffLines(r.tr(), r.pending, r.diffLimit(), 0) {
 		b.WriteString(line.Paint(r.opts.Color))
 		b.WriteByte('\n')
 	}
@@ -156,27 +154,27 @@ func (r *Renderer) ApprovalDiff(qTool string) string {
 // ShowDiff prints a remembered change in full; :diff N selects the Nth change.
 func (r *Renderer) ShowDiff(arg string) {
 	if !r.diffOn() {
-		r.Hint(diffDisabledHint)
+		r.Hint(r.tr().T(diffDisabledHintKey))
 		return
 	}
 	index, ok := diffIndex(arg)
 	if !ok {
-		r.Hint(diffUsageHint)
+		r.Hint(commandUsageText(r.tr(), diffCmd))
 		return
 	}
 	if len(r.changes) == 0 {
-		r.Hint(diffNoneHint)
+		r.Hint(r.tr().T(diffNoneHintKey))
 		return
 	}
 	if index == 0 {
 		index = len(r.changes)
 	}
 	if index > len(r.changes) {
-		r.Hint(fmt.Sprintf("本次会话只有 %d 次文件改动", len(r.changes)))
+		r.Hint(r.tr().T("cmd.diff.count", map[string]any{"count": len(r.changes)}))
 		return
 	}
 	r.stopThinking()
-	printLayout(r.opts.Out, r.opts.Color, buildDiffLines(r.changes[index-1], 0, index))
+	printLayout(r.opts.Out, r.opts.Color, buildDiffLines(r.tr(), r.changes[index-1], 0, index))
 }
 
 func (r *Renderer) diffOn() bool { return r.opts.Diff }

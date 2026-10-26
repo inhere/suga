@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/inhere/suga/internal/adddir"
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // SessionDirs is the session's added-directory handle (--add-dir): chat's
@@ -62,19 +63,19 @@ func (s *chatState) runDirCommand(line string) {
 	switch name {
 	case addDirCmd:
 		if arg == "" {
-			fmt.Fprintln(s.stderr, dirCommandHelp)
+			fmt.Fprintln(s.stderr, dirCommandHelp(s.tr()))
 			return
 		}
 		dir, err := s.dirs.Add(s.ctx, arg, adddir.SourceSession)
 		if err != nil {
 			fmt.Fprintln(s.stderr, formatCommandError(addDirCmd, err))
-			fmt.Fprintln(s.stderr, dirCommandHelp)
+			fmt.Fprintln(s.stderr, dirCommandHelp(s.tr()))
 			return
 		}
-		fmt.Fprintf(s.source, "已授权：%s（%s）· 本会话立即生效，续接沿用\n", dir.Path, modeLabel(dir.Writable))
+		fmt.Fprintln(s.source, s.tr().T("cmd.dirs.granted", map[string]any{"path": dir.Path, "mode": s.tr().T(modeLabelKey(dir.Writable))}))
 	case rmDirCmd:
 		if arg == "" {
-			fmt.Fprintln(s.stderr, dirCommandHelp)
+			fmt.Fprintln(s.stderr, dirCommandHelp(s.tr()))
 			return
 		}
 		removed, err := s.dirs.Remove(s.ctx, arg)
@@ -83,13 +84,13 @@ func (s *chatState) runDirCommand(line string) {
 			return
 		}
 		if !removed {
-			fmt.Fprintf(s.stderr, "%s：%s 不在附加目录中（:dirs 可查看）\n", rmDirCmd, adddir.Expand(arg))
+			fmt.Fprintln(s.stderr, s.tr().T("cmd.dirs.not_added", map[string]any{"command": rmDirCmd, "path": adddir.Expand(arg)}))
 			return
 		}
-		fmt.Fprintf(s.source, "已撤销：%s\n", adddir.Expand(arg))
+		fmt.Fprintln(s.source, s.tr().T("cmd.dirs.revoked", map[string]any{"path": adddir.Expand(arg)}))
 	case dirsCmd:
 		if arg != "" {
-			fmt.Fprintln(s.stderr, dirCommandHelp)
+			fmt.Fprintln(s.stderr, dirCommandHelp(s.tr()))
 			return
 		}
 		s.printDirs()
@@ -117,40 +118,42 @@ func (s *chatState) printDirs() {
 	workspace, added := s.dirs.Workspace(), 0
 	for _, dir := range dirs {
 		if dir.Path == workspace {
-			fmt.Fprintf(s.source, "工作区：%s（%s）\n", dir.Path, modeLabel(dir.Writable))
+			fmt.Fprintln(s.source, s.tr().T("cmd.dirs.workspace", map[string]any{"path": dir.Path, "mode": s.tr().T(modeLabelKey(dir.Writable))}))
 			continue
 		}
 		added++
-		fmt.Fprintf(s.source, "  %s（%s · %s）\n", dir.Path, modeLabel(dir.Writable), sourceLabel(dir.Source))
+		fmt.Fprintln(s.source, "  "+s.tr().T("cmd.dirs.added", map[string]any{
+			"path": dir.Path, "mode": s.tr().T(modeLabelKey(dir.Writable)), "source": sourceLabel(s.tr(), dir.Source),
+		}))
 	}
 	if added == 0 {
-		fmt.Fprintf(s.source, "附加目录：无（%s）\n", dirCommandHelp)
+		fmt.Fprintln(s.source, s.tr().T("cmd.dirs.none", map[string]any{"help": dirCommandHelp(s.tr())}))
 		return
 	}
-	fmt.Fprintf(s.source, "共 %d 个附加目录（%s）\n", added, dirCommandHelp)
+	fmt.Fprintln(s.source, s.tr().T("cmd.dirs.total", map[string]any{"count": added, "help": dirCommandHelp(s.tr())}))
 }
 
-// modeLabel names a directory mode as :dirs reads it.
-func modeLabel(writable bool) string {
+// modeLabelKey is the catalog key naming a directory mode as :dirs reads it.
+func modeLabelKey(writable bool) string {
 	if writable {
-		return "读写"
+		return "cmd.dirs.mode.rw"
 	}
-	return "只读"
+	return "cmd.dirs.mode.ro"
 }
 
 // sourceLabel names where an added directory came from, for :dirs. An entry of
 // an older session (or one a plain --add-dir run wrote before this version kept
 // the origin) reads as 会话沿用.
-func sourceLabel(source string) string {
+func sourceLabel(tr i18n.Translator, source string) string {
 	switch source {
 	case adddir.SourceFlag:
-		return "启动参数"
+		return tr.T("cmd.dirs.source.flag")
 	case adddir.SourceEnv:
-		return "环境变量"
+		return tr.T("cmd.dirs.source.env")
 	case adddir.SourceSession:
-		return "会话中追加"
+		return tr.T("cmd.dirs.source.session")
 	case adddir.SourceAsk:
-		return "越界授权"
+		return tr.T("cmd.dirs.source.ask")
 	}
-	return "会话沿用"
+	return tr.T("cmd.dirs.source.kept")
 }

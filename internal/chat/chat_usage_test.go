@@ -18,10 +18,10 @@ func TestChatCommandTable(t *testing.T) {
 	t.Run("every entry is complete", func(t *testing.T) {
 		for _, spec := range chatCommandSpecs {
 			assert.Require(t, assert.NotEmpty(t, spec.Names))
-			assert.NotEmpty(t, spec.Summary, spec.Names[0])
-			assert.StrContains(t, spec.Usage, "用法："+spec.Names[0], spec.Names[0])
+			assert.NotEmpty(t, spec.SummaryKey, spec.Names[0])
+			assert.StrContains(t, testTranslator.T(spec.UsageKey), "用法："+spec.Names[0], spec.Names[0])
 			// One or two examples, as the task asks.
-			assert.StrContains(t, spec.Usage, "示例：", spec.Names[0])
+			assert.StrContains(t, testTranslator.T(spec.UsageKey), "示例：", spec.Names[0])
 		}
 	})
 
@@ -46,10 +46,10 @@ func TestChatCommandTable(t *testing.T) {
 		assert.Require(t, assert.True(t, ok))
 		withoutColon, ok := lookupCommand("queue")
 		assert.Require(t, assert.True(t, ok))
-		assert.Eq(t, withColon.Usage, withoutColon.Usage)
+		assert.Eq(t, withColon.UsageKey, withoutColon.UsageKey)
 		_, ok = lookupCommand(":nope")
 		assert.False(t, ok)
-		assert.StrContains(t, commandUsageText(":nope"), "未知命令：:nope")
+		assert.StrContains(t, commandUsageText(testTranslator, ":nope"), "未知命令：:nope")
 	})
 
 	t.Run("the options Tab offers come from the table", func(t *testing.T) {
@@ -63,14 +63,14 @@ func TestChatCommandTable(t *testing.T) {
 // TestChatHelpListing: :help lists every command with its summary and says where
 // the detail of one command is.
 func TestChatHelpListing(t *testing.T) {
-	help := BuildChatHelp()
-	assert.Eq(t, chatHelpText, help)
+	help := BuildChatHelp(testTranslator)
+	assert.Eq(t, buildChatHelp(testTranslator), help)
 	for _, spec := range chatCommandSpecs {
-		assert.StrContains(t, help, strings.Join(spec.Names, "/")+" "+spec.Summary)
+		assert.StrContains(t, help, strings.Join(spec.Names, "/")+" "+testTranslator.T(spec.SummaryKey))
 	}
 	lines := strings.Split(help, "\n")
 	assert.Eq(t, ":session 显示会话", lines[0])
-	assert.Eq(t, chatHelpHint, lines[len(lines)-1])
+	assert.Eq(t, testTranslator.T(chatHelpHintKey), lines[len(lines)-1])
 	assert.StrContains(t, help, "按键：Enter/Alt+Enter/Ctrl+J 提交/换行")
 }
 
@@ -91,14 +91,14 @@ func TestChatCommandHelpEveryCommand(t *testing.T) {
 
 	out := stdout.String()
 	for _, spec := range chatCommandSpecs {
-		assert.StrContains(t, out, spec.Usage, spec.Names[0]+" prints its usage")
+		assert.StrContains(t, out, testTranslator.T(spec.UsageKey), spec.Names[0]+" prints its usage")
 	}
 	assert.StrNotContains(t, out, "MODEL_ANSWER")
 	// --help is the same ask.
 	stdout.Reset()
 	assert.NoErr(t, Run(context.Background(), runner, Options{Dirs: &fakeSessionDirs{workspace: filepath.FromSlash("/ws")}},
 		strings.NewReader(":queue --help\n:quit\n"), &stdout, &stderr, nil))
-	assert.StrContains(t, stdout.String(), commandUsageText(queueCmd))
+	assert.StrContains(t, stdout.String(), commandUsageText(testTranslator, queueCmd))
 }
 
 // TestChatCommandRejectsUnknownArgs: a command that takes no argument answers one
@@ -125,7 +125,7 @@ func TestChatCommandRejectsUnknownArgs(t *testing.T) {
 		assert.StrContains(t, out, "未知参数："+arg)
 	}
 	for _, name := range []string{":session", ":compact", ":usage", ":dirs"} {
-		assert.StrContains(t, out, commandUsageText(name))
+		assert.StrContains(t, out, commandUsageText(testTranslator, name))
 	}
 	// :quit now did not leave chat: the :session behind it still printed the id.
 	assert.StrContains(t, out, "session id: ")
@@ -142,7 +142,7 @@ func TestChatHelpCommandArg(t *testing.T) {
 		strings.NewReader(":help :queue\n:help nope\n:quit\n"), &stdout, &stderr, nil))
 
 	out := stdout.String()
-	assert.StrContains(t, out, commandUsageText(queueCmd))
+	assert.StrContains(t, out, commandUsageText(testTranslator, queueCmd))
 	assert.StrContains(t, out, "未知命令：nope")
 	assert.StrNotContains(t, out, "MODEL_ANSWER")
 }
@@ -184,7 +184,7 @@ func TestChatQueueCommandDrop(t *testing.T) {
 		for _, line := range []string{":queue -d", ":queue -d x", ":queue -d 0", ":queue clear now", ":queue bogus"} {
 			buf.Reset()
 			s.runQueueCommand(line)
-			assert.StrContains(t, buf.String(), queueUsageHint, line)
+			assert.StrContains(t, buf.String(), commandUsageText(testTranslator, queueCmd), line)
 			assert.Eq(t, 2, len(s.followUps.pending()), line)
 		}
 	})
@@ -231,7 +231,7 @@ func TestChatCheckpointsCountArg(t *testing.T) {
 	assert.NoErr(t, Run(context.Background(), runner, Options{},
 		strings.NewReader(":checkpoints 2\n:checkpoints x\n:quit\n"), &stdout, &stderr, nil))
 
-	assert.StrContains(t, stdout.String(), noUndoHint)
-	assert.StrContains(t, stderr.String(), commandUsageText(checkpointsCmd))
+	assert.StrContains(t, stdout.String(), testTranslator.T(undoNoHintKey))
+	assert.StrContains(t, stderr.String(), commandUsageText(testTranslator, checkpointsCmd))
 	assert.StrNotContains(t, stdout.String(), "MODEL_ANSWER")
 }

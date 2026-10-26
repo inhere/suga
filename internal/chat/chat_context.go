@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -16,17 +17,17 @@ const contextCmd = ":context"
 // maxContextFiles bounds the listing of :context --files.
 const maxContextFiles = 100
 
-// contextPartTitles names the resident context parts :context prints, in the
-// order they appear in the request.
-var contextPartTitles = map[string]string{
-	"system_prompt":  "系统提示",
-	"environment":    "环境信息",
-	"rules":          "项目规则",
-	"memory_index":   "记忆索引",
-	"skills":         "skills 列表",
-	"append_prompt":  "附加提示",
-	"host_context":   "宿主上下文",
-	"deferred_tools": "按需加载工具列表",
+// contextPartKeys names the resident context parts :context prints, in the
+// order they appear in the request; the value is the catalog key of the name.
+var contextPartKeys = map[string]string{
+	"system_prompt":  "cmd.context.part.system_prompt",
+	"environment":    "cmd.context.part.environment",
+	"rules":          "cmd.context.part.rules",
+	"memory_index":   "cmd.context.part.memory_index",
+	"skills":         "cmd.context.part.skills",
+	"append_prompt":  "cmd.context.part.append_prompt",
+	"host_context":   "cmd.context.part.host_context",
+	"deferred_tools": "cmd.context.part.deferred_tools",
 }
 
 // ContextPart is one measured part of the current context, filled from the
@@ -75,47 +76,59 @@ func isContextCommand(line string) bool {
 // BuildChatContext renders :context: one line per part with its size and
 // estimated tokens, the tool table, the handoff package and the history, then
 // the estimate of the whole request and the last turn's traced estimate.
-func BuildChatContext(rep ContextReport, tools ToolsInfo, usage personal.ContextUsage) string {
+func BuildChatContext(tr i18n.Translator, rep ContextReport, tools ToolsInfo, usage personal.ContextUsage) string {
 	var b strings.Builder
-	b.WriteString("上下文构成（估算 token 与 context trace 事件同一套算法）：")
+	b.WriteString(tr.T("cmd.context.header"))
 	total := tools.Tokens
-	fmt.Fprintf(&b, "\n工具 schema：%s · 约 %s tok · %d 个工具", formatBytes(int64(tools.Bytes)), formatTokens(tools.Tokens), tools.Count)
+	b.WriteString(tr.T("cmd.context.tools", map[string]any{
+		"bytes":  formatBytes(int64(tools.Bytes)),
+		"tokens": formatTokens(tools.Tokens),
+		"count":  tools.Count,
+	}))
 	if tools.MCP > 0 {
-		fmt.Fprintf(&b, "（MCP %d）", tools.MCP)
+		b.WriteString(tr.T("cmd.context.tools.mcp", map[string]any{"count": tools.MCP}))
 	}
 	if tools.Deferred > 0 || tools.Loaded > 0 {
-		fmt.Fprintf(&b, "；按需加载 %d 个，已加载 %d 个", tools.Deferred, tools.Loaded)
+		b.WriteString(tr.T("cmd.context.tools.deferred", map[string]any{"deferred": tools.Deferred, "loaded": tools.Loaded}))
 	}
-	b.WriteString("\n常驻上下文：")
+	b.WriteString(tr.T("cmd.context.resident"))
 	empty := true
 	for _, part := range rep.Parts {
 		if part.Bytes <= 0 {
 			continue
 		}
 		empty = false
-		fmt.Fprintf(&b, "\n  %s：%s · 约 %s tok", contextPartTitle(part.Name), formatBytes(int64(part.Bytes)), formatTokens(part.Tokens))
+		b.WriteString(tr.T("cmd.context.part", map[string]any{
+			"title":  contextPartTitle(tr, part.Name),
+			"bytes":  formatBytes(int64(part.Bytes)),
+			"tokens": formatTokens(part.Tokens),
+		}))
 		total += part.Tokens
 		if len(part.Files) > 0 {
-			fmt.Fprintf(&b, " · %d 个文件", len(part.Files))
+			b.WriteString(" · " + tr.T("cmd.context.part.files", map[string]any{"count": len(part.Files)}))
 		}
 		if part.Note != "" {
-			fmt.Fprintf(&b, "（%s）", part.Note)
+			b.WriteString(tr.T("cmd.context.part.note", map[string]any{"note": part.Note}))
 		}
 	}
 	if empty {
-		b.WriteString("（空）")
+		b.WriteString(tr.T("cmd.context.empty"))
 	}
-	fmt.Fprintf(&b, "\n交接包：%s · 约 %s tok", formatBytes(int64(usage.Handoff)), formatTokens(usage.HandoffTokens))
-	fmt.Fprintf(&b, "\n历史消息：%s · 约 %s tok · %d 条", formatBytes(int64(usage.History)), formatTokens(usage.HistoryTokens), usage.HistoryMessages)
+	b.WriteString(tr.T("cmd.context.handoff", map[string]any{
+		"bytes": formatBytes(int64(usage.Handoff)), "tokens": formatTokens(usage.HandoffTokens),
+	}))
+	b.WriteString(tr.T("cmd.context.history", map[string]any{
+		"bytes": formatBytes(int64(usage.History)), "tokens": formatTokens(usage.HistoryTokens), "count": usage.HistoryMessages,
+	}))
 	total += usage.HandoffTokens + usage.HistoryTokens
 	if usage.Input > 0 {
-		fmt.Fprintf(&b, "\n上一回合消息：%s", formatBytes(int64(usage.Input)))
+		b.WriteString(tr.T("cmd.context.input", map[string]any{"bytes": formatBytes(int64(usage.Input))}))
 	}
-	fmt.Fprintf(&b, "\n估算合计：约 %s tok", formatTokens(total))
+	b.WriteString(tr.T("cmd.context.total", map[string]any{"tokens": formatTokens(total)}))
 	if usage.EstTokens > 0 {
-		fmt.Fprintf(&b, "；上一回合请求实测估算 %s tok", formatTokens(usage.EstTokens))
+		b.WriteString(tr.T("cmd.context.estimated", map[string]any{"tokens": formatTokens(usage.EstTokens)}))
 		if usage.Window > 0 {
-			fmt.Fprintf(&b, " / 窗口 %s tok", formatTokens(usage.Window))
+			b.WriteString(" " + tr.T("cmd.context.window", map[string]any{"tokens": formatTokens(usage.Window)}))
 		}
 	}
 	return b.String()
@@ -124,12 +137,12 @@ func BuildChatContext(rep ContextReport, tools ToolsInfo, usage personal.Context
 // BuildChatContextFiles renders :context --files: the files the context carries
 // TOGETHER with where each came from. Tool-read files come first, most recent
 // use first; the rule sources follow, since they are resident from the start.
-func BuildChatContextFiles(rep ContextReport, files []personal.LoadedFile) string {
+func BuildChatContextFiles(tr i18n.Translator, rep ContextReport, files []personal.LoadedFile) string {
 	var lines []string
 	for _, file := range files {
 		source := termtext.Clean(file.Tool)
 		if file.Turn > 0 {
-			source += fmt.Sprintf(" 第 %d 轮", file.Turn)
+			source += " " + tr.T("cmd.context.file.turn", map[string]any{"turn": file.Turn})
 		}
 		lines = append(lines, fmt.Sprintf("%s · %s · %s", termtext.Clean(file.Path), source, formatBytes(int64(file.Bytes))))
 	}
@@ -138,27 +151,27 @@ func BuildChatContextFiles(rep ContextReport, files []personal.LoadedFile) strin
 			continue
 		}
 		for _, file := range part.Files {
-			note := "规则文件"
+			note := tr.T("cmd.context.rule")
 			if !file.Included {
-				note += "（未纳入）"
+				note += tr.T("cmd.context.rule.excluded")
 			} else if file.Truncated {
-				note += "（已截断）"
+				note += tr.T("cmd.context.rule.truncated")
 			}
 			lines = append(lines, fmt.Sprintf("%s · %s · %s", termtext.Clean(file.Path), note, formatBytes(int64(file.Bytes))))
 		}
 	}
 	if len(lines) == 0 {
-		return "上下文里还没有已加载的文件：file_read 读过的文件、规则文件会出现在这里"
+		return tr.T("cmd.context.files.empty")
 	}
-	header := fmt.Sprintf("上下文已加载的文件（%d 个，最近使用在前）：", len(lines))
+	header := tr.T("cmd.context.files.header", map[string]any{"count": len(lines)})
 	return header + "\n" + strings.Join(lines, "\n")
 }
 
-// contextPartTitle is the Chinese name of a resident part (the part name
+// contextPartTitle is the printed name of a resident part (the part name
 // itself for one this version does not know).
-func contextPartTitle(name string) string {
-	if title, ok := contextPartTitles[name]; ok {
-		return title
+func contextPartTitle(tr i18n.Translator, name string) string {
+	if key, ok := contextPartKeys[name]; ok {
+		return tr.T(key)
 	}
 	return name
 }
@@ -171,22 +184,22 @@ func (s *chatState) runContextCommand(line string) {
 	for _, arg := range args {
 		switch arg {
 		case "-h", "--help":
-			fmt.Fprintln(s.source, commandUsageText(contextCmd))
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), contextCmd))
 			return
 		case "--files":
 			filesOnly = true
 		default:
-			fmt.Fprintln(s.source, "未知参数："+arg)
-			fmt.Fprintln(s.source, commandUsageText(contextCmd))
+			fmt.Fprintln(s.source, s.tr().T("cmd.unknown.arg", map[string]any{"arg": arg}))
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), contextCmd))
 			return
 		}
 	}
 	rep := s.contextReport()
 	if filesOnly {
-		fmt.Fprintln(s.source, BuildChatContextFiles(rep, s.loadedContextFiles()))
+		fmt.Fprintln(s.source, BuildChatContextFiles(s.tr(), rep, s.loadedContextFiles()))
 		return
 	}
-	fmt.Fprintln(s.source, BuildChatContext(rep, s.toolsInfo(rep), s.contextUsage()))
+	fmt.Fprintln(s.source, BuildChatContext(s.tr(), rep, s.toolsInfo(rep), s.contextUsage()))
 }
 
 // contextReport is the runtime's resident composition, or an empty one when the
