@@ -48,9 +48,42 @@
 
 ## 实测（2026-10-26）
 
-<!-- MEASURED -->
+命令（真实 provider，评测把配置与 `.env` 复制到临时 home，结束删除；不读也不打印 `.env`）：
+
+```
+go build -o tmp/eval-bin/suga ./cmd/suga
+go run ./scripts/eval --bin tmp/eval-bin/suga --model opencode-go/deepseek-v4.1-flash \
+  --config-from ~/.suga --task longsession-hard-rule-update --repeat 1 --timeout 15m
+```
+
+结果：任务 PASS（14 轮、3 次换段，433.4s，26 次模型调用，prompt 318.8k，cache read 231.3k）。
+
+| 桶 | 调用 | prompt | cache read | 命中率 |
+|---|---|---|---|---|
+| cold | 1 | 7.7k | 0 | - |
+| segment_start | 3 | 29.4k | 14.7k | 50.0% |
+| steady | 9 | 122.9k | 102.4k | 83.3% |
+| handoff | 3 | 16.3k | 0 | - |
+| unknown | 10 | 142.6k | 114.2k | 80.1% |
+| **overall** | 26 | 318.8k | 231.3k | 72.6% |
+
+steady 桶低于 90% 的 4 次调用（`inspect trace <sid> --analyze`，`step` 为段内主循环步号）：
+
+| step | 未命中 | prompt | 命中率 | 两次调用之间的事件 |
+|---|---|---|---|---|
+| 3 | 10.1k | 18.0k | 43.5% | 无 |
+| 12 | 4.5k | 14.1k | 68.1% | 无 |
+| 19 | 1.3k | 12.6k | 89.5% | 无 |
+| 20 | 3.0k | 15.6k | 80.6% | 无 |
+
+读法与注意：
+
+- 本次运行的 14 轮是 14 个 `suga run` 进程（评测逐轮起进程），所以每轮第一次调用都是 `prefix=first`：除会话首次那一次记 `cold`、换段后那几次记 `segment_start` 之外，其余 10 次落在 `unknown`（新进程续接，provider 缓存状态未知）。这 10 次实际仍命中 80.1%，说明 provider 的前缀缓存跨进程有效；单进程的长 chat 会话里这批调用会是 `steady`，对比两种跑法时要把这一点算进去。
+- `unknown` 是「判定不了的计数」，不是错误；如果某天它的占比很高，要先把归因补齐（`prefix` 记录、跨进程缓存状态），而不是直接把 `steady` 当整体。
+- steady 桶 83.3% 低于 95% 目标，但同一次运行的 `uncached input` 归因是 `71.2k ≈ fresh 71.2k + rebuilt 0 + provider-side 14`：未命中几乎全是「上次请求之后新增的内容」（每轮新 prompt、file_read 的大段结果），而不是前缀被重写或 provider 没写回缓存。所以 steady 桶的命中率还受「单次调用携带多少新内容」影响，不能把 83.3% 直接当成前缀缓存失效；下一步应把 steady 调用按新内容比例（`uncached_fresh` / prompt）再分一层。
+- `handoff` 桶（3 次写交接包）的 prompt 16.3k 全未命中，符合预期：它发的是专用提示词，不是会话。
 
 ## 下一步
 
-- steady 桶的低命中调用按 `events` 分组看：事件为空的那批才是前缀/缓存写回的问题（写回延迟、TTL、provider 侧 round 截断）；
+- steady 桶的低命中调用按 `events` 分组看：事件为空的那批才是前缀/缓存写回的问题（写回延迟、TTL、provider 侧 round 截断）；对空事件的那批，再用 `uncached_fresh` 与新增内容对比，把「新内容多」和「真漏」分开（见上面的实测）；
 - 请求前缀相关的改动（工具表、系统提示、段上下文、提醒、旧结果折叠）都要看 steady 桶的变化，而不只是总体命中率。
