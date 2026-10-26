@@ -54,11 +54,11 @@ suga init                                         # create ~/.suga and keep exis
 #   ANTHROPIC_API_KEY=...
 
 # OpenAI-compatible official providers (choose one):
-suga config set model openai/gpt-4o-mini
-# or: suga config set model deepseek/deepseek-chat
+suga config set model deepseek/deepseek-chat
+# or: suga config set model openai/<model-id>    # an OpenAI model id your account can use
 
 # Anthropic official API (alternative):
-# suga config set model anthropic/claude-sonnet-4-5
+# suga config set model anthropic/claude-sonnet-5-5
 
 suga config get model                             # verify the parsed model and source
 suga models                                       # list configured models offline; suga config get <key> shows value and source

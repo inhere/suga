@@ -54,11 +54,11 @@ suga init                                         # 创建 ~/.suga，并保留�
 #   ANTHROPIC_API_KEY=...
 
 # OpenAI 兼容的官方 provider（二选一）：
-suga config set model openai/gpt-4o-mini
-# 或：suga config set model deepseek/deepseek-chat
+suga config set model deepseek/deepseek-chat
+# 或：suga config set model openai/<model-id>    # 你的账号可用的 OpenAI 模型 ID
 
 # Anthropic 官方 API（另一种选择）：
-# suga config set model anthropic/claude-sonnet-4-5
+# suga config set model anthropic/claude-sonnet-5-5
 
 suga config get model                             # 验证配置解析出的模型与来源
 suga models                                       # 离线列出已配置的模型
