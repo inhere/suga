@@ -61,6 +61,7 @@ Details: [references/chat.md](skills/suga-guide/references/chat.md) (Chinese)
 - **Steering**: while the model works the prompt becomes `↳ ` and Enter adds the line to the running turn; `Tab` queues the line for the turn after this one instead (`[排队] …（本轮结束后发送）`, `:queue` lists and `:queue clear` drops the queue); `Esc` stops only the turn, two `Ctrl-C` within 3s quit.
 - **`!` local commands**: `!cmd` runs in the local shell without the model; `!!cmd` also attaches the result to your next message.
 - **Resume preview**: resuming shows the last model reply first; a session left `running` by a killed process is recovered.
+- **Demo**: `make demo-cast` records a 30-second terminal demo of chat (tool lines, Tab queueing, write approval, `:context`, the resume line) to `docs/demo/suga-chat.cast`, replayed with `asciinema play`; [docs/demo/README.md](docs/demo/README.md) covers the timeline, the fake model behind it and how to turn it into a GIF.
 - **Terminal smoke suites**: `make smoke-chat` runs the comprehensive Python PTY scenarios on Linux/macOS (`scripts/ptysmoke`, including steering, shell cancellation and paste). `make smoke-pty-go` runs the smaller Go `ptytest` suite on Windows ConPTY and Unix, covering approval prompt redraw, local commands, unknown colon input and bracketed paste. The Go suite is the Windows regression gate; the Python suite remains the Linux/macOS behavior oracle.
 
 ## Configuration
