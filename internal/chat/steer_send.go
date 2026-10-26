@@ -107,7 +107,7 @@ func (s *chatState) deliveryWarning(images int) string {
 	if images == 0 || s.canSeeImages() {
 		return ""
 	}
-	return fmt.Sprintf("当前模型 %s 不支持看图，附带的 %d 张图片已转为文字说明", s.modelInfo.Ref(), images)
+	return s.tr().T("status.delivery.no_vision", map[string]any{"model": s.modelInfo.Ref(), "images": images})
 }
 
 // insertSendSteer hands one `suga send --steer` message to the turn running right

@@ -90,15 +90,6 @@ type BannerInfo struct {
 	WriteTools bool
 }
 
-// The fixed lines of the banner. The read-only line names the usual reason the
-// model says it has no shell_exec: write tools are off unless
-// SUGA_HOME/config.yaml sets tools.allow_write.
-const (
-	bannerHelpText       = "输入任务开始对话；!<命令> 直接在本地执行（!!<命令> 把结果附给下一条消息）；:session 显示会话，:compact 压缩上下文，:diff 显示文件改动，:quit/:exit 退出；:help 查看命令；Alt+Enter（Windows 上 Ctrl+Enter / Ctrl+J）在输入里换行，多行时上下键移动光标。"
-	bannerWriteToolsText = "工具：可读写文件、执行 shell（tools.approval 决定是否先确认）。"
-	bannerReadOnlyText   = "工具：只读。要写文件、执行 shell，在 SUGA_HOME/config.yaml 设 tools.allow_write: true。"
-)
-
 // BuildBanner builds the chat header: the model in use, the commands, and
 // whether the tools can write.
 func BuildBanner(info BannerInfo) []LayoutLine {
@@ -228,7 +219,7 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 	if budget := budgetStatus(s.Budget); budget != "" {
 		parts = append(parts, budget)
 	}
-	if wrapUp := budgetWrapUpStatus(s.Budget); wrapUp != "" {
+	if wrapUp := budgetWrapUpStatus(t, s.Budget); wrapUp != "" {
 		parts = append(parts, wrapUp)
 	}
 	// An answer cut off at the output token limit: the person must not read it as
@@ -282,7 +273,9 @@ func budgetStatus(b *personal.BudgetSnapshot) string {
 	return fmt.Sprintf("%s %s%d%%", name, prefix, share)
 }
 
-func budgetWrapUpStatus(b *personal.BudgetSnapshot) string {
+// budgetWrapUpStatus names why the turn wrapped up: the numbers themselves are
+// formatted here (they are values, not text) and the sentence comes from t.
+func budgetWrapUpStatus(t i18n.Translator, b *personal.BudgetSnapshot) string {
 	if b == nil || !b.Exceeded {
 		return ""
 	}
@@ -292,17 +285,19 @@ func budgetWrapUpStatus(b *personal.BudgetSnapshot) string {
 	}
 	switch b.Reason {
 	case "max_cost_usd":
-		return fmt.Sprintf("本轮因成本预算用尽收尾（%s$%.4f/$%.4f）", prefix, b.CostUSD.Limit, b.CostUSD.Used)
+		usage := fmt.Sprintf("%s$%.4f/$%.4f", prefix, b.CostUSD.Limit, b.CostUSD.Used)
+		return trOf(t).T("status.budget.wrapup_cost", map[string]any{"usage": usage})
 	case "max_tokens":
-		return fmt.Sprintf("本轮因 token 预算用尽收尾（%s%.0f/%s%.0f）", prefix, b.Tokens.Limit, prefix, b.Tokens.Used)
+		usage := fmt.Sprintf("%s%.0f/%s%.0f", prefix, b.Tokens.Limit, prefix, b.Tokens.Used)
+		return trOf(t).T("status.budget.wrapup_tokens", map[string]any{"usage": usage})
 	default:
-		return "本轮因预算用尽收尾"
+		return trOf(t).T("status.budget.wrapup")
 	}
 }
 
 // budgetNoticeText is deliberately short: it may be printed while the model
 // is streaming, while the detailed limit and usage remain on the final status.
-func budgetNoticeText(b *personal.BudgetSnapshot) string {
+func budgetNoticeText(t i18n.Translator, b *personal.BudgetSnapshot) string {
 	share, estimated, ok := budgetShare(b)
 	if !ok {
 		return ""
@@ -311,11 +306,13 @@ func budgetNoticeText(b *personal.BudgetSnapshot) string {
 	if estimated {
 		prefix = "~"
 	}
-	name := "预算"
+	name := trOf(t).T("status.budget.name")
 	if b.Scope == "session" {
-		name = "会话预算"
+		name = trOf(t).T("status.budget.name_session")
 	}
-	return fmt.Sprintf("预算提醒：%s已使用 %s%d%%", name, prefix, share)
+	return trOf(t).T("status.budget.notice", map[string]any{
+		"name": name, "share": fmt.Sprintf("%s%d%%", prefix, share),
+	})
 }
 
 // ExitSummary is everything the exit summary shows.
@@ -334,6 +331,8 @@ type ExitSummary struct {
 	SessionUsage agentcore.Usage
 	// Elapsed is how long this chat process ran.
 	Elapsed time.Duration
+	// Translator is the host UI catalog; nil preserves legacy Chinese output.
+	Translator i18n.Translator
 }
 
 // BuildExitSummary builds the lines chat leaves behind when it ends: the resume
@@ -344,20 +343,26 @@ func BuildExitSummary(s ExitSummary) []LayoutLine {
 	if s.SessionID == "" {
 		return nil
 	}
-	line := fmt.Sprintf("本次 %d 轮 · in %d / out %d tokens", s.Turns, s.Usage.InputTokens, s.Usage.OutputTokens)
+	t := trOf(s.Translator)
+	line := t.T("status.exit.turns", map[string]any{
+		"turns": s.Turns, "input": s.Usage.InputTokens, "output": s.Usage.OutputTokens,
+	})
 	if s.SessionUsage.InputTokens > 0 || s.SessionUsage.OutputTokens > 0 {
-		line += fmt.Sprintf("（会话累计 in %d / out %d）", s.SessionUsage.InputTokens, s.SessionUsage.OutputTokens)
+		line += t.T("status.exit.session_total", map[string]any{
+			"input": s.SessionUsage.InputTokens, "output": s.SessionUsage.OutputTokens,
+		})
 	}
 	// The short name goes before the resume command, which ends the line so it
-	// can be copied as it is (a name glued after the id broke the command).
+	// can be copied as it is (a name glued after the id broke the command). The
+	// command itself is never translated.
 	name := ""
 	if s.ShortName != "" {
-		name = "会话 " + s.ShortName + " · "
+		name = t.T("status.exit.session_name", map[string]any{"name": s.ShortName}) + " · "
 	}
 	// Leading empty line: Ctrl-C/Ctrl-D at the prompt leaves the cursor after "❯ ".
 	return []LayoutLine{
 		{},
-		{Text: line + " · 运行 " + formatElapsed(s.Elapsed)},
-		{Text: name + "续接：suga chat --resume " + s.SessionID},
+		{Text: line + " · " + t.T("status.exit.elapsed", map[string]any{"elapsed": formatElapsed(s.Elapsed)})},
+		{Text: name + t.T("status.exit.resume", map[string]any{"cmd": "suga chat --resume " + s.SessionID})},
 	}
 }
