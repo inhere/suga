@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore/mock"
 )
@@ -59,6 +60,19 @@ func TestSameDir(t *testing.T) {
 		lower, upper := filepath.Join(base, "gone-dir"), filepath.Join(base, "GONE-DIR")
 		assert.Eq(t, true, sameDir(lower, upper, true))
 		assert.Eq(t, false, sameDir(lower, upper, false))
+	})
+}
+
+func TestEmptyScopeHintEnglish(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		tr, err := i18n.New(i18n.LanguageEN)
+		assert.NoErr(t, err)
+		assert.Eq(t, "no sessions yet", EmptyScopeHintWithTranslator(tr, "C:/work", 0))
+	})
+	t.Run("other directories", func(t *testing.T) {
+		tr, err := i18n.New(i18n.LanguageEN)
+		assert.NoErr(t, err)
+		assert.StrContains(t, EmptyScopeHintWithTranslator(tr, "C:/work", 2), "no sessions in C:/work")
 	})
 }
 

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // Storage usage report (`suga data usage`, design 2026-10-20).
@@ -22,6 +24,9 @@ import (
 // UsageOptions narrows the usage report. Top bounds every "N largest" list.
 type UsageOptions struct {
 	Top int
+	// Translator renders human-facing maintenance suggestions. A nil translator
+	// uses the Chinese fallback for callers predating language injection.
+	Translator i18n.Translator
 }
 
 // SizeStat is a row or file count with the bytes it occupies. Rows counts
@@ -198,7 +203,7 @@ func (s *Store) Usage(ctx context.Context, opts UsageOptions) (UsageReport, erro
 	}
 	rep.TotalBytes = rep.File.Bytes + rep.Sessions.Tools.Bytes + rep.Sessions.Outputs.Bytes +
 		rep.Sessions.Images.Bytes + rep.Sessions.Snapshots.Bytes + rep.Sessions.Other.Bytes
-	usageSuggestions(&rep)
+	usageSuggestions(&rep, opts.Translator)
 	return rep, nil
 }
 
@@ -690,27 +695,33 @@ func (u *UsageSessions) addFile(rel string, size int64) {
 // usageSuggestions attaches the maintenance command that acts on each finding.
 // A section without a way to act on it (the assistant bodies are the model's
 // own output) says which retention job shrinks it instead.
-func usageSuggestions(rep *UsageReport) {
+func usageSuggestions(rep *UsageReport, translator i18n.Translator) {
+	if translator == nil {
+		translator = i18n.Fallback()
+	}
 	if rep.File.FreePages > 0 {
-		rep.File.Suggestion = fmt.Sprintf("有 %d 个空闲页（%s），`suga data vacuum` 可回收",
-			rep.File.FreePages, humanUsageBytes(rep.File.FreeBytes))
+		rep.File.Suggestion = translator.T("personal.usage.free_pages", map[string]any{
+			"pages": rep.File.FreePages, "bytes": humanUsageBytes(rep.File.FreeBytes),
+		})
 	}
 	// The entries section can carry two findings: tool results still inline (a
 	// command moves them) and the assistant bodies (no command trims them).
 	var entryHints []string
 	if rep.Entries.Tool.Inline.Bytes > 0 {
-		entryHints = append(entryHints, fmt.Sprintf("库内 tool 结果 %s，`suga data bodies --move` 可移到会话文件",
-			humanUsageBytes(rep.Entries.Tool.Inline.Bytes)))
+		entryHints = append(entryHints, translator.T("personal.usage.tool_inline", map[string]any{
+			"bytes": humanUsageBytes(rep.Entries.Tool.Inline.Bytes),
+		}))
 	}
 	if rep.Entries.Assistant.Bytes-rep.Entries.MovedAssistant.Bytes > 0 {
-		entryHints = append(entryHints, fmt.Sprintf("库内 assistant 的推理内容与工具调用参数 %s，`suga data bodies --move` 可移到会话文件",
-			humanUsageBytes(rep.Entries.Assistant.Bytes-rep.Entries.MovedAssistant.Bytes)))
+		entryHints = append(entryHints, translator.T("personal.usage.assistant_inline", map[string]any{
+			"bytes": humanUsageBytes(rep.Entries.Assistant.Bytes - rep.Entries.MovedAssistant.Bytes),
+		}))
 	}
 	if len(entryHints) > 0 {
 		rep.Entries.Suggestion = strings.Join(entryHints, "；")
 	}
 	if rep.Events.Rows > 0 {
-		rep.Events.Suggestion = "事件随会话一起删除：`suga data gc --retention`（或 --older-than）"
+		rep.Events.Suggestion = translator.T("personal.usage.events")
 	}
 	toolRows := int64(0)
 	for _, role := range rep.FTS.Roles {
@@ -719,14 +730,14 @@ func usageSuggestions(rep *UsageReport) {
 		}
 	}
 	if toolRows > 0 {
-		rep.FTS.Suggestion = fmt.Sprintf("索引里还有 %d 行 tool 结果，旧库可用 v0.40 的 `suga data shrink-fts` 删除它们", toolRows)
+		rep.FTS.Suggestion = translator.T("personal.usage.fts_tools", map[string]any{"rows": toolRows})
 	} else if rep.FTS.Bytes > 0 {
-		rep.FTS.Suggestion = "索引已无 tool 行；删除会话后执行 `suga data vacuum` 让文件回落"
+		rep.FTS.Suggestion = translator.T("personal.usage.fts_empty")
 	}
 	if rep.Sessions.Outputs.Files > 0 {
-		rep.Sessions.Suggestion = "spill 输出可用 `suga data compress-spill --apply` 压缩空闲文件；旧会话用 `suga data gc --retention` 删除"
+		rep.Sessions.Suggestion = translator.T("personal.usage.spill")
 	} else if rep.Sessions.Dirs > 0 {
-		rep.Sessions.Suggestion = "会话目录随会话删除：`suga data gc --retention`（或 --older-than）"
+		rep.Sessions.Suggestion = translator.T("personal.usage.sessions")
 	}
 }
 
