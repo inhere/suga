@@ -422,7 +422,7 @@ func (r *Renderer) noteBudget(snapshot *personal.BudgetSnapshot) {
 		return
 	}
 	r.budgetNoticed = true
-	if text := budgetNoticeText(snapshot); text != "" {
+	if text := budgetNoticeText(r.tr(), snapshot); text != "" {
 		r.Notice(text)
 		r.startThinking()
 	}

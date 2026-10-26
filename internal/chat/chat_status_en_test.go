@@ -126,15 +126,14 @@ func TestChatENSteerAndFollowUpLabels(t *testing.T) {
 	r.FollowUpSent("then run the suite")
 
 	got := out.String()
-	// The suffix is glued to the text (approval.render.interjection = "[interjection]
-	// {text}{suffix}"), so the label words are asserted one by one rather than with
-	// a space the catalog does not have yet.
-	assert.StrContains(t, got, "[interjection] fix the test")
-	assert.StrContains(t, got, "(waiting for delivery)")
-	assert.StrContains(t, got, "(withdrawn)")
-	assert.StrContains(t, got, "[queued] then run the suite")
-	assert.StrContains(t, got, "(sent after this turn)")
-	assert.StrContains(t, got, "(sent)")
+	// The English suffix is a separate word group, so the catalog separates it from
+	// the text with a space (approval.render.interjection = "[interjection] {text}
+	// {suffix}"); the Chinese one keeps its full-width bracket glued to the text.
+	assert.StrContains(t, got, "[interjection] fix the test (waiting for delivery)")
+	assert.StrContains(t, got, "[interjection] fix the test (withdrawn)")
+	assert.StrContains(t, got, "[queued] then run the suite (sent after this turn)")
+	assert.StrContains(t, got, "[queued] then run the suite (sent)")
+	assert.NotContains(t, got, "fix the test(")
 	assert.NotContains(t, got, "插话")
 	assert.NotContains(t, got, "排队")
 }

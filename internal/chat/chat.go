@@ -267,7 +267,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// Registered first so it runs last, after the terminal is restored: how to
 	// continue this session and what this chat process used.
 	chatStart := time.Now()
-	var stats chatStats
+	stats := chatStats{translator: opts.Translator}
 	// sessionName is the short name the session registers under; it is known once
 	// the local session socket is registered, below.
 	var sessionName string
@@ -849,6 +849,9 @@ type chatStats struct {
 	turns   int
 	usage   agentcore.Usage
 	session agentcore.Usage // session-cumulative usage after the last turn
+	// translator is this chat's UI catalog, so the exit summary it prints reads
+	// the same language as the rest of the session.
+	translator i18n.Translator
 }
 
 func (s *chatStats) add(result personal.RunResult) {
@@ -868,5 +871,6 @@ func (s chatStats) print(w io.Writer, sessionID, shortName string, elapsed time.
 	printLayout(w, false, BuildExitSummary(ExitSummary{
 		SessionID: sessionID, ShortName: shortName,
 		Turns: s.turns, Usage: s.usage, SessionUsage: s.session, Elapsed: elapsed,
+		Translator: s.translator,
 	}))
 }

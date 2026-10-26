@@ -22,15 +22,16 @@ import (
 // every turn only; the removed ones still work, still complete and are listed
 // by :help.
 func TestBannerHelpTextKeepsRareCommandsInHelp(t *testing.T) {
+	help := testTranslator.T("status.banner.help")
 	for _, cmd := range []string{":add-dir", ":dirs", ":rm-dir", ":checkpoints", ":undo"} {
-		assert.StrNotContains(t, bannerHelpText, cmd)
+		assert.StrNotContains(t, help, cmd)
 		assert.StrContains(t, buildChatHelp(testTranslator), cmd)
 	}
 	// The commands that stay are still named, in a readable sentence.
 	for _, cmd := range []string{":session", ":compact", ":diff", ":quit/:exit", ":help"} {
-		assert.StrContains(t, bannerHelpText, cmd)
+		assert.StrContains(t, help, cmd)
 	}
-	assert.StrNotContains(t, bannerHelpText, "，，")
+	assert.StrNotContains(t, help, "，，")
 }
 
 // TestLayoutBanner: the four banner lines, whole, with and without colors and
