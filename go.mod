@@ -11,6 +11,7 @@ require (
 	github.com/gookit/config/v2 v2.2.9
 	github.com/gookit/gopty v0.1.2
 	github.com/gookit/goutil v0.8.3
+	github.com/gookit/i18n v1.3.0
 	github.com/gookit/ini/v2 v2.3.2
 	github.com/gookit/rotatefile v0.3.3
 	github.com/mattn/go-runewidth v0.0.24
