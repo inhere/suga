@@ -1,13 +1,20 @@
 # Suga
 
 [![Unit-Tests](https://github.com/inhere/suga/actions/workflows/go.yml/badge.svg)](https://github.com/inhere/suga/actions/workflows/go.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [English](README.md) | 简体中文
+
+> **状态：** suga 当前处于 v0（0.x），次版本之间可能有不兼容变更，见 [CHANGELOG.md](CHANGELOG.md)。
 
 Suga 是用 Go 写的个人编码 Agent。同一个持久会话引擎提供两种入口：终端 CLI（交互式 `chat` 和单轮 `run`）和 ACP stdio 服务（`acp`）。
 [Gofer](https://github.com/inhere/gofer) 可以拉起这两种入口，并在其上提供作业、worker、日志和交互式审批。
 
 > 详细文档都在内置 skill [suga-guide](skills/suga-guide/SKILL.md) 的 `references/` 里；suga 首次运行会把它释放到 `~/.suga/skills/suga-guide/`，在 chat 里直接问“怎么配置 suga”即可。
+
+> **演示：** 演示 GIF 或 asciinema 录屏素材就绪后会放在这里。
+>
+> <!-- TODO: 用 docs/images/demo.gif 或 asciinema 链接替换此占位。 -->
 
 ## 功能
 
@@ -20,10 +27,16 @@ Suga 是用 Go 写的个人编码 Agent。同一个持久会话引擎提供两�
 - **持久记忆**：跨会话的用户与项目记忆，后端可换（files、gofer 或外部命令）。
 - **历史检索与大输出外置**：全文检索过往会话；超大工具结果存到会话目录，上下文只留头尾与 ref。
 
+## 与同类工具的定位
+
+Suga 刻意选择本地优先和单个 Go 二进制：默认只读并在需要时审批，支持持久会话、自动换段、长会话评测与回归门；既能作为 ACP 服务运行，也能通过 `pkg/sugasdk` 嵌入。
+
+如果你需要可改造的本地编码 Agent、可持续的长对话、可审计的工具调用或可嵌入的 Go 内核，Suga 比较合适。不适合把它当作托管 SaaS、图形化 IDE、多项目控制面（如 Gofer），或稳定的 v1 API；模型凭据和模型服务仍由你自己提供。
+
 ## 安装
 
 - **推荐**：通过 [eget](https://github.com/inherelab/eget) 安装：`eget install inhere/suga`
-- Go 安装：`go install github.com/inhere/suga/cmd/suga@latest`（私有访问需 `GOPRIVATE=github.com/inhere/*`）
+- Go 安装：`go install github.com/inhere/suga/cmd/suga@latest`
 - 从 [GitHub Releases](https://github.com/inhere/suga/releases) 下载对应平台归档（推送 `v*` 标签自动发布 Linux、macOS、Windows 预编译包），把 `suga` 放进 `PATH`。
 - 源码构建（Go 1.26+）：`git clone https://github.com/inhere/suga.git && cd suga && make install`
   - 构建（装了 `upx` 时顺带压缩）并安装到 `$(go env GOPATH)/bin`；Windows 上旧二进制被打开的 chat 占用时，会先把它改名挪开再安装。
@@ -31,16 +44,41 @@ Suga 是用 Go 写的个人编码 Agent。同一个持久会话引擎提供两�
 
 ## 快速开始
 
-详细说明：[references/config.md](skills/suga-guide/references/config.md)（上手与配置命令）
+详细说明：[references/config.md](skills/suga-guide/references/config.md)（上手与配置命令）。完整的内置向导仍是中文；下面先用官方 provider preset 和环境变量完成最小配置。
 
 ```bash
-suga init                                         # 创建 ~/.suga、带注释的 config.yaml 与只含注释的 .env（已有文件不覆盖）
-# 在 ~/.suga/.env 填密钥，例如 DEEPSEEK_API_KEY=...（内置 provider：openai / anthropic / deepseek）
-suga config set model deepseek/deepseek-chat      # 选模型（<provider>/<model>）；密钥不能用 config set 写
-suga config set tools.allow_write true            # 允许 chat 写文件、执行命令（执行前会询问）
-suga models                                       # 离线查看可用模型；suga config get <key> 看生效值与来源
-suga inspect rules output --builtin               # 打印某类规则文件的内置 YAML（approval/output/nudge/lang），照着写；不带 --builtin 显示生效规则与来源层
+suga init                                         # 创建 ~/.suga，并保留已有文件
+# 在 ~/.suga/.env 填你选择的 provider 的密钥（不要写进 YAML）：
+#   OPENAI_API_KEY=...
+#   DEEPSEEK_API_KEY=...
+#   ANTHROPIC_API_KEY=...
+
+# OpenAI 兼容的官方 provider（二选一）：
+suga config set model openai/gpt-4o-mini
+# 或：suga config set model deepseek/deepseek-chat
+
+# Anthropic 官方 API（另一种选择）：
+# suga config set model anthropic/claude-sonnet-4-5
+
+suga config get model                             # 验证配置解析出的模型与来源
+suga models                                       # 离线列出已配置的模型
+suga config set tools.allow_write true            # 可选：允许 chat 写文件、执行命令（仍会请求审批）
+suga inspect rules output --builtin               # 打印内置规则模板
 suga chat                                         # 在当前目录开启交互式对话
+```
+
+`openai`、`deepseek`、`anthropic` 三个 preset 已包含官方地址。要让 chat 写文件、执行命令，可设置 `tools.allow_write: true`，默认仍会请求审批。
+
+自建或兼容网关可在后面按自定义 provider 配置，密钥仍放在 `.env`：
+
+```yaml
+model: my-gateway/my-model
+providers:
+  my-gateway:
+    type: openai
+    base_url: "${MY_GATEWAY_BASE_URL}"
+    api_key: "${MY_GATEWAY_API_KEY}"
+    # headers: {x-session: "{{session_id}}"}
 ```
 
 - 单轮：`suga run --prompt "概括一下这个项目"`（只读）、`suga run --allow-write --prompt "修好失败的测试"`、`suga run --resume <session-id> --prompt "继续"`；`--max-steps` 限制本轮步数（默认 240）。
@@ -67,6 +105,18 @@ suga chat                                         # 在当前目录开启交互�
 - `suga models [--json]` 只离线查看本地 provider 和模型引用，不替代 `suga inspect manifest` 或 chat 会话级的 `:model` 切换。
 - `model` 为 `<provider>/<model>`，优先级 `--model` > `SUGA_MODEL` > 配置；`fallback_models` 依次备用，`compact_model` 生成摘要。
 - `providers.<id>`：`type`（`openai`、`openai-responses`、`anthropic`）、`base_url`、`api_key`、`headers`，以及模型级 `context_window`、`max_output_tokens`、`model_id`、`price`、`thinking`。
+- 自建或兼容网关可定义自定义 provider（密钥放在 `.env`）：
+
+  ```yaml
+  model: my-gateway/my-model
+  providers:
+    my-gateway:
+      type: openai
+      base_url: "${MY_GATEWAY_BASE_URL}"
+      api_key: "${MY_GATEWAY_API_KEY}"
+      # headers: {x-session: "{{session_id}}"}
+  ```
+
 - 常用开关：`tools.allow_write`、`tools.approval`、`mcp.servers`、`memory.*`、`hooks.*`、`chat.*`、`skills.*`、`workspace`。
 - 所有数据都在 `$SUGA_HOME/db/sessions.db`。
 
@@ -166,3 +216,7 @@ make build-all          # 交叉编译到 dist/
 - `internal/personal`（回合、分段、交接、事件；`store` 为 SQLite 存储）；`internal/chat` 终端对话；`internal/acpserver` ACP 服务。
 - `pkg/agentcore`：应用层之下可复用的各层，不依赖 `internal/*`（[README](pkg/agentcore/README.md)）：内核（模型/工具循环、run 状态、transcript），以及 `llm`（各 provider）、`schedule`（进程内 After/Every/Idle 定时）、`tools`（注册表、审批、延迟加载）、`tools/native`（内置工具）、`tools/mcp`（MCP 客户端）、`skills`、`memory`（存储接口、治理、路由；后端 `memory/files`、`memory/execstore`）、`redact`（密钥与隐形文本清理）和 `extproc`（外部命令的 exec 协议 v1 与凭据剥离）。
 - 版本变更见 [CHANGELOG.md](CHANGELOG.md)；设计与计划文档在 [docs/](docs/README.md)。CI 在 Ubuntu 和 Windows 上用 Go 1.26 和 stable 跑测试；旧的控制面（team、cron、orchestrator）保留在 `v0.1.0` 标签。
+
+## 许可证
+
+Suga 使用 [MIT 许可证](LICENSE) 发布。

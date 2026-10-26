@@ -1,13 +1,20 @@
 # Suga
 
 [![Unit-Tests](https://github.com/inhere/suga/actions/workflows/go.yml/badge.svg)](https://github.com/inhere/suga/actions/workflows/go.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 English | [简体中文](README.zh-CN.md)
+
+> **Status:** suga is currently v0 (0.x). Minor releases may include incompatible changes; see [CHANGELOG.md](CHANGELOG.md).
 
 Suga is a personal coding agent written in Go. One persistent conversation engine serves two interfaces: a terminal CLI (`chat` and one-shot `run`) and an ACP stdio server (`acp`).
 [Gofer](https://github.com/inhere/gofer) can launch either one and adds jobs, workers, logs and interactive approval on top.
 
 > The full documentation lives in the reference docs of the built-in skill [suga-guide](skills/suga-guide/SKILL.md) (`references/`, written in Chinese). Suga unpacks it to `~/.suga/skills/suga-guide/` on first run, so you can simply ask chat how to configure suga.
+
+> **Demo:** A GIF or asciinema recording will be linked here when the demo asset is available.
+>
+> <!-- TODO: replace this placeholder with docs/images/demo.gif or an asciinema link. -->
 
 ## Features
 
@@ -20,10 +27,16 @@ Suga is a personal coding agent written in Go. One persistent conversation engin
 - **Persistent memory**: user and project memory across sessions, with swappable backends (files, gofer or an external command).
 - **History search and output offloading**: full-text search over earlier sessions; oversized tool results are saved aside, the context keeps the head, the tail and a ref.
 
+## Positioning
+
+Suga is deliberately a local-first, single-binary tool. It combines read-only-by-default operation and approvals with persistent sessions, automatic context segmentation, long-session evaluation and regression gates. It can run as an ACP server or be embedded through `pkg/sugasdk`.
+
+It is a good fit when you want a hackable Go agent for local coding work, durable conversations, auditable tool calls, or an embeddable engine. It is not a replacement for a hosted SaaS, a graphical IDE, a multi-project control plane such as Gofer, or a stable v1 API; provider credentials and model access remain your responsibility.
+
 ## Install
 
 - **Recommended**: install with [eget](https://github.com/inherelab/eget): `eget install inhere/suga`
-- With Go: `go install github.com/inhere/suga/cmd/suga@latest` (private access needs `GOPRIVATE=github.com/inhere/*`)
+- With Go: `go install github.com/inhere/suga/cmd/suga@latest`
 - Download an archive from [GitHub Releases](https://github.com/inhere/suga/releases) (a pushed `v*` tag publishes Linux, macOS and Windows builds) and put `suga` on your `PATH`.
 - From source (Go 1.26+): `git clone https://github.com/inhere/suga.git && cd suga && make install`
   - Builds (compressing with `upx` when available) and installs to `$(go env GOPATH)/bin`; on Windows it first moves aside a binary that a running chat still uses.
@@ -31,18 +44,31 @@ Suga is a personal coding agent written in Go. One persistent conversation engin
 
 ## Quick start
 
-Details: [references/config.md](skills/suga-guide/references/config.md) (onboarding and configuration commands, Chinese)
+Details: [references/config.md](skills/suga-guide/references/config.md) (onboarding and configuration commands, Chinese). The detailed built-in guide remains in Chinese; the examples below use the public provider presets and environment variables.
 
 ```bash
-suga init                                         # create ~/.suga, a commented config.yaml and a comment-only .env (existing files are kept)
-# put keys in ~/.suga/.env, e.g. DEEPSEEK_API_KEY=... (built-in providers: openai / anthropic / deepseek)
-suga config set model deepseek/deepseek-chat      # pick a model (<provider>/<model>); secrets cannot be set this way
-suga config set tools.allow_write true            # let chat write files and run commands (it asks first)
-suga config set tools.web_fetch.user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"  # send a browser UA when fetching pages (empty = suga-web-fetch/1.0)
-suga models                                       # list usable models offline; suga config get <key> shows value and source
-suga inspect rules output --builtin               # print a rule-file kind's built-in YAML (approval/output/nudge/lang) as a writing template; without --builtin the effective rules, sources and skipped files
-suga chat                                         # interactive chat in the current directory
+suga init                                         # create ~/.suga and keep existing files
+# Put the key for the provider you choose in ~/.suga/.env:
+#   OPENAI_API_KEY=...
+#   DEEPSEEK_API_KEY=...
+#   ANTHROPIC_API_KEY=...
+
+# OpenAI-compatible official providers (choose one):
+suga config set model openai/gpt-4o-mini
+# or: suga config set model deepseek/deepseek-chat
+
+# Anthropic official API (alternative):
+# suga config set model anthropic/claude-sonnet-4-5
+
+suga config get model                             # verify the parsed model and source
+suga models                                       # list configured models offline; suga config get <key> shows value and source
+suga config set tools.allow_write true            # optionally let chat write files and run commands (it still asks first)
+suga config set tools.web_fetch.user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"  # optionally set a browser UA
+suga inspect rules output --builtin               # print a built-in rule template
+suga chat                                         # start an interactive chat in the current directory
 ```
+
+The presets `openai`, `deepseek` and `anthropic` already provide their official base URLs. Keep secrets in `$SUGA_HOME/.env`, not in YAML. To enable writing and command execution in chat, set `tools.allow_write: true`; it still asks for approval by default.
 
 - One turn: `suga run --prompt "Summarize this project"` (read-only), `suga run --allow-write --prompt "Fix the failing test"`, `suga run --resume <session-id> --prompt "Continue"`, `suga run --image shots/a.png --image shots/b.png --prompt "Compare these two"`; `--max-steps` caps the turn's steps (default 240).
 - Delivery check (`run` only): `suga run --verify "go test ./..." --prompt "Fix the failing test"` runs that command in the session workspace (the shell `shell_exec` uses) once the turn finished normally; a failure is handed back to the model as an injected turn so it can fix it. `--verify-rounds N` (default 2, 1-5) caps the fix rounds, `--verify-timeout D` (default 10m) bounds one run and a timeout counts as a failure. The command is the caller's, so it skips approval, but a cancelled run kills its process tree. Each check is visible: text mode prints one stderr line `verify #1: go test ./... → exit 1 (12.3s)` and a tail summary when it never passes (stdout stays the answer), stream-json adds a `{"type":"verify",...}` line and `"verify":{"passed":...,"rounds":...}` to the result line (a run without `--verify` is unchanged), and `suga inspect trace` shows a `verify` event. A turn that failed, yielded or was cancelled is not checked. Exit codes of `run`: `0` done (check passed, or no `--verify`), `1` the turn failed, `4` the resumed session does not exist, `5` the `--verify` command still failing after the rounds, `130` interrupted.
@@ -73,6 +99,18 @@ Details: [references/config.md](skills/suga-guide/references/config.md) (every k
 - `suga models [--json]` is an offline view of local providers and model references. It does not replace `suga inspect manifest` or chat's session-local `:model` switch.
 - `model` is `<provider>/<model>`, precedence `--model` > `SUGA_MODEL` > config; `fallback_models` are tried in order, `compact_model` writes summaries.
 - `providers.<id>`: `type` (`openai`, `openai-responses`, `anthropic`), `base_url`, `api_key`, `headers`, plus per-model `context_window`, `max_output_tokens`, `model_id`, `price`, `thinking`.
+- For a self-hosted or private-compatible gateway, define a custom provider and keep its credentials in `.env`:
+
+  ```yaml
+  model: my-gateway/my-model
+  providers:
+    my-gateway:
+      type: openai
+      base_url: "${MY_GATEWAY_BASE_URL}"
+      api_key: "${MY_GATEWAY_API_KEY}"
+      # headers: {x-session: "{{session_id}}"}
+  ```
+
 - Common switches: `tools.allow_write`, `tools.approval`, `tools.disabled`, `tools.loop_guard`, `agents.nudge`, `tools.session_message.enabled` / `tools.session_message.max_hops`, `mcp.servers`, `memory.*`, `hooks.*`, `chat.*`, `skills.*`, `workspace`.
 - Time awareness: `run.deadline_env` names the env var that carries this run's deadline (RFC3339; gofer injects `GOFER_JOB_DEADLINE`). When set, each model request ends with a transient hint of the current time, the deadline and the remaining minutes; under 10% of the window (or 5 minutes) it asks for an immediate wrap-up, past the deadline it reports the overrun. Empty = off.
 - All data lives in `$SUGA_HOME/db/sessions.db`.
@@ -206,3 +244,7 @@ make build-all          # cross-compile to dist/
 - `internal/personal`: turns, segments, handoff and events (`internal/personal/store` is the SQLite store); `internal/chat`: terminal chat; `internal/acpserver`: the ACP server.
 - `pkg/agentcore`: the reusable layers below the app, independent of `internal/*` ([README](pkg/agentcore/README.md)): the kernel (model/tool loop, run state, transcript) plus `llm` (providers), `schedule` (in-process After/Every/Idle timers), `tools` (registry, approval, deferred tools), `tools/native` (built-in tools), `tools/mcp` (MCP client), `skills`, `memory` (store interface, governance, router; `memory/files` and `memory/execstore` backends), `redact` (secret and invisible-text cleaning) and `extproc` (exec protocol v1 and credential stripping for external commands).
 - Release notes are in [CHANGELOG.md](CHANGELOG.md); design notes and plans are in [docs/](docs/README.md). CI runs tests on Ubuntu and Windows with Go 1.26 and stable. The old control plane (team, cron, orchestrator) is kept at the `v0.1.0` tag.
+
+## License
+
+Suga is distributed under the [MIT License](LICENSE).
