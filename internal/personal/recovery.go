@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 )
 
@@ -53,6 +54,14 @@ const (
 	// "session recovered".
 	recoveredEventName = "recovered"
 )
+
+// SessionRecoveredNoticeWithTranslator renders the caller-facing recovery notice.
+func SessionRecoveredNoticeWithTranslator(t i18n.Translator) string {
+	if t == nil {
+		t = i18n.Fallback()
+	}
+	return t.T("personal.session.recovered")
+}
 
 // recoverStaleSession takes a session left in running by a dead process back to
 // open and records the turn that was running as cancelled, so the next turn can
