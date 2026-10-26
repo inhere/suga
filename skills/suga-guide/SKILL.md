@@ -32,7 +32,8 @@ suga models
 ```
 
 - 在 `$SUGA_HOME/.env` 中自己填写 provider 密钥和私有地址；自动生成的文件只有注释，suga 不会替你写入任何值。配置里的 `${VAR}` 引用 `.env` 或进程环境。
-- 用 `suga config set <key> <value>`、`unset <key>` 修改已支持的非密钥键；`get`/`list` 显示生效值、来源并遮罩敏感值，`path` 显示 home、配置、`.env` 和当前来源。
+- `language` 控制面向用户的界面文字，取值为 `auto`、`zh`、`en`，默认 `auto`。中文系统默认中文，其他系统默认英文；常见别名会被规范化（如 `en_US` → `en`、`中文` → `zh`）。`SUGA_LANGUAGE` 优先于配置，修改后重启生效；用 `suga inspect manifest` 查看实际语言与来源。当前界面文字支持中英文，部分给模型看的提示仍是中文，后续阶段再处理。
+- `suga config set <key> <value>`、`unset <key>` 修改已支持的非密钥键；`get`/`list` 显示生效值、来源并遮罩敏感值，`path` 显示 home、配置、`.env` 和当前来源。
 - `SUGA_CONFIG` 指向外部配置时，`config` 命令写该文件，`init --force` 拒绝覆盖它；缺失的显式文件不会被另建 home 配置。Windows 路径按当前 shell 的原生分隔符显示。
 - 需要手工配置时，参考仓库的 [最小上手模板](../../config/onboarding.yaml) 和 [完整字段样例](../../config/config.yaml)，不要把密钥提交到版本库。
 
