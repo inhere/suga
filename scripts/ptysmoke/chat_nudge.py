@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 from chat_observe import trace_events  # noqa: E402
 from chat_steer import FakeLog  # noqa: E402
-from ptydrive import CTRL_C, PtySession  # noqa: E402
+from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 
 
 def session_from(text):
@@ -64,9 +64,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin", default="tmp/smoke/suga")
     parser.add_argument("--work", default="tmp/smoke-nudge")
-    parser.add_argument("--port", type=int, default=18870)
+    parser.add_argument("--port", type=int, default=0,
+                        help="fake model port; 0 picks free ports (the second home runs on the next four)")
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()
+    # A second home answers on base+4 (see the nudge scenario).
+    args.port = resolve_port(args.port, 4)
 
     binary = os.path.abspath(args.bin)
     home = os.path.abspath(os.path.join(args.work, "home"))

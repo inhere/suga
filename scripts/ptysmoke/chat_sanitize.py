@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import PtySession  # noqa: E402
+from ptydrive import PtySession, resolve_port  # noqa: E402
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 
 DANGEROUS = ("\x1b]52", "\x1b[2J")
@@ -22,8 +22,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bin", required=True)
     p.add_argument("--work", required=True)
-    p.add_argument("--port", type=int, default=18841)
-    a = p.parse_args()
+    p.add_argument("--port", type=int, default=0, help="fake model port; 0 picks a free one")
+    a = p.parse_args(); a.port = resolve_port(a.port)
     home = os.path.abspath(a.work + "/home")
     ws = os.path.abspath(a.work + "/ws")
     shutil.rmtree(a.work, ignore_errors=True)

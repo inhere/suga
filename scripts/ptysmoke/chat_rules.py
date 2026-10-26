@@ -30,7 +30,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
-from ptydrive import CTRL_C, PtySession  # noqa: E402
+from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 
 QUESTION = r"允许执行 shell_exec"
 RESUME = r"续接：suga chat --resume (?:sess_|sg_|s_)"
@@ -378,8 +378,11 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bin", default="tmp/smoke/suga")
     p.add_argument("--work", default="tmp/smoke-rules")
-    p.add_argument("--port", type=int, default=18815)
+    p.add_argument("--port", type=int, default=0,
+                   help="fake model port; 0 picks free ports (one per case, up to the next ten)")
     args = p.parse_args()
+    # One fake model per case: the base port and the next ten.
+    args.port = resolve_port(args.port, 10)
     binary = os.path.abspath(args.bin)
     results = []
     results += check_case(binary, args.work + "-allow", args.port,

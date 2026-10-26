@@ -22,12 +22,12 @@ is answered with the closest command instead of starting a turn, while a
 """
 import argparse, os, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import CTRL_C, PtySession
+from ptydrive import CTRL_C, PtySession, resolve_port
 from chat_approval import isolate_ws, wait_port, write_home
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__); p.add_argument("--bin", required=True); p.add_argument("--work", required=True); p.add_argument("--port", type=int, default=18831)
-    a = p.parse_args(); home=os.path.abspath(a.work+"/home"); ws=os.path.abspath(a.work+"/ws"); shutil.rmtree(a.work, ignore_errors=True); os.makedirs(ws); isolate_ws(ws)
+    p = argparse.ArgumentParser(description=__doc__); p.add_argument("--bin", required=True); p.add_argument("--work", required=True); p.add_argument("--port", type=int, default=0, help="fake model port; 0 picks free ports (the second session runs on the next one)")
+    a = p.parse_args(); a.port = resolve_port(a.port, 1); home=os.path.abspath(a.work+"/home"); ws=os.path.abspath(a.work+"/ws"); shutil.rmtree(a.work, ignore_errors=True); os.makedirs(ws); isolate_ws(ws)
     write_home(home, a.port, tools_extra="  approval: auto\n", extra="chat:\n  notify_after: 1s\n")
     env=dict(os.environ, SUGA_HOME=home, SUGA_HOOKS="off", TERM="xterm", NO_COLOR="1"); env.pop("SUGA_CONFIG", None)
     here=os.path.dirname(os.path.abspath(__file__)); fake=subprocess.Popen([sys.executable,"-I",here+"/fakellm.py","--port",str(a.port),"--mode","tool","--background","--command","sleep 5; echo TASK_COMMAND","--delay","1.0"], stdout=subprocess.PIPE, text=True); wait_port(fake)

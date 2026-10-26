@@ -22,7 +22,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 from chat_observe import trace_events  # noqa: E402
-from ptydrive import CTRL_C, PtySession  # noqa: E402
+from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 
 
 STATUS = r"tokens · "
@@ -222,9 +222,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bin", default="tmp/smoke/suga")
     p.add_argument("--work", default="tmp/smoke-budget")
-    p.add_argument("--port", type=int, default=18805)
+    p.add_argument("--port", type=int, default=0,
+                   help="fake model port; 0 picks free ports (one per budget scenario)")
     p.add_argument("--keep", action="store_true")
     args = p.parse_args()
+    # Five scenarios, each on its own fake: the base port and the next four.
+    args.port = resolve_port(args.port, 4)
     binary = os.path.abspath(args.bin)
     groups = [
         ("turn and steer", budget_turn, args.port),

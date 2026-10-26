@@ -36,7 +36,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 from chat_observe import trace_events  # noqa: E402
-from ptydrive import CTRL_C, PtySession  # noqa: E402
+from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 
 STATUS = r"tokens · "
 HINT = "换一种方法"
@@ -205,17 +205,21 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", default="suga", help="the suga binary under test")
     p.add_argument("--work", default="tmp/smoke-loop-guard")
+    p.add_argument("--port", type=int, default=0,
+                   help="fake model port; 0 picks free ports (one per scenario)")
     args = p.parse_args()
+    # One fake model per scenario: the base port and the next three.
+    args.port = resolve_port(args.port, 3)
     # chat runs in its own workspace: a relative --bin would not resolve there.
     args.bin = os.path.abspath(args.bin)
 
     results = []
     scenarios = [
-        ("on: ", "loop", "", 18866, verify_read_on),
+        ("on: ", "loop", "", args.port, verify_read_on),
         # The reverse: tools.loop_guard: false must silence all of it.
-        ("off: ", "loop", "  loop_guard: false\n", 18867, verify_read_off),
-        ("edit-shell: ", "loop-edit", "", 18868, verify_edit_shell),
-        ("fail-shell: ", "loop-fail", "", 18869, verify_fail_shell),
+        ("off: ", "loop", "  loop_guard: false\n", args.port + 1, verify_read_off),
+        ("edit-shell: ", "loop-edit", "", args.port + 2, verify_edit_shell),
+        ("fail-shell: ", "loop-fail", "", args.port + 3, verify_fail_shell),
     ]
     for prefix, mode, home_extra, port, verify in scenarios:
         name = prefix.strip().rstrip(":")
