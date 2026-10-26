@@ -110,8 +110,13 @@ type Options struct {
 	// sessionDirs is the live set the tools and the environment prompt read. It
 	// is created by OpenCLI so the chat approver and the tools share one set; nil
 	// (a runtime assembled directly) means no additional directory.
-	sessionDirs      *native.AddDirs
-	Translator       i18n.Translator
+	sessionDirs *native.AddDirs
+	// Translator is an already-resolved host UI catalog; nil makes Open resolve
+	// the language from config and SUGA_LANGUAGE itself.
+	Translator i18n.Translator
+	// approvalPolicy is compiled before Open builds the registry. A child takes a
+	// fresh copy through this callback so chat session rules are included without
+	// sharing a mutable policy with an already-running child.
 	approvalPolicy   *approvalPolicy
 	approvalSnapshot func() approvalPolicy
 }
@@ -142,7 +147,8 @@ type Runtime struct {
 	// Translator is the immutable host UI catalog. It is never passed to agentcore.
 	Translator i18n.Translator
 	// Language is the resolved startup UI language.
-	Language      ManifestLanguage
+	Language ManifestLanguage
+	// ContextWindow is the window of the model actually used by the provider.
 	ContextWindow int
 	// Budget is the resolved budget input retained for later runner/provider
 	// assembly. Its zero value means that budgeting is disabled.

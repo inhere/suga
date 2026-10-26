@@ -177,6 +177,7 @@ type Options struct {
 	ContextNotices []string
 	// Translator is the host UI catalog; nil callers use the Chinese compatibility fallback.
 	Translator i18n.Translator
+	// Skills lists the loaded skills for :skills; nil marks the command as
 	// unavailable in this process (a chat without the skill registry).
 	Skills func() []SkillInfo
 	// ContextParts reports the resident context composition for :context; nil
