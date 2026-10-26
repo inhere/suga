@@ -47,7 +47,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import CTRL_C, CTRL_U, PtySession, input_row  # noqa: E402
+from ptydrive import CTRL_C, CTRL_U, PtySession, input_row, resolve_port  # noqa: E402
 
 OK = r"⎿ ok: SMOKE_OK"
 QUESTION = r"允许执行 shell_exec"
@@ -65,18 +65,23 @@ def isolate_ws(ws):
     subprocess.run(["git", "init", "-q", ws], check=True)
 
 
-def write_home(home, port, tools_extra="", memory_extra="", provider_extra="", extra=""):
+def write_home(home, port, tools_extra="", memory_extra="", provider_extra="", extra="", language="zh"):
     """Writes SUGA_HOME/config.yaml. Project memory is forced to the files
     backend: the scratch workspace lives inside this repository, whose
     .gofer/tracker would otherwise select (and call) the real gofer.
-    provider_extra goes under providers.fake, extra at the top level."""
+    provider_extra goes under providers.fake, extra at the top level.
+
+    language pins the UI language of the scenario the way a real user does it:
+    the checks assert specific UI words, and auto would follow the machine
+    locale. chat_i18n_en.py passes "en" for its English checks."""
     os.makedirs(home, exist_ok=True)
     # An empty .env makes this a home that was already set up: without it the
     # first run creates one and prints a notice naming the work directory,
     # which other scenes would then see (chat_onboarding covers first runs).
     open(os.path.join(home, ".env"), "a", encoding="utf-8").close()
     with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
-        f.write(f"""model: fake/m1
+        f.write(f"""language: {language}
+model: fake/m1
 providers:
   fake:
     type: openai
@@ -360,9 +365,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", default="tmp/smoke/suga", help="suga binary to test")
     p.add_argument("--work", default="tmp/smoke", help="scratch dir (SUGA_HOME and workspace)")
-    p.add_argument("--port", type=int, default=18795)
+    p.add_argument("--port", type=int, default=0,
+                   help="fake model port; 0 picks free ports (the pre-typed groups run on the next two)")
     p.add_argument("--keep", action="store_true", help="keep the scratch home after the run")
     args = p.parse_args()
+    # The scenario starts one fake model per group: the base and base+1, base+2.
+    args.port = resolve_port(args.port, 2)
 
     binary = os.path.abspath(args.bin)
     results = run_main(binary, args)

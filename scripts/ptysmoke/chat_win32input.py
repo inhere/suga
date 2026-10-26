@@ -125,11 +125,12 @@ def write_home(home, port):
 
     The mode is `auto` outside Windows Terminal (no WT_SESSION here), so the
     scenario turns it on explicitly; project memory is forced to the files
-    backend like the other chat smokes.
+    backend like the other chat smokes; language pins the Chinese UI.
     """
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
-        f.write(f"""model: fake/m1
+        f.write(f"""language: zh
+model: fake/m1
 providers:
   fake:
     type: openai

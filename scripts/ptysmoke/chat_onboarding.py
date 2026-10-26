@@ -76,9 +76,16 @@ def expect(result, code=0, stdout=None, stderr=None):
 
 
 def clean_env(home, explicit=None):
-    """Build an isolated environment without inheriting the user's config path."""
+    """Build an isolated environment without inheriting the user's config path.
+
+    The checked words are Chinese, and this scenario starts from a home without
+    config.yaml (the first run creates it), so the language is pinned through
+    the environment: SUGA_LANGUAGE wins over `language:` in the file for a real
+    user too, and the scenarios that do have a home pin it in the config.
+    """
     env = dict(os.environ)
     env["SUGA_HOME"] = str(home)
+    env["SUGA_LANGUAGE"] = "zh"
     env.pop("SUGA_MODEL", None)
     if explicit is None:
         env.pop("SUGA_CONFIG", None)

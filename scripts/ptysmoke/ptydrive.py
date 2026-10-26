@@ -12,6 +12,7 @@ import os
 import pty
 import re
 import select
+import socket
 import struct
 import termios
 import time
@@ -37,6 +38,41 @@ def char_width(ch):
     """The columns one character takes: 2 for the East Asian wide and full width
     ones (the terminal's own rule), 1 for everything else."""
     return 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+
+
+def _bindable(port):
+    """Whether nothing else on this machine holds the loopback port right now.
+    A port that cannot be bound is in use, so the smoke would fail on it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def free_port(span=0):
+    """A local port that is free right now: the scenarios used to pin ports
+    (18795 and neighbours) and failed whenever another service held one, so a
+    scenario picks its port instead.
+
+    span keeps the ports the scenario derives from its base free too: the
+    returned base and the next span ones are all bindable, so a script that
+    starts one fake model per group at base, base+1, ... cannot collide.
+    """
+    for _ in range(50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            base = sock.getsockname()[1]
+        if all(_bindable(base + offset) for offset in range(1, span + 1)):
+            return base
+    raise RuntimeError(f"no free port range of {span + 1} ports found")
+
+
+def resolve_port(value, span=0):
+    """The base port of a scenario: an explicit --port N keeps N (and the
+    scenario's N+1..N+span), the default 0 picks a free range (free_port)."""
+    return value or free_port(span)
 
 
 class Screen:

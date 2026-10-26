@@ -106,11 +106,12 @@ def write_home(home, port):
 
     Project memory is forced to the files backend: the scratch workspace lives
     inside this repository, whose .gofer/tracker would otherwise select (and call)
-    the real gofer.
+    the real gofer. language pins the Chinese UI the checks assert.
     """
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
-        f.write(f"""model: fake/m1
+        f.write(f"""language: zh
+model: fake/m1
 providers:
   fake:
     type: openai

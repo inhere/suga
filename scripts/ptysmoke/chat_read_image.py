@@ -49,10 +49,12 @@ REPLY = "看图完成"
 
 
 def write_home(home, port, model):
-    """SUGA_HOME/config.yaml: the fake model on HTTP, files-backed memory."""
+    """SUGA_HOME/config.yaml: the fake model on HTTP, files-backed memory, and
+    the Chinese UI the checks assert."""
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
-        f.write(f"""model: {model}
+        f.write(f"""language: zh
+model: {model}
 providers:
   fake:
     type: openai

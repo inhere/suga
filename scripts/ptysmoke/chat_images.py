@@ -65,10 +65,12 @@ def make_png(path, px, rgb):
 
 def write_home(home, port, model):
     """SUGA_HOME/config.yaml: the fake model on HTTP, project memory on files
-    (the scratch workspace lives inside this repository, see chat_paste.py)."""
+    (the scratch workspace lives inside this repository, see chat_paste.py).
+    language pins the Chinese UI the checks assert (auto follows the locale)."""
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
-        f.write(f"""model: {model}
+        f.write(f"""language: zh
+model: {model}
 providers:
   fake:
     type: openai
