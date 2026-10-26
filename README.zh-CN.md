@@ -103,6 +103,7 @@ providers:
 - 只读取 `$SUGA_HOME/config.yaml` 和 `$SUGA_HOME/.env`（默认 `~/.suga`），工作目录下的配置不会被读取；`SUGA_CONFIG` 可指定唯一配置文件。
 - `suga init` 可安全重复执行；`suga init --force` 只备份并替换 home 配置，绝不写入 `.env` 值，也不会绕过显式 `SUGA_CONFIG` 保护。
 - `suga config get|set|unset|list|path` 显示生效值与来源、保留 YAML 注释，并拒绝把密钥写入 YAML；密钥放进 `.env`，配置用 `${VAR}` 引用。
+- `language` 控制面向用户的界面文字：默认 `auto`，中文系统显示中文，其他系统显示英文；也可显式设为 `zh` 或 `en`。常见别名会被规范化（例如 `en_US` → `en`、`中文` → `zh`）。`SUGA_LANGUAGE` 优先于配置值。修改后重启 suga 才生效；用 `suga inspect manifest` 可查看实际语言与来源。当前界面文字已支持中英文，但部分给模型看的提示仍是中文，后续阶段再处理。
 - `suga models [--json]` 只离线查看本地 provider 和模型引用，不替代 `suga inspect manifest` 或 chat 会话级的 `:model` 切换。
 - `model` 为 `<provider>/<model>`，优先级 `--model` > `SUGA_MODEL` > 配置；`fallback_models` 依次备用，`compact_model` 生成摘要。
 - `providers.<id>`：`type`（`openai`、`openai-responses`、`anthropic`）、`base_url`、`api_key`、`headers`，以及模型级 `context_window`、`max_output_tokens`、`model_id`、`price`、`thinking`。

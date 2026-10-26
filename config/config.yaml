@@ -8,6 +8,11 @@
 # this setting. Overridden by SUGA_MODEL, then by --model.
 model: bailian/glm-5
 
+# Human-facing UI language: auto (default) uses Chinese on Chinese systems and
+# English elsewhere; explicit zh or en is also accepted. SUGA_LANGUAGE overrides
+# this setting. Changes take effect after restarting suga.
+language: auto
+
 # Providers. openai / anthropic / deepseek are built in (default base_url and
 # the api_key env OPENAI_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY); an
 # entry with the same id overrides them field by field. Any other id needs type.
