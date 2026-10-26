@@ -88,6 +88,13 @@ func runStats(ctx context.Context, out io.Writer, since, session string, asJSON 
 	if err != nil {
 		return err
 	}
+	// The cache buckets need the calls in order per session, so they come from
+	// their own pass (BuildReport aggregates in SQL and is bucket-blind).
+	buckets, err := repo.BuildCacheBuckets(ctx, f, 0)
+	if err != nil {
+		return err
+	}
+	rep.CacheBuckets = buckets.Buckets
 	if asJSON {
 		return json.NewEncoder(out).Encode(rep)
 	}
@@ -124,6 +131,26 @@ func writeStatsText(out io.Writer, rep store.Report) error {
 				m.InputTokens, m.OutputTokens, m.CacheRead, m.CacheWrite, m.CacheHitRate*100, m.CostUSD)
 		}
 	}
+	if len(rep.CacheBuckets) > 0 {
+		fmt.Fprintln(tw, "\t\t\t\t\t\t\t\t\t\t\t")
+		fmt.Fprintln(tw, "CACHE BUCKET\tCALLS\tPROMPT\tCACHE-R\tHIT%\t\t\t\t\t\t")
+		var total store.CacheBucketStat
+		for _, b := range rep.CacheBuckets {
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t\t\t\t\t\t\n", b.Bucket, b.Calls,
+				b.InputTokens+b.CacheRead+b.CacheWrite, b.CacheRead, hitCell(b))
+			total.Calls += b.Calls
+			total.InputTokens += b.InputTokens
+			total.CacheRead += b.CacheRead
+			total.CacheWrite += b.CacheWrite
+			total.CacheReported = total.CacheReported || b.CacheReported
+		}
+		// The overall row beside the buckets: what the per-bucket numbers add up to.
+		if prompt := total.InputTokens + total.CacheRead + total.CacheWrite; prompt > 0 {
+			total.CacheHitRate = float64(total.CacheRead) / float64(prompt)
+		}
+		fmt.Fprintf(tw, "total\t%d\t%d\t%d\t%s\t\t\t\t\t\t\n", total.Calls,
+			total.InputTokens+total.CacheRead+total.CacheWrite, total.CacheRead, hitCell(total))
+	}
 	fmt.Fprintln(tw, "\t\t\t\t\t\t\t\t\t\t\t")
 	fmt.Fprintln(tw, "TOOL\tCALLS\tERR%\tDENIED\tP50\tP95\t\t\t\t\t\t")
 	for _, t := range rep.Tools {
@@ -134,4 +161,13 @@ func writeStatsText(out io.Writer, rep store.Report) error {
 	}
 	_, err := fmt.Fprintf(out, "\ncompactions: %d  tool_searches: %d\n", rep.Compactions, rep.ToolSearch)
 	return err
+}
+
+// hitCell renders a cache bucket's hit rate; a bucket without cache data of
+// its provider shows "-" instead of 0%.
+func hitCell(b store.CacheBucketStat) string {
+	if !b.CacheReported {
+		return "-"
+	}
+	return fmt.Sprintf("%.1f", b.CacheHitRate*100)
 }
