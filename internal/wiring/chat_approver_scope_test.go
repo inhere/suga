@@ -7,10 +7,29 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	approvalrules "github.com/inhere/suga/pkg/agentcore/tools/rules"
 )
+
+func TestChatScopedApprovalPromptsEnglish(t *testing.T) {
+	workspace := t.TempDir()
+	tr, err := i18n.New(i18n.LanguageEN)
+	assert.Require(t, assert.NoErr(t, err))
+	policy := approvalPolicy{
+		Mode: approvalrules.ModeChat, Workspace: workspace, AlwaysPrefixTokens: 2, PersistAsk: true,
+		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false),
+	}
+	asker := &scriptedAsker{answers: []string{"a", ""}}
+	approver := newChatApprover(chatApproverOptions{
+		gate: newCLIMCPGateWithPolicy(policy), asker: asker, workspace: workspace, translator: tr,
+	})
+	tool := &nativeStubTool{name: "shell_exec"}
+	assert.NoErr(t, approver.Decide(context.Background(), agentcore.ToolCall{Name: "shell_exec", Arguments: map[string]any{"command": "go test ./..."}}, tool))
+	assert.StrContains(t, asker.questions[0].Prompt, "Always allow for this session commands beginning with “go test”")
+	assert.StrContains(t, asker.questions[1].Prompt, "Write this rule to a rules file?")
+}
 
 func TestChatScopedApprovalPromptsAndPersistence(t *testing.T) {
 	workspace := t.TempDir()

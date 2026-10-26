@@ -33,8 +33,7 @@ const (
 	// callArgsLimit caps the tool_call argument text on screen, in runes.
 	callArgsLimit = 120
 
-	promptText        = "❯ "
-	promptWaitingText = "❯ (可等待外部回复) "
+	promptText = "❯ "
 
 	// interruptNotice is what chat shows when a turn was interrupted while it
 	// ran (Ctrl-C): never the runner's raw "context canceled". cmd/suga still
@@ -234,7 +233,7 @@ func (r *Renderer) paint(c color.Color, s string) string {
 // Prompt returns the input prompt; waiting marks a pending external reply.
 func (r *Renderer) Prompt(waiting bool) string {
 	if waiting {
-		return r.paint(color.Cyan, promptWaitingText)
+		return r.paint(color.Cyan, r.tr().T("approval.render.prompt.waiting")+" ")
 	}
 	return r.paint(color.Cyan, promptText)
 }
@@ -292,17 +291,21 @@ func (r *Renderer) agentProgressMode() string {
 
 func (r *Renderer) agentStatusLabel() string {
 	if r.agentProgressMode() != "summary" {
-		return spinnerLabel
+		return r.tr().T("approval.render.spinner")
 	}
 	parts := r.runningAgents()
 	if len(parts) == 0 {
-		return spinnerLabel
+		return r.tr().T("approval.render.spinner")
 	}
 	texts := make([]string, 0, len(parts))
 	for _, part := range parts {
-		texts = append(texts, fmt.Sprintf("%s %d 次调用", truncateLine(part.description, 24), part.calls))
+		texts = append(texts, r.tr().T("approval.render.agent.calls", map[string]any{
+			"description": truncateLine(part.description, 24), "calls": part.calls,
+		}))
 	}
-	return truncateLine(fmt.Sprintf("子 agent：%d 个运行中（%s）", len(parts), strings.Join(texts, "、")), 120)
+	return truncateLine(r.tr().T("approval.render.agent.running", map[string]any{
+		"count": len(parts), "details": strings.Join(texts, r.tr().T("approval.render.agent.separator")),
+	}), 120)
 }
 
 // agentStatusPart is one running agent the status line counts.
@@ -460,7 +463,9 @@ func (r *Renderer) finishAgent(event personal.Event) {
 		calls = summary.ToolCalls
 	}
 	if r.agentProgressMode() == "summary" {
-		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(summary.Description, 40), calls, formatElapsed(summary.Duration))
+		fmt.Fprintln(r.opts.Out, r.tr().T("approval.render.agent.summary", map[string]any{
+			"description": truncateLine(summary.Description, 40), "calls": calls, "elapsed": formatElapsed(summary.Duration),
+		}))
 	}
 }
 
@@ -487,7 +492,9 @@ func (r *Renderer) AgentTaskSummaries(infos []tasks.Info) {
 		}
 		name := strings.TrimPrefix(info.Summary, "agent: ")
 		calls := info.Counters["tool_calls"]
-		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(name, 40), calls, formatElapsed(info.Duration()))
+		fmt.Fprintln(r.opts.Out, r.tr().T("approval.render.agent.summary", map[string]any{
+			"description": truncateLine(name, 40), "calls": calls, "elapsed": formatElapsed(info.Duration()),
+		}))
 		r.dropAgentTask(info.ID)
 	}
 	r.refreshAgentStatus()
@@ -700,14 +707,14 @@ func (r *Renderer) Answer(text string) {
 // not taken for the model's answer.
 func (r *Renderer) SteerWaiting(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerWaitingSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(r.tr(), text, steerWaitingSuffix)))
 }
 
 // SteerLate prints that line when the turn did not take the message (it was
 // already ending, or its inbox was full): it becomes the person's next input.
 func (r *Renderer) SteerLate(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerLateSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(r.tr(), text, steerLateSuffix)))
 }
 
 // SteerDelivered prints the message again once a model request of the turn
@@ -716,7 +723,7 @@ func (r *Renderer) SteerLate(text string) {
 // the prompt gets, so a delivered message reads as the person's own.
 func (r *Renderer) SteerDelivered(text string) {
 	r.stopThinking()
-	line := steerNotice(text, steerTakenSuffix)
+	line := steerNotice(r.tr(), text, steerTakenSuffix)
 	if r.highlightInput() {
 		line = inputHighlightPrefix + lineedit.PadLine(line, r.opts.HighlightWidth()) + highlightSuffix
 	}
@@ -729,32 +736,45 @@ func (r *Renderer) SteerDelivered(text string) {
 // and the text is on the input line for editing again.
 func (r *Renderer) SteerWithdrawn(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerWithdrawnSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(r.tr(), text, steerWithdrawnSuffix)))
 }
 
 // FollowUpQueued prints the line a Tab press queued during a turn (followup.go):
 // it does not go into the running turn, it waits for the next one.
 func (r *Renderer) FollowUpQueued(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(text, followUpQueuedSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(r.tr(), text, followUpQueuedSuffix)))
 }
 
 // FollowUpSent prints that line again when the turn it was queued for starts.
 func (r *Renderer) FollowUpSent(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(text, followUpSentSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(r.tr(), text, followUpSentSuffix)))
 }
 
 // followUpNotice is the one-line display of a queued message, laid out like
 // steerNotice.
-func followUpNotice(text, suffix string) string {
-	return "[排队] " + truncateLine(text, resultSummaryLimit) + suffix
+func followUpNotice(t i18n.Translator, text, suffix string) string {
+	key := "approval.render.followup.sent"
+	if suffix == followUpQueuedSuffix {
+		key = "approval.render.followup.queued"
+	}
+	return trOf(t).T("approval.render.queue", map[string]any{"text": truncateLine(text, resultSummaryLimit), "suffix": trOf(t).T(key)})
 }
 
 // steerNotice is the one-line display of an inserted message: the marker, the
 // message collapsed like a tool line, and its state.
-func steerNotice(text, suffix string) string {
-	return "[插话] " + truncateLine(text, resultSummaryLimit) + suffix
+func steerNotice(t i18n.Translator, text, suffix string) string {
+	key := "approval.render.steer.withdrawn"
+	switch suffix {
+	case steerWaitingSuffix:
+		key = "approval.render.steer.waiting"
+	case steerTakenSuffix:
+		key = "approval.render.steer.taken"
+	case steerLateSuffix:
+		key = "approval.render.steer.late"
+	}
+	return trOf(t).T("approval.render.interjection", map[string]any{"text": truncateLine(text, resultSummaryLimit), "suffix": trOf(t).T(key)})
 }
 
 // External prints input that did not come from this keyboard (a reply sent
@@ -823,7 +843,7 @@ func (r *Renderer) Hint(text string) {
 
 // Interrupt reports a turn that was interrupted while it ran (Ctrl-C) on the
 // chat output, in place of the runner's cancellation error.
-func (r *Renderer) Interrupt() { r.Notice(interruptNotice) }
+func (r *Renderer) Interrupt() { r.Notice(r.tr().T("approval.render.notice.interrupt_turn")) }
 
 // Notice prints a plain informational line on the chat output.
 func (r *Renderer) Notice(text string) {

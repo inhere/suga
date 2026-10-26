@@ -247,7 +247,7 @@ func TestCatalogFilesHaveMatchingNames(t *testing.T) {
 			names = append(names, file.file)
 		}
 		sort.Strings(names)
-		assert.Eq(t, []string{"common.ini"}, names)
+		assert.Eq(t, []string{"approval.ini", "common.ini"}, names)
 	}
 }
 

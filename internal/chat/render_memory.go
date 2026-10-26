@@ -1,8 +1,6 @@
 package chat
 
 import (
-	"fmt"
-
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
@@ -10,9 +8,9 @@ import (
 
 // memoryVerbs names a memory write on the end-of-turn line.
 var memoryVerbs = map[string]string{
-	native.MemoryActionAdd:     "已记住",
-	native.MemoryActionReplace: "已更新",
-	native.MemoryActionRemove:  "已删除",
+	native.MemoryActionAdd:     "approval.render.memory.add",
+	native.MemoryActionReplace: "approval.render.memory.replace",
+	native.MemoryActionRemove:  "approval.render.memory.remove",
 }
 
 // noteMemory remembers a successful memory write of this turn (parsed from
@@ -26,5 +24,6 @@ func (r *Renderer) noteMemory(event personal.Event) {
 		return
 	}
 	title := truncateLine(redact.Secrets(change.Title), resultSummaryLimit)
-	r.memory = append(r.memory, fmt.Sprintf("%s：%s（%s）", memoryVerbs[change.Action], title, change.Scope))
+	verbKey := memoryVerbs[change.Action]
+	r.memory = append(r.memory, r.tr().T(verbKey, map[string]any{"title": title, "scope": change.Scope}))
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/inhere/suga/internal/adddir"
 	chatreply "github.com/inhere/suga/internal/chat"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -36,6 +37,8 @@ type chatApprover struct {
 	auto      bool
 	asker     tools.Asker
 	workspace string
+	// translator renders approval questions and their human-facing details.
+	translator i18n.Translator
 	// liveDirs is the session's additional-directory set: a file_remove prompt for
 	// a path under a :rw directory is planned with the same rules as the workspace.
 	liveDirs *native.AddDirs
@@ -66,6 +69,7 @@ type chatApproverOptions struct {
 	auto       bool
 	asker      tools.Asker
 	workspace  string
+	translator i18n.Translator
 	dirs       *native.AddDirs
 	readRoots  []string
 	readOnly   bool
@@ -84,7 +88,7 @@ func newChatApprover(opts chatApproverOptions) *chatApprover {
 	}
 	a := &chatApprover{gate: opts.gate, auto: opts.auto, asker: opts.asker, workspace: opts.workspace,
 		liveDirs: opts.dirs, readRoots: opts.readRoots, readOnly: opts.readOnly, askOutside: opts.askOutside,
-		persistReporter: reporter, always: map[string]bool{}}
+		persistReporter: reporter, always: map[string]bool{}, translator: opts.translator}
 	if opts.gate != nil {
 		a.policy = opts.gate.policy
 		// Tests and direct callers can provide a run-mode gate; chat owns the
@@ -235,7 +239,7 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 			tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
 		}
 		if a.policy.PersistAsk {
-			persistAnswer, persistErr := a.asker.Ask(ctx, tools.Question{Tool: "approval_rule", Prompt: chatreply.PersistPrompt(string(decision))})
+			persistAnswer, persistErr := a.asker.Ask(ctx, tools.Question{Tool: "approval_rule", Prompt: chatreply.PersistPromptWithTranslator(a.translator, string(decision))})
 			if persistErr != nil {
 				// The session rule is already active. A failed follow-up must not
 				// turn a successful approval into a failed tool call.
@@ -308,7 +312,7 @@ type approvalScope struct {
 
 func (a *chatApprover) scopeFor(call agentcore.ToolCall, tool agentcore.Tool) approvalScope {
 	target := a.policy.targetFor(call, tool)
-	scope := approvalScope{rule: approvalrules.Rule{Tool: call.Name, Modes: []approvalrules.Mode{approvalrules.ModeChat}}, description: "该工具", allowAlways: true}
+	scope := approvalScope{rule: approvalrules.Rule{Tool: call.Name, Modes: []approvalrules.Mode{approvalrules.ModeChat}}, description: approvalTr(a.translator).T("approval.scope.tool"), allowAlways: true}
 	if target.MCP {
 		scope.rule.Tool = target.MCPServer + "/" + call.Name
 		if target.MCPServer == "" {
@@ -335,7 +339,7 @@ func (a *chatApprover) scopeFor(call agentcore.ToolCall, tool agentcore.Tool) ap
 		if count < len(tokens) {
 			pattern += " *"
 		}
-		scope.key, scope.description = prefix, "“"+displaySafe(redact.Secrets(prefix))+"”开头的命令"
+		scope.key, scope.description = prefix, approvalTr(a.translator).T("approval.scope.command", map[string]any{"prefix": displaySafe(redact.Secrets(prefix))})
 		scope.rule.Command = []string{pattern}
 		candidate := scope.rule
 		candidate.Action = approvalrules.Allow
@@ -352,7 +356,7 @@ func (a *chatApprover) scopeFor(call agentcore.ToolCall, tool agentcore.Tool) ap
 		scope.rule.Root = a.policy.Workspace
 		if call.Name == "file_remove" {
 			scope.rule.Path = []string{relative}
-			scope.description = "该目标"
+			scope.description = approvalTr(a.translator).T("approval.scope.target")
 		} else {
 			// A write or edit names a file: "always" covers the directory it
 			// is in (docs/a.txt -> docs/**), not the file taken as a directory.
@@ -364,7 +368,7 @@ func (a *chatApprover) scopeFor(call agentcore.ToolCall, tool agentcore.Tool) ap
 			} else {
 				scope.rule.Path = []string{dir + "/**"}
 			}
-			scope.description = "写入 " + displaySafe(redact.Secrets(scope.key)) + "/ 目录"
+			scope.description = approvalTr(a.translator).T("approval.scope.directory", map[string]any{"path": displaySafe(redact.Secrets(scope.key))})
 		}
 	}
 	return scope
@@ -494,13 +498,14 @@ func outsideAnswer(answer string) (writable, refuse bool) {
 // A --read-only session offers the read-only answer only: it has no write tool
 // to use a read-write directory with.
 func (a *chatApprover) outsideQuestion(call agentcore.ToolCall, pending native.OutsideDir) tools.Question {
-	details := []string{"工具：" + call.Name, "要访问：" + pending.Target}
+	tr := approvalTr(a.translator)
+	details := []string{tr.T("approval.outside.detail.tool", map[string]any{"tool": call.Name}), tr.T("approval.outside.detail.target", map[string]any{"target": pending.Target})}
 	if pending.Path != pending.Target {
-		details = append(details, "目录："+pending.Path)
+		details = append(details, tr.T("approval.outside.detail.directory", map[string]any{"path": pending.Path}))
 	}
-	prompt := fmt.Sprintf("授权访问 %s？[r] 只读 [w] 读写 [n] 拒绝：", pending.Path)
+	prompt := tr.T("approval.outside.prompt", map[string]any{"path": pending.Path})
 	if a.readOnly {
-		prompt = fmt.Sprintf("授权访问 %s？[r] 只读 [n] 拒绝（本会话为 --read-only）：", pending.Path)
+		prompt = tr.T("approval.outside.prompt_readonly", map[string]any{"path": pending.Path})
 	}
 	for i, detail := range details {
 		details[i] = displaySafe(redact.Secrets(detail))
@@ -515,62 +520,63 @@ func (a *chatApprover) question(call agentcore.ToolCall) tools.Question {
 
 func (a *chatApprover) questionFor(call agentcore.ToolCall, _ agentcore.Tool, scope approvalScope) tools.Question {
 	args := call.Arguments
+	tr := approvalTr(a.translator)
 	var details []string
 	switch call.Name {
 	case "shell_exec":
-		details = []string{"命令：" + argText(args["command"])}
+		details = []string{tr.T("approval.detail.command", map[string]any{"value": argText(args["command"])})}
 	case "file_remove":
-		details = []string{"路径：" + a.fullPath(argText(args["path"]))}
+		details = []string{tr.T("approval.detail.path", map[string]any{"value": a.fullPath(argText(args["path"]))})}
 		plan, err := native.PlanRemoveWithDirs(a.workspace, a.liveDirs.WritePaths(), args)
 		switch {
 		case err != nil:
-			details = append(details, "检查："+err.Error())
+			details = append(details, tr.T("approval.detail.check", map[string]any{"value": err.Error()}))
 		case plan.Purge:
-			details = append(details, "被忽略的可再生内容：直接永久删除，不进回收区")
+			details = append(details, tr.T("approval.detail.purge"))
 		case plan.Dir:
-			details = append(details, fmt.Sprintf("目录：%d 个文件，%d 字节，移入回收区保留 7 天", plan.Files, plan.Bytes))
+			details = append(details, tr.T("approval.detail.directory", map[string]any{"files": plan.Files, "bytes": plan.Bytes}))
 		default:
-			details = append(details, fmt.Sprintf("文件：%d 字节，移入回收区保留 7 天", plan.Bytes))
+			details = append(details, tr.T("approval.detail.file", map[string]any{"bytes": plan.Bytes}))
 		}
 		if err == nil && len(plan.PurgeDirs) > 0 {
-			details = append(details, fmt.Sprintf("直接永久删除 %d 个被忽略的目录：%s", len(plan.PurgeDirs), native.NotedDirs(plan.PurgeDirs)))
+			details = append(details, tr.T("approval.detail.purge_dirs", map[string]any{"count": len(plan.PurgeDirs), "dirs": native.NotedDirs(plan.PurgeDirs)}))
 		}
 	case "file_write":
 		details = []string{
-			"路径：" + a.fullPath(argText(args["path"])),
-			fmt.Sprintf("内容：%d 字节", len(argText(args["content"]))),
+			tr.T("approval.detail.path", map[string]any{"value": a.fullPath(argText(args["path"]))}),
+			tr.T("approval.detail.content", map[string]any{"bytes": len(argText(args["content"]))}),
 		}
 	case "file_edit":
-		details = []string{"路径：" + a.fullPath(argText(args["path"]))}
+		details = []string{tr.T("approval.detail.path", map[string]any{"value": a.fullPath(argText(args["path"]))})}
 		edits, err := native.EditList(args)
 		if err != nil {
 			raw, _ := json.Marshal(args["edits"])
-			details = append(details, "参数："+string(raw))
+			details = append(details, tr.T("approval.detail.edits", map[string]any{"value": string(raw)}))
 		}
 		for i, edit := range edits {
 			label := ""
 			if len(edits) > 1 {
-				label = fmt.Sprintf("第 %d 处", i+1)
+				label = tr.T("approval.detail.edit_label", map[string]any{"index": i + 1})
 			}
 			details = append(details,
-				label+"原文：\n"+previewLines(argText(edit["old_string"])),
-				label+"改为：\n"+previewLines(argText(edit["new_string"])))
+				tr.T("approval.detail.edit_at", map[string]any{"label": label, "value": previewLines(argText(edit["old_string"]))}),
+				tr.T("approval.detail.edit_to", map[string]any{"label": label, "value": previewLines(argText(edit["new_string"]))}))
 			if all, _ := edit["replace_all"].(bool); all {
-				details = append(details, label+"替换全部匹配处")
+				details = append(details, tr.T("approval.detail.replace_all", map[string]any{"label": label}))
 			}
 		}
 	case "web_search":
-		details = []string{"查询：" + argText(args["query"])}
+		details = []string{tr.T("approval.detail.query", map[string]any{"value": argText(args["query"])})}
 	default:
 		raw, _ := json.Marshal(args)
-		details = []string{"参数：" + string(raw)}
+		details = []string{tr.T("approval.detail.arguments", map[string]any{"value": string(raw)})}
 	}
 	for i, detail := range details {
 		details[i] = displaySafe(redact.Secrets(detail))
 	}
-	prompt := fmt.Sprintf("允许执行 %s？[y]是 [N]否 [a]本会话总是允许该工具：", call.Name)
+	prompt := chatreply.ApprovalPromptWithTranslator(a.translator, call.Name, "", true)
 	if scope.rule.Tool != "" || scope.key != "" {
-		prompt = chatreply.ApprovalPrompt(call.Name, scope.description, scope.allowAlways)
+		prompt = chatreply.ApprovalPromptWithTranslator(a.translator, call.Name, scope.description, scope.allowAlways)
 	}
 	return tools.Question{Tool: call.Name, Details: details, Prompt: displaySafe(prompt)}
 }
@@ -612,6 +618,13 @@ func argText(value any) string {
 // displaySafe removes terminal control sequences (including OSC/CSI) before
 // details or prompts are written. Newlines and tabs remain useful formatting.
 func displaySafe(s string) string { return termtext.Clean(s) }
+
+func approvalTr(t i18n.Translator) i18n.Translator {
+	if t == nil {
+		return i18n.Fallback()
+	}
+	return t
+}
 
 // approvalScopeAttr is the trace value of a session scope: the tool and its
 // scope key ("file_write:docs", "shell_exec:go test"), empty without a key.
