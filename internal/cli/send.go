@@ -20,12 +20,13 @@ const maxSendStdinBytes = 1 << 20
 
 // sendHelp documents the three text sources of `suga send`, including the way
 // to pass text that would otherwise be read as an option, what --session
-// accepts, and what --steer and --wait wait for.
+// accepts, and what --steer and --wait wait for. The help stays English whatever
+// the UI language: it describes flags and command shapes, like the other helps.
 const sendHelp = `The message text comes from arguments, --text, or stdin; the first source that is
 given wins, and arguments cannot be combined with --text:
-  suga send --session <id|name> 你好 世界      arguments, joined with a single space
-  suga send --session <id|name> --text 你好    the --text option
-  echo 你好 | suga send --session <id|name>    stdin, when neither of the above is used
+  suga send --session <id|name> hello world   arguments, joined with a single space
+  suga send --session <id|name> --text hello  the --text option
+  echo hello | suga send --session <id|name>  stdin, when neither of the above is used
 Options may be written before or after the arguments. Everything after a "--"
 separator counts as text, which is how to pass text that starts with "-":
   suga send --session <id|name> -- -hello
@@ -60,13 +61,13 @@ model of that session cannot see pictures, the message still goes through with
 the first-phase text notes and a warning is printed on stderr (exit 0).`
 
 // sendExamples is shown under "Examples:" by `suga send --help`.
-const sendExamples = `suga send --session 1a2b 你好 世界
-suga send --session suga-k7 你好 世界
-suga send --session 1a2b --text 你好
-echo 你好 | suga send --session 1a2b
-suga send --session 1a2b --wait 你好
-suga send --session 1a2b --steer --wait 只改 README，不要动配置
-suga send --session 1a2b --image shot.png 看看这张
+const sendExamples = `suga send --session 1a2b hello world
+suga send --session suga-k7 hello world
+suga send --session 1a2b --text hello
+echo hello | suga send --session 1a2b
+suga send --session 1a2b --wait hello
+suga send --session 1a2b --steer --wait only touch the README, leave the config alone
+suga send --session 1a2b --image shot.png take a look at this
 suga send --session 1a2b -- -hello`
 
 func newSendCommand(stdin io.Reader, stderr io.Writer) *capp.Cmd {

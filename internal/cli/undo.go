@@ -86,7 +86,7 @@ func runUndo(ctx context.Context, stdout, stderr io.Writer, query string, option
 		return processExitError{code: 3, err: errors.New(cliText(tr, "cmd.undo.none"))}
 	}
 	if !cliOpts.yes {
-		if !confirmUndo(cliOpts.stdin, stderr, options.Force) {
+		if !confirmUndo(cliOpts.stdin, stderr, options.Force, tr) {
 			return errors.New("undo cancelled")
 		}
 	}
@@ -167,12 +167,13 @@ func mapUndoError(err error, query string) error {
 	}
 }
 
-func confirmUndo(stdin io.Reader, stderr io.Writer, force bool) bool {
-	prompt := "确认回滚文件改动？[y/N] "
+func confirmUndo(stdin io.Reader, stderr io.Writer, force bool, tr i18n.Translator) bool {
+	key := "cli.undo.confirm"
 	if force {
-		prompt = "确认强制回滚并覆盖内容冲突？[y/N] "
+		key = "cli.undo.confirm.force"
 	}
-	fmt.Fprint(stderr, prompt)
+	// The blank after the question lives here: the catalog trims the value ends.
+	fmt.Fprint(stderr, cliText(tr, key)+" ")
 	answer, err := readChoice(stdin)
 	return err == nil && undoConfirmedCLI(answer)
 }
@@ -215,10 +216,10 @@ func renderUndoCheckpointsWithTranslator(rows []personal.Checkpoint, tr i18n.Tra
 		}
 		b.WriteByte('\n')
 		for _, item := range row.Items {
-			fmt.Fprintf(&b, "    %s %s%s%s\n", undoActionLabel(item.Action), cleanUndoValue(item.Meta.Rel), undoSizeSuffix(item.Meta.Size), undoReasonSuffix(item.Reason))
+			fmt.Fprintf(&b, "    %s %s%s%s\n", undoActionLabel(tr, item.Action), cleanUndoValue(item.Meta.Rel), undoSizeSuffix(item.Meta.Size), undoReasonSuffix(item.Reason))
 		}
 		for _, shell := range row.Shell {
-			fmt.Fprintln(&b, "    "+cliText(cliTranslator(), "cmd.undo.shell.line", map[string]any{"command": cleanUndoValue(shell.Command), "task": undoTaskSuffix(shell.TaskID)}))
+			fmt.Fprintln(&b, "    "+cliText(tr, "cmd.undo.shell.line", map[string]any{"command": cleanUndoValue(shell.Command), "task": undoTaskSuffix(tr, shell.TaskID)}))
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -248,15 +249,15 @@ func renderUndoPlanWithTranslator(rows []personal.Checkpoint, options personal.U
 			if item.Conflict {
 				// Undo skips a target changed after its snapshot unless forced
 				// (personal.contentConflict), the same plan chat shows.
-				reason = cliText(cliTranslator(), "cmd.undo.conflict")
+				reason = cliText(tr, "cmd.undo.conflict")
 				if !options.Force {
 					action = personal.CheckpointActionSkip
 				}
 			}
-			fmt.Fprintf(&b, "  %s %s%s%s\n", undoActionLabel(action), cleanUndoValue(item.Meta.Rel), undoSizeSuffix(item.Meta.Size), undoReasonSuffix(reason))
+			fmt.Fprintf(&b, "  %s %s%s%s\n", undoActionLabel(tr, action), cleanUndoValue(item.Meta.Rel), undoSizeSuffix(item.Meta.Size), undoReasonSuffix(reason))
 		}
 		for _, shell := range row.Shell {
-			fmt.Fprintln(&b, "  "+cliText(cliTranslator(), "cmd.undo.shell.line", map[string]any{"command": cleanUndoValue(shell.Command), "task": undoTaskSuffix(shell.TaskID)}))
+			fmt.Fprintln(&b, "  "+cliText(tr, "cmd.undo.shell.line", map[string]any{"command": cleanUndoValue(shell.Command), "task": undoTaskSuffix(tr, shell.TaskID)}))
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -281,10 +282,21 @@ func renderUndoResultWithTranslator(result personal.UndoResult, rows []personal.
 	}
 	for _, row := range rows {
 		for _, shell := range row.Shell {
-			parts = append(parts, cliText(cliTranslator(), "cmd.undo.shell.note", map[string]any{"command": cleanUndoValue(shell.Command), "task": undoTaskSuffix(shell.TaskID), "session": cleanUndoValue(row.TurnID)}))
+			parts = append(parts, cliText(tr, "cmd.undo.shell.note", map[string]any{"command": cleanUndoValue(shell.Command), "task": undoTaskSuffix(tr, shell.TaskID), "turn": cleanUndoValue(row.TurnID)}))
 		}
 	}
-	return strings.Join(parts, "；") + "。"
+	sep := cliText(tr, "cli.undo.result.join")
+	return strings.Join(parts, sep+i18nGap(sep)) + cliText(tr, "cli.undo.result.end")
+}
+
+// i18nGap is the blank a value needs around it: full-width punctuation (zh)
+// carries its own spacing, an ASCII one does not, and the catalog trims the
+// leading and trailing spaces of a value.
+func i18nGap(value string) string {
+	if value != "" && value[0] < 0x80 {
+		return " "
+	}
+	return ""
 }
 
 func hasUndoSnapshots(rows []personal.Checkpoint) bool {
@@ -318,23 +330,27 @@ func cleanUndoValue(value string) string {
 	return strings.Join(strings.Fields(termtext.Clean(value)), " ")
 }
 
-func undoTaskSuffix(taskID string) string {
+// undoTaskSuffix names the task a shell snapshot belongs to; it reuses the chat
+// key, so both surfaces word it the same way. The parenthesis is glued to the
+// command, so an ASCII one gets the blank before it from i18nGap.
+func undoTaskSuffix(tr i18n.Translator, taskID string) string {
 	if taskID == "" {
 		return ""
 	}
-	return "（task " + cleanUndoValue(taskID) + "）"
+	suffix := cliText(tr, "cmd.undo.task_suffix", map[string]any{"id": cleanUndoValue(taskID)})
+	return i18nGap(suffix) + suffix
 }
 
-func undoActionLabel(action personal.CheckpointAction) string {
+func undoActionLabel(tr i18n.Translator, action personal.CheckpointAction) string {
 	switch action {
 	case personal.CheckpointActionRestore:
-		return "恢复"
+		return cliText(tr, "cmd.undo.action.restore")
 	case personal.CheckpointActionDelete:
-		return "删除"
+		return cliText(tr, "cmd.undo.action.delete")
 	case personal.CheckpointActionUnrecoverable:
-		return "无法恢复"
+		return cliText(tr, "cmd.undo.action.unrecoverable")
 	default:
-		return "跳过"
+		return cliText(tr, "cmd.undo.action.skip")
 	}
 }
 

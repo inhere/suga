@@ -213,7 +213,7 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 	// The output contract is compiled before the session exists: a bad schema
 	// creates nothing and asks the model nothing (exit code 2).
 	if value := strings.TrimSpace(opts.OutputSchema); value != "" {
-		contract, schema, err := compileOutputSchema(value, stdin)
+		contract, schema, err := compileOutputSchema(value, stdin, runtime.Translator)
 		if err != nil {
 			return err
 		}
@@ -466,11 +466,11 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 			fmt.Fprintln(stderr, output.OutputLimitNotice(opts.translator, result.OutputLimit))
 		}
 		// Text mode: a usage summary on stderr (stdout stays the answer only).
-		fmt.Fprintln(stderr, runSummary(runner, result, time.Since(runStart), budget))
+		fmt.Fprintln(stderr, runSummary(runner, result, time.Since(runStart), budget, opts.translator))
 		if contractRep != nil && contractRep.Checked && !contractRep.Passed {
 			// The answer that did not satisfy the caller's schema is named on stderr;
 			// stdout still carries it, so a script can read what the model said.
-			fmt.Fprintln(stderr, contractSummary(*contractRep))
+			fmt.Fprintln(stderr, contractSummary(*contractRep, opts.translator))
 		}
 	}
 	if err != nil {
@@ -519,7 +519,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	if contractRep != nil && contractRep.Checked && !contractRep.Passed {
 		// Exit code 6: the turn finished, but its answer does not have the shape the
 		// caller asked for, even after one correction (design 4.4).
-		return processExitError{code: 6, err: fmt.Errorf("%w: %s", ErrOutputContract, contractSummary(*contractRep))}
+		return processExitError{code: 6, err: fmt.Errorf("%w: %s", ErrOutputContract, contractSummary(*contractRep, opts.translator))}
 	}
 	return nil
 }
@@ -563,18 +563,18 @@ func openRequestedSession(ctx context.Context, runner *personal.Runner, opts per
 
 // runSummary is the text-mode closing line: model, this turn's tokens, the
 // session total and context share when known, and the elapsed time.
-func runSummary(runner *personal.Runner, result personal.RunResult, elapsed time.Duration, budget *personal.BudgetSnapshot) string {
+func runSummary(runner *personal.Runner, result personal.RunResult, elapsed time.Duration, budget *personal.BudgetSnapshot, tr i18n.Translator) string {
 	line := fmt.Sprintf("%s · in %d / out %d tokens", termtext.Clean(chat.ModelLabel(runner.ProviderName(), runner.Model())),
 		result.Usage.InputTokens, result.Usage.OutputTokens)
 	if s := result.SessionUsage; s.InputTokens > 0 || s.OutputTokens > 0 {
-		line += fmt.Sprintf("（会话累计 in %d / out %d）", s.InputTokens, s.OutputTokens)
+		line += cliText(tr, "cli.run.session_usage", map[string]any{"input": s.InputTokens, "output": s.OutputTokens})
 	}
 	_, _, window, _ := runner.ModelSettings()
 	if share := output.ContextShare(result.LastInputTokens, window); share != "" {
 		line += " · " + share
 	}
 	if budget != nil && budget.Estimated {
-		line += "（其中本轮用量含估算）"
+		line += cliText(tr, "cli.run.usage_estimated")
 	}
 	return line + " · " + chat.FormatElapsed(elapsed)
 }

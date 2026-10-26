@@ -7,6 +7,7 @@ import (
 
 	"github.com/gookit/goutil/cflag/capp"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 )
 
@@ -62,6 +63,7 @@ type toolBodiesFlags struct {
 
 // runToolBodies runs one job of `suga data bodies`.
 func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error {
+	tr := cliTranslator()
 	repo, err := openCoreStore()
 	if err != nil {
 		return err
@@ -72,7 +74,7 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 		if err := repo.ResetToolBodyState(ctx); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "已清除正文文件断点；下次 --move / --undo 会从头开始")
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.abort_done"))
 		return nil
 	}
 	if f.check {
@@ -80,7 +82,7 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 		if err != nil {
 			return err
 		}
-		writeToolBodyCheck(out, report)
+		writeToolBodyCheck(out, report, tr)
 		return nil
 	}
 	before, err := repo.ToolBodyStatus(ctx)
@@ -89,158 +91,169 @@ func runToolBodies(ctx context.Context, out io.Writer, f toolBodiesFlags) error 
 	}
 	switch {
 	case f.status:
-		writeToolBodyStatus(out, before)
+		writeToolBodyStatus(out, before, tr)
 		return nil
 	case f.undo:
-		if err := runUndoToolBodies(ctx, out, repo, before, f); err != nil {
+		if err := runUndoToolBodies(ctx, out, repo, before, f, tr); err != nil {
 			return err
 		}
 		return nil
 	case f.move:
 		// Tool and assistant rows keep independent checkpoints: a ledger whose tool
 		// rows moved (that pass is complete) still has its assistant rows to move.
-		if err := runMoveToolBodies(ctx, out, repo, before, f.batch); err != nil {
+		if err := runMoveToolBodies(ctx, out, repo, before, f.batch, tr); err != nil {
 			return err
 		}
-		return runMoveAssistantBodies(ctx, out, repo, before, f.batch)
+		return runMoveAssistantBodies(ctx, out, repo, before, f.batch, tr)
 	}
 	return fmt.Errorf("usage: suga data bodies [--status|--move|--undo|--check|--abort]")
 }
 
 // runMoveToolBodies moves the historical tool bodies out in batches.
-func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
-	tr := cliTranslator()
+func runMoveToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int, tr i18n.Translator) error {
 	if before.PendingRows == 0 {
 		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.none_tool"))
 		return nil
 	}
-	fmt.Fprintf(out, "开始移出：%d 条 tool 结果（%s）将写入会话文件，Ctrl-C 可中断，重跑续上\n",
-		before.PendingRows, humanBytes(before.PendingBytes))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.move_start_tool", map[string]any{
+		"rows": before.PendingRows, "bytes": humanBytes(before.PendingBytes)}))
 	report, err := repo.MoveToolBodies(ctx, store.ToolBodyMaintOptions{
 		Batch: batch,
 		OnBatch: func(p store.ToolBodyMaintProgress) {
-			fmt.Fprintf(out, "  已扫到 %s/%d，移出 %d 条（%s）\n", p.SessionID, p.Seq, p.Rows, humanBytes(p.Bytes))
+			fmt.Fprintf(out, "  %s\n", cliText(tr, "cli.data.bodies.progress_move", map[string]any{
+				"session": p.SessionID, "seq": p.Seq, "rows": p.Rows, "bytes": humanBytes(p.Bytes)}))
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(out, "中断于 %s/%d（已移出 %d 条）；重跑 `suga data bodies --move` 从这里续上：%v\n",
-			report.CursorSession, report.CursorSeq, report.Rows, err)
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.interrupted_move", map[string]any{
+			"session": report.CursorSession, "seq": report.CursorSeq, "rows": report.Rows, "error": err}))
 		return err
 	}
-	fmt.Fprintf(out, "移出完成：%d 条 tool 结果（%s）写入会话文件，%d 个写事务\n", report.Rows, humanBytes(report.Bytes), report.Batches)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.move_done_tool", map[string]any{
+		"rows": report.Rows, "bytes": humanBytes(report.Bytes), "batches": report.Batches}))
 	return nil
 }
 
 // runMoveAssistantBodies moves the historical assistant bodies out. It has its
 // own checkpoint (move_assistant), so it runs even when the tool pass of the same
 // database finished already.
-func runMoveAssistantBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int) error {
-	tr := cliTranslator()
+func runMoveAssistantBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, batch int, tr i18n.Translator) error {
 	if before.AssistantPendingRows == 0 {
 		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.none_assistant"))
 		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.files_note"))
 		return nil
 	}
-	fmt.Fprintf(out, "开始移出：%d 条 assistant 条目（库内 %s）将写入会话文件，Ctrl-C 可中断，重跑续上\n",
-		before.AssistantPendingRows, humanBytes(before.AssistantPending))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.move_start_assistant", map[string]any{
+		"rows": before.AssistantPendingRows, "bytes": humanBytes(before.AssistantPending)}))
 	report, err := repo.MoveAssistantBodies(ctx, store.ToolBodyMaintOptions{
 		Batch: batch,
 		OnBatch: func(p store.ToolBodyMaintProgress) {
-			fmt.Fprintf(out, "  已扫到 %s/%d，移出 %d 条（%s）\n", p.SessionID, p.Seq, p.Rows, humanBytes(p.Bytes))
+			fmt.Fprintf(out, "  %s\n", cliText(tr, "cli.data.bodies.progress_move", map[string]any{
+				"session": p.SessionID, "seq": p.Seq, "rows": p.Rows, "bytes": humanBytes(p.Bytes)}))
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(out, "中断于 %s/%d（已移出 %d 条）；重跑 `suga data bodies --move` 从这里续上：%v\n",
-			report.CursorSession, report.CursorSeq, report.Rows, err)
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.interrupted_move", map[string]any{
+			"session": report.CursorSession, "seq": report.CursorSeq, "rows": report.Rows, "error": err}))
 		return err
 	}
-	fmt.Fprintf(out, "移出完成：%d 条 assistant 条目（%s）写入会话文件，%d 个写事务\n", report.Rows, humanBytes(report.Bytes), report.Batches)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.move_done_assistant", map[string]any{
+		"rows": report.Rows, "bytes": humanBytes(report.Bytes), "batches": report.Batches}))
 	fmt.Fprintln(out, cliText(tr, "cli.data.bodies.files_note"))
 	return nil
 }
 
 // runUndoToolBodies restores every moved body and, with --remove-files, deletes
 // the files of sessions that keep none.
-func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, f toolBodiesFlags) error {
+func runUndoToolBodies(ctx context.Context, out io.Writer, repo *store.Store, before store.ToolBodyStatus, f toolBodiesFlags, tr i18n.Translator) error {
 	if before.MovedRows+before.AssistantMovedRows == 0 {
-		fmt.Fprintln(out, "已还原：没有移出到会话文件的正文")
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.undo_none"))
 	} else {
-		fmt.Fprintf(out, "开始还原：%d 条 tool 结果与 %d 条 assistant 条目将写回库内（先关闭「新写入移出」开关），Ctrl-C 可中断，重跑续上\n",
-			before.MovedRows, before.AssistantMovedRows)
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.undo_start", map[string]any{
+			"tools": before.MovedRows, "assistant": before.AssistantMovedRows}))
 		report, err := repo.UndoToolBodies(ctx, store.ToolBodyMaintOptions{
 			Batch: f.batch,
 			OnBatch: func(p store.ToolBodyMaintProgress) {
-				fmt.Fprintf(out, "  已扫到 %s/%d，还原 %d 条（%s）\n", p.SessionID, p.Seq, p.Rows, humanBytes(p.Bytes))
+				fmt.Fprintf(out, "  %s\n", cliText(tr, "cli.data.bodies.progress_undo", map[string]any{
+					"session": p.SessionID, "seq": p.Seq, "rows": p.Rows, "bytes": humanBytes(p.Bytes)}))
 			},
 		})
 		if err != nil {
-			fmt.Fprintf(out, "中断于 %s/%d（已还原 %d 条）；重跑 `suga data bodies --undo` 从这里续上：%v\n",
-				report.CursorSession, report.CursorSeq, report.Rows, err)
+			fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.interrupted_undo", map[string]any{
+				"session": report.CursorSession, "seq": report.CursorSeq, "rows": report.Rows, "error": err}))
 			return err
 		}
-		fmt.Fprintf(out, "还原完成：%d 条正文写回库内，%d 个写事务\n", report.Rows, report.Batches)
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.undo_done", map[string]any{
+			"rows": report.Rows, "batches": report.Batches}))
 	}
 	if !f.removeFiles {
-		fmt.Fprintln(out, "新写入已不再移出（`--move` 可重新打开）；会话文件仍保留，可加 --remove-files 删除")
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.undo_kept_files"))
 		return nil
 	}
 	removed, err := repo.RemoveToolBodyFiles(ctx)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "已删除 %d 个不再需要的会话文件\n", removed)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.removed_files", map[string]any{"count": removed}))
 	return nil
 }
 
 // writeToolBodyStatus prints what --status found, one line per entry type.
-func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus) {
-	switchState := "已打开"
+func writeToolBodyStatus(out io.Writer, st store.ToolBodyStatus, tr i18n.Translator) {
+	switchState := cliText(tr, "cli.data.bodies.status.switch_on")
 	if !st.MoveEnabled {
-		switchState = "已关闭（--undo 之后）"
+		switchState = cliText(tr, "cli.data.bodies.status.switch_off")
 	}
-	fmt.Fprintf(out, "正文文件：阈值 %s，新写入移出开关%s\n", humanBytes(st.InlineBytes), switchState)
-	fileNameState := fmt.Sprintf("仍是旧名（%s）；v0.40 的 --rename-files 可改名", store.LegacyBodyFileName)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.header", map[string]any{
+		"threshold": humanBytes(st.InlineBytes), "state": switchState}))
+	fileNameState := cliText(tr, "cli.data.bodies.status.name_legacy", map[string]any{"name": store.LegacyBodyFileName})
 	if st.BodyFileNameEnabled {
-		fileNameState = fmt.Sprintf("已改用 %s", store.BodyFileName)
+		fileNameState = cliText(tr, "cli.data.bodies.status.name_current", map[string]any{"name": store.BodyFileName})
 	}
-	fmt.Fprintf(out, "文件名：%s；旧名文件 %d 个\n", fileNameState, st.LegacyNameFiles)
-	fmt.Fprintf(out, "tool：待移出 %d 条（%s）；已移出 %d 条\n",
-		st.PendingRows, humanBytes(st.PendingBytes), st.MovedRows)
-	fmt.Fprintf(out, "assistant：可移出 %d 条（库内 %s，含推理内容与工具调用参数）；移出不省空间 %d 条（库内 %s，不处理）；已移出 %d 条\n",
-		st.AssistantPendingRows, humanBytes(st.AssistantPending), st.AssistantSkippedRows, humanBytes(st.AssistantSkipped), st.AssistantMovedRows)
-	fmt.Fprintf(out, "会话文件 %d 个（%s）\n", st.Files, humanBytes(st.FileBytes))
-	fmt.Fprintf(out, "--move 状态：tool %s（断点 %s/%d，已移出 %d 条）\n",
-		passState(st.MoveStarted, st.MoveComplete), st.MoveSession, st.MoveSeq, st.MoveRows)
-	fmt.Fprintf(out, "--move 状态：assistant %s（断点 %s/%d，已移出 %d 条）\n",
-		passState(st.AssistantMoveStarted, st.AssistantMoveComplete),
-		st.AssistantMoveSession, st.AssistantMoveSeq, st.AssistantMoveRows)
-	fmt.Fprintf(out, "--undo 状态：%s（已还原 %d 条）\n", passState(st.UndoStarted, st.UndoComplete), st.UndoRows)
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.names", map[string]any{
+		"state": fileNameState, "count": st.LegacyNameFiles}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.tool", map[string]any{
+		"pending": st.PendingRows, "bytes": humanBytes(st.PendingBytes), "moved": st.MovedRows}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.assistant", map[string]any{
+		"pending": st.AssistantPendingRows, "bytes": humanBytes(st.AssistantPending),
+		"skipped": st.AssistantSkippedRows, "skipped_bytes": humanBytes(st.AssistantSkipped),
+		"moved": st.AssistantMovedRows}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.files", map[string]any{
+		"count": st.Files, "bytes": humanBytes(st.FileBytes)}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.move_tool", map[string]any{
+		"state": passState(st.MoveStarted, st.MoveComplete, tr), "session": st.MoveSession, "seq": st.MoveSeq, "rows": st.MoveRows}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.move_assistant", map[string]any{
+		"state":   passState(st.AssistantMoveStarted, st.AssistantMoveComplete, tr),
+		"session": st.AssistantMoveSession, "seq": st.AssistantMoveSeq, "rows": st.AssistantMoveRows}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.status.undo", map[string]any{
+		"state": passState(st.UndoStarted, st.UndoComplete, tr), "rows": st.UndoRows}))
 }
 
 // passState names the state of one maintenance checkpoint.
-func passState(started, complete bool) string {
+func passState(started, complete bool, tr i18n.Translator) string {
 	switch {
 	case complete:
-		return "已完成"
+		return cliText(tr, "cli.data.bodies.pass.complete")
 	case started:
-		return "进行中"
+		return cliText(tr, "cli.data.bodies.pass.running")
 	}
-	return "未开始"
+	return cliText(tr, "cli.data.bodies.pass.none")
 }
 
 // writeToolBodyCheck prints the verification result.
-func writeToolBodyCheck(out io.Writer, report store.ToolBodyCheckReport) {
-	fmt.Fprintf(out, "校验了 %d 条移出的正文（tool 与 assistant）：%d 条读不回正文\n", report.Checked, report.Missing)
+func writeToolBodyCheck(out io.Writer, report store.ToolBodyCheckReport, tr i18n.Translator) {
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.check.header", map[string]any{
+		"checked": report.Checked, "missing": report.Missing}))
 	if report.OrphanRecords > 0 {
-		fmt.Fprintf(out, "孤儿记录 %d 条（%s）：没有桩指向它们，是提交前中断留下的，可忽略；需要清理时请先备份\n",
-			report.OrphanRecords, humanBytes(report.OrphanBytes))
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.bodies.check.orphans", map[string]any{
+			"count": report.OrphanRecords, "bytes": humanBytes(report.OrphanBytes)}))
 	}
 	for _, problem := range report.Problems {
 		fmt.Fprintf(out, "  %s\n", problem)
 	}
 	if report.OK() {
-		fmt.Fprintln(out, "结论：库内桩与会话文件一致")
+		fmt.Fprintln(out, cliText(tr, "cli.data.bodies.check.ok"))
 		return
 	}
-	fmt.Fprintln(out, "结论：有正文读不回，先别回退版本；可从备份恢复会话文件，或用 `data bodies --undo` 还原仍可读的部分")
+	fmt.Fprintln(out, cliText(tr, "cli.data.bodies.check.broken"))
 }
