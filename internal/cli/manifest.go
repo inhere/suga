@@ -44,6 +44,11 @@ func newManifestCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd
 func writeManifestText(out io.Writer, m wiring.Manifest) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "suga %s\n\n", m.Version)
+	fmt.Fprintf(&b, "Language\n  setting=%s resolved=%s source=%s", m.Language.Setting, m.Language.Resolved, m.Language.Source)
+	if m.Language.Locale != "" {
+		fmt.Fprintf(&b, " locale=%s", m.Language.Locale)
+	}
+	b.WriteString("\n")
 
 	b.WriteString("Models\n")
 	main := m.Models.Main

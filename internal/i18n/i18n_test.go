@@ -13,6 +13,10 @@ import (
 	"github.com/gookit/goutil/x/assert"
 )
 
+func TestFallbackIsChinese(t *testing.T) {
+	tr := Fallback()
+	assert.Eq(t, "你好 Alice", tr.T("common.language.greeting", map[string]any{"name": "Alice"}))
+}
 func TestNormalizeSetting(t *testing.T) {
 	cases := map[string]Setting{
 		"zh": SettingZH, "ZH-cn": SettingZH, " zh_CN ": SettingZH,

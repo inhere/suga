@@ -27,10 +27,20 @@ func SetBuildVersion(v string) {
 	}
 }
 
+// ManifestLanguage reports the configured setting, resolved UI language and
+// provenance. Locale is populated only when setting is auto.
+type ManifestLanguage struct {
+	Setting  string `json:"setting"`
+	Resolved string `json:"resolved"`
+	Source   string `json:"source"`
+	Locale   string `json:"locale,omitempty"`
+}
+
 // Manifest describes what this suga instance can do (design D15). It holds
 // no secrets: no API keys, base URLs, MCP arguments or environment values.
 type Manifest struct {
 	Version       string                `json:"version"`
+	Language      ManifestLanguage      `json:"language"`
 	Models        ManifestModels        `json:"models"`
 	Tools         []ManifestTool        `json:"tools"`
 	MCPServers    []ManifestMCPServer   `json:"mcp_servers"`
@@ -299,6 +309,7 @@ type ManifestToolConflict struct {
 type ManifestInput struct {
 	Version  string
 	Settings appconfig.ModelSettings
+	Language ManifestLanguage
 	// Registry is the base tool registry (MCP tools included when running).
 	Registry   *tools.Registry
 	MCPServers []mcp.ServerSettings
@@ -345,6 +356,7 @@ type ManifestInput struct {
 func BuildManifest(in ManifestInput) Manifest {
 	m := Manifest{
 		Version:   in.Version,
+		Language:  in.Language,
 		Models:    ManifestModels{Main: manifestModel(in.Settings.Main)},
 		Output:    ManifestOutput{InlineBytes: in.InlineBytes, SpillBytes: in.SpillBytes, SessionsDir: in.SessionsDir},
 		ReadRoots: []ManifestReadRoot{},
@@ -566,6 +578,11 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 	if err != nil {
 		return Manifest{}, manifestParts{}, fmt.Errorf("resolve workspace: %w", err)
 	}
+	langTranslator, language, err := assembleTranslator()
+	if err != nil {
+		return Manifest{}, manifestParts{}, err
+	}
+	_ = langTranslator
 	st, err := loadRuntimeSettings(workspace, opts.Model, opts.Thinking)
 	if err != nil {
 		return Manifest{}, manifestParts{}, err
@@ -622,7 +639,7 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 	// and the files that did not load.
 	outputRules, outputSkips := InspectOutputRules(workspace)
 	m := BuildManifest(ManifestInput{
-		Version: buildVersion, Settings: st.models, Registry: reg,
+		Version: buildVersion, Settings: st.models, Language: language, Registry: reg,
 		MCPServers: mcpServers, Preferred: preferred,
 		ReadRoots:  rootList,
 		SkillRoots: skillRoots(workspace), Skills: skillReg,

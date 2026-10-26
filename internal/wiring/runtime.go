@@ -12,6 +12,7 @@ import (
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/inhere/suga/internal/adddir"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -109,10 +110,8 @@ type Options struct {
 	// sessionDirs is the live set the tools and the environment prompt read. It
 	// is created by OpenCLI so the chat approver and the tools share one set; nil
 	// (a runtime assembled directly) means no additional directory.
-	sessionDirs *native.AddDirs
-	// approvalPolicy is compiled before Open builds the registry. A child takes a
-	// fresh copy through this callback so chat session rules are included without
-	// sharing a mutable policy with an already-running child.
+	sessionDirs      *native.AddDirs
+	Translator       i18n.Translator
 	approvalPolicy   *approvalPolicy
 	approvalSnapshot func() approvalPolicy
 }
@@ -140,7 +139,10 @@ type Runtime struct {
 	// ACPPolicy exposes the same compiled policy to the ACP permission hook
 	// without coupling the internal wiring package to the ACP server package.
 	ACPPolicy func(agentcore.ToolCall, agentcore.Tool) (action, rule, scope string)
-	// ContextWindow is the window of the model actually used by the provider.
+	// Translator is the immutable host UI catalog. It is never passed to agentcore.
+	Translator i18n.Translator
+	// Language is the resolved startup UI language.
+	Language      ManifestLanguage
 	ContextWindow int
 	// Budget is the resolved budget input retained for later runner/provider
 	// assembly. Its zero value means that budgeting is disabled.
@@ -299,8 +301,45 @@ func toolsAllowWrite() (bool, error) {
 	}
 }
 
+func assembleTranslator() (i18n.Translator, ManifestLanguage, error) {
+	configured := ""
+	if value := gkconfig.Get("language"); value != nil {
+		text, ok := value.(string)
+		if !ok {
+			return nil, ManifestLanguage{}, fmt.Errorf("language must be a string, got %T", value)
+		}
+		configured = text
+	}
+	if _, err := appconfig.ReadLanguage(); err != nil {
+		return nil, ManifestLanguage{}, err
+	}
+	env := os.Getenv("SUGA_LANGUAGE")
+	lang, setting, source, err := i18n.Resolve(env, configured, nil)
+	if err != nil {
+		return nil, ManifestLanguage{}, err
+	}
+	catalog, err := i18n.NewWithLogger(lang, func(message string) { slog.Warn("i18n", "message", message) })
+	if err != nil {
+		return nil, ManifestLanguage{}, fmt.Errorf("initialize UI language catalog: %w", err)
+	}
+	info := ManifestLanguage{Setting: string(setting), Resolved: string(lang), Source: source}
+	if setting == i18n.SettingAuto {
+		info.Locale = i18n.SystemLocale()
+	}
+	return catalog, info, nil
+}
+
 // Open assembles one runtime.
 func Open(ctx context.Context, opts Options) (*Runtime, error) {
+	translator := opts.Translator
+	language := ManifestLanguage{}
+	if translator == nil {
+		var err error
+		translator, language, err = assembleTranslator()
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := validateExtraToolNames(opts.ExtraTools); err != nil {
 		return nil, err
 	}
@@ -491,7 +530,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			residentInput = resident(mctx)
 		}
 		return BuildManifest(ManifestInput{
-			Version: buildVersion, Settings: settings, Registry: capabilities.Registry,
+			Version: buildVersion, Settings: settings, Language: language, Registry: capabilities.Registry,
 			MCPServers:    append(mcpServers, servers...),
 			ToolConflicts: capabilities.Conflicts(),
 			Preferred:     preferredTools,
@@ -724,6 +763,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		}
 	}
 	rt := &Runtime{Runner: runner, Registry: capabilities.Registry, PreferredTools: preferredTools,
+		Translator: translator, Language: language,
 		Resident: resident,
 		// :skills lists what the registry holds right now; :context reports the
 		// same resident parts the manifest and the start notice measure, plus what
