@@ -24,7 +24,6 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
-	"github.com/inhere/suga/pkg/agentcore/tools/native"
 	"golang.org/x/term"
 )
 
@@ -842,30 +841,9 @@ func (r *Renderer) Error(err error) {
 	fmt.Fprintln(r.opts.Err, text)
 }
 
-// memoryVerbs names a memory write on the end-of-turn line.
-var memoryVerbs = map[string]string{
-	native.MemoryActionAdd:     "已记住",
-	native.MemoryActionReplace: "已更新",
-	native.MemoryActionRemove:  "已删除",
-}
-
-// noteMemory remembers a successful memory write of this turn (parsed from
-// the memory tool result) for the end-of-turn line.
-func (r *Renderer) noteMemory(event personal.Event) {
-	if event.ToolName != "memory" {
-		return
-	}
-	change, ok := native.ParseMemoryResult(event.Text)
-	if !ok {
-		return
-	}
-	title := truncateLine(redact.Secrets(change.Title), resultSummaryLimit)
-	r.memory = append(r.memory, fmt.Sprintf("%s：%s（%s）", memoryVerbs[change.Action], title, change.Scope))
-}
-
 // Status prints the end of a turn on the chat output: the memory lines of the
 // turn and the status line (model, token usage, context share, elapsed time,
-// local end time, inserted messages). The text and its styles are built by
+// local end time, inserted messages). The text and their styles are built by
 // BuildTurnStatus (layout.go); this only collects the data.
 func (r *Renderer) Status(result personal.RunResult, elapsed time.Duration, steers int) {
 	r.endThinking()
