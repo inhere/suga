@@ -130,7 +130,7 @@ func (s *chatState) insertSendSteer(line, from string, images []agentcore.ImageP
 	if err != nil {
 		// The inbox is full (design D11): the person sees why nothing appeared, and
 		// the sender is answered queue_full instead of the message being queued.
-		s.render.Hint(steerFullHint)
+		s.render.Hint(s.tr().T("status.steering.full"))
 		return false, err
 	}
 	if !accepted {

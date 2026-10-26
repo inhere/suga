@@ -68,7 +68,7 @@ func (s *chatState) runDirCommand(line string) {
 		}
 		dir, err := s.dirs.Add(s.ctx, arg, adddir.SourceSession)
 		if err != nil {
-			fmt.Fprintln(s.stderr, formatCommandError(addDirCmd, err))
+			fmt.Fprintln(s.stderr, formatCommandError(s.tr(), addDirCmd, err))
 			fmt.Fprintln(s.stderr, dirCommandHelp(s.tr()))
 			return
 		}
@@ -80,7 +80,7 @@ func (s *chatState) runDirCommand(line string) {
 		}
 		removed, err := s.dirs.Remove(s.ctx, arg)
 		if err != nil {
-			fmt.Fprintln(s.stderr, formatCommandError(rmDirCmd, err))
+			fmt.Fprintln(s.stderr, formatCommandError(s.tr(), rmDirCmd, err))
 			return
 		}
 		if !removed {
@@ -112,7 +112,7 @@ func splitCommand(line string) (name, arg string) {
 func (s *chatState) printDirs() {
 	dirs, err := s.dirs.List(s.ctx)
 	if err != nil {
-		fmt.Fprintln(s.stderr, formatCommandError(dirsCmd, err))
+		fmt.Fprintln(s.stderr, formatCommandError(s.tr(), dirsCmd, err))
 		return
 	}
 	workspace, added := s.dirs.Workspace(), 0

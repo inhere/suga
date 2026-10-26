@@ -30,8 +30,9 @@ const (
 	localCommandHelpKey = "cmd.local.help"
 	// localCommandBusyHint answers a "!…" line typed at the ↳ input line while a
 	// turn runs: a command cannot run there, and the line goes back to the input
-	// (the way a message a turn did not deliver does). It is shared with the
-	// refusal steering.go prints, which is not this file's text.
+	// (the way a message a turn did not deliver does). The printed text comes from
+	// the catalog (status.local.command_busy, steering.go and followup.go); this is
+	// what the tests expect.
 	localCommandBusyHint = "回合进行中不能执行本地命令（结束本轮后在提示符处运行）"
 	// localSendNoticeKey tells the person that what the command produced travels to
 	// the model with the next message.

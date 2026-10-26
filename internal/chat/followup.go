@@ -101,7 +101,7 @@ func (q *followUpQueue) clear() int {
 // stays in the input line for the next prompt (the refusal Enter gets, steering.go).
 func (s *chatState) queueFollowUp(text string) bool {
 	if _, isLocal := parseLocalCommand(text); isLocal {
-		s.render.Hint(localCommandBusyHint)
+		s.render.Hint(s.tr().T("status.local.command_busy"))
 		return false
 	}
 	s.followUps.push(text)

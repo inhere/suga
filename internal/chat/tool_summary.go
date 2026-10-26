@@ -8,12 +8,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore/redact"
 )
 
 // toolSummaryFunc renders the arguments of one tool call as one readable line,
-// without the tool name. An empty result means "show the JSON instead".
-type toolSummaryFunc func(args map[string]any, workspace string) string
+// without the tool name. An empty result means "show the JSON instead". The
+// translator is the chat's own: the few summaries that name a count in words
+// say it in the person's language.
+type toolSummaryFunc func(t i18n.Translator, args map[string]any, workspace string) string
 
 // toolSummaries maps a tool to the one-line summary its call shows. A tool that
 // is not listed here (an MCP tool, update_plan whose plan has a display of its
@@ -46,7 +49,7 @@ var toolSummaries = map[string]toolSummaryFunc{
 // summary when there is one, the compact JSON of the call arguments otherwise.
 // The workspace makes the paths inside it relative, and secrets are redacted
 // like everywhere else in chat.
-func toolCallArgs(name, text string, full map[string]any, workspace string) string {
+func toolCallArgs(t i18n.Translator, name, text string, full map[string]any, workspace string) string {
 	if summary, ok := toolSummaries[name]; ok {
 		// The event's whole arguments when it carries them (personal.Event
 		// ToolArgs); the cut JSON of Text is only decodable for short calls.
@@ -55,7 +58,7 @@ func toolCallArgs(name, text string, full map[string]any, workspace string) stri
 			args, ok = toolCallArgMap(text)
 		}
 		if ok {
-			if line := truncateLine(redact.Secrets(summary(args, workspace)), callArgsLimit); line != "" {
+			if line := truncateLine(redact.Secrets(summary(t, args, workspace)), callArgsLimit); line != "" {
 				return line
 			}
 		}
@@ -178,7 +181,7 @@ func argFlag(args map[string]any, key string) bool {
 
 // summaryFileRead: the paths, and the line window asked for a single one
 // (offset/limit), the way the tool's own schema names them.
-func summaryFileRead(args map[string]any, workspace string) string {
+func summaryFileRead(_ i18n.Translator, args map[string]any, workspace string) string {
 	if paths := argList(args, "paths"); len(paths) > 0 {
 		out := make([]string, 0, len(paths))
 		for _, p := range paths {
@@ -208,7 +211,7 @@ func summaryFileRead(args map[string]any, workspace string) string {
 
 // summaryFileWrite: the path and how much content is written, so a long write
 // says something about its size without printing it.
-func summaryFileWrite(args map[string]any, workspace string) string {
+func summaryFileWrite(t i18n.Translator, args map[string]any, workspace string) string {
 	p := displayToolPath(workspace, argText(args, "path"))
 	if p == "" {
 		return ""
@@ -218,11 +221,11 @@ func summaryFileWrite(args map[string]any, workspace string) string {
 	if content != "" {
 		lines = strings.Count(content, "\n") + 1
 	}
-	return fmt.Sprintf("%s (%d 字节, %d 行)", p, len(content), lines)
+	return trOf(t).T("status.tool.write_size", map[string]any{"path": p, "bytes": len(content), "lines": lines})
 }
 
 // summaryFileEdit: the path and how many replacements the call applies.
-func summaryFileEdit(args map[string]any, workspace string) string {
+func summaryFileEdit(t i18n.Translator, args map[string]any, workspace string) string {
 	p := displayToolPath(workspace, argText(args, "path"))
 	if p == "" {
 		return ""
@@ -237,17 +240,17 @@ func summaryFileEdit(args map[string]any, workspace string) string {
 	if n == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s (%d 处)", p, n)
+	return trOf(t).T("status.tool.edit_count", map[string]any{"path": p, "count": n})
 }
 
 // summaryFileRemove: the path going to the trash.
-func summaryFileRemove(args map[string]any, workspace string) string {
+func summaryFileRemove(_ i18n.Translator, args map[string]any, workspace string) string {
 	return displayToolPath(workspace, argText(args, "path"))
 }
 
 // summaryFileList: the directory and the depth when more than one level is
 // listed.
-func summaryFileList(args map[string]any, workspace string) string {
+func summaryFileList(_ i18n.Translator, args map[string]any, workspace string) string {
 	dir := displayToolPath(workspace, argText(args, "dir"))
 	if dir == "" {
 		dir = "."
@@ -259,7 +262,7 @@ func summaryFileList(args map[string]any, workspace string) string {
 }
 
 // summaryFileFind: the glob and where it searches.
-func summaryFileFind(args map[string]any, workspace string) string {
+func summaryFileFind(_ i18n.Translator, args map[string]any, workspace string) string {
 	pattern := argText(args, "pattern")
 	if pattern == "" {
 		return ""
@@ -272,7 +275,7 @@ func summaryFileFind(args map[string]any, workspace string) string {
 
 // summaryFileGrep: the pattern in quotes with the path and globs it is limited
 // to, the parts a person checks before the result arrives.
-func summaryFileGrep(args map[string]any, workspace string) string {
+func summaryFileGrep(_ i18n.Translator, args map[string]any, workspace string) string {
 	pattern := argText(args, "pattern")
 	if pattern == "" {
 		return ""
@@ -288,7 +291,7 @@ func summaryFileGrep(args map[string]any, workspace string) string {
 }
 
 // summaryFileSymbols: the name filter, else the path it lists.
-func summaryFileSymbols(args map[string]any, workspace string) string {
+func summaryFileSymbols(_ i18n.Translator, args map[string]any, workspace string) string {
 	name := argText(args, "name")
 	p := displayToolPath(workspace, argText(args, "path"))
 	if name == "" {
@@ -301,7 +304,7 @@ func summaryFileSymbols(args map[string]any, workspace string) string {
 }
 
 // summaryFileRefs: the identifier and where it is searched.
-func summaryFileRefs(args map[string]any, workspace string) string {
+func summaryFileRefs(_ i18n.Translator, args map[string]any, workspace string) string {
 	name := argText(args, "name")
 	if name == "" {
 		return displayToolPath(workspace, argText(args, "path"))
@@ -313,29 +316,29 @@ func summaryFileRefs(args map[string]any, workspace string) string {
 }
 
 // summaryPathOnly: the path of a single-path read (view_image).
-func summaryPathOnly(args map[string]any, workspace string) string {
+func summaryPathOnly(_ i18n.Translator, args map[string]any, workspace string) string {
 	return displayToolPath(workspace, argText(args, "path"))
 }
 
 // summaryURL: the URL of a fetch, or the URL count of a urls fetch plus the
 // first one (the whole list would not fit on the line).
-func summaryURL(args map[string]any, _ string) string {
+func summaryURL(t i18n.Translator, args map[string]any, _ string) string {
 	if urls := argList(args, "urls"); len(urls) == 1 {
-		return "1 个 URL：" + urls[0]
+		return trOf(t).T("status.tool.url_one", map[string]any{"url": urls[0]})
 	} else if len(urls) > 1 {
-		return fmt.Sprintf("%d 个 URL：%s, …", len(urls), urls[0])
+		return trOf(t).T("status.tool.url_many", map[string]any{"count": len(urls), "url": urls[0]})
 	}
 	return argText(args, "url")
 }
 
 // summaryQuery: the query words of a search (web_search, tool_search).
-func summaryQuery(args map[string]any, _ string) string {
+func summaryQuery(_ i18n.Translator, args map[string]any, _ string) string {
 	return argText(args, "query")
 }
 
 // summaryShell: the command itself, first line only, with the timeout or the
 // background/watch mode it was given as a short note.
-func summaryShell(args map[string]any, _ string) string {
+func summaryShell(t i18n.Translator, args map[string]any, _ string) string {
 	command := firstLine(argText(args, "command"))
 	if command == "" {
 		return ""
@@ -351,7 +354,7 @@ func summaryShell(args map[string]any, _ string) string {
 		notes = append(notes, fmt.Sprintf("every %ds", every))
 	}
 	if watches := argList(args, "watch_paths"); len(watches) > 0 {
-		notes = append(notes, fmt.Sprintf("watch %d 个路径", len(watches)))
+		notes = append(notes, trOf(t).T("status.tool.watch_paths", map[string]any{"count": len(watches)}))
 	}
 	if len(notes) == 0 {
 		return command
@@ -361,7 +364,7 @@ func summaryShell(args map[string]any, _ string) string {
 
 // summaryAgent: the sub-agent type and the task label it was given (its prompt
 // first line when the call carries no label).
-func summaryAgent(args map[string]any, _ string) string {
+func summaryAgent(_ i18n.Translator, args map[string]any, _ string) string {
 	kind := argText(args, "type")
 	if kind == "" {
 		kind = "explore"
@@ -382,7 +385,7 @@ func summaryAgent(args map[string]any, _ string) string {
 
 // summarySessionMessage: "list", or the target and the first line of the text
 // sent to it.
-func summarySessionMessage(args map[string]any, _ string) string {
+func summarySessionMessage(_ i18n.Translator, args map[string]any, _ string) string {
 	action := argText(args, "action")
 	if action == "" || action == "list" {
 		return "list"
@@ -400,7 +403,7 @@ func summarySessionMessage(args map[string]any, _ string) string {
 }
 
 // summaryLedger: the ledger query, or the ref it searches inside (session_search).
-func summaryLedger(args map[string]any, _ string) string {
+func summaryLedger(_ i18n.Translator, args map[string]any, _ string) string {
 	if q := argText(args, "query"); q != "" {
 		return q
 	}
@@ -408,12 +411,12 @@ func summaryLedger(args map[string]any, _ string) string {
 }
 
 // summaryRecall: the ref whose messages or output lines it reads.
-func summaryRecall(args map[string]any, _ string) string {
+func summaryRecall(_ i18n.Translator, args map[string]any, _ string) string {
 	return argText(args, "ref")
 }
 
 // summarySkill: the skill name, or the query that searches skills.
-func summarySkill(args map[string]any, _ string) string {
+func summarySkill(_ i18n.Translator, args map[string]any, _ string) string {
 	if name := argText(args, "name"); name != "" {
 		if file := argText(args, "file"); file != "" {
 			return name + " " + file
@@ -427,7 +430,7 @@ func summarySkill(args map[string]any, _ string) string {
 }
 
 // summaryMemory: the action and the title, query or id it works on.
-func summaryMemory(args map[string]any, _ string) string {
+func summaryMemory(_ i18n.Translator, args map[string]any, _ string) string {
 	action := argText(args, "action")
 	label := argText(args, "title")
 	if label == "" {
