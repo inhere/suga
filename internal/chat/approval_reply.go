@@ -1,6 +1,10 @@
 package chat
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/inhere/suga/internal/i18n"
+)
 
 // ApprovalReply is the decision made from the one-line answer to an approval
 // question. The wiring layer turns the two persistent replies into session rules.
@@ -55,19 +59,34 @@ func ParsePersistReply(answer string) PersistReply {
 // unsafe shell command: a deny scope is still useful, but an allow scope must
 // never bypass the command safety matcher.
 func ApprovalPrompt(tool, scopeDescription string, allowAlways bool) string {
-	prompt := "允许执行 " + tool + "？[y]是 [N]否"
-	if allowAlways {
-		prompt += " [a]本会话总是允许" + scopeDescription
+	return ApprovalPromptWithTranslator(i18n.Fallback(), tool, scopeDescription, allowAlways)
+}
+
+// ApprovalPromptWithTranslator builds the compact answer line with the injected
+// host UI translator; the compatibility wrapper above keeps older callers in zh.
+func ApprovalPromptWithTranslator(t i18n.Translator, tool, scopeDescription string, allowAlways bool) string {
+	tr := trOf(t)
+	if allowAlways && scopeDescription == "" {
+		return tr.T("approval.prompt.allow", map[string]any{"tool": tool})
 	}
-	prompt += " [d]本会话总是拒绝："
-	return prompt
+	if allowAlways {
+		return tr.T("approval.prompt.allow_scope", map[string]any{"tool": tool, "scope": scopeDescription})
+	}
+	return tr.T("approval.prompt.deny_scope", map[string]any{"tool": tool})
 }
 
 // PersistPrompt is explicit about the safe default: an empty answer keeps the
 // rule in the current session, while only u/p request a file writeback.
 func PersistPrompt(action string) string {
+	return PersistPromptWithTranslator(i18n.Fallback(), action)
+}
+
+// PersistPromptWithTranslator builds the rule writeback question using the
+// injected translator while retaining the safe session-only default.
+func PersistPromptWithTranslator(t i18n.Translator, action string) string {
+	key := "approval.prompt.persist.allow"
 	if action == "deny" {
-		return "把这条规则写进规则文件？[u] 用户级 ~/.suga/approval-rules.yaml [p] 项目级 .suga/approval-rules.yaml [N] 只本会话："
+		key = "approval.prompt.persist.deny"
 	}
-	return "把这条规则写进规则文件？[u] 用户级 ~/.suga/approval-rules.yaml [N] 只本会话："
+	return trOf(t).T(key)
 }

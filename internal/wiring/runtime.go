@@ -114,6 +114,9 @@ type Options struct {
 	// Translator is an already-resolved host UI catalog; nil makes Open resolve
 	// the language from config and SUGA_LANGUAGE itself.
 	Translator i18n.Translator
+	// language carries the resolved manifest value when OpenCLI resolves the
+	// translator before constructing the chat approver.
+	language ManifestLanguage
 	// approvalPolicy is compiled before Open builds the registry. A child takes a
 	// fresh copy through this callback so chat session rules are included without
 	// sharing a mutable policy with an already-running child.
@@ -212,6 +215,13 @@ type Runtime struct {
 // OpenCLI resolves the workspace, cwd, MCP configs and the CLI MCP gate from
 // opts, then assembles the runtime via Open.
 func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
+	if opts.Translator == nil {
+		translator, language, err := assembleTranslator()
+		if err != nil {
+			return nil, err
+		}
+		opts.Translator, opts.language = translator, language
+	}
 	workspace, err := filepath.Abs(appconfig.ResolveWorkspacePath())
 	if err != nil {
 		return nil, fmt.Errorf("resolve workspace: %w", err)
@@ -257,7 +267,7 @@ func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
 		roots, _ := readRoots(workspace)
 		chatGate = newChatApprover(chatApproverOptions{
 			gate: gate, auto: auto, asker: asker, workspace: workspace, dirs: dirs,
-			readRoots: native.RootPaths(roots), readOnly: opts.ReadOnly,
+			translator: opts.Translator, readRoots: native.RootPaths(roots), readOnly: opts.ReadOnly,
 			askOutside: appconfig.ChatAskOutsideDirs(),
 		})
 		approver = chatGate
@@ -338,7 +348,7 @@ func assembleTranslator() (i18n.Translator, ManifestLanguage, error) {
 // Open assembles one runtime.
 func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	translator := opts.Translator
-	language := ManifestLanguage{}
+	language := opts.language
 	if translator == nil {
 		var err error
 		translator, language, err = assembleTranslator()

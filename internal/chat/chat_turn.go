@@ -360,7 +360,7 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 			// The turn was cancelled: Esc or Ctrl-C during it (the chat itself
 			// goes on), or a cancelled model call. The raw error would read
 			// "context canceled".
-			s.render.Notice(interruptNotice + steerBackNotice(len(backs)))
+			s.render.Notice(s.render.tr().T("approval.render.notice.interrupt_turn") + steerBackNotice(len(backs)))
 		default:
 			s.render.Error(runErr)
 			if n := len(backs); n > 0 {

@@ -30,7 +30,7 @@ func (a chatAsker) Ask(ctx context.Context, q tools.Question) (string, error) {
 	// still working away on its own) and comes back after the answer.
 	a.render.suspendStatus()
 	defer a.render.resumeStatus()
-	a.notifier.notify("suga：等待确认 " + q.Tool)
+	a.notifier.notify(a.render.tr().T("approval.notify.waiting", map[string]any{"tool": q.Tool}))
 	// A file_edit/file_write is shown as the diff it would make first, so the
 	// person answers having seen what the call changes (same cut as any preview).
 	return a.source.Ask(ctx, a.render.ApprovalDiff(q.Tool)+a.render.ApprovalDetails(q), a.render.ApprovalPrompt(q))

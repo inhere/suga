@@ -7,7 +7,6 @@ import (
 	"github.com/inhere/suga/internal/i18n"
 	"io"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +23,6 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
-	"github.com/inhere/suga/pkg/agentcore/tools/native"
 	"golang.org/x/term"
 )
 
@@ -34,8 +32,7 @@ const (
 	// callArgsLimit caps the tool_call argument text on screen, in runes.
 	callArgsLimit = 120
 
-	promptText        = "❯ "
-	promptWaitingText = "❯ (可等待外部回复) "
+	promptText = "❯ "
 
 	// interruptNotice is what chat shows when a turn was interrupted while it
 	// ran (Ctrl-C): never the runner's raw "context canceled". cmd/suga still
@@ -235,7 +232,7 @@ func (r *Renderer) paint(c color.Color, s string) string {
 // Prompt returns the input prompt; waiting marks a pending external reply.
 func (r *Renderer) Prompt(waiting bool) string {
 	if waiting {
-		return r.paint(color.Cyan, promptWaitingText)
+		return r.paint(color.Cyan, r.tr().T("approval.render.prompt.waiting")+" ")
 	}
 	return r.paint(color.Cyan, promptText)
 }
@@ -280,219 +277,6 @@ func (r *Renderer) startThinking() {
 	r.spin.Start()
 }
 
-// agentProgressMode keeps direct renderer tests and callers without config on the
-// documented default.
-func (r *Renderer) agentProgressMode() string {
-	switch r.opts.AgentProgress {
-	case "full", "off", "summary":
-		return r.opts.AgentProgress
-	default:
-		return "summary"
-	}
-}
-
-func (r *Renderer) agentStatusLabel() string {
-	if r.agentProgressMode() != "summary" {
-		return spinnerLabel
-	}
-	parts := r.runningAgents()
-	if len(parts) == 0 {
-		return spinnerLabel
-	}
-	texts := make([]string, 0, len(parts))
-	for _, part := range parts {
-		texts = append(texts, fmt.Sprintf("%s %d 次调用", truncateLine(part.description, 24), part.calls))
-	}
-	return truncateLine(fmt.Sprintf("子 agent：%d 个运行中（%s）", len(parts), strings.Join(texts, "、")), 120)
-}
-
-// agentStatusPart is one running agent the status line counts.
-type agentStatusPart struct {
-	id          string
-	description string
-	calls       int
-}
-
-// runningAgents is what the status line counts as running, in display order: the
-// foreground entries of this turn and the manager's running agent tasks. The
-// tasks manager is the truth for a background agent - its task leaves the
-// running set when it ends, fails or is killed, so the count never depends on a
-// notice being delivered - and an entry whose task is gone is dropped here.
-func (r *Renderer) runningAgents() []agentStatusPart {
-	tasksByID := make(map[string]tasks.Info)
-	for _, info := range r.agentTasks() {
-		if info.Kind == "agent" && info.Status == tasks.Running {
-			tasksByID[info.ID] = info
-		}
-	}
-	r.agentMu.Lock()
-	defer r.agentMu.Unlock()
-	parts := make([]agentStatusPart, 0, len(r.agentProgress)+len(tasksByID))
-	for id, state := range r.agentProgress {
-		if state == nil {
-			delete(r.agentProgress, id)
-			continue
-		}
-		if state.taskID == "" {
-			parts = append(parts, agentStatusPart{id: id, description: state.description, calls: state.calls})
-			continue
-		}
-		if _, running := tasksByID[state.taskID]; !running {
-			delete(r.agentProgress, id)
-			continue
-		}
-		parts = append(parts, agentStatusPart{id: id, description: state.description, calls: state.calls})
-		delete(tasksByID, state.taskID)
-	}
-	// A running agent task no entry knows (its call ended without a result) is
-	// still a running sub-agent: name it by its task.
-	for id, info := range tasksByID {
-		parts = append(parts, agentStatusPart{id: id, description: strings.TrimPrefix(info.Summary, "agent: ")})
-	}
-	sort.Slice(parts, func(i, j int) bool {
-		if parts[i].description != parts[j].description {
-			return parts[i].description < parts[j].description
-		}
-		return parts[i].id < parts[j].id
-	})
-	return parts
-}
-
-// agentTasks is the renderer's view of the session's tasks (nil: none).
-func (r *Renderer) agentTasks() []tasks.Info {
-	if r.opts.AgentTasks == nil {
-		return nil
-	}
-	return r.opts.AgentTasks()
-}
-
-// refreshAgentStatus puts what the line says back in place after a background
-// agent changed outside the event stream (its task ended or was killed).
-func (r *Renderer) refreshAgentStatus() { r.spin.SetLabel(r.agentStatusLabel()) }
-
-// EndTurnAgents forgets the entries no background task backs: a foreground
-// sub-agent ends with its turn (a cancelled turn leaves no tool result, a failed
-// one no summary), so the status line of the next turn starts clean.
-func (r *Renderer) EndTurnAgents() {
-	r.agentMu.Lock()
-	for id, state := range r.agentProgress {
-		if state == nil || state.taskID == "" {
-			delete(r.agentProgress, id)
-		}
-	}
-	r.agentMu.Unlock()
-	r.refreshAgentStatus()
-}
-
-// beginAgent records the agent tool call of event, so the status line counts
-// the sub-agent's tool calls under that call. The call ID is the key and the
-// description is only its label: two children with the same description stay
-// two entries. A provider that sends no call id leaves only the description as a
-// key (the turn's end still clears such an entry).
-func (r *Renderer) beginAgent(event personal.Event) {
-	if event.ToolName != "agent" {
-		return
-	}
-	description, background := agentCallDetails(event.Text)
-	if description == "" {
-		return
-	}
-	r.agentMu.Lock()
-	r.agentProgress[agentEntryKey(event.CallID, description)] = &agentProgressState{description: description, started: time.Now(), background: background}
-	r.agentMu.Unlock()
-}
-
-// agentEntryKey is the entry of an agent call: its call ID, or a key built from
-// the description when the provider sent no call id.
-func agentEntryKey(callID, description string) string {
-	if callID != "" {
-		return callID
-	}
-	return "desc:" + description
-}
-
-func agentCallDetails(text string) (string, bool) {
-	var args struct {
-		Description string `json:"description"`
-		Background  bool   `json:"background"`
-	}
-	if err := json.Unmarshal([]byte(text), &args); err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(args.Description), args.Background
-}
-
-// finishAgent ends the entry of an agent tool result. Any end counts - a report,
-// an error or a refusal - so an entry never outlives its call. A background call
-// keeps its entry: the task it started is what runs, and the manager's task list
-// decides when it is gone; its summary line comes with that task's notice
-// (AgentTaskSummaries).
-func (r *Renderer) finishAgent(event personal.Event) {
-	if event.ToolName != "agent" {
-		return
-	}
-	summary := event.AgentSummary
-	key := event.CallID
-	if key == "" && summary != nil {
-		key = agentEntryKey("", summary.Description)
-	}
-	r.agentMu.Lock()
-	state := r.agentProgress[key]
-	background := (state != nil && state.background) || (summary != nil && summary.Background)
-	calls := 0
-	if state != nil {
-		calls = state.calls
-	}
-	switch {
-	case background:
-		// The task keeps the entry alive (runningAgents); its id is how the
-		// manager's task list is matched against it.
-		if state != nil && summary != nil {
-			state.taskID = summary.TaskID
-		}
-	case key != "":
-		delete(r.agentProgress, key)
-	}
-	r.agentMu.Unlock()
-	if background || summary == nil || summary.Description == "" {
-		return
-	}
-	if summary.ToolCalls > calls {
-		calls = summary.ToolCalls
-	}
-	if r.agentProgressMode() == "summary" {
-		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(summary.Description, 40), calls, formatElapsed(summary.Duration))
-	}
-}
-
-// dropAgentTask forgets the entry of a background agent task that ended.
-func (r *Renderer) dropAgentTask(taskID string) {
-	r.agentMu.Lock()
-	defer r.agentMu.Unlock()
-	for id, state := range r.agentProgress {
-		if state != nil && state.taskID == taskID {
-			delete(r.agentProgress, id)
-		}
-	}
-}
-
-// AgentTaskSummaries prints completions of background agents before their task
-// notice. The task manager owns their counters because they outlive the turn.
-func (r *Renderer) AgentTaskSummaries(infos []tasks.Info) {
-	if r.agentProgressMode() != "summary" {
-		return
-	}
-	for _, info := range infos {
-		if info.Kind != "agent" || !strings.HasPrefix(info.Summary, "agent: ") {
-			continue
-		}
-		name := strings.TrimPrefix(info.Summary, "agent: ")
-		calls := info.Counters["tool_calls"]
-		fmt.Fprintf(r.opts.Out, "子 agent %s：%d 次工具调用，耗时 %s\n", truncateLine(name, 40), calls, formatElapsed(info.Duration()))
-		r.dropAgentTask(info.ID)
-	}
-	r.refreshAgentStatus()
-}
 func (r *Renderer) toolRunning(name string) {
 	if !r.statusLine() {
 		r.spin.Stop()
@@ -701,14 +485,14 @@ func (r *Renderer) Answer(text string) {
 // not taken for the model's answer.
 func (r *Renderer) SteerWaiting(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerWaitingSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(r.tr(), text, steerWaitingSuffix)))
 }
 
 // SteerLate prints that line when the turn did not take the message (it was
 // already ending, or its inbox was full): it becomes the person's next input.
 func (r *Renderer) SteerLate(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerLateSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(r.tr(), text, steerLateSuffix)))
 }
 
 // SteerDelivered prints the message again once a model request of the turn
@@ -717,7 +501,7 @@ func (r *Renderer) SteerLate(text string) {
 // the prompt gets, so a delivered message reads as the person's own.
 func (r *Renderer) SteerDelivered(text string) {
 	r.stopThinking()
-	line := steerNotice(text, steerTakenSuffix)
+	line := steerNotice(r.tr(), text, steerTakenSuffix)
 	if r.highlightInput() {
 		line = inputHighlightPrefix + lineedit.PadLine(line, r.opts.HighlightWidth()) + highlightSuffix
 	}
@@ -730,32 +514,45 @@ func (r *Renderer) SteerDelivered(text string) {
 // and the text is on the input line for editing again.
 func (r *Renderer) SteerWithdrawn(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(text, steerWithdrawnSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(steerNotice(r.tr(), text, steerWithdrawnSuffix)))
 }
 
 // FollowUpQueued prints the line a Tab press queued during a turn (followup.go):
 // it does not go into the running turn, it waits for the next one.
 func (r *Renderer) FollowUpQueued(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(text, followUpQueuedSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(r.tr(), text, followUpQueuedSuffix)))
 }
 
 // FollowUpSent prints that line again when the turn it was queued for starts.
 func (r *Renderer) FollowUpSent(text string) {
 	r.stopThinking()
-	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(text, followUpSentSuffix)))
+	fmt.Fprintln(r.opts.Out, r.paintDim(followUpNotice(r.tr(), text, followUpSentSuffix)))
 }
 
 // followUpNotice is the one-line display of a queued message, laid out like
 // steerNotice.
-func followUpNotice(text, suffix string) string {
-	return "[排队] " + truncateLine(text, resultSummaryLimit) + suffix
+func followUpNotice(t i18n.Translator, text, suffix string) string {
+	key := "approval.render.followup.sent"
+	if suffix == followUpQueuedSuffix {
+		key = "approval.render.followup.queued"
+	}
+	return trOf(t).T("approval.render.queue", map[string]any{"text": truncateLine(text, resultSummaryLimit), "suffix": trOf(t).T(key)})
 }
 
 // steerNotice is the one-line display of an inserted message: the marker, the
 // message collapsed like a tool line, and its state.
-func steerNotice(text, suffix string) string {
-	return "[插话] " + truncateLine(text, resultSummaryLimit) + suffix
+func steerNotice(t i18n.Translator, text, suffix string) string {
+	key := "approval.render.steer.withdrawn"
+	switch suffix {
+	case steerWaitingSuffix:
+		key = "approval.render.steer.waiting"
+	case steerTakenSuffix:
+		key = "approval.render.steer.taken"
+	case steerLateSuffix:
+		key = "approval.render.steer.late"
+	}
+	return trOf(t).T("approval.render.interjection", map[string]any{"text": truncateLine(text, resultSummaryLimit), "suffix": trOf(t).T(key)})
 }
 
 // External prints input that did not come from this keyboard (a reply sent
@@ -824,7 +621,7 @@ func (r *Renderer) Hint(text string) {
 
 // Interrupt reports a turn that was interrupted while it ran (Ctrl-C) on the
 // chat output, in place of the runner's cancellation error.
-func (r *Renderer) Interrupt() { r.Notice(interruptNotice) }
+func (r *Renderer) Interrupt() { r.Notice(r.tr().T("approval.render.notice.interrupt_turn")) }
 
 // Notice prints a plain informational line on the chat output.
 func (r *Renderer) Notice(text string) {
@@ -842,30 +639,9 @@ func (r *Renderer) Error(err error) {
 	fmt.Fprintln(r.opts.Err, text)
 }
 
-// memoryVerbs names a memory write on the end-of-turn line.
-var memoryVerbs = map[string]string{
-	native.MemoryActionAdd:     "已记住",
-	native.MemoryActionReplace: "已更新",
-	native.MemoryActionRemove:  "已删除",
-}
-
-// noteMemory remembers a successful memory write of this turn (parsed from
-// the memory tool result) for the end-of-turn line.
-func (r *Renderer) noteMemory(event personal.Event) {
-	if event.ToolName != "memory" {
-		return
-	}
-	change, ok := native.ParseMemoryResult(event.Text)
-	if !ok {
-		return
-	}
-	title := truncateLine(redact.Secrets(change.Title), resultSummaryLimit)
-	r.memory = append(r.memory, fmt.Sprintf("%s：%s（%s）", memoryVerbs[change.Action], title, change.Scope))
-}
-
 // Status prints the end of a turn on the chat output: the memory lines of the
 // turn and the status line (model, token usage, context share, elapsed time,
-// local end time, inserted messages). The text and its styles are built by
+// local end time, inserted messages). The text and their styles are built by
 // BuildTurnStatus (layout.go); this only collects the data.
 func (r *Renderer) Status(result personal.RunResult, elapsed time.Duration, steers int) {
 	r.endThinking()
