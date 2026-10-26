@@ -238,17 +238,23 @@ func TestCatalogManagerIsIndependent(t *testing.T) {
 	assert.Eq(t, "Language", second.T("common.language"))
 }
 
+// TestCatalogFilesHaveMatchingNames requires the same area files in every
+// language directory (each migration task adds its own <area>.ini); common.ini
+// must always be there.
 func TestCatalogFilesHaveMatchingNames(t *testing.T) {
+	byLang := make(map[string][]string)
 	for _, lang := range []string{"en", "zh"} {
 		files, err := readCatalogFiles(catalogFS, "catalog/"+lang)
-		assert.NoErr(t, err)
+		assert.Require(t, assert.NoErr(t, err))
 		var names []string
 		for _, file := range files {
 			names = append(names, file.file)
 		}
 		sort.Strings(names)
-		assert.Eq(t, []string{"approval.ini", "common.ini"}, names)
+		assert.Contains(t, names, "common.ini")
+		byLang[lang] = names
 	}
+	assert.Eq(t, byLang["en"], byLang["zh"])
 }
 
 func TestCatalogFSIsEmbedded(t *testing.T) {

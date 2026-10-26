@@ -17,8 +17,8 @@ func TestQueueCommandAtThePrompt(t *testing.T) {
 	var stdout, stderr strings.Builder
 	input := strings.NewReader(":queue\n:queue clear\n:queue bogus\n:quit\n")
 	assert.NoErr(t, Run(context.Background(), runner, Options{}, input, &stdout, &stderr, nil))
-	assert.StrContains(t, stdout.String(), chatQueueEmpty)
-	assert.StrContains(t, stdout.String(), queueUsageHint)
+	assert.StrContains(t, stdout.String(), testTranslator.T(chatQueueEmptyKey))
+	assert.StrContains(t, stdout.String(), commandUsageText(testTranslator, queueCmd))
 }
 
 // TestFollowUpQueue: the queue a turn fills keeps messages in order and can be

@@ -69,27 +69,27 @@ func TestRendererShowCode(t *testing.T) {
 		var out bytes.Buffer
 		r.opts.Out = &out
 		r.ShowCode("x")
-		assert.Eq(t, codeUsageHint+"\n", plainSGR(out.String()))
+		assert.Eq(t, commandUsageText(testTranslator, codeCmd)+"\n", plainSGR(out.String()))
 	})
 	t.Run("an answer without a code block says so", func(t *testing.T) {
 		r, _ := streamCode(rendererOptions{CodeMaxLines: 40}, "just text\n")
 		var out bytes.Buffer
 		r.opts.Out = &out
 		r.ShowCode("")
-		assert.Eq(t, codeNoneHint+"\n", plainSGR(out.String()))
+		assert.Eq(t, testTranslator.T(codeNoneHintKey)+"\n", plainSGR(out.String()))
 	})
 	t.Run("without a folded block the command says so", func(t *testing.T) {
 		r, _ := streamCode(rendererOptions{CodeMaxLines: 0}, codeAnswer(45, "go"))
 		var out bytes.Buffer
 		r.opts.Out = &out
 		r.ShowCode("")
-		assert.Eq(t, codeNoFoldedHint+"\n", plainSGR(out.String()))
+		assert.Eq(t, testTranslator.T(codeNoFoldedHintKey)+"\n", plainSGR(out.String()))
 	})
 	t.Run("a chat without markdown has no blocks", func(t *testing.T) {
 		var out bytes.Buffer
 		// Markdown off: the text streams as it is, so nothing is kept.
 		newRenderer(rendererOptions{Out: &out, Color: true}).ShowCode("")
-		assert.Eq(t, codeNoneHint+"\n", plainSGR(out.String()))
+		assert.Eq(t, testTranslator.T(codeNoneHintKey)+"\n", plainSGR(out.String()))
 	})
 }
 
@@ -121,7 +121,7 @@ func TestChatCodeCommandInLoop(t *testing.T) {
 	input := ":code\nhello\n:quit\n"
 	assert.NoErr(t, Run(context.Background(), runner, Options{Markdown: true, CodeMaxLines: 40},
 		strings.NewReader(input), &stdout, &stderr, nil))
-	assert.StrContains(t, plainSGR(stdout.String()), codeNoneHint)
+	assert.StrContains(t, plainSGR(stdout.String()), testTranslator.T(codeNoneHintKey))
 	assert.StrContains(t, stdout.String(), "MODEL_ANSWER")
 }
 

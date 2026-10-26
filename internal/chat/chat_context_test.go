@@ -23,7 +23,7 @@ func skillsFixture() []SkillInfo {
 // their source, the names alone and a limit that says how many are left.
 func TestBuildChatSkills(t *testing.T) {
 	t.Run("descriptions and sources, sorted as given", func(t *testing.T) {
-		got := BuildChatSkills(skillsFixture(), false, 0)
+		got := BuildChatSkills(testTranslator, skillsFixture(), false, 0)
 		assert.StrContains(t, got, "已加载 3 个 skill：")
 		assert.StrContains(t, got, "ask-matt — grills a plan before coding · 内置")
 		assert.StrContains(t, got, "suga-guide — suga 的安装与配置 · 内置 · 常驻")
@@ -37,19 +37,19 @@ func TestBuildChatSkills(t *testing.T) {
 	})
 
 	t.Run("only names", func(t *testing.T) {
-		got := BuildChatSkills(skillsFixture(), true, 0)
+		got := BuildChatSkills(testTranslator, skillsFixture(), true, 0)
 		assert.Eq(t, "ask-matt, suga-guide, team-style", got)
 	})
 
 	t.Run("limit says how many are left", func(t *testing.T) {
-		assert.StrContains(t, BuildChatSkills(skillsFixture(), false, 2), "还有 1 个未显示")
-		assert.Eq(t, "ask-matt, suga-guide …（还有 1 个，省略 -n 显示全部）", BuildChatSkills(skillsFixture(), true, 2))
+		assert.StrContains(t, BuildChatSkills(testTranslator, skillsFixture(), false, 2), "还有 1 个未显示")
+		assert.Eq(t, "ask-matt, suga-guide …（还有 1 个，省略 -n 显示全部）", BuildChatSkills(testTranslator, skillsFixture(), true, 2))
 		// A limit at or above the count hides nothing.
-		assert.NotContains(t, BuildChatSkills(skillsFixture(), false, 3), "还有")
+		assert.NotContains(t, BuildChatSkills(testTranslator, skillsFixture(), false, 3), "还有")
 	})
 
 	t.Run("no skill at all", func(t *testing.T) {
-		got := BuildChatSkills(nil, false, 0)
+		got := BuildChatSkills(testTranslator, nil, false, 0)
 		assert.StrContains(t, got, "没有加载任何 skill")
 		assert.StrContains(t, got, "suga inspect manifest")
 	})
@@ -124,7 +124,7 @@ func contextFixture() ContextReport {
 func TestBuildChatContext(t *testing.T) {
 	usage := personal.ContextUsage{Handoff: 2000, HandoffTokens: 500, History: 40000, HistoryTokens: 10000,
 		HistoryMessages: 25, Input: 300, EstTokens: 14000, Window: 200000}
-	got := BuildChatContext(contextFixture(), ToolsInfo{Bytes: 24000, Tokens: 6000, Count: 21, MCP: 3, Deferred: 12, Loaded: 2}, usage)
+	got := BuildChatContext(testTranslator, contextFixture(), ToolsInfo{Bytes: 24000, Tokens: 6000, Count: 21, MCP: 3, Deferred: 12, Loaded: 2}, usage)
 	assert.StrContains(t, got, "工具 schema：23.4 KB · 约 6k tok · 21 个工具（MCP 3）；按需加载 12 个，已加载 2 个")
 	assert.StrContains(t, got, "系统提示：3.9 KB · 约 1k tok")
 	assert.StrContains(t, got, "项目规则：7.8 KB · 约 2k tok · 1 个文件")
@@ -141,7 +141,7 @@ func TestBuildChatContext(t *testing.T) {
 // TestBuildChatContextEmpty pins the degenerate case: an empty report still
 // prints every section instead of an empty answer.
 func TestBuildChatContextEmpty(t *testing.T) {
-	got := BuildChatContext(ContextReport{}, ToolsInfo{}, personal.ContextUsage{})
+	got := BuildChatContext(testTranslator, ContextReport{}, ToolsInfo{}, personal.ContextUsage{})
 	assert.StrContains(t, got, "常驻上下文：（空）")
 	assert.StrContains(t, got, "交接包：0 B · 约 0 tok")
 	assert.StrContains(t, got, "估算合计：约 0 tok")
@@ -155,14 +155,14 @@ func TestBuildChatContextFiles(t *testing.T) {
 		{Path: "internal/chat/chat.go", Tool: "file_read", Turn: 3, Bytes: 2048},
 		{Path: "README.md", Tool: "file_edit", Turn: 4, Bytes: 512},
 	}
-	got := BuildChatContextFiles(contextFixture(), files)
+	got := BuildChatContextFiles(testTranslator, contextFixture(), files)
 	assert.StrContains(t, got, "上下文已加载的文件（3 个，最近使用在前）：")
 	assert.StrContains(t, got, "internal/chat/chat.go · file_read 第 3 轮 · 2.0 KB")
 	assert.StrContains(t, got, "README.md · file_edit 第 4 轮 · 512 B")
 	assert.StrContains(t, got, "AGENTS.md · 规则文件 · 7.8 KB")
 	assert.Require(t, assert.True(t, strings.Index(got, "README.md") < strings.Index(got, "AGENTS.md")))
 
-	assert.StrContains(t, BuildChatContextFiles(ContextReport{}, nil), "上下文里还没有已加载的文件")
+	assert.StrContains(t, BuildChatContextFiles(testTranslator, ContextReport{}, nil), "上下文里还没有已加载的文件")
 }
 
 // TestChatContextCommand drives :context through runChatCommand: the listing,
@@ -233,10 +233,10 @@ func TestUnknownCommandHint(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.line, func(t *testing.T) {
 			if !c.hint {
-				assert.Eq(t, "", unknownCommandHint(c.line))
+				assert.Eq(t, "", unknownCommandHint(testTranslator, c.line))
 				return
 			}
-			got := unknownCommandHint(c.line)
+			got := unknownCommandHint(testTranslator, c.line)
 			assert.StrContains(t, got, "未知命令 "+c.line)
 			if c.want != "" {
 				assert.StrContains(t, got, c.want)

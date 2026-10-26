@@ -24,7 +24,7 @@ import (
 func TestBannerHelpTextKeepsRareCommandsInHelp(t *testing.T) {
 	for _, cmd := range []string{":add-dir", ":dirs", ":rm-dir", ":checkpoints", ":undo"} {
 		assert.StrNotContains(t, bannerHelpText, cmd)
-		assert.StrContains(t, chatHelpText, cmd)
+		assert.StrContains(t, buildChatHelp(testTranslator), cmd)
 	}
 	// The commands that stay are still named, in a readable sentence.
 	for _, cmd := range []string{":session", ":compact", ":diff", ":quit/:exit", ":help"} {

@@ -48,7 +48,7 @@ func TestBuildCheckpointTextCleansExternalValues(t *testing.T) {
 		}},
 		Shell: []personal.ShellCommand{{Command: "echo bad\x1b[2J", TaskID: "task\x00-1"}},
 	}
-	got := BuildCheckpoints([]personal.Checkpoint{row})
+	got := BuildCheckpoints(testTranslator, []personal.Checkpoint{row})
 	assert.NotContains(t, got, "\x1b")
 	assert.NotContains(t, got, "\x00")
 	assert.Contains(t, got, "turn--one")
@@ -62,7 +62,7 @@ func TestBuildUndoPlanShowsShellBoundary(t *testing.T) {
 		Items:  []personal.CheckpointItem{{Meta: personal.SnapshotMeta{Rel: "a.txt", Size: 4}, Action: personal.CheckpointActionRestore}},
 		Shell:  []personal.ShellCommand{{Command: "git reset --hard", TaskID: "bg-1"}},
 	}
-	got := BuildUndoPlan([]personal.Checkpoint{row}, undoCommand{n: 1})
+	got := BuildUndoPlan(testTranslator, []personal.Checkpoint{row}, undoCommand{n: 1})
 	assert.Contains(t, got, "恢复 a.txt")
 	assert.Contains(t, got, "shell_exec：git reset --hard")
 	assert.Contains(t, got, "改动不在快照范围内")
@@ -82,7 +82,7 @@ func TestChatPromptUndoCommandsDoNotStartATurn(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err := Run(context.Background(), runner, Options{}, strings.NewReader(":checkpoints\n:undo\n:quit\n"), &stdout, &stderr, nil)
 	assert.NoErr(t, err)
-	assert.Contains(t, stdout.String(), noUndoHint)
+	assert.Contains(t, stdout.String(), testTranslator.T(undoNoHintKey))
 	assert.NotContains(t, stdout.String(), "Error: prompt is required")
 }
 
@@ -110,12 +110,12 @@ func TestBuildUndoPlanListsConflicts(t *testing.T) {
 			Action: personal.CheckpointActionRestore, Conflict: true}},
 	}
 	t.Run("default skips the conflict", func(t *testing.T) {
-		got := BuildUndoPlan([]personal.Checkpoint{row}, undoCommand{n: 1})
+		got := BuildUndoPlan(testTranslator, []personal.Checkpoint{row}, undoCommand{n: 1})
 		assert.Contains(t, got, "跳过 a.txt")
 		assert.Contains(t, got, "冲突：快照之后被改动过")
 	})
 	t.Run("force restores it", func(t *testing.T) {
-		got := BuildUndoPlan([]personal.Checkpoint{row}, undoCommand{n: 1, force: true})
+		got := BuildUndoPlan(testTranslator, []personal.Checkpoint{row}, undoCommand{n: 1, force: true})
 		assert.Contains(t, got, "恢复 a.txt")
 		assert.Contains(t, got, "冲突：快照之后被改动过")
 	})

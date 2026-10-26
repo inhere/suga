@@ -1,10 +1,10 @@
 package chat
 
 import (
-	"fmt"
 	"strings"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/process"
 )
 
@@ -78,9 +78,14 @@ func shouldHoldSessionMessage(from string, hops int) bool {
 // sessionQueuedHint is what chat shows the person when a session message was held:
 // nothing ran, the message waits for their next input.
 func sessionQueuedHint(fromName string, hops int) string {
+	return sessionQueuedHintWithTranslator(nil, fromName, hops)
+}
+
+func sessionQueuedHintWithTranslator(t i18n.Translator, fromName string, hops int) string {
+	t = trOf(t)
 	name := strings.TrimSpace(fromName)
 	if name == "" {
-		name = "未知会话"
+		name = t.T("status.session.unknown")
 	}
-	return fmt.Sprintf("来自会话 %s 的消息已排队（连续自动回复已达上限，第 %d 跳），下次输入时一起处理", safeSender(name), hops)
+	return t.T("status.session.queued", map[string]any{"name": safeSender(name), "hops": hops})
 }
