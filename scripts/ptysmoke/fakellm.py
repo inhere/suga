@@ -53,7 +53,7 @@ Modes (--mode):
         memory tool (the deferred-native proxy), then the text --reply: the
         smoke of tools.deferred_native: auto (chat_deferred_native.py).
   demo  the timeline of the recorded demo (scripts/demo/record.py): a line
-        containing "改成" edits --edit-path (chat asks the person first), one
+        containing "改成" edits --demo-file (chat asks the person first), one
         containing "运行" only explains how to run it, anything else reads
         --demo-readme and --demo-file and answers --reply. The two other turns
         answer --demo-reply-queued and --demo-reply-edit.
@@ -183,7 +183,7 @@ def demo_plan(args, user_text):
     """
     text = str(user_text)
     if "改成" in text:
-        return ([("file_edit", {"path": args.edit_path, "old_string": args.demo_edit_old,
+        return ([("file_edit", {"path": args.demo_file, "old_string": args.demo_edit_old,
                                "new_string": args.demo_edit_new})], args.demo_reply_edit)
     if "运行" in text:
         return ([], args.demo_reply_queued)

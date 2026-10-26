@@ -27,6 +27,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -305,6 +306,20 @@ def write_cast(path, session, scrub):
             f.write(json.dumps([round(at, 3), "o", scrub(data)], ensure_ascii=False) + "\n")
 
 
+def drain_log(proc):
+    """Reads the fake model's request log off its pipe into proc.log.
+
+    Nobody would read that pipe otherwise, and the demo makes about ten requests:
+    once the pipe buffer is full the handler blocks on its own print and the whole
+    recording hangs on a tool result (found with a run that stopped after the
+    second file_read)."""
+    try:
+        for line in proc.stdout:
+            proc.log.append(line)
+    except (ValueError, OSError):  # the pipe closed under terminate()
+        pass
+
+
 def start_fake(port):
     """Starts fakellm in demo mode: slow enough that the line typed while the
     model answers is queued, and streamed so the answer arrives line by line."""
@@ -315,7 +330,9 @@ def start_fake(port):
                              "--demo-reply-queued", REPLY_QUEUED,
                              "--demo-reply-edit", REPLY_EDIT],
                             stdout=subprocess.PIPE, text=True)
+    fake.log = []
     wait_port(fake)
+    threading.Thread(target=drain_log, args=(fake,), daemon=True).start()
     return fake
 
 
@@ -380,7 +397,8 @@ def record(args):
             print(("PASS " if ok else "FAIL ") + name)
         if any(not ok for _, ok in checks):
             return False
-        print(f"\nwrote {args.out}: {len(s.events)} events, {duration:.1f}s, {COLS}x{ROWS}")
+        print(f"\nwrote {args.out}: {len(s.events)} events, {duration:.1f}s, {COLS}x{ROWS}, "
+              f"{len(fake.log)} model requests")
         return True
     finally:
         if not args.keep:
