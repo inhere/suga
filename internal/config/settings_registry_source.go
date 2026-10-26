@@ -112,6 +112,9 @@ func directEnvOverride(key string) string {
 	// chat.theme: the palette of chat's markdown rendering (chat.theme / SUGA_THEME).
 	case "chat.theme":
 		return "SUGA_THEME"
+	// language: the UI language of chat and the CLI (language / SUGA_LANGUAGE).
+	case "language":
+		return "SUGA_LANGUAGE"
 	default:
 		return ""
 	}

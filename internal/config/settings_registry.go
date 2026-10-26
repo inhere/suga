@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 
 	goccyyaml "github.com/goccy/go-yaml"
@@ -85,6 +86,11 @@ const (
 )
 
 var configKeyDescriptors = []ConfigKey{
+	// language: the UI language of chat and of the CLI (auto | zh | en). Aliases
+	// such as en_US or 中文 are normalized through internal/i18n before they are
+	// written and when they are read back; SUGA_LANGUAGE overrides the config
+	// value (see ReadLanguage).
+	{Pattern: "language", Type: ConfigTypeEnum, Writable: true, Reader: "language"},
 	{Pattern: "store.body_inline_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tool_body"},
 	{Pattern: "model", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "compact_model", Type: ConfigTypeString, Writable: true, Reader: "model"},
@@ -453,6 +459,16 @@ func parseConfigValue(descriptor ConfigKey, raw, key string) (any, error) {
 }
 
 func parseConfigEnum(key, raw string) (string, error) {
+	// language is the one enum that also accepts locale aliases (en_US, zh-CN,
+	// 中文, ...): internal/i18n owns that table, so the value is normalized there
+	// instead of being matched against a fixed list of three strings here.
+	if key == "language" {
+		setting, err := i18n.NormalizeSetting(raw)
+		if err != nil {
+			return "", err
+		}
+		return string(setting), nil
+	}
 	value := strings.ToLower(strings.TrimSpace(raw))
 	var allowed []string
 	switch {
@@ -646,6 +662,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadToolBodySettings()
 	case "log":
 		_, err = ReadLogSettings()
+	case "language":
+		_, err = ReadLanguage()
 	case "":
 		return nil
 	default:
