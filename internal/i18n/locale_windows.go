@@ -13,10 +13,13 @@ import (
 // languages when the kernel32 API is unavailable or fails.
 func systemLocale() string {
 	proc := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetUserDefaultLocaleName")
-	buf := make([]uint16, 85)
-	if ret, _, _ := proc.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); ret != 0 {
-		if locale := windows.UTF16ToString(buf); locale != "" {
-			return locale
+	// Find first: Call panics when the procedure cannot be loaded.
+	if proc.Find() == nil {
+		buf := make([]uint16, 85) // LOCALE_NAME_MAX_LENGTH
+		if ret, _, _ := proc.Call(uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); ret != 0 {
+			if locale := windows.UTF16ToString(buf); locale != "" {
+				return locale
+			}
 		}
 	}
 	locales, err := windows.GetUserPreferredUILanguages(windows.MUI_LANGUAGE_NAME)
