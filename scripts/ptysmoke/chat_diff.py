@@ -7,11 +7,11 @@ fail. The Linux/macOS supervisor runs it through make smoke-chat.
 """
 import argparse, os, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import CTRL_C, PtySession
+from ptydrive import CTRL_C, PtySession, resolve_port
 from chat_approval import isolate_ws, wait_port, write_home
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--bin',default='tmp/smoke/suga'); p.add_argument('--work',default='tmp/smoke-diff'); p.add_argument('--port',type=int,default=18798); p.add_argument('--keep',action='store_true'); a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--bin',default='tmp/smoke/suga'); p.add_argument('--work',default='tmp/smoke-diff'); p.add_argument('--port',type=int,default=0,help='fake model port; 0 picks a free one'); p.add_argument('--keep',action='store_true'); a=p.parse_args(); a.port=resolve_port(a.port)
     work=os.path.abspath(a.work); home=os.path.join(work,'home'); ws=os.path.join(work,'ws'); shutil.rmtree(work,ignore_errors=True); os.makedirs(ws); isolate_ws(ws)
     with open(os.path.join(ws,'target.txt'),'w',encoding='utf-8') as f: f.write('line one\nSMOKE_TARGET old\nline three\n')
     write_home(home,a.port)

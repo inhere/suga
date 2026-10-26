@@ -42,7 +42,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import PtySession  # noqa: E402
+from ptydrive import PtySession, resolve_port  # noqa: E402
 
 REPLY = "完成"
 MODE_ON = r"\x1b\[\?9001h"
@@ -214,9 +214,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", default="tmp/smoke/suga", help="suga binary to test")
     p.add_argument("--work", default="tmp/smoke-win32input", help="scratch dir (SUGA_HOME and workspace)")
-    p.add_argument("--port", type=int, default=18831)
+    p.add_argument("--port", type=int, default=0, help="fake model port; 0 picks a free one")
     p.add_argument("--keep", action="store_true", help="keep the scratch home after the run")
     args = p.parse_args()
+    args.port = resolve_port(args.port)
 
     binary = os.path.abspath(args.bin)
     home = os.path.abspath(os.path.join(args.work, "home"))

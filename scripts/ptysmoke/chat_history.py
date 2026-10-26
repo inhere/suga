@@ -7,7 +7,7 @@ This is intentionally Linux/macOS-only: Windows console input has no Python PTY.
 """
 import argparse, os, shutil, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import CTRL_C, PtySession
+from ptydrive import CTRL_C, PtySession, resolve_port
 from chat_approval import isolate_ws, wait_port, write_home
 
 
@@ -15,9 +15,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bin", default="tmp/smoke/suga")
     p.add_argument("--work", default="tmp/smoke-history")
-    p.add_argument("--port", type=int, default=18839)
+    p.add_argument("--port", type=int, default=0, help="fake model port; 0 picks a free one")
     p.add_argument("--keep", action="store_true")
-    a = p.parse_args()
+    a = p.parse_args(); a.port = resolve_port(a.port)
     work = os.path.abspath(a.work); home = os.path.join(work, "home"); ws = os.path.join(work, "ws")
     shutil.rmtree(work, ignore_errors=True); os.makedirs(ws); isolate_ws(ws)
     os.makedirs(os.path.join(ws, "tm-dir"))

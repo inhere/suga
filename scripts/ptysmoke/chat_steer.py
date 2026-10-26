@@ -161,7 +161,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fakellm  # noqa: E402
-from ptydrive import CTRL_C, PtySession, Screen, input_row  # noqa: E402
+from ptydrive import CTRL_C, PtySession, Screen, input_row, resolve_port  # noqa: E402
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 from chat_observe import trace_events  # noqa: E402
 
@@ -1246,11 +1246,14 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", default="tmp/smoke/suga", help="suga binary to test")
     p.add_argument("--work", default="tmp/smoke-steer", help="scratch dir (SUGA_HOME and workspace)")
-    p.add_argument("--port", type=int, default=18811)
+    p.add_argument("--port", type=int, default=0,
+                   help="fake model port; 0 picks free ports (one per scenario)")
     p.add_argument("--keep", action="store_true", help="keep the scratch homes after the run")
     p.add_argument("--dump", action="store_true", help="print everything the chat wrote, per scenario")
     p.add_argument("--only", default="", help="run one scenario by name only")
     args = p.parse_args()
+    # One fake model per scenario: the base port and the next thirteen.
+    args.port = resolve_port(args.port, 13)
 
     binary = os.path.abspath(args.bin)
     # No approval override in the approval scenario: the default is asking, and

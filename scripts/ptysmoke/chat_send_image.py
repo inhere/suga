@@ -49,7 +49,7 @@ import time
 import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ptydrive import CTRL_C, PtySession  # noqa: E402
+from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 from chat_approval import isolate_ws, wait_port  # noqa: E402
 from chat_observe import trace_events  # noqa: E402
 
@@ -209,9 +209,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bin", default="tmp/smoke/suga", help="suga binary to test")
     p.add_argument("--work", default="tmp/smoke-send-image", help="scratch dir (SUGA_HOME and workspace)")
-    p.add_argument("--port", type=int, default=18819)
+    p.add_argument("--port", type=int, default=0, help="fake model port; 0 picks a free one")
     p.add_argument("--keep", action="store_true", help="keep the scratch home after the run")
     args = p.parse_args()
+    args.port = resolve_port(args.port)
 
     binary = os.path.abspath(args.bin)
     work = os.path.abspath(args.work)
