@@ -134,7 +134,8 @@ type LastReplyInfo struct {
 	Incomplete bool
 	// Omitted is how many leading lines of a long reply are not shown (0: the
 	// whole reply is); a positive count adds the hint naming the trace command.
-	Omitted   int
+	Omitted int
+	// SessionID only names the trace command of that hint.
 	SessionID string
 	// Translator is the host UI catalog; nil preserves legacy Chinese output.
 	Translator i18n.Translator
