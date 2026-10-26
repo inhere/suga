@@ -152,6 +152,12 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			}
 			return refs, len(refs) > 0, nil
 		}
+	case "language":
+		// The canonical setting (auto | zh | en), not the language auto resolves
+		// to: the resolved language depends on the machine locale and is reported
+		// by `suga inspect manifest` instead.
+		value, err := ReadLanguage()
+		return value, true, err
 	case "max_steps":
 		value, err := ReadMaxSteps(0)
 		return value, true, err

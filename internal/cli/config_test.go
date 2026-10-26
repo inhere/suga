@@ -221,6 +221,88 @@ func TestConfigSetAcceptsYAMLListValues(t *testing.T) {
 	})
 }
 
+// TestConfigLanguageSetting runs the real config command path for the top-level
+// language setting: aliases are stored canonically, get reports the canonical
+// value with its source, and an invalid value leaves the file untouched.
+func TestConfigLanguageSetting(t *testing.T) {
+	run := func(t *testing.T, args ...string) (string, error) {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs(args)
+		return stdout.String(), err
+	}
+
+	t.Run("set stores a locale alias canonically", func(t *testing.T) {
+		home := setupConfigCLI(t, "model: openai/config\n")
+		t.Setenv("SUGA_LANGUAGE", "")
+		out, err := run(t, "config", "set", "language", "en_US")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, out, "language = en")
+		body, readErr := os.ReadFile(filepath.Join(home, "config.yaml"))
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.StrContains(t, string(body), "language: en")
+
+		out, err = run(t, "config", "get", "language")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, out, "language = en")
+		assert.StrContains(t, out, "source = config:")
+	})
+
+	t.Run("chinese alias is stored as zh", func(t *testing.T) {
+		home := setupConfigCLI(t, "model: openai/config\n")
+		t.Setenv("SUGA_LANGUAGE", "")
+		_, err := run(t, "config", "set", "language", "中文")
+		assert.Require(t, assert.NoErr(t, err))
+		body, readErr := os.ReadFile(filepath.Join(home, "config.yaml"))
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.StrContains(t, string(body), "language: zh")
+
+		out, err := run(t, "config", "get", "language")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, out, "language = zh")
+	})
+
+	t.Run("environment overrides and is reported", func(t *testing.T) {
+		setupConfigCLI(t, "model: openai/config\nlanguage: en\n")
+		t.Setenv("SUGA_LANGUAGE", "中文")
+		out, err := run(t, "config", "get", "language")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, out, "language = zh")
+		assert.StrContains(t, out, "source = env:SUGA_LANGUAGE")
+	})
+
+	t.Run("unset returns to auto", func(t *testing.T) {
+		home := setupConfigCLI(t, "model: openai/config\nlanguage: zh\n")
+		t.Setenv("SUGA_LANGUAGE", "")
+		_, err := run(t, "config", "unset", "language")
+		assert.Require(t, assert.NoErr(t, err))
+		body, readErr := os.ReadFile(filepath.Join(home, "config.yaml"))
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.NotContains(t, string(body), "language:")
+
+		out, err := run(t, "config", "get", "language")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, out, "language = auto")
+		assert.StrContains(t, out, "source = default")
+	})
+
+	t.Run("an invalid value is an input error without writes", func(t *testing.T) {
+		home := setupConfigCLI(t, "model: openai/config\n")
+		t.Setenv("SUGA_LANGUAGE", "")
+		configPath := filepath.Join(home, "config.yaml")
+		before, readErr := os.ReadFile(configPath)
+		assert.Require(t, assert.NoErr(t, readErr))
+
+		_, err := run(t, "config", "set", "language", "fr")
+		assert.Require(t, assert.Err(t, err))
+		assert.Eq(t, 2, ExitCode(err))
+		assert.StrContains(t, err.Error(), "language")
+		after, readErr := os.ReadFile(configPath)
+		assert.Require(t, assert.NoErr(t, readErr))
+		assert.Eq(t, string(before), string(after))
+	})
+}
+
 func setupConfigCLI(t *testing.T, content string) string {
 	t.Helper()
 	home := t.TempDir()
