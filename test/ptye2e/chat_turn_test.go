@@ -280,14 +280,19 @@ func waitTurnEnd(t *testing.T, s *ptytest.Session, mark int) {
 
 func exitChat(t *testing.T, s *ptytest.Session) {
 	t.Helper()
+	exitChatUntil(t, s, `续接：suga chat --resume`)
+}
+
+func exitChatUntil(t *testing.T, s *ptytest.Session, resumePattern string) {
+	t.Helper()
 	mark := s.Mark()
 	for i := 0; i < 4; i++ {
 		time.Sleep(300 * time.Millisecond)
-		if s.Code() != nil || s.Contains(`续接：suga chat --resume`, mark) {
+		if s.Code() != nil || s.Contains(resumePattern, mark) {
 			break
 		}
 		s.SendCtrlC()
 	}
-	expect(t, s, `续接：suga chat --resume`, mark)
+	expect(t, s, resumePattern, mark)
 	waitExit(t, s)
 }

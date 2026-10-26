@@ -372,10 +372,18 @@ func startChat(t *testing.T, binary, baseURL, home, work string) *ptytest.Sessio
 // tool without a question.
 func startChatSpec(t *testing.T, binary, baseURL, home, work string, args []string, toolsExtra string) *ptytest.Session {
 	t.Helper()
+	return startChatLanguage(t, binary, baseURL, home, work, args, toolsExtra, "zh")
+}
+
+// startChatLanguage starts the same real chat fixture with an explicit UI
+// language, so locale-dependent host settings cannot affect the PTY assertions.
+func startChatLanguage(t *testing.T, binary, baseURL, home, work string, args []string, toolsExtra, language string) *ptytest.Session {
+	t.Helper()
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	config := fmt.Sprintf(`model: fake/m1
+language: %s
 providers:
   fake:
     type: openai
@@ -392,7 +400,7 @@ chat:
   highlight_input: false
   terminal_title: false
   history: false
-`, baseURL, toolsExtra)
+`, language, baseURL, toolsExtra)
 	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +412,7 @@ chat:
 		Command: binary,
 		Args:    append([]string{"chat"}, args...),
 		Dir:     work,
-		Env:     testEnv(home),
+		Env:     testEnvLanguage(home, language),
 		Cols:    100,
 		Rows:    40,
 	}
@@ -414,6 +422,10 @@ chat:
 // testEnv removes inherited suga settings so the temporary config is the only
 // source of model, home, hook and feature settings for the child process.
 func testEnv(home string) []string {
+	return testEnvLanguage(home, "zh")
+}
+
+func testEnvLanguage(home, language string) []string {
 	env := make([]string, 0, len(os.Environ())+5)
 	for _, entry := range os.Environ() {
 		key := entry
@@ -428,8 +440,8 @@ func testEnv(home string) []string {
 	return append(env,
 		"SUGA_HOME="+home,
 		"SUGA_HOOKS=off",
-		// The scenarios assert the Chinese UI; auto would follow the machine locale.
-		"SUGA_LANGUAGE=zh",
+		// The scenarios assert a fixed UI language; auto would follow the machine locale.
+		"SUGA_LANGUAGE="+language,
 		"NO_COLOR=1",
 		"TERM=xterm",
 	)
