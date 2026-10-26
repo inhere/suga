@@ -130,6 +130,8 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 ## smoke-chat: build to tmp/smoke and run the PTY end-to-end chat smoke test (Linux/macOS)
 ## chat_tool_ctrlc covers Ctrl-C during a foreground shell_exec; the Windows
 ## twin is scripts/wincons (a Windows console cannot be driven from Python).
+# The smoke scripts assert the Chinese UI; auto would follow the machine locale.
+smoke-chat: export SUGA_LANGUAGE = zh
 smoke-chat:
 	@mkdir -p tmp/smoke
 	go build -o tmp/smoke/suga ./cmd/suga
