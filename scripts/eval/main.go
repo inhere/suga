@@ -86,11 +86,17 @@ type Result struct {
 	CostUSD       float64        `json:"cost_usd"`
 	ToolCalls     int            `json:"tool_calls"`
 	ToolCounts    map[string]int `json:"tool_counts,omitempty"`
-	RawBytes      *int64         `json:"tool_raw_bytes"`
-	InlineBytes   *int64         `json:"tool_inline_bytes"`
-	Spilled       int            `json:"tool_spilled"`
-	Answer        string         `json:"answer"`
-	Checks        []CheckResult  `json:"checks"`
+	// CacheBuckets splits the calls of this run by cache bucket and SteadyLowHit
+	// lists its steady calls under the target hit rate, both read from
+	// `inspect trace <sid> --analyze --json`; nil for an agent whose trace the
+	// eval cannot read (the bucket columns then show "-").
+	CacheBuckets []cacheBucket `json:"cache_buckets,omitempty"`
+	SteadyLowHit []cacheLowHit `json:"steady_low_hit,omitempty"`
+	RawBytes     *int64        `json:"tool_raw_bytes"`
+	InlineBytes  *int64        `json:"tool_inline_bytes"`
+	Spilled      int           `json:"tool_spilled"`
+	Answer       string        `json:"answer"`
+	Checks       []CheckResult `json:"checks"`
 	// Turns holds each turn of a multi-turn task in order: its answer, its
 	// duration and the forced compaction after it (compact_after).
 	Turns []TurnRun `json:"turns,omitempty"`
@@ -254,6 +260,7 @@ func runTaskSet(o *options, bin, runID string, tasks []*Task, variants []*Varian
 		}
 	}
 	printTable(os.Stdout, results, o.repeat > 1)
+	printCacheBuckets(os.Stdout, results)
 	printTiming(os.Stdout, results, o.repeat > 1)
 	printTurnDetail(os.Stdout, results, o.repeat > 1)
 	printWebNote(os.Stdout, results)
@@ -391,6 +398,11 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 			r.FirstUncached = &v
 		}
 		r.ProviderFaultMs = providerFaultMs(tout)
+	}
+	// The cache buckets need the per-call order of the whole session, which the
+	// analyze view of the trace provides (the plain trace above is per event).
+	if aout, err := runCmd(context.Background(), bin, []string{"inspect", "trace", sid, "--analyze", "--json"}, ws, env); err == nil {
+		r.CacheBuckets, r.SteadyLowHit = parseCacheBuckets(aout)
 	}
 	return r, nil
 }
@@ -718,8 +730,10 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	// PROMPT is every prompt token sent (uncached + cache read/write), the
 	// fair basis across agents; TOKENS(in/out) keeps uncached input / output.
-	// FIRST is the uncached input of the first main-loop call ("-" if unknown).
-	fmt.Fprintln(tw, "TASK\tAGENT\tMODEL\tRESULT\tCALLS\tTOOLS\tSPILL\tFIRST\tPROMPT\tTOKENS(in/out)\tHIT%\tCOST\tTIME\tWEB\tARGS")
+	// FIRST is the uncached input of the first main-loop call ("-" if unknown);
+	// STEADY is the hit rate of the steady bucket (an unchanged context inside
+	// one segment, the 95% target), HIT% the run's overall hit rate.
+	fmt.Fprintln(tw, "TASK\tAGENT\tMODEL\tRESULT\tCALLS\tTOOLS\tSPILL\tFIRST\tPROMPT\tTOKENS(in/out)\tHIT%\tSTEADY%\tCOST\tTIME\tWEB\tARGS")
 	for i, r := range rs {
 		status := "FAIL"
 		if r.Passed {
@@ -730,13 +744,13 @@ func printTable(w io.Writer, rs []Result, repeated bool) {
 		if r.FirstUncached != nil {
 			first = fmt.Sprint(*r.FirstUncached)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t$%.4f\t%.1fs\t%s\t%s\n", resultLabel(r, repeated), r.Agent, truncArgs(r.Model, 32), status, r.Calls, r.ToolCalls, r.Spilled,
-			first, prompt, r.InputTokens, r.OutputToks, r.CacheHit*100, r.CostUSD, float64(r.DurationMs)/1000, r.Web, truncArgs(r.AgentArgs, 24))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%d\t%d/%d\t%.1f\t%s\t$%.4f\t%.1fs\t%s\t%s\n", resultLabel(r, repeated), r.Agent, truncArgs(r.Model, 32), status, r.Calls, r.ToolCalls, r.Spilled,
+			first, prompt, r.InputTokens, r.OutputToks, r.CacheHit*100, bucketCell(r.CacheBuckets, "steady"), r.CostUSD, float64(r.DurationMs)/1000, r.Web, truncArgs(r.AgentArgs, 24))
 		if repeated && (i == len(rs)-1 || rs[i+1].Task != r.Task || rs[i+1].Variant != r.Variant) {
 			// One avg row per task and variant: pass count over the rounds
 			// plus mean and min-max of calls, tokens and time.
 			s := statRounds(roundGroup(rs, i))
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d/%d\t%s\t%s\t-\t-\t%s\t%s/%s\t-\t-\t%s\t%s\t%s\n", avgLabel(r), r.Agent, truncArgs(r.Model, 32), s.Passed, s.Rounds,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d/%d\t%s\t%s\t-\t-\t%s\t%s/%s\t-\t-\t-\t%s\t%s\t%s\n", avgLabel(r), r.Agent, truncArgs(r.Model, 32), s.Passed, s.Rounds,
 				formatCount(s.Calls), formatCount(s.ToolCalls), formatTokens(s.Prompt), formatTokens(s.Uncached), formatTokens(s.Out),
 				formatSeconds(s.Seconds), r.Web, truncArgs(r.AgentArgs, 24))
 		}

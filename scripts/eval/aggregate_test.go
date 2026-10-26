@@ -71,8 +71,8 @@ func TestStatRounds(t *testing.T) {
 
 // goldenSingleRunTable is the summary table of one run without --repeat: the
 // plain table must not change when the repeat summaries are added.
-const goldenSingleRunTable = `TASK              AGENT  MODEL    RESULT  CALLS  TOOLS  SPILL  FIRST  PROMPT  TOKENS(in/out)  HIT%  COST     TIME   WEB  ARGS
-fix-failing-test  suga   fake/m1  PASS    5      3      0      1200   4200    3000/800        23.8  $0.0123  12.5s  off  -
+const goldenSingleRunTable = `TASK              AGENT  MODEL    RESULT  CALLS  TOOLS  SPILL  FIRST  PROMPT  TOKENS(in/out)  HIT%  STEADY%  COST     TIME   WEB  ARGS
+fix-failing-test  suga   fake/m1  PASS    5      3      0      1200   4200    3000/800        23.8  -        $0.0123  12.5s  off  -
 `
 
 // TestPrintTableSingleRun is the byte-for-byte regression of the table: a run
