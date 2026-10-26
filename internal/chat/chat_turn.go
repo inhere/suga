@@ -355,16 +355,16 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 			return nil, s.ctx.Err()
 		case errors.Is(runErr, tools.ErrAborted):
 			// Ctrl-C/Ctrl-D at an approval question: only this turn ends.
-			s.render.Notice("已取消" + steerBackNotice(len(backs)))
+			s.render.Notice(s.tr().T("status.turn.cancelled") + steerBackNotice(s.tr(), len(backs)))
 		case cancelled:
 			// The turn was cancelled: Esc or Ctrl-C during it (the chat itself
 			// goes on), or a cancelled model call. The raw error would read
 			// "context canceled".
-			s.render.Notice(s.render.tr().T("approval.render.notice.interrupt_turn") + steerBackNotice(len(backs)))
+			s.render.Notice(s.render.tr().T("approval.render.notice.interrupt_turn") + steerBackNotice(s.tr(), len(backs)))
 		default:
 			s.render.Error(runErr)
 			if n := len(backs); n > 0 {
-				s.render.Hint(fmt.Sprintf("%d 条插话已放回输入行", n))
+				s.render.Hint(s.tr().T("status.steering.back_hint", map[string]any{"count": n}))
 			}
 		}
 		stopMessage = "Error: " + runErr.Error()
@@ -378,7 +378,7 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 			s.render.Answer(result.Output)
 		}
 		if len(result.DeniedTools) > 0 {
-			s.render.Notice("本轮被拒绝的工具：" + strings.Join(result.DeniedTools, ", "))
+			s.render.Notice(s.tr().T("status.turn.denied_tools", map[string]any{"tools": strings.Join(result.DeniedTools, ", ")}))
 		}
 		// A turn that looks finished too early only gets a gray line: chat never
 		// starts a turn on its own (personal.CheckNudge).
@@ -389,7 +389,7 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 	// A long turn tells the person it is over (chat.notify / chat.notify_after):
 	// they may have looked away while it ran.
 	if elapsed := time.Since(turnStart); s.notifier.shouldNotify(elapsed) {
-		s.notifier.notify("suga：回合完成（" + formatElapsed(elapsed) + "）")
+		s.notifier.notify(s.tr().T("status.turn.notify", map[string]any{"elapsed": formatElapsed(elapsed)}))
 	}
 	if s.hooks != nil {
 		stop := s.baseEvent("Stop")
@@ -399,7 +399,7 @@ func (s *chatState) runOneTurn(line string, injected bool, images []agentcore.Im
 			s.waiting = s.hooks.StartStop(s.ctx, stop)
 		} else if err := s.bgStop.start(s.ctx, stop); err != nil {
 			// No task slot (tasks.max_running): wait at the prompt as before.
-			s.render.Notice("Stop hook 未能在后台运行，改为等待：" + err.Error())
+			s.render.Notice(s.tr().T("status.stop_hook.background_failed", map[string]any{"error": err.Error()}))
 			s.waiting = s.hooks.StartStop(s.ctx, stop)
 		}
 	}

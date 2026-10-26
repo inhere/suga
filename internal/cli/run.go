@@ -390,7 +390,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 			// The session was left running by a process that died mid-turn and has
 			// been taken back to open before this turn (personal/recovery.go);
 			// stdout keeps the answer alone, like the retry notice below.
-			fmt.Fprintln(stderr, personal.SessionRecoveredNotice)
+			fmt.Fprintln(stderr, personal.SessionRecoveredNoticeWithTranslator(i18n.Fallback())) // run has no translator wiring yet; preserve legacy fallback.
 			return nil
 		}
 		if encoder == nil {

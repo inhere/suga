@@ -363,8 +363,8 @@ func TestSteerReturns(t *testing.T) {
 	})
 
 	t.Run("the notice names the count", func(t *testing.T) {
-		assert.Eq(t, "", steerBackNotice(0))
-		assert.Eq(t, "，2 条插话已放回输入行", steerBackNotice(2))
+		assert.Eq(t, "", steerBackNotice(nil, 0))
+		assert.Eq(t, "，2 条插话已放回输入行", steerBackNotice(nil, 2))
 	})
 }
 

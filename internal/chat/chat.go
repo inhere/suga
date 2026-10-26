@@ -449,13 +449,13 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		// inserts its message into the turn running right now, and the sender's
 		// message ID names the message in a receipt or a status query
 		// (steer_send.go, session-message-delivery).
-		processServer, sessionName, err = registerChatProcess(sessionID, runner, state.deliverRequested, inputSource.DeliveryState, stderr)
+		processServer, sessionName, err = registerChatProcess(sessionID, runner, state.deliverRequested, inputSource.DeliveryState, stderr, state.tr())
 		if err != nil {
 			// Registration only adds the local session socket (`suga send`, gofer delivery);
 			// losing it must not end the chat. The common cause is a SUGA_HOME deep enough
 			// that <root>/<pid>.sock exceeds the platform's socket path limit.
 			processServer, sessionName = nil, ""
-			fmt.Fprintf(stderr, "提示：本会话未注册本地会话 socket（%v），因此收不到 suga send 与 gofer 投递；建议缩短 SUGA_HOME 路径。聊天继续运行。\n", err)
+			fmt.Fprintf(stderr, "%s\n", state.tr().T("status.session.socket_failed", map[string]any{"error": err.Error()}))
 		}
 		state.server, state.sessionName = processServer, sessionName
 	}
@@ -522,7 +522,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// prompt, so the person can go on from it (read-only: no model call, no entry
 	// written, no hook). A handoff (--from) starts a new session and shows nothing.
 	if source == "resume" {
-		showLastReply(ctx, runner, render, sessionID, stderr)
+		showLastReply(ctx, runner, render, sessionID, stderr, state.tr())
 	}
 	// Registered after every other defer, so it runs first on the way out: the
 	// waiting line is down before the exit warnings, the SessionEnd hook and the
@@ -551,7 +551,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 				if inputSource.terminal != nil {
 					inputSource.terminal.AbortLine()
 				}
-				render.Hint("再按一次 Ctrl+C 退出（Ctrl+D 直接退出）")
+				render.Hint(state.tr().T("status.exit.confirm"))
 				continue
 			}
 			if errors.Is(err, io.EOF) {
@@ -605,13 +605,13 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// Both spellings leave chat; :exit is the familiar one from other REPLs.
 			return nil
 		case line == ":session":
-			fmt.Fprintln(inputSource, sessionLine(sessionID, sessionName))
+			fmt.Fprintln(inputSource, sessionLine(sessionID, sessionName, state.tr()))
 			continue
 		case line == ":compact":
 			// Compress the session context now; token figures are estimates.
 			idle.Pause()
 			if out, err := runner.Compact(ctx, sessionID); err != nil {
-				fmt.Fprintln(stderr, formatCommandError("Compact", err))
+				fmt.Fprintln(stderr, formatCommandError(state.tr(), "Compact", err))
 			} else {
 				idle.Compacted()
 				fmt.Fprintf(inputSource, "Compacted context: ~%d -> ~%d tokens (estimate)\n", out.TokensBefore, out.TokensAfter)
@@ -658,10 +658,10 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 // the banner and before the first prompt. A session without a reply (new, or
 // handed off with --from) shows nothing; failing to read the reply only warns
 // on stderr, since chat itself must still start.
-func showLastReply(ctx context.Context, runner *personal.Runner, render *Renderer, sessionID string, stderr io.Writer) {
+func showLastReply(ctx context.Context, runner *personal.Runner, render *Renderer, sessionID string, stderr io.Writer, t i18n.Translator) {
 	text, incomplete, err := runner.LastReply(ctx, sessionID)
 	if err != nil {
-		fmt.Fprintln(stderr, "读取上一次回复失败：", err)
+		fmt.Fprintln(stderr, trOf(t).T("status.last_reply.failed"), err)
 		return
 	}
 	if text == "" {
@@ -815,9 +815,9 @@ func processChatInputEvent(source *chatInputSource, event chatInputEvent, waitin
 // formatCommandError is the line chat prints for a failed :command. An
 // interrupted one reads 已中断 instead of the runner's raw "context canceled"
 // (the display only: run, ACP and stream-json keep the raw error text).
-func formatCommandError(name string, err error) string {
+func formatCommandError(t i18n.Translator, name string, err error) string {
 	if errors.Is(err, context.Canceled) {
-		return name + ": " + interruptText
+		return name + ": " + trOf(t).T("status.command.interrupted")
 	}
 	return name + ": " + err.Error()
 }

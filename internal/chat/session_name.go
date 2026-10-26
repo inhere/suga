@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	personalprocess "github.com/inhere/suga/internal/personal/process"
 )
@@ -14,10 +15,10 @@ import (
 // sessionLine is what chat prints for :session: the session id and, once the
 // local session socket is registered, the short name `suga send --session <name>`
 // accepts.
-func sessionLine(sessionID, shortName string) string {
+func sessionLine(sessionID, shortName string, t i18n.Translator) string {
 	line := "session id: " + sessionID
 	if shortName != "" {
-		line += " · 会话 " + shortName
+		line += " · " + trOf(t).T("status.banner.session", map[string]any{"name": shortName})
 	}
 	return line
 }
@@ -32,7 +33,7 @@ func sessionLine(sessionID, shortName string) string {
 // registration does that). notice explains a stored name that is taken right now
 // by another process: this chat then registers under a temporary name and leaves
 // the stored one alone, so the next start finds it free again.
-func resolveChatShortName(stored string, records []personalprocess.Record, dir string, suffix personalprocess.SuffixSource) (name string, save bool, notice string) {
+func resolveChatShortName(stored string, records []personalprocess.Record, dir string, suffix personalprocess.SuffixSource, t i18n.Translator) (name string, save bool, notice string) {
 	taken := personalprocess.TakenNames(records, os.Getpid())
 	if stored == "" {
 		return personalprocess.NewShortName(dir, taken, suffix), true, ""
@@ -41,7 +42,7 @@ func resolveChatShortName(stored string, records []personalprocess.Record, dir s
 		return stored, false, ""
 	}
 	name = personalprocess.NewShortName(dir, taken, suffix)
-	return name, false, fmt.Sprintf("提示：会话短名称 %s 已被另一个进程占用，本进程临时使用 %s（会话里保存的名称不变，下次启动仍用 %s）。\n", stored, name, stored)
+	return name, false, trOf(t).T("status.session.name_taken", map[string]any{"stored": stored, "name": name}) + "\n"
 }
 
 // registerChatProcess registers this chat in the local session socket directory
@@ -53,7 +54,7 @@ func resolveChatShortName(stored string, records []personalprocess.Record, dir s
 // the receipt it asked for), and status answers a status query for a message ID of
 // this process. The record declares FeatureImages, so a `suga send --image` sender
 // knows this receiver takes pictures (design send --image D2).
-func registerChatProcess(sessionID string, runner *personal.Runner, deliver personalprocess.DeliverMessageFunc, status personalprocess.StatusFunc, stderr io.Writer) (*personalprocess.Server, string, error) {
+func registerChatProcess(sessionID string, runner *personal.Runner, deliver personalprocess.DeliverMessageFunc, status personalprocess.StatusFunc, stderr io.Writer, translator i18n.Translator) (*personalprocess.Server, string, error) {
 	ctx := context.Background()
 	stored, err := runner.SessionShortName(ctx, sessionID)
 	if err != nil {
@@ -64,7 +65,7 @@ func registerChatProcess(sessionID string, runner *personal.Runner, deliver pers
 		return nil, "", err
 	}
 	cwd, _ := os.Getwd()
-	name, save, notice := resolveChatShortName(stored, records, chatNameDir(runner, sessionID, cwd), personalprocess.RandomSuffix)
+	name, save, notice := resolveChatShortName(stored, records, chatNameDir(runner, sessionID, cwd), personalprocess.RandomSuffix, translator)
 	// The record declares FeatureImages, so a `suga send --image` sender knows this receiver
 	// takes pictures (design send --image D2), and FeatureHops, so a session message sender
 	// knows this chat holds a message at the automatic-reply limit instead of starting a turn
@@ -78,7 +79,7 @@ func registerChatProcess(sessionID string, runner *personal.Runner, deliver pers
 		// Losing the stored name only costs a fresh name on the next chat, so a
 		// failed write is a warning, not the end of the session.
 		if err := runner.SaveSessionShortName(ctx, sessionID, name); err != nil {
-			fmt.Fprintf(stderr, "提示：会话短名称 %s 未能保存（%v），下次启动会重新生成。\n", name, err)
+			fmt.Fprintf(stderr, "%s\n", trOf(translator).T("status.session.name_save_failed", map[string]any{"name": name, "error": err.Error()}))
 		}
 	}
 	if notice != "" {

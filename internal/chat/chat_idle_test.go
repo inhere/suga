@@ -129,8 +129,9 @@ type idleHarness struct {
 }
 
 // startIdleChat runs chat on a pipe with the idle consolidation on a fake
-// clock (idle_after = idleTestAfter, default threshold 112000 tokens).
-func startIdleChat(t *testing.T, prov *idleTestProvider, minRatio float64) *idleHarness {
+// clock (idle_after = idleTestAfter, default threshold 112000 tokens). tune may
+// adjust the chat options (the English catalog).
+func startIdleChat(t *testing.T, prov *idleTestProvider, minRatio float64, tune ...func(*Options)) *idleHarness {
 	t.Helper()
 	runner, repo := newCLITestRunner(t, prov)
 	h := &idleHarness{t: t, clock: &idleFakeClock{now: time.Unix(100, 0)}, repo: repo, out: &syncOutput{},
@@ -139,6 +140,9 @@ func startIdleChat(t *testing.T, prov *idleTestProvider, minRatio float64) *idle
 	h.in = writer
 	opts := Options{SessionID: h.sid, IdleAfter: idleTestAfter, IdleMinRatio: minRatio,
 		scheduleOptions: []schedule.Option{schedule.WithClock(h.clock)}, scheduleObserver: h.seen.add}
+	for _, apply := range tune {
+		apply(&opts)
+	}
 	go func() { h.done <- Run(context.Background(), runner, opts, reader, h.out, io.Discard, nil) }()
 	t.Cleanup(func() {
 		_ = writer.Close()
