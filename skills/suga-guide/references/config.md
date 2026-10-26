@@ -10,6 +10,20 @@
 - 主模型优先级：`--model` > `SUGA_MODEL` > `model`。
 - 值类型写错通常是**启动报错**，而不是回退默认值（如 `tools.allow_write`、`tools.approval`、`context.fold_keep`、`memory.write`、`retry.*`、`agents.*`、`tasks.*`）。
 
+### 语言（`language`）
+
+`language` 控制 suga 面向用户的界面文字，取值为 `auto`、`zh` 或 `en`，默认是 `auto`。`auto` 在中文系统使用中文，在其他系统使用英文；也可以显式指定 `language: zh` 或 `language: en`。读取和保存时会规范化常见别名，例如 `en_US` → `en`、`中文` → `zh`。
+
+环境变量 `SUGA_LANGUAGE` 优先于配置文件中的 `language`，不会写回 YAML。语言在进程启动时确定，修改配置或环境变量后需要重启 suga 才生效。运行 `suga inspect manifest` 可查看实际解析出的语言及其来源。
+
+当前范围是界面文字已支持中英文；部分给模型看的提示仍是中文，后续阶段再处理。配置命令示例：
+
+```bash
+suga config set language en_US  # 保存为规范值 en
+suga config get language        # 查看生效值与来源
+SUGA_LANGUAGE=zh suga inspect manifest
+```
+
 ## 模型与 provider
 
 | 键 | 默认 | 含义 |
