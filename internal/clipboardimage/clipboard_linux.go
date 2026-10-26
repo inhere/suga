@@ -4,22 +4,27 @@ package clipboardimage
 
 import (
 	"bytes"
-	"fmt"
+	"errors"
 	"io"
 	"os/exec"
+
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // Linux clipboard reading under Wayland first (wl-paste), then X11 (xclip);
 // both read exactly the image/png type. When neither binary exists the reader
-// says what to install instead of failing.
-func platformReader() ImageReader { return readLinuxClipboard }
+// says what to install instead of failing; tr renders the name and the hints.
+func platformReader(tr i18n.Translator) ImageReader {
+	return func() ([]byte, string, error) { return readLinuxClipboard(tr) }
+}
 
-func readLinuxClipboard() ([]byte, string, error) {
-	if data, err := readType("wl-paste", "--type", "image/png"); err == nil && len(data) > 0 {
-		return data, "剪贴板", nil
+func readLinuxClipboard(tr i18n.Translator) ([]byte, string, error) {
+	t := trOrFallback(tr)
+	if data, err := readType(tr, "wl-paste", "--type", "image/png"); err == nil && len(data) > 0 {
+		return data, t.T("host.clipboard.name"), nil
 	}
-	if data, err := readType("xclip", "-selection", "clipboard", "-t", "image/png", "-o"); err == nil && len(data) > 0 {
-		return data, "剪贴板", nil
+	if data, err := readType(tr, "xclip", "-selection", "clipboard", "-t", "image/png", "-o"); err == nil && len(data) > 0 {
+		return data, t.T("host.clipboard.name"), nil
 	}
 	// One of them exists but had no picture on the clipboard (or it failed for
 	// another reason); reading the type twice only produced errors, and an
@@ -27,14 +32,14 @@ func readLinuxClipboard() ([]byte, string, error) {
 	if installed("wl-paste") || installed("xclip") {
 		return nil, "", ErrNoClipboardImage
 	}
-	return nil, "", fmt.Errorf("未找到 wl-paste 或 xclip：安装 wl-clipboard（Wayland）或 xclip（X11）后可用 Alt+V 贴图")
+	return nil, "", errors.New(t.T("host.clipboard.linux.missing"))
 }
 
 // readType runs one clipboard reader; a wayland/xdg session can fail for
 // reasons of its own (no WAYLAND_DISPLAY), so callers fall through to the next.
 // The output is read through maxClipboardBytes: a clipboard holding something
 // huge is refused instead of being buffered whole.
-func readType(name string, args ...string) ([]byte, error) {
+func readType(tr i18n.Translator, name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
@@ -48,7 +53,7 @@ func readType(name string, args ...string) ([]byte, error) {
 	if n > maxClipboardBytes {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		return nil, fmt.Errorf("剪贴板数据超过 %d 字节，不读取", maxClipboardBytes)
+		return nil, errors.New(trOrFallback(tr).T("host.clipboard.linux.too_large", map[string]any{"limit": maxClipboardBytes}))
 	}
 	if err := cmd.Wait(); err != nil {
 		return nil, err

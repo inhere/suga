@@ -248,6 +248,9 @@ func (r *Renderer) BeginTurn() {
 // resetLive resets the per-turn text streaming state.
 func (r *Renderer) resetLive() {
 	r.live = output.NewPrefixedLiveText(r.opts.Out, r.answerPrefix())
+	// The renderer's own lines (the retry notice, the folded-code line) use the
+	// language chat was started with.
+	r.live.SetTranslator(r.tr())
 	// Whole lines first: the markdown renderer is built knowing whether it prints the
 	// message prefix itself.
 	r.live.SetWholeLines(r.opts.InputLineUp)
@@ -382,7 +385,7 @@ func (r *Renderer) Handle(event personal.Event) {
 			r.startThinking()
 		}
 	case string(agentcore.StreamEventRetry):
-		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, output.RetryNotice(event)))
+		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, output.RetryNotice(r.tr(), event)))
 		r.startThinking() // the request is retried: still waiting for the model
 	case "loop_guard":
 		// The loop guard reminds the model not to repeat an identical tool call

@@ -5,12 +5,13 @@ package clipboardimage
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
 	"unsafe"
 
+	"github.com/inhere/suga/internal/i18n"
 	"golang.org/x/sys/windows"
 )
 
@@ -40,10 +41,14 @@ const (
 )
 
 // platformReader reads the picture of this process' clipboard in the order a
-// screenshot writer tends to fill it: registered PNG, then the raw bitmaps.
-func platformReader() ImageReader { return readWindowsClipboard }
+// screenshot writer tends to fill it: registered PNG, then the raw bitmaps. tr
+// renders the reported name and the failure reasons.
+func platformReader(tr i18n.Translator) ImageReader {
+	return func() ([]byte, string, error) { return readWindowsClipboard(tr) }
+}
 
-func readWindowsClipboard() ([]byte, string, error) {
+func readWindowsClipboard(tr i18n.Translator) ([]byte, string, error) {
+	t := trOrFallback(tr)
 	pngFormat := registeredPNGFormat()
 	available := func(format uintptr) bool {
 		r, _, _ := procFormatAvail.Call(format)
@@ -76,30 +81,30 @@ func readWindowsClipboard() ([]byte, string, error) {
 	}
 	r0, _, _ := procOpenClip.Call(0)
 	if r0 == 0 {
-		return nil, "", fmt.Errorf("无法打开剪贴板（可能被其他程序占用）")
+		return nil, "", errors.New(t.T("host.clipboard.open_failed"))
 	}
 	defer procCloseClip.Call()
 	var lastErr error
 	for _, format := range formats {
 		handle, _, _ := procGetData.Call(uintptr(format.id))
 		if handle == 0 {
-			lastErr = fmt.Errorf("GetClipboardData(%d) 失败", format.id)
+			lastErr = errors.New(t.T("host.clipboard.format_failed", map[string]any{"format": format.id}))
 			continue
 		}
-		data, err := globalBytes(handle)
+		data, err := globalBytes(tr, handle)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		if format.png {
-			return data, "剪贴板", nil
+			return data, t.T("host.clipboard.name"), nil
 		}
-		converted, err := dibToPNG(data)
+		converted, err := dibToPNG(tr, data)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		return converted, "剪贴板", nil
+		return converted, t.T("host.clipboard.name"), nil
 	}
 	if lastErr != nil {
 		return nil, "", lastErr
@@ -123,13 +128,14 @@ func registeredPNGFormat() uint32 {
 // a GlobalLock dereference: a syscall keeps the handle so the garbage collector
 // cannot take it, and no *byte from uintptr around it has to be built at all,
 // which keeps go vet's unsafeptr check clean by construction.
-func globalBytes(handle uintptr) ([]byte, error) {
+func globalBytes(tr i18n.Translator, handle uintptr) ([]byte, error) {
+	t := trOrFallback(tr)
 	r, _, _ := procGlobalSize.Call(handle)
 	if r == 0 {
-		return nil, fmt.Errorf("剪贴板数据大小未知，无法读取")
+		return nil, errors.New(t.T("host.clipboard.size_unknown"))
 	}
 	if r > maxClipboardBytes {
-		return nil, fmt.Errorf("剪贴板数据 %d 字节，超过 %d 字节上限", r, maxClipboardBytes)
+		return nil, errors.New(t.T("host.clipboard.too_large", map[string]any{"bytes": r, "limit": maxClipboardBytes}))
 	}
 	buf := make([]byte, r)
 	var read uintptr
@@ -137,7 +143,7 @@ func globalBytes(handle uintptr) ([]byte, error) {
 	r, _, _ = procReadProcessMemory.Call(uintptr(current), handle,
 		uintptr(unsafe.Pointer(&buf[0])), r, uintptr(unsafe.Pointer(&read)))
 	if r == 0 {
-		return nil, fmt.Errorf("读取剪贴板数据失败")
+		return nil, errors.New(t.T("host.clipboard.read_failed"))
 	}
 	return buf, nil
 }
@@ -146,9 +152,10 @@ func globalBytes(handle uintptr) ([]byte, error) {
 // ranges Windows screenshots actually write are handled: 24/32-bit rows,
 // BI_RGB compression (32-bit BITFIELDS is layout-compatible); anything rarer
 // still leaves the PNG format above or is reported.
-func dibToPNG(data []byte) ([]byte, error) {
+func dibToPNG(tr i18n.Translator, data []byte) ([]byte, error) {
+	t := trOrFallback(tr)
 	if len(data) < 40 {
-		return nil, fmt.Errorf("剪贴板位图头不完整")
+		return nil, errors.New(t.T("host.clipboard.header_incomplete"))
 	}
 	header := binary.LittleEndian.Uint32(data[0:4])
 	width := int32(binary.LittleEndian.Uint32(data[4:8]))
@@ -162,13 +169,13 @@ func dibToPNG(data []byte) ([]byte, error) {
 	}
 	w := int(width)
 	if w <= 0 || h <= 0 || w*h > maxDIBPixels {
-		return nil, fmt.Errorf("剪贴板位图尺寸异常 %dx%d", w, h)
+		return nil, errors.New(t.T("host.clipboard.bad_size", map[string]any{"width": w, "height": h}))
 	}
 	if compression != 0 && !(compression == 3 && bpp == 32) {
-		return nil, fmt.Errorf("剪贴板位图压缩方式不支持 (%d)", compression)
+		return nil, errors.New(t.T("host.clipboard.bad_compression", map[string]any{"compression": compression}))
 	}
 	if bpp != 32 && bpp != 24 {
-		return nil, fmt.Errorf("剪贴板位图位深不支持 (%d)", bpp)
+		return nil, errors.New(t.T("host.clipboard.bad_depth", map[string]any{"bpp": bpp}))
 	}
 	rowBytes := (int(bpp)*w + 31) / 32 * 4
 	pixels := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -196,7 +203,7 @@ func dibToPNG(data []byte) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, pixels); err != nil {
-		return nil, fmt.Errorf("转换剪贴板位图: %w", err)
+		return nil, errors.New(t.T("host.clipboard.convert_failed", map[string]any{"err": err}))
 	}
 	return buf.Bytes(), nil
 }

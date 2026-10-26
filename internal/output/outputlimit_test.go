@@ -9,13 +9,13 @@ import (
 
 func TestOutputLimitNotice(t *testing.T) {
 	t.Run("names the limit and how to raise it", func(t *testing.T) {
-		notice := OutputLimitNotice(32000)
+		notice := OutputLimitNotice(nil, 32000)
 		assert.StrContains(t, notice, "输出上限（32000 tokens）")
 		assert.StrContains(t, notice, "max_output_tokens")
 		assert.StrContains(t, notice, "--max-output-tokens")
 	})
 	t.Run("without a configured limit it names none", func(t *testing.T) {
-		notice := OutputLimitNotice(0)
+		notice := OutputLimitNotice(nil, 0)
 		assert.StrContains(t, notice, "输出上限")
 		assert.StrNotContains(t, notice, "tokens）")
 		assert.StrContains(t, notice, "max_output_tokens")

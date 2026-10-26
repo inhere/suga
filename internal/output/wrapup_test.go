@@ -26,19 +26,19 @@ func TestResultLineWrapUp(t *testing.T) {
 
 func TestWrapUpNotice(t *testing.T) {
 	t.Run("a normal answer has no notice", func(t *testing.T) {
-		assert.Eq(t, "", WrapUpNotice("", 100))
+		assert.Eq(t, "", WrapUpNotice(nil, "", 100))
 	})
 	t.Run("the step limit names the number of steps", func(t *testing.T) {
-		assert.StrContains(t, WrapUpNotice(personal.StopMaxSteps, 2), "步数上限（2 步）")
+		assert.StrContains(t, WrapUpNotice(nil, personal.StopMaxSteps, 2), "步数上限（2 步）")
 	})
 	t.Run("the step limit without a known count still names it", func(t *testing.T) {
-		assert.StrContains(t, WrapUpNotice(personal.StopMaxSteps, 0), "步数上限")
+		assert.StrContains(t, WrapUpNotice(nil, personal.StopMaxSteps, 0), "步数上限")
 	})
 	t.Run("token and time limits name their own reason", func(t *testing.T) {
-		assert.StrContains(t, WrapUpNotice(personal.StopMaxTokens, 100), "token 预算用尽")
-		assert.StrContains(t, WrapUpNotice(personal.StopTimeout, 100), "时间上限")
+		assert.StrContains(t, WrapUpNotice(nil, personal.StopMaxTokens, 100), "token 预算用尽")
+		assert.StrContains(t, WrapUpNotice(nil, personal.StopTimeout, 100), "时间上限")
 	})
 	t.Run("an unknown reason is reported as it is", func(t *testing.T) {
-		assert.StrContains(t, WrapUpNotice("custom_reason", 100), "custom_reason")
+		assert.StrContains(t, WrapUpNotice(nil, "custom_reason", 100), "custom_reason")
 	})
 }

@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/coder/acp-go-sdk"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
 )
@@ -46,7 +47,7 @@ func (a *Agent) replayHistory(ctx context.Context, id acp.SessionId, hist person
 	if conn == nil {
 		return fmt.Errorf("ACP connection is not ready")
 	}
-	for _, update := range buildReplay(hist, replayByteLimit) {
+	for _, update := range buildReplay(trOrFallback(a.tr()), hist, replayByteLimit) {
 		if err := conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: id, Update: update}); err != nil {
 			return err
 		}
@@ -56,14 +57,17 @@ func (a *Agent) replayHistory(ctx context.Context, id acp.SessionId, hist person
 
 // buildReplay returns the updates of one replay in send order: the head notes
 // (compaction summary, then the truncation note when limit is exceeded), then
-// the kept messages oldest first.
-func buildReplay(hist personal.SegmentHistory, limit int) []acp.SessionUpdate {
+// the kept messages oldest first. tr renders the client-facing notes.
+func buildReplay(tr i18n.Translator, hist personal.SegmentHistory, limit int) []acp.SessionUpdate {
+	tr = trOrFallback(tr)
 	// The head note (compaction summary) is part of the counted budget: it
 	// must never make the tail of the segment disappear instead.
 	notes := make([]acp.SessionUpdate, 0, 2)
 	var bytes int
 	if hist.Summary != "" {
-		note := "（之前的对话已压缩：" + clipRunes(singleLine(hist.Summary), replaySummaryClip) + "）\n"
+		note := tr.T("host.acp.replay_summary", map[string]any{
+			"summary": clipRunes(singleLine(hist.Summary), replaySummaryClip),
+		})
 		notes = append(notes, acp.UpdateAgentThoughtText(note))
 		bytes += len(note)
 	}
@@ -83,9 +87,9 @@ func buildReplay(hist personal.SegmentHistory, limit int) []acp.SessionUpdate {
 			items = items[1:]
 			dropped++
 		}
-		notes = append(notes, acp.UpdateAgentThoughtText(fmt.Sprintf(
-			"（历史较长（约 %s，超过 %s 的回放上限），仅回放最近 %d 条消息，更早的 %d 条未包含）\n",
-			replaySize(total), replaySize(limit), len(items), dropped)))
+		notes = append(notes, acp.UpdateAgentThoughtText(tr.T("host.acp.replay_truncated", map[string]any{
+			"total": replaySize(total), "limit": replaySize(limit), "recent": len(items), "dropped": dropped,
+		})))
 	}
 	out := notes
 	for _, item := range items {

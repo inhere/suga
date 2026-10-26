@@ -150,7 +150,9 @@ func (a *Agent) ListSessions(ctx context.Context, req acp.ListSessionsRequest) (
 			hints = append(hints, personal.EmptyScopeHint(scope, otherDirs))
 		}
 		if hiddenXhen > 0 {
-			hints = append(hints, fmt.Sprintf("另有 %d 个 origin=xhen 的会话未列出（_meta 里 %s 为 true 可包含）", hiddenXhen, metaXhen))
+			hints = append(hints, a.tr().T("host.acp.sessions_hidden_xhen", map[string]any{
+				"count": hiddenXhen, "meta": metaXhen,
+			}))
 		}
 		if len(hints) > 0 {
 			meta[metaHint] = strings.Join(hints, "\n")

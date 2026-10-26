@@ -141,9 +141,9 @@ func TestLiveTextRetry(t *testing.T) {
 	// The caller prints the notice: the line is closed and the next message
 	// gets its marker again.
 	assert.Eq(t, false, live.Handle(retry))
-	out.WriteString(RetryNotice(retry) + "\n")
+	out.WriteString(RetryNotice(nil, retry) + "\n")
 	live.Handle(delta("Hello"))
 	live.Finish()
 	assert.Eq(t, "▣ Hel\n↻ 模型请求失败（stream broken），1.2s 后重试（第 1 次）；上面的回复不完整，将重新输出\n▣ Hello\n", out.String())
-	assert.Eq(t, "↻ 模型请求失败（HTTP 503），0s 后重试（第 0 次）", RetryNotice(personal.Event{Kind: "retry", Text: "HTTP 503"}))
+	assert.Eq(t, "↻ 模型请求失败（HTTP 503），0s 后重试（第 0 次）", RetryNotice(nil, personal.Event{Kind: "retry", Text: "HTTP 503"}))
 }

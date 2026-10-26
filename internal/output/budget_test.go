@@ -50,10 +50,10 @@ func TestStreamJSONBudgetFields(t *testing.T) {
 
 func TestBudgetWrapUpNotices(t *testing.T) {
 	t.Run("cost limit names the cost reason", func(t *testing.T) {
-		assert.StrContains(t, WrapUpNotice("max_cost_usd", 0), "成本预算用尽")
+		assert.StrContains(t, WrapUpNotice(nil, "max_cost_usd", 0), "成本预算用尽")
 	})
 	t.Run("truncated wrap-up names both limits", func(t *testing.T) {
-		assert.StrContains(t, WrapUpTruncatedNotice(32), "收尾答复")
-		assert.StrContains(t, WrapUpTruncatedNotice(32), "32 tokens")
+		assert.StrContains(t, WrapUpTruncatedNotice(nil, 32), "收尾答复")
+		assert.StrContains(t, WrapUpTruncatedNotice(nil, 32), "32 tokens")
 	})
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	capskills "github.com/inhere/suga/pkg/agentcore/skills"
 )
@@ -21,23 +22,25 @@ func TestSkillInfosSources(t *testing.T) {
 	writeSkill(t, filepath.Join(workspace, ".agents", "skills", "team-style"), "team-style", "Workspace conventions.")
 	writeSkill(t, filepath.Join(home, ".agents", "skills", "my-notes"), "my-notes", "Personal notes.")
 
-	infos := SkillInfos(buildDefaultSkillRegistry(workspace))
+	infos := SkillInfos(nil, buildDefaultSkillRegistry(workspace))
 	byName := map[string]SkillInfo{}
 	for _, info := range infos {
 		byName[info.Name] = info
 	}
-	assert.Eq(t, SkillSourceProject, byName["team-style"].Source)
+	// The labels are the catalog values of SkillSourceProject/Builtin/User; a
+	// wiring without an injected catalog keeps the Chinese text.
+	assert.Eq(t, i18n.Fallback().T(SkillSourceProject), byName["team-style"].Source)
 	assert.Eq(t, "Workspace conventions.", byName["team-style"].Description)
 	assert.StrContains(t, byName["team-style"].Path, ".agents")
-	assert.Eq(t, SkillSourceUser, byName["my-notes"].Source)
+	assert.Eq(t, i18n.Fallback().T(SkillSourceUser), byName["my-notes"].Source)
 	// The built-in guide is released into SUGA_HOME/skills on this run.
-	assert.Eq(t, SkillSourceBuiltin, byName["suga-guide"].Source)
+	assert.Eq(t, i18n.Fallback().T(SkillSourceBuiltin), byName["suga-guide"].Source)
 	// Registry.List order (by name) is kept.
 	for i := 1; i < len(infos); i++ {
 		assert.Require(t, assert.True(t, infos[i-1].Name < infos[i].Name))
 	}
-	assert.Eq(t, 0, len(SkillInfos(nil)))
-	assert.Eq(t, 0, len(SkillInfos(capskills.NewRegistry())))
+	assert.Eq(t, 0, len(SkillInfos(nil, nil)))
+	assert.Eq(t, 0, len(SkillInfos(nil, capskills.NewRegistry())))
 }
 
 // TestBuildContextReportParts pins the parts :context lists: the manifest parts

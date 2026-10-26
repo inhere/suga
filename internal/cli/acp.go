@@ -47,6 +47,13 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 	if err != nil {
 		return err
 	}
+	// The UI catalog is resolved once at startup: the notices the server sends
+	// the client itself (session/list hints, session/load notes) use it, and each
+	// prompt's runtime resolves the same language through wiring.Open.
+	translator, _, err := wiring.AssembleTranslator()
+	if err != nil {
+		return err
+	}
 	return acpserver.Serve(ctx, input, output, func(ctx context.Context, cwd string, readOnly bool, servers []mcp.ServerSettings, gate acpserver.TurnGate) (acpserver.Runtime, error) {
 		workspace, err := filepath.Abs(cwd)
 		if err != nil {
@@ -86,7 +93,7 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 		// :model path (wiring.Runtime.SwitchModel) so persistence and trace agree.
 		rt := acpserver.Runtime{Runner: runtime.Runner, Close: runtime.Close, LookupTool: lookup,
 			Policy: runtime.ACPPolicy, ContextWindow: runtime.ContextWindow, Vision: runtime.VisionGate(),
-			Models: models,
+			Models: models, Translator: runtime.Translator,
 			CurrentModel: func() string {
 				provider, model, _, _ := runtime.Runner.ModelSettings()
 				if provider == "" || model == "" {
@@ -102,7 +109,7 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 				return option.Ref(), nil
 			}}
 		return rt, nil
-	}, promptImage)
+	}, promptImage, acpserver.WithTranslator(translator))
 }
 
 // promptImageCapability reads the configured providers and model roles and

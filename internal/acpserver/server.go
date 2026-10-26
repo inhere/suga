@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/acp-go-sdk"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -51,6 +52,9 @@ type Runtime struct {
 	// SwitchModel activates ref as sessionID's main model for the next turn
 	// (wiring.Runtime.SwitchModel); nil makes the select's application refused.
 	SwitchModel func(ctx context.Context, sessionID, ref string) (string, error)
+	// Translator is the startup-resolved host UI catalog of this runtime's
+	// client-facing notices; nil keeps the historical Chinese text.
+	Translator i18n.Translator
 }
 
 func (r Runtime) close() error {
@@ -97,6 +101,9 @@ type Agent struct {
 	conn     *acp.AgentSideConnection
 	sessions map[acp.SessionId]*sessionState
 	open     OpenRuntime
+	// translator is the host UI catalog of the notices this agent sends itself
+	// (session/list hints, session/load notes); nil keeps the Chinese text.
+	translator i18n.Translator
 	// promptImage declares ContentBlock::Image in initialize (design 0.3, ACP
 	// second phase): true when the configuration holds any vision-capable
 	// model, decided before the first session exists. A prompt that ends up on a
@@ -107,8 +114,14 @@ type Agent struct {
 var _ acp.Agent = (*Agent)(nil)
 var _ acp.AgentLoader = (*Agent)(nil)
 
-func New(open OpenRuntime, promptImage bool) *Agent {
-	return &Agent{open: open, sessions: make(map[acp.SessionId]*sessionState), promptImage: promptImage}
+func New(open OpenRuntime, promptImage bool, opts ...ServeOption) *Agent {
+	a := &Agent{open: open, sessions: make(map[acp.SessionId]*sessionState), promptImage: promptImage}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(a)
+		}
+	}
+	return a
 }
 
 // SetConnection runs after the connection has started serving requests, so conn
@@ -128,11 +141,11 @@ func (a *Agent) connection() *acp.AgentSideConnection {
 // Serve uses stdout exclusively for ACP JSON-RPC frames. promptImage declares
 // the image content block capability of session/prompt (this configuration's
 // initialization has no session yet, so the caller decides from configuration).
-func Serve(ctx context.Context, input io.Reader, output io.Writer, open OpenRuntime, promptImage bool) error {
+func Serve(ctx context.Context, input io.Reader, output io.Writer, open OpenRuntime, promptImage bool, opts ...ServeOption) error {
 	if open == nil {
 		return fmt.Errorf("ACP runtime factory is required")
 	}
-	agent := New(open, promptImage)
+	agent := New(open, promptImage, opts...)
 	conn := acp.NewAgentSideConnection(agent, output, input)
 	agent.SetConnection(conn)
 	select {
@@ -227,6 +240,9 @@ func (a *Agent) LoadSession(ctx context.Context, req acp.LoadSessionRequest) (ac
 	// so the client sees the view the next turn's model starts from (design
 	// 2026-10-20, session/load replay).
 	hist, histErr := runtime.Runner.SegmentHistory(ctx, string(req.SessionId))
+	// The replay notes are client-facing text: they use the language of the
+	// runtime this load opened (the process language, fixed at startup).
+	a.setTranslator(runtime.Translator)
 	// The option list is built before the runtime closes: it carries the
 	// configured model catalog (session/set_config_option, design 2026-10-20).
 	configOptions := sessionConfigOptions(&runtime, currentModelOf(&runtime), "default")
@@ -299,6 +315,9 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 	}
 	hook.lookup = runtime.LookupTool
 	hook.policy = runtime.Policy
+	// The confirmation question (memory write) is shown in the person's language.
+	hook.translator = runtime.Translator
+	a.setTranslator(runtime.Translator)
 	window := runtime.ContextWindow
 	if window <= 0 {
 		window = appconfig.DefaultContextWindow
@@ -309,7 +328,7 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 	// layer turns their bytes into a text note (design 0.3, vision fallback).
 	// The client is told once, as a thought so the notice stays out of the answer.
 	if len(images) > 0 && runtime.Vision != nil && !runtime.Vision.CanSee() {
-		note := fmt.Sprintf("提示：当前模型不支持看图，附带的 %d 张图片已转为文字说明\n", len(images))
+		note := trOrFallback(runtime.Translator).T("host.acp.vision_unsupported", map[string]any{"count": len(images)})
 		if err := a.connection().SessionUpdate(ctx, acp.SessionNotification{SessionId: req.SessionId, Update: acp.UpdateAgentThoughtText(note)}); err != nil {
 			return acp.PromptResponse{}, err
 		}
@@ -338,7 +357,7 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 		}
 		if event.Kind == string(agentcore.StreamEventRetry) {
 			// A thought, so the notice never becomes part of the answer text.
-			return a.connection().SessionUpdate(ctx, acp.SessionNotification{SessionId: req.SessionId, Update: acp.UpdateAgentThoughtText(output.RetryNotice(event) + "\n")})
+			return a.connection().SessionUpdate(ctx, acp.SessionNotification{SessionId: req.SessionId, Update: acp.UpdateAgentThoughtText(output.RetryNotice(runtime.Translator, event) + "\n")})
 		}
 		if event.Kind != string(agentcore.StreamEventTextDelta) || event.Text == "" {
 			return nil

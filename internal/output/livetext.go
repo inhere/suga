@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -26,6 +27,9 @@ type LiveText struct {
 	whole   bool
 	tail    string           // text after the last newline of the current message
 	cleaner termtext.Cleaner // keeps escape-sequence state across streamed deltas
+	// translator is the host UI catalog of the renderer this text builds (nil
+	// keeps the historical Chinese text).
+	translator i18n.Translator
 }
 
 // NewLiveText returns a LiveText writing to w.
@@ -41,7 +45,18 @@ func NewPrefixedLiveText(w io.Writer, prefix string) *LiveText {
 // lines; without it the markers are still replaced, but nothing is colored.
 func (l *LiveText) SetMarkdown(color bool) {
 	l.md = NewMDTerm(l.w, color)
+	l.md.SetTranslator(l.translator)
 	l.md.SetLinePrefix(l.wholePrefix())
+}
+
+// SetTranslator installs the host UI catalog of the notices this text prints
+// itself (the retry line through RetryNotice, the folded-code line of the
+// markdown renderer); nil keeps the historical Chinese text.
+func (l *LiveText) SetTranslator(tr i18n.Translator) {
+	l.translator = tr
+	if l.md != nil {
+		l.md.SetTranslator(tr)
+	}
 }
 
 // SetWholeLines makes the streamed text wait for line ends: only complete lines
@@ -121,15 +136,21 @@ func (l *LiveText) Handle(event personal.Event) bool {
 	return false
 }
 
-// RetryNotice is the one-line notice for a "retry" event.
-func RetryNotice(event personal.Event) string {
+// RetryNotice is the one-line notice for a "retry" event; tr is the
+// startup-resolved host catalog.
+func RetryNotice(tr i18n.Translator, event personal.Event) string {
 	info := event.Retry
 	if info == nil {
 		info = &personal.RetryInfo{}
 	}
-	line := fmt.Sprintf("↻ 模型请求失败（%s），%s 后重试（第 %d 次）", termtext.Clean(event.Text), info.Wait.Round(100*time.Millisecond), info.Attempt)
+	t := trOrFallback(tr)
+	line := t.T("host.retry.notice", map[string]any{
+		"error":   termtext.Clean(event.Text),
+		"wait":    info.Wait.Round(100 * time.Millisecond).String(),
+		"attempt": info.Attempt,
+	})
 	if info.Restart {
-		line += "；上面的回复不完整，将重新输出"
+		line += t.T("host.retry.restart")
 	}
 	return line
 }

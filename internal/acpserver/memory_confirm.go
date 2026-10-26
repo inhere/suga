@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/coder/acp-go-sdk"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore/memory"
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
@@ -35,9 +36,9 @@ func (h *permissionHook) ConfirmMemory(ctx context.Context, s memory.Scope, op m
 		SessionId: h.sessionID,
 		ToolCall: acp.ToolCallUpdate{
 			ToolCallId: acp.ToolCallId(id),
-			Title:      acp.Ptr("memory: 会话读过外部内容，确认写入记忆"),
+			Title:      acp.Ptr(h.tr().T("host.memory.title")),
 			Kind:       acp.Ptr(acp.ToolKindEdit),
-			Content:    []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(memoryConfirmText(s, op)))},
+			Content:    []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(memoryConfirmText(h.tr(), s, op)))},
 		},
 		Options: []acp.PermissionOption{
 			{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow once", OptionId: "allow"},
@@ -60,24 +61,30 @@ func (h *permissionHook) ConfirmMemory(ctx context.Context, s memory.Scope, op m
 }
 
 // memoryConfirmText describes the write. Confirm receives the op before the
-// governance layer sanitizes it, so every field is cleaned here first.
-func memoryConfirmText(s memory.Scope, op memory.Op) string {
-	lines := []string{"范围：" + s.String(), "操作：" + string(op.Action)}
+// governance layer sanitizes it, so every field is cleaned here first. The keys
+// are the ones of the chat confirmation (internal/wiring/memory_runtime.go), so
+// both front ends describe the same write in the same words.
+func memoryConfirmText(tr i18n.Translator, s memory.Scope, op memory.Op) string {
+	t := trOrFallback(tr)
+	lines := []string{
+		t.T("host.memory.label.scope", map[string]any{"scope": s.String()}),
+		t.T("host.memory.label.action", map[string]any{"action": string(op.Action)}),
+	}
 	if op.Kind != "" {
-		lines = append(lines, "类型："+string(op.Kind))
+		lines = append(lines, t.T("host.memory.label.kind", map[string]any{"kind": string(op.Kind)}))
 	}
 	if op.ID != "" {
-		lines = append(lines, "id："+op.ID)
+		lines = append(lines, t.T("host.memory.label.id", map[string]any{"id": op.ID}))
 	}
 	if op.Title != "" {
-		lines = append(lines, "标题："+redact.Clean(op.Title))
+		lines = append(lines, t.T("host.memory.label.title", map[string]any{"title": redact.Clean(op.Title)}))
 	}
 	if op.Body != "" {
 		body := []rune(redact.Clean(op.Body))
 		if len(body) > memoryBodyPreview {
 			body = append(body[:memoryBodyPreview], '…')
 		}
-		lines = append(lines, "正文："+string(body))
+		lines = append(lines, t.T("host.memory.label.body", map[string]any{"body": string(body)}))
 	}
 	return strings.Join(lines, "\n")
 }
