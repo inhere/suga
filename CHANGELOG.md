@@ -6,6 +6,10 @@
 
 - 新增 MIT `LICENSE`，同步整理中英文 README 的状态、官方 provider 快速开始、定位说明与许可证信息。
 
+### 新增
+
+- 演示录屏（README/博客用）：新增 `scripts/demo/record.py`，在伪终端里按固定时间轴驱动真实 `suga chat`（启动 → 读一个小项目并回答 → 模型作答时 Tab 排队一句 → 改文件弹出审批并答 `y` → `:context` → `:quit` 打印续接命令），把 pty 输出录成 asciicast v2 `docs/demo/suga-chat.cast`（100×28、总长上限 60 秒、工作区与 SUGA_HOME 的真实绝对路径替换掉）；配套 `scripts/ptysmoke/fakellm.py` 新增 `demo` 模式，`make demo-cast` 一条命令重录，说明与 `agg` 转 GIF 的方法见 `docs/demo/README.md`。
+
 ## [0.49.0] - 2026-10-26
 
 chat 新增 `:skills`、`:context`，打错命令会提示相近命令；输入历史默认按项目隔离（`chat.history_scope`）；Windows/ConPTY 可运行的 Go 版终端冒烟、真实 SSE 回放夹具与 fuzz、评测效果台账；依赖升级。

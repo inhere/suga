@@ -94,6 +94,7 @@ providers:
 - **`!` 本地命令**：`!cmd` 直接在本地 shell 执行、不叫模型；`!!cmd` 把结果附在下一条消息里给模型。
 - **续接预览**：续接时先显示上一次模型回复；被强杀留下的 `running` 会话会自动恢复。
 - **投递**：`suga send --session <id|短名称> <文本>` 把文本送进正在运行的 chat，`--steer` 插进当前回合，`--wait` 等待送达。
+- **演示**：`make demo-cast` 把约 30 秒的 chat 终端演示（工具调用行、Tab 排队、写文件审批、`:context`、退出时的续接命令）录成 `docs/demo/suga-chat.cast`，用 `asciinema play` 回放；时间轴、背后的假模型与转 GIF 的方法见 [docs/demo/README.md](docs/demo/README.md)。
 
 ## 配置
 

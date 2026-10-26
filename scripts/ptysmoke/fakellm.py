@@ -52,6 +52,11 @@ Modes (--mode):
         one tool_search {"select": "memory"}, then one tool_call of the loaded
         memory tool (the deferred-native proxy), then the text --reply: the
         smoke of tools.deferred_native: auto (chat_deferred_native.py).
+  demo  the timeline of the recorded demo (scripts/demo/record.py): a line
+        containing "改成" edits --demo-file (chat asks the person first), one
+        containing "运行" only explains how to run it, anything else reads
+        --demo-readme and --demo-file and answers --reply. The two other turns
+        answer --demo-reply-queued and --demo-reply-edit.
 
 --delay seconds are slept before each response, so a test can type while a
 turn is running. --chunk splits a streamed text reply into pieces of that many
@@ -166,6 +171,24 @@ def edit_call_sequence(args, user_text):
     return [("file_grep", {"pattern": "SMOKE_TARGET"}),
             ("file_edit", {"path": args.edit_path, "old_string": args.edit_old,
                            "new_string": args.edit_new})]
+
+
+def demo_plan(args, user_text):
+    """The demo mode's turn: (calls, reply) for the user message of the moment.
+
+    The recording script (scripts/demo/record.py) types three lines: a question
+    about the small project (two reads), a line queued while the model answers
+    ("运行": how to run it) and an edit request ("改成"). The fake only decides
+    what to call; chat asks the person before the edit runs.
+    """
+    text = str(user_text)
+    if "改成" in text:
+        return ([("file_edit", {"path": args.demo_file, "old_string": args.demo_edit_old,
+                               "new_string": args.demo_edit_new})], args.demo_reply_edit)
+    if "运行" in text:
+        return ([], args.demo_reply_queued)
+    return ([("file_read", {"path": args.demo_readme}),
+             ("file_read", {"path": args.demo_file})], args.reply)
 
 
 def build_reply(args):
@@ -370,6 +393,8 @@ def make_handler(args):
             deferred_calls = [("tool_search", {"query": "select:memory"}),
                               ("tool_call", {"name": "memory",
                                              "arguments": {"action": "search", "query": "smoke"}})]
+            # demo mode: this turn's calls and the text it ends with (demo_plan).
+            demo_calls, demo_reply = demo_plan(args, user_text) if args.mode == "demo" else ([], "")
             if args.mode == "memory" and "直接" in str(user_text):
                 memory_calls = memory_calls[1:]
             if child:
@@ -418,6 +443,11 @@ def make_handler(args):
                 # repeated reads, a quiet edit/shell alternation, or R3 on the
                 # third failure). See loop_plan and chat_loop_guard.py.
                 name, arguments = loop_plan(args)[step]
+                call = {"index": 0, "id": "call_%d" % time.time_ns(),
+                        "function": {"name": name, "arguments": json.dumps(arguments)}}
+                chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
+            elif args.mode == "demo" and step < len(demo_calls):
+                name, arguments = demo_calls[step]
                 call = {"index": 0, "id": "call_%d" % time.time_ns(),
                         "function": {"name": name, "arguments": json.dumps(arguments)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
@@ -472,7 +502,9 @@ def make_handler(args):
                         "function": {"name": "shell_exec", "arguments": json.dumps(shell_args)}}
                 chunks = [{"choices": [{"delta": {"tool_calls": [call]}}]}]
             else:
-                chunks = [{"choices": [{"delta": {"content": build_reply(args)}}]}]
+                # demo turns end with their own text (demo_reply); every other
+                # mode answers build_reply (--reply, or the long answer).
+                chunks = [{"choices": [{"delta": {"content": demo_reply or build_reply(args)}}]}]
             usage = None if args.no_usage else {"prompt_tokens": args.prompt_tokens, "completion_tokens": 2,
                                                 "total_tokens": args.prompt_tokens + 2}
             if args.mode in LOOP_MODES:
@@ -580,7 +612,7 @@ class QuietServer(http.server.ThreadingHTTPServer):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", type=int, default=18795)
-    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge", "image", "deferred"], default="tool")
+    p.add_argument("--mode", choices=["tool", "text", "edit", "memory", "refs", "adddir", "empty-final", "preferred", "session", "display", "loop", "loop-edit", "loop-fail", "nudge", "image", "deferred", "demo"], default="tool")
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--command", default="echo SMOKE_OK")
     p.add_argument("--reply", default="完成")
@@ -614,6 +646,14 @@ def main():
     p.add_argument("--session-text", default="SMOKE_SESSION_TEXT",
                    help="session mode: the text one session_message send carries")
     p.add_argument("--child-delay", type=float, default=0, help="extra seconds before each sub-agent response")
+    p.add_argument("--demo-readme", default="README.md", help="demo mode: the project file that is read first")
+    p.add_argument("--demo-file", default="todo.py", help="demo mode: the project file that is read second")
+    p.add_argument("--demo-edit-old", default='"added:"', help="demo mode: old_string of the edit turn")
+    p.add_argument("--demo-edit-new", default='"已添加:"', help="demo mode: new_string of the edit turn")
+    p.add_argument("--demo-reply-queued", default="运行方式：python todo.py add \"写周报\"，然后 python todo.py list 查看；跑测试用 pytest -q。",
+                   help="demo mode: the answer to the line queued with Tab")
+    p.add_argument("--demo-reply-edit", default="改好了：新增待办的提示从 added: 换成了 已添加:，再跑一次 list 就能看到。",
+                   help="demo mode: the answer after the edit was approved")
     p.add_argument("--fail-first", type=int, default=0, help="answer the first N requests with HTTP 503")
     p.add_argument("--break-first", type=int, default=0, help="then break the next M streams after half the text")
     p.add_argument("--overload-first", type=int, default=0, help="after --fail-first: answer the next M requests with a temporary API error only")

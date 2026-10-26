@@ -180,6 +180,12 @@ smoke-chat:
 	python3 -I scripts/ptysmoke/chat_delivery.py --bin tmp/smoke/suga --work tmp/smoke-delivery
 	python3 -I scripts/ptysmoke/preferred_tools.py --bin tmp/smoke/suga --work tmp/smoke-preferred-tools
 
+## demo-cast: record the chat demo (docs/demo/suga-chat.cast) with the fake model (Linux/macOS)
+demo-cast:
+	@mkdir -p tmp/smoke
+	go build -o tmp/smoke/suga ./cmd/suga
+	python3 -I scripts/demo/record.py --bin tmp/smoke/suga
+
 ## smoke-pty-go: run the Windows-capable Go ptytest chat smoke
 smoke-pty-go:
 	go test -tags ptye2e -count=1 ./test/ptye2e/
