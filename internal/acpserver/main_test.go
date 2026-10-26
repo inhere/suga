@@ -17,6 +17,9 @@ func TestMain(m *testing.M) {
 	}
 	_ = os.Setenv("SUGA_HOME", home)
 	_ = os.Setenv("SUGA_HOOKS", "off")
+	// The tests assert the Chinese UI; auto would follow the machine locale
+	// (English in a bare container). Language tests override it with t.Setenv.
+	_ = os.Setenv("SUGA_LANGUAGE", "zh")
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)
