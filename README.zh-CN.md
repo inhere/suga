@@ -12,9 +12,9 @@ Suga 是用 Go 写的个人编码 Agent。同一个持久会话引擎提供两�
 
 > 详细文档都在内置 skill [suga-guide](skills/suga-guide/SKILL.md) 的 `references/` 里；suga 首次运行会把它释放到 `~/.suga/skills/suga-guide/`，在 chat 里直接问“怎么配置 suga”即可。
 
-> **演示：** 演示 GIF 或 asciinema 录屏素材就绪后会放在这里。
->
-> <!-- TODO: 用 docs/images/demo.gif 或 asciinema 链接替换此占位。 -->
+![suga chat 演示：读项目、排队插话、审批改文件](docs/images/demo.gif)
+
+> 演示用假模型录制，可重录，见 [docs/demo/README.md](docs/demo/README.md)。
 
 ## 功能
 

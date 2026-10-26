@@ -12,9 +12,9 @@ Suga is a personal coding agent written in Go. One persistent conversation engin
 
 > The full documentation lives in the reference docs of the built-in skill [suga-guide](skills/suga-guide/SKILL.md) (`references/`, written in Chinese). Suga unpacks it to `~/.suga/skills/suga-guide/` on first run, so you can simply ask chat how to configure suga.
 
-> **Demo:** A GIF or asciinema recording will be linked here when the demo asset is available.
->
-> <!-- TODO: replace this placeholder with docs/images/demo.gif or an asciinema link. -->
+![suga chat demo: reading a project, queueing a message, approving an edit](docs/images/demo.gif)
+
+> Recorded with a fake model so it can be re-recorded; see [docs/demo/README.md](docs/demo/README.md).
 
 ## Features
 
