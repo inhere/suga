@@ -61,7 +61,7 @@ func (s *chatState) deliver(req personalprocess.DeliverRequest) (personalprocess
 			// (design session-message-delivery D3).
 			s.source.recordDeliveryState(req.ID, personalprocess.StateHeld)
 		}
-		s.render.Hint(sessionQueuedHint(fromName, hops))
+		s.render.Hint(sessionQueuedHintWithTranslator(s.tr(), fromName, hops))
 		return personalprocess.Delivery{Queued: true, Warning: warning}, nil, nil
 	}
 	// A session message is never inserted into the running turn: that turn keeps

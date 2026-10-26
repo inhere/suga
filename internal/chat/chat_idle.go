@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,17 +141,17 @@ func (c *idleConsolidation) run(ctx context.Context) error {
 	if threshold <= 0 || float64(c.lastInput.Load()) < c.minRatio*float64(threshold) {
 		return nil
 	}
-	c.render.Hint(idleMark + "空闲整理中…")
+	c.render.Hint(idleMark + c.render.tr().T("status.idle.running"))
 	out, err := c.runner.ConsolidateIdle(ctx, c.sid)
 	switch {
 	case err == nil:
 		c.lastInput.Store(0)
-		c.render.Hint(fmt.Sprintf(idleMark+"已整理上下文：%d → %d token", out.TokensBefore, out.TokensAfter))
+		c.render.Hint(idleMark + c.render.tr().T("status.idle.done", map[string]any{"before": out.TokensBefore, "after": out.TokensAfter}))
 	case idleQuiet(err):
 		// A turn, :compact or exit took over, or there was nothing to do:
 		// stay quiet, the scheduler event records it.
 	default:
-		c.render.Hint(idleMark + "空闲整理失败：" + truncateLine(err.Error(), resultSummaryLimit))
+		c.render.Hint(idleMark + c.render.tr().T("status.idle.failed", map[string]any{"error": truncateLine(err.Error(), resultSummaryLimit)}))
 	}
 	return err
 }
