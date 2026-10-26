@@ -50,7 +50,7 @@ func runDataUsage(ctx context.Context, out io.Writer, asJSON bool, top int) erro
 		return err
 	}
 	defer repo.Close()
-	report, err := repo.Usage(ctx, store.UsageOptions{Top: top})
+	report, err := repo.Usage(ctx, store.UsageOptions{Top: top, Translator: cliTranslator()})
 	if err != nil {
 		return err
 	}
@@ -71,12 +71,12 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	fmt.Fprintf(tw, "  %s\t%d %s\t%s\n", cliText(tr, "cli.data.usage.free_pages"), rep.File.FreePages, cliText(tr, "cli.data.usage.pages"), humanBytes(rep.File.FreeBytes))
 	fmt.Fprintf(tw, "  %s\t\t%s\n", cliText(tr, "cli.data.usage.wal"), humanBytes(rep.File.WALBytes))
 	// entries
-	fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.entries"), rep.Entries.Rows, humanBytes(rep.Entries.Bytes))
+	fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.entries"), usageCount(tr, usageCellRows, rep.Entries.Rows), humanBytes(rep.Entries.Bytes))
 	for _, stat := range rep.Entries.Types {
-		fmt.Fprintf(tw, "  %s\t%d 条\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
+		fmt.Fprintf(tw, "  %s\t%s\t%s\n", stat.Name, usageCount(tr, usageCellRows, stat.Rows), humanBytes(stat.Bytes))
 	}
 	if rep.Entries.Assistant.Rows > 0 {
-		fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.assistant"), rep.Entries.Assistant.Rows, humanBytes(rep.Entries.Assistant.Bytes))
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.assistant"), usageCount(tr, usageCellRows, rep.Entries.Assistant.Rows), humanBytes(rep.Entries.Assistant.Bytes))
 		for _, stat := range rep.Entries.Assistant.Fields {
 			fmt.Fprintf(tw, "  %s\t\t%s\n", stat.Name, humanBytes(stat.Bytes))
 		}
@@ -88,45 +88,47 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 		}
 	}
 	if len(rep.Entries.Assistant.Tools) > 0 {
-		fmt.Fprintln(tw, cliText(tr, "cli.data.usage.tool_args")+"\t调用次数\t")
+		fmt.Fprintln(tw, cliText(tr, "cli.data.usage.tool_args")+"\t"+cliText(tr, "cli.data.usage.cell.call_count")+"\t")
 		for _, stat := range rep.Entries.Assistant.Tools {
-			fmt.Fprintf(tw, "  %s\t%d 次\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
+			fmt.Fprintf(tw, "  %s\t%s\t%s\n", stat.Name, usageCount(tr, usageCellCalls, stat.Rows), humanBytes(stat.Bytes))
 		}
 	}
 	if rep.Entries.Tool.Stub.Rows+rep.Entries.Tool.Inline.Rows > 0 {
-		fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.tool_stub"), rep.Entries.Tool.Stub.Rows, humanBytes(rep.Entries.Tool.Stub.Bytes))
-		fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.tool_inline"), rep.Entries.Tool.Inline.Rows, humanBytes(rep.Entries.Tool.Inline.Bytes))
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.tool_stub"), usageCount(tr, usageCellRows, rep.Entries.Tool.Stub.Rows), humanBytes(rep.Entries.Tool.Stub.Bytes))
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.tool_inline"), usageCount(tr, usageCellRows, rep.Entries.Tool.Inline.Rows), humanBytes(rep.Entries.Tool.Inline.Bytes))
 	}
 	// The bodies that left the ledger live in the session files: their count and
 	// the file bytes say how much the ledger no longer holds.
 	if rep.Entries.Tool.Stub.Rows+rep.Entries.MovedAssistant.Rows > 0 {
-		fmt.Fprintf(tw, "%s\ttool %d 条 / assistant %d 条\t%s\n", cliText(tr, "cli.data.usage.moved"),
-			rep.Entries.Tool.Stub.Rows, rep.Entries.MovedAssistant.Rows, humanBytes(rep.Sessions.Tools.Bytes))
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.moved"),
+			cliText(tr, "cli.data.usage.cell.moved", map[string]any{"tools": rep.Entries.Tool.Stub.Rows, "assistant": rep.Entries.MovedAssistant.Rows}),
+			humanBytes(rep.Sessions.Tools.Bytes))
 	}
 	// events
-	fmt.Fprintf(tw, "%s\t%d 条\t%s\n", cliText(tr, "cli.data.usage.events"), rep.Events.Rows, humanBytes(rep.Events.Bytes))
+	fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.events"), usageCount(tr, usageCellRows, rep.Events.Rows), humanBytes(rep.Events.Bytes))
 	for _, stat := range rep.Events.Kinds {
-		fmt.Fprintf(tw, "  %s\t%d 条\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
+		fmt.Fprintf(tw, "  %s\t%s\t%s\n", stat.Name, usageCount(tr, usageCellRows, stat.Rows), humanBytes(stat.Bytes))
 	}
 	// FTS
-	fmt.Fprintf(tw, "%s\t%d 行\t%s\n", cliText(tr, "cli.data.usage.fts"), rep.FTS.Rows, humanBytes(rep.FTS.Bytes))
+	fmt.Fprintf(tw, "%s\t%s\t%s\n", cliText(tr, "cli.data.usage.fts"), usageCount(tr, usageCellLines, rep.FTS.Rows), humanBytes(rep.FTS.Bytes))
 	fmt.Fprintf(tw, "  entries_fts_data\t\t%s\n", humanBytes(rep.FTS.DataBytes))
 	fmt.Fprintf(tw, "  entries_fts_content\t\t%s\n", humanBytes(rep.FTS.ContentBytes))
 	for _, stat := range rep.FTS.Roles {
-		fmt.Fprintf(tw, "  role=%s\t%d 行\t\n", stat.Name, stat.Rows)
+		fmt.Fprintf(tw, "  role=%s\t%s\t\n", stat.Name, usageCount(tr, usageCellLines, stat.Rows))
 	}
 	// sessions directory
-	fmt.Fprintf(tw, "%s\t%d 个（库内 %d 个会话）\t\n", cliText(tr, "cli.data.usage.sessions"), rep.Sessions.Dirs, rep.Sessions.InStore)
+	fmt.Fprintf(tw, "%s\t%s\t\n", cliText(tr, "cli.data.usage.sessions"),
+		cliText(tr, "cli.data.usage.cell.sessions", map[string]any{"count": rep.Sessions.Dirs, "instore": rep.Sessions.InStore}))
 	// One line per body file name found: a store restored from an old backup can
 	// hold both tools.jsonl and bodies.jsonl.
 	for _, stat := range rep.Sessions.BodyFiles {
-		fmt.Fprintf(tw, "  %s\t%d 个文件\t%s\n", stat.Name, stat.Rows, humanBytes(stat.Bytes))
+		fmt.Fprintf(tw, "  %s\t%s\t%s\n", stat.Name, usageCount(tr, usageCellFiles, stat.Rows), humanBytes(stat.Bytes))
 	}
-	fmt.Fprintf(tw, "  outputs/\t%d 个文件（.gz %d）\t%s\n", rep.Sessions.Outputs.Files, rep.Sessions.OutputsGz.Files, humanBytes(rep.Sessions.Outputs.Bytes))
-	fmt.Fprintf(tw, "  images/\t%d 个文件\t%s\n", rep.Sessions.Images.Files, humanBytes(rep.Sessions.Images.Bytes))
-	fmt.Fprintf(tw, "  snapshots/\t%d 个文件\t%s\n", rep.Sessions.Snapshots.Files, humanBytes(rep.Sessions.Snapshots.Bytes))
+	fmt.Fprintf(tw, "  outputs/\t%s\t%s\n", cliText(tr, "cli.data.usage.cell.outputs", map[string]any{"files": rep.Sessions.Outputs.Files, "gz": rep.Sessions.OutputsGz.Files}), humanBytes(rep.Sessions.Outputs.Bytes))
+	fmt.Fprintf(tw, "  images/\t%s\t%s\n", usageCount(tr, usageCellFiles, rep.Sessions.Images.Files), humanBytes(rep.Sessions.Images.Bytes))
+	fmt.Fprintf(tw, "  snapshots/\t%s\t%s\n", usageCount(tr, usageCellFiles, rep.Sessions.Snapshots.Files), humanBytes(rep.Sessions.Snapshots.Bytes))
 	if rep.Sessions.Other.Files > 0 {
-		fmt.Fprintf(tw, "  %s\t%d 个文件\t%s\n", cliText(tr, "cli.data.usage.other"), rep.Sessions.Other.Files, humanBytes(rep.Sessions.Other.Bytes))
+		fmt.Fprintf(tw, "  %s\t%s\t%s\n", cliText(tr, "cli.data.usage.other"), usageCount(tr, usageCellFiles, rep.Sessions.Other.Files), humanBytes(rep.Sessions.Other.Bytes))
 	}
 	// dbstat: the real page usage of each table and index.
 	if rep.DBStat {
@@ -149,6 +151,20 @@ func writeDataUsage(out io.Writer, rep store.UsageReport) error {
 	}
 	writeUsageSuggestions(out, rep, tr)
 	return nil
+}
+
+// Cells of the usage table that carry a count: the unit travels with the number
+// in the catalog, so a language switch needs no format change in the code.
+const (
+	usageCellRows  = "cli.data.usage.cell.rows"
+	usageCellLines = "cli.data.usage.cell.lines"
+	usageCellCalls = "cli.data.usage.cell.calls"
+	usageCellFiles = "cli.data.usage.cell.files"
+)
+
+// usageCount renders one "<n> <unit>" cell of the usage table.
+func usageCount(tr i18n.Translator, key string, count int64) string {
+	return cliText(tr, key, map[string]any{"count": count})
 }
 
 // writeUsageTopSessions prints the largest sessions: ledger bytes, directory

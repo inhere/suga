@@ -104,8 +104,8 @@ func writeSpillCompressReport(out io.Writer, report personal.SpillCompressReport
 		if apply {
 			verb = cliText(tr, "cli.data.spill.did")
 		}
-		fmt.Fprintf(out, "  %s %s（%s → %s）\n", verb, entry.File.Ref(),
-			humanBytes(entry.Size), humanBytes(entry.CompressedSize))
+		fmt.Fprintf(out, "  %s\n", cliText(tr, "cli.data.spill.file", map[string]any{"verb": verb, "ref": entry.File.Ref(),
+			"before": humanBytes(entry.Size), "after": humanBytes(entry.CompressedSize)}))
 	}
 	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.spill.available", map[string]any{"age": settings.CompressAfter.String(), "count": len(report.Planned), "before": humanBytes(report.BytesBefore), "after": humanBytes(report.BytesAfter)}))
 	if report.SkippedYoung > 0 || report.SkippedActive > 0 {

@@ -166,17 +166,13 @@ func writeGCReport(out io.Writer, report store.GCReport, cutoff time.Time) {
 		}
 		fmt.Fprintf(out, "%s\t%s\t%s\n", session.ID, session.UpdatedAt.Local().Format("2006-01-02 15:04"), title)
 	}
-	verb := "将删除"
-	if report.Applied {
-		verb = "已删除"
-	}
-	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.gc.summary", map[string]any{"verb": verb, "sessions": len(report.Sessions), "before": cutoff.Local().Format("2006-01-02 15:04"), "events": report.Events, "bytes": report.SnapshotBytes}))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.gc.summary", map[string]any{"verb": gcRemovalVerb(tr, report.Applied), "sessions": len(report.Sessions), "before": cutoff.Local().Format("2006-01-02 15:04"), "events": report.Events, "bytes": report.SnapshotBytes}))
 	if !report.Applied {
-		fmt.Fprint(out, "；加 --apply 执行")
+		fmt.Fprint(out, cliText(tr, "cli.data.gc.apply"))
 	} else {
 		// Freeing the file back to the disk is a separate job with its own
 		// report: apply only says which rows are gone (design 0.3, P3).
-		fmt.Fprint(out, "；VACUUM 未执行，要回收磁盘空间再运行 `suga data vacuum`")
+		fmt.Fprint(out, cliText(tr, "cli.data.gc.vacuum"))
 	}
 	fmt.Fprintln(out)
 }
@@ -323,17 +319,24 @@ func writeRetentionReport(out io.Writer, report store.GCRetentionReport) {
 		// decides how long a topic lives. An explicit --older-than still removes one.
 		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.host", map[string]any{"count": n}))
 	}
-	verb := "将删除"
-	if report.Applied {
-		verb = "已删除"
-	}
-	fmt.Fprintf(out, "%s %d 个会话（含其 transcript 文件与会话目录），预计释放 %s（实际字节要等 `suga data vacuum`）\n",
-		verb, len(report.Sessions()),
-		humanBytes(report.Interactive.EstimatedBytes+report.NonInteractive.EstimatedBytes))
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.summary", map[string]any{
+		"verb":     gcRemovalVerb(tr, report.Applied),
+		"sessions": len(report.Sessions()),
+		"bytes":    humanBytes(report.Interactive.EstimatedBytes + report.NonInteractive.EstimatedBytes),
+	}))
 	if !report.Applied {
-		fmt.Fprintln(out, "加 --apply 执行；删除本身不 VACUUM，要回收磁盘空间再运行 `suga data vacuum`")
+		fmt.Fprintln(out, cliText(tr, "cli.data.retention.apply"))
 	} else {
 		// The deletion and the file rewrite are two separate reports.
-		fmt.Fprintln(out, "VACUUM 未执行：要把空间还给磁盘再运行 `suga data vacuum`")
+		fmt.Fprintln(out, cliText(tr, "cli.data.retention.vacuum"))
 	}
+}
+
+// gcRemovalVerb is the verb of a gc summary line: the past one once --apply ran,
+// the future one for the dry run.
+func gcRemovalVerb(tr i18n.Translator, applied bool) string {
+	if applied {
+		return cliText(tr, "cli.data.gc.verb.deleted")
+	}
+	return cliText(tr, "cli.data.gc.verb.delete")
 }

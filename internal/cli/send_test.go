@@ -189,10 +189,10 @@ func TestSendHelpShowsBothTextForms(t *testing.T) {
 	assert.NoErr(t, err)
 	help := stderr.String()
 	assert.StrContains(t, help, "suga send --session <id|name> [--text <text> | <text>...]")
-	assert.StrContains(t, help, "suga send --session <id|name> 你好 世界")
+	assert.StrContains(t, help, "suga send --session <id|name> hello world")
 	assert.StrContains(t, help, "suga send --session <id|name> -- -hello")
 	assert.StrContains(t, help, "arguments cannot be combined with --text")
 	// --session documents the short names `suga ps` lists.
-	assert.StrContains(t, help, "suga send --session suga-k7 你好 世界")
+	assert.StrContains(t, help, "suga send --session suga-k7 hello world")
 	assert.StrContains(t, help, "short name of a")
 }

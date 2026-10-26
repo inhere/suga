@@ -60,15 +60,20 @@ func runGCVacuum(ctx context.Context, out io.Writer) error {
 		// antivirus scan is the usual cause.
 		return fmt.Errorf("vacuum (original database unchanged, retry after closing whatever holds it): %w", err)
 	}
-	fmt.Fprintf(out, "VACUUM 完成：sessions.db %s → %s（WAL %s → %s）\n",
-		humanBytes(result.DBBytesBefore), humanBytes(result.DBBytesAfter),
-		humanBytes(result.WALBytesBefore), humanBytes(result.WALBytesAfter))
+	tr := cliTranslator()
+	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.gc.vacuum.done", map[string]any{
+		"before": humanBytes(result.DBBytesBefore), "after": humanBytes(result.DBBytesAfter),
+		"wal_before": humanBytes(result.WALBytesBefore), "wal_after": humanBytes(result.WALBytesAfter),
+	}))
 	if result.BytesAfter < result.BytesBefore {
-		fmt.Fprintf(out, "库文件总体 %s → %s，回收 %s\n", humanBytes(result.BytesBefore),
-			humanBytes(result.BytesAfter), humanBytes(result.BytesBefore-result.BytesAfter))
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.gc.vacuum.reclaimed", map[string]any{
+			"before": humanBytes(result.BytesBefore), "after": humanBytes(result.BytesAfter),
+			"reclaimed": humanBytes(result.BytesBefore - result.BytesAfter),
+		}))
 	} else {
-		fmt.Fprintf(out, "库文件总体 %s → %s（本次没有可回收的页）\n",
-			humanBytes(result.BytesBefore), humanBytes(result.BytesAfter))
+		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.gc.vacuum.no_reclaim", map[string]any{
+			"before": humanBytes(result.BytesBefore), "after": humanBytes(result.BytesAfter),
+		}))
 	}
 	return nil
 }
