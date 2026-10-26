@@ -139,3 +139,12 @@ func TestAdoptSessionCwd(t *testing.T) {
 		assert.Err(t, err)
 	})
 }
+
+// TestSessionRecoveredNoticeTranslated covers the recovery notice chat and run
+// print when a dead process left the session running.
+func TestSessionRecoveredNoticeTranslated(t *testing.T) {
+	en, err := i18n.New(i18n.LanguageEN)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.StrContains(t, SessionRecoveredNoticeWithTranslator(en), "The previous turn was interrupted")
+	assert.Eq(t, SessionRecoveredNotice, SessionRecoveredNoticeWithTranslator(nil))
+}
