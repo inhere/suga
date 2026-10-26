@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 )
 
@@ -68,10 +69,20 @@ func sameDir(a, b string, fold bool) bool {
 // current directory, how many sessions the other directories hold and both
 // ways out. otherDirs == 0 means there is nothing anywhere yet.
 func EmptyScopeHint(dir string, otherDirs int) string {
-	if otherDirs == 0 {
-		return "还没有任何会话"
+	return EmptyScopeHintWithTranslator(i18n.Fallback(), dir, otherDirs)
+}
+
+// EmptyScopeHintWithTranslator renders the default session scope hint for the
+// host UI. Callers without startup wiring use the Chinese fallback for legacy
+// compatibility; assembled hosts should pass their resolved translator.
+func EmptyScopeHintWithTranslator(t i18n.Translator, dir string, otherDirs int) string {
+	if t == nil {
+		t = i18n.Fallback()
 	}
-	return fmt.Sprintf("当前目录 %s 没有会话（其它目录共有 %d 个）；目录可能不对，可 cd 到会话所在目录，或用 suga sessions --all 列出全部", dir, otherDirs)
+	if otherDirs == 0 {
+		return t.T("personal.scope.empty")
+	}
+	return t.T("personal.scope.other", map[string]any{"dir": dir, "count": otherDirs})
 }
 
 // SessionCwd returns the working directory recorded on a session ("" for a

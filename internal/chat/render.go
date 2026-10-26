@@ -397,7 +397,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		// been taken back to open before this turn (personal/recovery.go): say so
 		// on a line of its own, then keep waiting for the model.
 		r.stopThinking()
-		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, personal.SessionRecoveredNotice))
+		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, personal.SessionRecoveredNoticeWithTranslator(r.tr())))
 		r.startThinking()
 	}
 }
