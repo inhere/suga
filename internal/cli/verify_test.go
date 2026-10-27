@@ -63,7 +63,7 @@ func checkVerify(t *testing.T, f *fakeVerifyRunner, workspace string, rounds int
 	t.Helper()
 	var diag bytes.Buffer
 	set := verifySettings{Command: command, Rounds: rounds, Timeout: 10 * time.Second, Workspace: workspace}
-	result, report, err := verifyAfterTurn(context.Background(), f, set, "s1", completedTurn("done"), nil, nil, nil, &diag)
+	result, report, err := verifyAfterTurn(context.Background(), f, set, "s1", completedTurn("done"), nil, nil, nil, &diag, nil)
 	return result, report, diag.String(), err
 }
 
@@ -121,7 +121,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 	t.Run("a timeout counts as a failure", func(t *testing.T) {
 		f := &fakeVerifyRunner{}
 		set := verifySettings{Command: "sleep 5", Rounds: 1, Timeout: time.Second, Workspace: t.TempDir()}
-		_, report, err := verifyAfterTurn(context.Background(), f, set, "s1", completedTurn("done"), nil, nil, nil, io.Discard)
+		_, report, err := verifyAfterTurn(context.Background(), f, set, "s1", completedTurn("done"), nil, nil, nil, io.Discard, nil)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, true, report.Last.TimedOut)
 		assert.Eq(t, false, report.Passed)
@@ -150,7 +150,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 		set := verifySettings{Command: "exit 1", Rounds: 2, Timeout: 10 * time.Second, Workspace: t.TempDir()}
 		limited := completedTurn("cut short")
 		limited.WrapUp = "budget"
-		_, report, err := verifyAfterTurn(context.Background(), f, set, "s1", limited, nil, nil, nil, io.Discard)
+		_, report, err := verifyAfterTurn(context.Background(), f, set, "s1", limited, nil, nil, nil, io.Discard, nil)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, 1, report.Rounds)
 		assert.Len(t, f.calls, 0)
@@ -160,7 +160,7 @@ func TestVerifyAfterTurn(t *testing.T) {
 		cancel()
 		set := verifySettings{Command: "sleep 5", Rounds: 2, Timeout: 10 * time.Second, Workspace: t.TempDir()}
 		f := &fakeVerifyRunner{}
-		_, _, err := verifyAfterTurn(ctx, f, set, "s1", completedTurn("done"), nil, nil, nil, io.Discard)
+		_, _, err := verifyAfterTurn(ctx, f, set, "s1", completedTurn("done"), nil, nil, nil, io.Discard, nil)
 		assert.Require(t, assert.Err(t, err))
 		assert.Eq(t, true, errors.Is(err, context.Canceled))
 	})
@@ -353,6 +353,36 @@ func TestRunVerifyEndToEnd(t *testing.T) {
 		for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
 			assert.Eq(t, "done", line)
 		}
+	})
+	t.Run("the diagnostics follow the language setting", func(t *testing.T) {
+		verifyRunDir(t)
+		t.Setenv("SUGA_LANGUAGE", "en")
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			const usage = `"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}`
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"done"},"finish_reason":"stop"}],`+usage+`}`)
+		}))
+		t.Cleanup(server.Close)
+		setTestProvider(t, server.URL)
+
+		var out, diag bytes.Buffer
+		err := RunPersonalCLI(context.Background(), "run", []string{
+			"--prompt", "write the file", "--verify", "cat missing.txt", "--verify-rounds", "1",
+		}, strings.NewReader(""), &out, &diag)
+		assert.Require(t, assert.Err(t, err))
+		assert.Eq(t, 5, ExitCode(err))
+		// The person's lines (the check lines and the closing summary) are English;
+		// the check command itself stays what the caller typed.
+		assert.StrContains(t, diag.String(), "verify #1: cat missing.txt → exit 1")
+		assert.StrContains(t, diag.String(), "verify #2: cat missing.txt → exit 1")
+		assert.StrContains(t, diag.String(), "Verification failed: cat missing.txt → exit 1 (2 checks, 1 fix rounds)")
+		assert.StrContains(t, diag.String(), "tail of the last output:")
+		assert.StrNotContains(t, diag.String(), "验证未通过")
+		// The error keeps the sentinel text for machine lines, and the exit line the
+		// process prints is the translated one.
+		assert.True(t, errors.Is(err, ErrVerifyFailed))
+		assert.StrContains(t, err.Error(), "验证未通过")
+		assert.StrContains(t, ErrorText(err, Translator()), "Verification failed: cat missing.txt → exit 1 (1 fix rounds)")
 	})
 	t.Run("a run without --verify keeps its result line unchanged", func(t *testing.T) {
 		verifyRunDir(t)

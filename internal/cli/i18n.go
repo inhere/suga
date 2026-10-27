@@ -32,6 +32,10 @@ func cliTranslator() i18n.Translator {
 	return catalog
 }
 
+// Translator resolves the startup language for the process itself: commands that
+// do not assemble a wiring.Runtime and cmd/suga's closing error line use it.
+func Translator() i18n.Translator { return cliTranslator() }
+
 func cliText(t i18n.Translator, key string, args ...map[string]any) string {
 	if t == nil {
 		t = i18n.Fallback()
