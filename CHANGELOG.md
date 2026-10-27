@@ -6,6 +6,12 @@
 
 - 抽取可复用的 `pkg/chatui` 终端组件：Markdown/流式文本、行编辑与审批提示，保持 suga chat 行为不变。
 
+### 新增
+
+- sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。
+- 新增 `sugasdk.Engine.Pin` 会话 pin 契约；age GC 与 retention GC 均跳过被 pin 的会话（包括非 xhen 来源）。
+- 记忆条目新增跨 ID 复用保持不变的 UUID，并为 SDK 提供按 UUID 获取、更新、删除接口；旧元数据迁移会自动补齐 UUID。
+
 ## [0.51.0] - 2026-10-27
 
 本版细化缓存命中率统计：续接调用按前缀是否变化分桶、识别 provider/模型切换、给出前缀复用率与换段分节变化，失败尝试不再计入分桶；另加实验性设置 `context.handoff_reuse_prefix`（默认关闭），让换段写交接包的调用沿用会话前缀。

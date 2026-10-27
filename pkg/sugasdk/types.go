@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/memory"
@@ -227,6 +228,17 @@ type Hit struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Entry is one immutable session record returned by Engine.Entry. JSON is the
+// stored record body; Seq remains stable for the lifetime of the session.
+type Entry struct {
+	SessionID string          `json:"session_id"`
+	Seq       int64           `json:"seq"`
+	TurnID    string          `json:"turn_id,omitempty"`
+	Type      string          `json:"type"`
+	JSON      json.RawMessage `json:"json"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
 // SessionInfo is one row of Engine.Sessions.
 type SessionInfo struct {
 	ID        string    `json:"id"`
@@ -254,6 +266,7 @@ type SessionFilter struct {
 
 // MemoryEntry is one memory item.
 type MemoryEntry struct {
+	UUID    string `json:"uuid,omitempty"`
 	ID      string `json:"id,omitempty"`
 	Title   string `json:"title,omitempty"`
 	Body    string `json:"body,omitempty"`
@@ -334,6 +347,11 @@ func convertCard(c personal.SessionCard) Card {
 			CostUSD: c.Usage.CostUSD},
 		SegmentCount: c.SegmentCount, Turns: c.Turns,
 	}
+}
+
+// convertEntry maps an internal store entry without exposing internal types.
+func convertEntry(e store.Entry) Entry {
+	return Entry{SessionID: e.SessionID, Seq: e.Seq, TurnID: e.TurnID, Type: e.Type, JSON: e.JSON, CreatedAt: e.CreatedAt}
 }
 
 // convertMemoryEntry maps one memory entry of a scope.

@@ -293,7 +293,10 @@ func (s *Store) migrateUpTo(ctx context.Context, last string) error {
 			return err
 		}
 	}
-	return nil
+	if last != "" {
+		return nil
+	}
+	return s.BackfillMemoryUUIDs(ctx)
 }
 
 // parseUp extracts the UP section of a miglite-format file.

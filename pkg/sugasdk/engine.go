@@ -264,6 +264,21 @@ func (e *Engine) memoryStore() (*memory.Governed, error) {
 	return gov, nil
 }
 
+// memoryDatabase returns the metadata store kept open alongside the governed
+// memory layer. Initializing the layer first keeps SDK and tool writes on the
+// same SQLite database and policy path.
+func (e *Engine) memoryDatabase() (*store.Store, error) {
+	if _, err := e.memoryStore(); err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.memRepo == nil {
+		return nil, ErrEngineClosed
+	}
+	return e.memRepo, nil
+}
+
 // Search runs the session_search query of the whole store: every term must
 // occur in one entry. limit <= 0 means 20, at most 100.
 func (e *Engine) Search(ctx context.Context, query string, limit int) ([]Hit, error) {
@@ -331,6 +346,84 @@ func (e *Engine) Sessions(ctx context.Context, filter SessionFilter) ([]SessionI
 			Status: s.Status, Origin: sessionOrigin, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt})
 	}
 	return out, nil
+}
+
+// Entry reads one session record and its surrounding window. ref is
+// "<session>/<seq>"; window includes that many records on either side.
+// The sequence is assigned by the append-only store and is never rewritten.
+func (e *Engine) Entry(ctx context.Context, ref string, window int) ([]Entry, error) {
+	if e == nil {
+		return nil, ErrEngineClosed
+	}
+	sessionID, seq, err := parseEntryRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	if window < 0 {
+		return nil, errors.New("sugasdk: entry window must not be negative")
+	}
+	repo, err := e.openStore()
+	if err != nil {
+		return nil, err
+	}
+	defer repo.Close()
+	entries, err := repo.EntriesAround(ctx, sessionID, seq, window)
+	if err != nil {
+		return nil, fmt.Errorf("sugasdk: read entry %q: %w", ref, err)
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.Seq == seq {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("sugasdk: entry %q was not found", ref)
+	}
+	out := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, convertEntry(entry))
+	}
+	return out, nil
+}
+
+// parseEntryRef validates the stable session/sequence reference used by
+// Engine.Entry. Session ids cannot contain '/', so the last separator is safe.
+func parseEntryRef(ref string) (string, int64, error) {
+	ref = strings.TrimSpace(ref)
+	slash := strings.LastIndexByte(ref, '/')
+	if slash <= 0 || slash == len(ref)-1 {
+		return "", 0, fmt.Errorf("sugasdk: invalid entry reference %q", ref)
+	}
+	seq, err := strconv.ParseInt(ref[slash+1:], 10, 64)
+	if err != nil || seq <= 0 {
+		return "", 0, fmt.Errorf("sugasdk: invalid entry sequence in %q", ref)
+	}
+	return ref[:slash], seq, nil
+}
+
+// Pin changes the persistent keep marker of a session. A pin protects the
+// session from both age-based and origin-retention garbage collection, including
+// sessions that do not use the xhen origin. Explicit DeleteSession remains a
+// deliberate manual deletion and is not blocked by a pin.
+func (e *Engine) Pin(ctx context.Context, sessionID string, pinned bool) error {
+	if e == nil {
+		return ErrEngineClosed
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("sugasdk: session id is empty")
+	}
+	repo, err := e.openStore()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
+	if err := repo.PatchSessionMeta(ctx, sessionID, map[string]any{store.MetaPinned: pinned}); err != nil {
+		return fmt.Errorf("sugasdk: pin session %q: %w", sessionID, err)
+	}
+	return nil
 }
 
 // sessionInDir reports whether cwd is dir or below it (path boundaries, case
