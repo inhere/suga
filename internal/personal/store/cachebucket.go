@@ -94,6 +94,9 @@ const modelSwitchEvent = "model_switch"
 // CacheCall is one classified model call.
 type CacheCall struct {
 	Bucket string `json:"bucket"`
+	// FailedAttempt marks a provider attempt with no usable token usage. It is
+	// retained for the aggregate's failed_attempts counter, never a bucket row.
+	FailedAttempt bool `json:"-"`
 	// Step is the 1-based ordinal of the main-loop model calls (the same step
 	// number the trace analysis uses); a handoff side call keeps the step of the
 	// call before it, since it is not a step of the loop.
@@ -161,16 +164,17 @@ type CacheLowHit struct {
 
 // CacheBuckets is the cache classification of one session or of several runs.
 type CacheBuckets struct {
-	Buckets   []CacheBucketStat `json:"cache_buckets"`
-	LowSteady []CacheLowHit     `json:"steady_low_hit,omitempty"`
+	Buckets        []CacheBucketStat `json:"cache_buckets"`
+	LowSteady      []CacheLowHit     `json:"steady_low_hit,omitempty"`
+	FailedAttempts int               `json:"failed_attempts,omitempty"`
 }
 
 // bucketRow is what the classification reads of one event: the token counts of
 // a model call and the attrs that say why the request prefix changed.
 type bucketRow struct {
-	Kind, Name, Status           string
-	Input, CacheRead, CacheWrite int64
-	Purpose, Prefix              string
+	Kind, Name, Status                   string
+	Input, Output, CacheRead, CacheWrite int64
+	Purpose, Prefix                      string
 	// PrefixResume / ResumeReason: the persisted-fingerprint outcome of a first
 	// call of a resumed process (attrs prefix_resume / prefix_resume_reason).
 	PrefixResume, ResumeReason string
@@ -205,7 +209,7 @@ func ClassifyEvents(events []Event) []CacheCall {
 // reads.
 func eventBucketRow(e Event) bucketRow {
 	r := bucketRow{Kind: e.Kind, Name: e.Name, Status: e.Status,
-		Input: e.InputTokens, CacheRead: e.CacheReadTokens, CacheWrite: e.CacheWriteTokens}
+		Input: e.InputTokens, Output: e.OutputTokens, CacheRead: e.CacheReadTokens, CacheWrite: e.CacheWriteTokens}
 	switch e.Kind {
 	case EventModel:
 		r.Purpose, _ = e.Attrs["purpose"].(string)
@@ -251,13 +255,30 @@ type bucketState struct {
 // (oldest first). The prefix reason the recorder wrote on the call decides; the
 // events since the previous call are the fallback for sessions recorded before
 // that attr existed. Nothing is dropped: a call the trace cannot classify lands
-// in BucketUnknown.
+// in BucketUnknown. Attempts that failed or supplied no usage are retained as
+// FailedAttempt markers for the separate failed_attempts count.
 func classifyRows(rows []bucketRow) []CacheCall {
 	out := make([]CacheCall, 0, len(rows)/4+1)
 	st := &bucketState{}
 	for _, r := range rows {
 		switch r.Kind {
 		case EventModel:
+			if !r.usageAvailable() || r.Status != "ok" {
+				// A failed attempt, or one whose provider reported no usage, says
+				// nothing about the cache: it stays out of every bucket. A fallback on
+				// it still explains the next call (the pool moved on, so the previous
+				// request's cache cannot serve it), and a main-loop attempt counts as
+				// a step exactly as it does in the trace analysis (AnalyzeTrace), so
+				// the step numbers of the two views stay comparable.
+				if r.Fallback {
+					st.switched = true
+				}
+				if r.Purpose == "" {
+					st.step++
+				}
+				out = append(out, CacheCall{FailedAttempt: true})
+				continue
+			}
 			if r.Purpose != "" {
 				// A side call (purpose=compact writes the handoff package) sends a
 				// prompt of its own and does not interrupt the conversation, so it
@@ -295,6 +316,12 @@ func classifyRows(rows []bucketRow) []CacheCall {
 		}
 	}
 	return out
+}
+
+// usageAvailable reports whether the provider supplied any token usage. A
+// successful response with no usage is not useful for cache attribution.
+func (r bucketRow) usageAvailable() bool {
+	return r.Input > 0 || r.Output > 0 || r.CacheRead > 0 || r.CacheWrite > 0
 }
 
 // bucketOf decides the bucket of one main-loop model call; st carries what the
@@ -398,7 +425,12 @@ func hasPending(pending []string, name string) bool {
 // the first lowHitLimit steady calls below SteadyLowHitBelow (0 lists none).
 func AggregateCacheBuckets(calls []CacheCall, lowHitLimit int) CacheBuckets {
 	acc := make(map[string]*CacheBucketStat, len(cacheBucketOrder))
+	failedAttempts := 0
 	for _, c := range calls {
+		if c.FailedAttempt {
+			failedAttempts++
+			continue
+		}
 		st := acc[c.Bucket]
 		if st == nil {
 			st = &CacheBucketStat{Bucket: c.Bucket}
@@ -426,7 +458,7 @@ func AggregateCacheBuckets(calls []CacheCall, lowHitLimit int) CacheBuckets {
 			st.CacheReported = true
 		}
 	}
-	out := CacheBuckets{Buckets: make([]CacheBucketStat, 0, len(acc))}
+	out := CacheBuckets{Buckets: make([]CacheBucketStat, 0, len(acc)), FailedAttempts: failedAttempts}
 	for _, name := range cacheBucketOrder {
 		st := acc[name]
 		if st == nil {
@@ -473,7 +505,7 @@ func lowSteadyCalls(calls []CacheCall, limit int) []CacheLowHit {
 // steady low-hit calls (0 lists none).
 func (s *Store) BuildCacheBuckets(ctx context.Context, f EventFilter, lowHitLimit int) (CacheBuckets, error) {
 	where, args := bucketFilter(f)
-	q := `SELECT session_id, kind, name, status, input_tokens, cache_read_tokens, cache_write_tokens,
+	q := `SELECT session_id, kind, name, status, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
 		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.purpose') = 'text'
 			THEN json_extract(attrs_json, '$.purpose') ELSE '' END,
 		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix') = 'text'
@@ -516,7 +548,7 @@ func (s *Store) BuildCacheBuckets(ctx context.Context, f EventFilter, lowHitLimi
 			invalidated int
 			fallback    int
 		)
-		if err := rows.Scan(&sid, &r.Kind, &r.Name, &r.Status, &r.Input, &r.CacheRead, &r.CacheWrite,
+		if err := rows.Scan(&sid, &r.Kind, &r.Name, &r.Status, &r.Input, &r.Output, &r.CacheRead, &r.CacheWrite,
 			&r.Purpose, &r.Prefix, &invalidated, &r.PrefixResume, &r.ResumeReason, &r.Model, &fallback,
 			&r.Reused, &r.Rebuilt, &r.Fresh); err != nil {
 			return CacheBuckets{}, fmt.Errorf("cache buckets: %w", err)

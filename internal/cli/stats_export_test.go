@@ -14,6 +14,7 @@ import (
 
 	"github.com/gookit/goutil/x/assert"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 )
 
@@ -91,6 +92,32 @@ func TestStatsCommand(t *testing.T) {
 		assert.Eq(t, int64(30), tl.P95Ms)
 		assert.Eq(t, 1, rep.Compactions)
 		assert.Eq(t, 1, rep.ToolSearch)
+		assert.Eq(t, 1, rep.FailedAttempts)
+		assert.Require(t, assert.Eq(t, 1, len(rep.CacheBuckets)))
+		assert.Eq(t, 2, rep.CacheBuckets[0].Calls)
+	})
+	t.Run("trace analysis agrees with the bucket table", func(t *testing.T) {
+		// The stats command and the trace analysis classify the same events: an
+		// attempt that failed or reported no usage is in neither bucket table, only
+		// in the failed_attempts count.
+		out, err := runCLI(t, ctx, "inspect", "trace", "obs-1", "--analyze", "--json")
+		assert.NoErr(t, err)
+		var a personal.TraceAnalysis
+		assert.NoErr(t, json.Unmarshal([]byte(out), &a))
+		statsJSON, err := runCLI(t, ctx, "inspect", "stats", "--session", "obs-1", "--json")
+		assert.NoErr(t, err)
+		var rep store.Report
+		assert.NoErr(t, json.Unmarshal([]byte(statsJSON), &rep))
+		assert.Eq(t, rep.FailedAttempts, a.FailedAttempts)
+		assert.Eq(t, 1, a.FailedAttempts)
+		assert.Require(t, assert.Eq(t, len(rep.CacheBuckets), len(a.CacheBuckets)))
+		assert.Eq(t, 1, a.CacheBuckets[0].Calls)
+		statsText, err := runCLI(t, ctx, "inspect", "stats", "--session", "obs-1")
+		assert.NoErr(t, err)
+		assert.StrContains(t, statsText, "failed_attempts")
+		analyzeText, err := runCLI(t, ctx, "inspect", "trace", "obs-1", "--analyze")
+		assert.NoErr(t, err)
+		assert.StrContains(t, analyzeText, "failed attempts")
 	})
 	t.Run("since filters old events", func(t *testing.T) {
 		out, err := runCLI(t, ctx, "inspect", "stats", "--since", "7d", "--json")
@@ -104,6 +131,10 @@ func TestStatsCommand(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "anthropic/m1")
 		assert.StrContains(t, out, "compactions: 0")
+		// That session has no failed attempt: the row stays hidden, so the table of
+		// an all-success session reads as before.
+		assert.StrNotContains(t, out, "failed_attempts")
+		assert.StrContains(t, out, "cold")
 	})
 	t.Run("bad args", func(t *testing.T) {
 		_, err := runCLI(t, ctx, "inspect", "stats", "--since", "abc")

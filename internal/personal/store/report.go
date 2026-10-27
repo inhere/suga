@@ -55,6 +55,9 @@ type Report struct {
 	Tools       []ToolStat  `json:"tools"`
 	Compactions int         `json:"compactions"`
 	ToolSearch  int         `json:"tool_searches"`
+	// FailedAttempts counts provider attempts omitted from cache buckets because
+	// they failed or reported no token usage.
+	FailedAttempts int `json:"failed_attempts,omitempty"`
 	// CacheBuckets splits the model calls by cache bucket (see CacheBucket*).
 	// BuildReport leaves it nil - its SQL pass is bucket-blind - and the stats
 	// command fills it from BuildCacheBuckets, so a caller that wants only the

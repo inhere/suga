@@ -17,21 +17,25 @@ const analyzeJSON = `{"model_calls":3,"cache_buckets":[
 
 func TestParseCacheBuckets(t *testing.T) {
 	t.Run("buckets and low hits", func(t *testing.T) {
-		buckets, low := parseCacheBuckets([]byte(analyzeJSON))
+		buckets, low, failed := parseCacheBuckets([]byte(analyzeJSON))
 		assert.Require(t, assert.Eq(t, 2, len(buckets)))
 		assert.Eq(t, "steady", buckets[1].Bucket)
 		assert.Eq(t, int64(1800), buckets[1].CacheRead)
-		assert.Eq(t, 0.9, buckets[1].Hit)
+		assert.Eq(t, 0, failed)
 		assert.Require(t, assert.Eq(t, 1, len(low)))
 		assert.Eq(t, 2, low[0].Step)
 		assert.Eq(t, int64(400), low[0].Uncached)
 	})
 	t.Run("no buckets, no error", func(t *testing.T) {
 		for _, raw := range []string{`[]`, `{"model_calls":1}`, `not json`} {
-			buckets, low := parseCacheBuckets([]byte(raw))
+			buckets, low, _ := parseCacheBuckets([]byte(raw))
 			assert.Eq(t, 0, len(buckets))
 			assert.Eq(t, 0, len(low))
 		}
+	})
+	t.Run("reads failed attempts", func(t *testing.T) {
+		_, _, failed := parseCacheBuckets([]byte(`{"cache_buckets":[],"failed_attempts":2}`))
+		assert.Eq(t, 2, failed)
 	})
 }
 
@@ -39,7 +43,7 @@ func TestParseCacheBuckets(t *testing.T) {
 // steady bucket sits beside the overall row so the two are comparable.
 func TestPrintCacheBuckets(t *testing.T) {
 	t.Run("steady and overall side by side", func(t *testing.T) {
-		buckets, low := parseCacheBuckets([]byte(analyzeJSON))
+		buckets, low, _ := parseCacheBuckets([]byte(analyzeJSON))
 		rs := []Result{{Task: "a", CacheBuckets: buckets, SteadyLowHit: low}}
 		var buf bytes.Buffer
 		printCacheBuckets(&buf, rs)
@@ -51,6 +55,11 @@ func TestPrintCacheBuckets(t *testing.T) {
 		assert.StrContains(t, out, "cold               1   1000       0          -")
 		assert.StrContains(t, out, "steady calls under the target hit rate")
 		assert.StrContains(t, out, "  a                                 2        400       2000    80.0  -")
+	})
+	t.Run("prints failed attempts after pooled buckets", func(t *testing.T) {
+		var buf bytes.Buffer
+		printCacheBuckets(&buf, []Result{{Task: "a", CacheBuckets: []cacheBucket{{Bucket: "cold", Calls: 1}}, FailedAttempts: 2}})
+		assert.StrContains(t, buf.String(), "failed attempts: 2")
 	})
 	t.Run("nothing pooled prints nothing", func(t *testing.T) {
 		var buf bytes.Buffer

@@ -68,6 +68,23 @@ func TestAnalyzeTraceCacheBuckets(t *testing.T) {
 		assert.StrNotContains(t, out.String(), "steady low hit")
 	})
 
+	t.Run("failed attempts are reported separately", func(t *testing.T) {
+		failed := cacheModel(prefixAppend, 0, 0)
+		failed.Status = eventError
+		failed.Attrs["fallback"] = "next, transient"
+		a := AnalyzeTrace([]store.Event{
+			cacheModel(prefixFirst, 1000, 0),
+			failed,
+			cacheModel(prefixAppend, 1200, 1000),
+		})
+		assert.Eq(t, 1, a.FailedAttempts)
+		assert.Require(t, assert.Eq(t, 2, len(a.CacheBuckets)))
+		assert.Eq(t, 1, a.CacheBuckets[1].Calls)
+		var out bytes.Buffer
+		assert.NoErr(t, WriteTraceAnalysis(&out, a, false))
+		assert.StrContains(t, out.String(), "failed attempts")
+	})
+
 	t.Run("nothing to classify stays silent", func(t *testing.T) {
 		a := AnalyzeTrace([]store.Event{{Kind: store.EventTool, Name: "file_read", Status: eventOK}})
 		assert.Eq(t, 0, len(a.CacheBuckets))

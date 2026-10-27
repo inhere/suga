@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
@@ -28,4 +29,14 @@ func TestStatsTextCleansProviderAndModelLabel(t *testing.T) {
 	assert.NoErr(t, writeStatsText(&out, rep))
 	assert.NotContains(t, out.String(), "\x1b")
 	assert.StrContains(t, out.String(), "provider/model")
+}
+
+func TestStatsTextShowsFailedAttemptsAfterTotal(t *testing.T) {
+	rep := store.Report{FailedAttempts: 1, CacheBuckets: []store.CacheBucketStat{{Bucket: store.BucketCold, Calls: 1, InputTokens: 100}}}
+	var out bytes.Buffer
+	assert.NoErr(t, writeStatsText(&out, rep))
+	text := out.String()
+	assert.StrContains(t, text, "total")
+	assert.StrContains(t, text, "failed_attempts")
+	assert.True(t, strings.Index(text, "total") < strings.Index(text, "failed_attempts"))
 }
