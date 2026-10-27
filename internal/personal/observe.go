@@ -167,6 +167,12 @@ func (r *recorder) attemptObserver(defName, defModel string) llm.AttemptObserver
 		}
 		if p := purposeFrom(ctx); p != "" { // ordinary calls carry no purpose
 			e.Attrs["purpose"] = p
+			if reuse := handoffReuseFrom(ctx); reuse != "" {
+				// A handoff-package call of a segment break: prefix (it continued the
+				// segment's main-loop request) or fallback:<reason> (the old path, and
+				// why). Any other purpose carries no such attr.
+				e.Attrs[attrHandoffReuse] = reuse
+			}
 		} else if rep, ok := r.prefix.report(observeScopeFrom(ctx).sessionID); ok {
 			// How this request relates to the previous one (cache attribution).
 			e.Attrs["prefix"] = rep.Reason

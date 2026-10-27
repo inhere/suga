@@ -71,7 +71,11 @@ func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous s
 	}
 	plan := r.latestPlan(ctx, sessionID)
 	cands := refCandidates(sessionID, items, cut)
-	body, err := r.summarize(ctx, scenario, packageInput{previous: previous, dropped: items[:cut], plan: plan, requests: requests, candidates: cands}, threshold)
+	in := packageInput{previous: previous, dropped: items[:cut], plan: plan, requests: requests, candidates: cands}
+	// The handoff call may continue the segment's last main-loop request
+	// (segment_handoff_reuse.go): tail is what the new segment keeps verbatim.
+	in.reuse, in.reuseFallback = r.prepareHandoffReuse(sessionID, scenario, len(items)-cut)
+	body, err := r.summarize(ctx, scenario, in, threshold)
 	if err != nil {
 		return segmentPackage{}, err
 	}

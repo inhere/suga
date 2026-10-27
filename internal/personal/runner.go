@@ -150,6 +150,12 @@ type Config struct {
 	// set; nil means the turn's own provider is used.
 	CompactProvider agentcore.Provider
 	CompactModel    string
+	// HandoffReusePrefix lets the handoff package of a segment break continue the
+	// segment's last main-loop request (context.handoff_reuse_prefix, default on
+	// at the wiring): the request is then the same System, tools and messages
+	// plus one instruction, so the provider cache serves it. Off keeps the old
+	// request byte for byte (the rollback switch, design 2026-10-27).
+	HandoffReusePrefix bool
 	// IdleProvider/IdleModel serve the idle consolidation (models.idle); nil
 	// means the compact provider is used. HandoffProvider/HandoffModel serve
 	// the --from handoff package (models.handoff) the same way.
@@ -787,6 +793,10 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 			runID: result.RunID, record: r.rec.record,
 			counts: map[string]int{}, hints: map[string]int{}})
 	}
+	// The handoff reuse of a segment break continues the last main-loop request as
+	// it was sent (segment_handoff_reuse.go), so it is kept after every hook that
+	// may still change the request.
+	hooks = append(hooks, handoffRequestHook{tracker: r.rec.prefix})
 	return hooks
 }
 

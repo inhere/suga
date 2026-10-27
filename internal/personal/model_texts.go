@@ -12,6 +12,10 @@ const (
 	modelDeadlineRemaining = "model.deadline.remaining"
 	modelBudgetCost        = "model.budget.cost"
 	modelBudgetTokens      = "model.budget.tokens"
+	// modelHandoffReuseScope is the clause of the reuse path's handoff
+	// instruction that replaces the transcript: how far the summary reaches
+	// (the tail is kept verbatim) and that the call must not go on working.
+	modelHandoffReuseScope = "model.handoff.reuse_scope"
 )
 
 // modelTr returns the catalog the model-facing wording of a run is read from

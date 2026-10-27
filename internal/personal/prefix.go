@@ -158,11 +158,15 @@ type prefixTracker struct {
 	// resumed holds the fingerprint a previous process left for a session: it
 	// is the baseline of the session's first request only.
 	resumed map[string]*requestPrint
+	// requests keeps each session's last main-loop request as it was sent: the
+	// handoff-package call of a segment break continues it when it may
+	// (segment_handoff_reuse.go).
+	requests map[string]*agentcore.GenerateRequest
 }
 
 func newPrefixTracker() *prefixTracker {
 	return &prefixTracker{last: map[string]*requestPrint{}, reports: map[string]prefixReport{},
-		resumed: map[string]*requestPrint{}}
+		resumed: map[string]*requestPrint{}, requests: map[string]*agentcore.GenerateRequest{}}
 }
 
 // seed gives the tracker the request fingerprint a previous process persisted,
@@ -331,6 +335,41 @@ func prefixPrintFromMeta(meta map[string]any) *printRecord {
 		return nil // an unreadable record counts as none
 	}
 	return &rec
+}
+
+// observeRequest keeps req as the session's last main-loop request. The request
+// is the runtime's own copy of what it is about to send (never mutated later),
+// so the reuse request of a segment break can reproduce it byte for byte.
+func (t *prefixTracker) observeRequest(sessionID string, req *agentcore.GenerateRequest) {
+	if t == nil || sessionID == "" || req == nil || len(req.Messages) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.requests[sessionID] = req
+}
+
+// lastRequest returns the session's last main-loop request (nil when the session
+// sent none in this process, or when a segment break cleared it).
+func (t *prefixTracker) lastRequest(sessionID string) *agentcore.GenerateRequest {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.requests[sessionID]
+}
+
+// clearRequest forgets the session's last main-loop request: after a segment
+// break it no longer belongs to the current segment, so a break that finds no
+// newer request falls back to the old handoff path (no_request).
+func (t *prefixTracker) clearRequest(sessionID string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.requests, sessionID)
 }
 
 // savePrefixPrint persists the session's last request fingerprint (see
