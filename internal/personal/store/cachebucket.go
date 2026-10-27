@@ -113,6 +113,10 @@ type CacheCall struct {
 	// PrefixTokens is the estimated size of the cacheable prefix of the previous
 	// request, in tokens: what a provider cache could have served of this call.
 	PrefixTokens int64 `json:"prefix_reused_tokens,omitempty"`
+	// HandoffReuse is how a handoff-package call of a segment break was made
+	// (attrs.handoff_reuse): prefix when it continued the segment's main-loop
+	// request, fallback:<reason> when the old path asked instead.
+	HandoffReuse string `json:"handoff_reuse,omitempty"`
 }
 
 // CacheBucketStat aggregates the calls of one cache bucket. InputTokens follows
@@ -139,6 +143,10 @@ type CacheBucketStat struct {
 	// Reasons counts the calls of a prefix-change bucket by cause (system, tools,
 	// fold, segment, rewrite): what to fix first.
 	Reasons map[string]int `json:"reasons,omitempty"`
+	// HandoffReuse counts the handoff-package calls of segment breaks by how they
+	// were made (prefix, fallback:<reason>): whether the reuse of the segment
+	// prefix held up (design 2026-10-27).
+	HandoffReuse map[string]int `json:"handoff_reuse,omitempty"`
 }
 
 // CacheLowHit is one steady call whose hit rate stayed below SteadyLowHitBelow:
@@ -173,6 +181,9 @@ type bucketRow struct {
 	Model                  string
 	Fallback               bool
 	CacheInvalidated       bool
+	// HandoffReuse is attrs.handoff_reuse of a handoff-package call (prefix or
+	// fallback:<reason>): how the handoff package of a segment break was written.
+	HandoffReuse string
 }
 
 // bucketKinds are the event kinds the cache classification reads: the model
@@ -202,6 +213,7 @@ func eventBucketRow(e Event) bucketRow {
 		r.PrefixResume, _ = e.Attrs["prefix_resume"].(string)
 		r.ResumeReason, _ = e.Attrs["prefix_resume_reason"].(string)
 		r.Model, _ = e.Attrs["model"].(string)
+		r.HandoffReuse, _ = e.Attrs["handoff_reuse"].(string)
 		_, r.Fallback = e.Attrs["fallback"]
 		r.Reused, r.Rebuilt, r.Fresh = attrInt(e.Attrs["prefix_reused"]), attrInt(e.Attrs["prefix_rebuilt"]), attrInt(e.Attrs["prefix_fresh"])
 	case EventToolSearch:
@@ -251,7 +263,7 @@ func classifyRows(rows []bucketRow) []CacheCall {
 				// prompt of its own and does not interrupt the conversation, so it
 				// takes no step and clears nothing.
 				out = append(out, CacheCall{Bucket: BucketHandoff, Step: st.step,
-					Input: r.Input, CacheRead: r.CacheRead, CacheWrite: r.CacheWrite})
+					Input: r.Input, CacheRead: r.CacheRead, CacheWrite: r.CacheWrite, HandoffReuse: r.HandoffReuse})
 				continue
 			}
 			st.step++
@@ -403,6 +415,12 @@ func AggregateCacheBuckets(calls []CacheCall, lowHitLimit int) CacheBuckets {
 				st.Reasons = map[string]int{}
 			}
 			st.Reasons[c.Reason]++
+		}
+		if c.HandoffReuse != "" {
+			if st.HandoffReuse == nil {
+				st.HandoffReuse = map[string]int{}
+			}
+			st.HandoffReuse[c.HandoffReuse]++
 		}
 		if c.CacheRead+c.CacheWrite > 0 {
 			st.CacheReported = true

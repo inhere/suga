@@ -139,3 +139,7 @@ prefix_tokens = 本次 prompt token × reused 字节 / (reused+rebuilt+fresh 字
 - `scripts/eval`：按桶汇总表新增 `REUSE%`，`compare.md` 的总览新增 `steady 复用%` 列并追加「按桶前缀复用率」小节。
 
 本步**没有跑真实模型**（下一步做），也没有在任何真实会话上取数：新增的桶与复用率目前只有单元测试覆盖。
+
+## 第四十六批：写交接包的调用沿用会话前缀（本设计）
+
+上面「写交接包的调用几乎不命中」是本节最大的可省部分；换段交接包改成沿用本段最后一次主循环请求（只多末尾一条指令）的方案、回退条件与验收口径见 `docs/design/2026-10-27-handoff-prefix-reuse-design.md`，新的计数看 `inspect trace --analyze` 的 `handoff reuse` 行与 `scripts/eval` 汇总里的交接包调用统计。

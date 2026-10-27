@@ -689,16 +689,20 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		ImageRequestBytes: images.MaxRequestBytes,
 		CompactProvider:   compactProvider,
 		CompactModel:      compactModel,
-		IdleProvider:      idleProvider,
-		IdleModel:         idleModel,
-		HandoffProvider:   handoffProvider,
-		HandoffModel:      handoffModel,
-		Plans:             plans,
-		Ledger:            ledger,
-		MemoryIndex:       mem.index,
-		Workspace:         workspace,
-		Version:           buildVersion,
-		Mode:              runMode(allowWrite),
+		// The handoff package of a segment break continues the segment's own
+		// prefix unless context.handoff_reuse_prefix says otherwise (the rollback
+		// switch of design 2026-10-27).
+		HandoffReusePrefix: gkconfig.Bool("context.handoff_reuse_prefix", true),
+		IdleProvider:       idleProvider,
+		IdleModel:          idleModel,
+		HandoffProvider:    handoffProvider,
+		HandoffModel:       handoffModel,
+		Plans:              plans,
+		Ledger:             ledger,
+		MemoryIndex:        mem.index,
+		Workspace:          workspace,
+		Version:            buildVersion,
+		Mode:               runMode(allowWrite),
 		// chat shows what a file tool changed (chat.diff): its tool_call events then
 		// carry the change on disk (internal/diffview). run, ACP and stream-json keep
 		// file text out of their events; ACP builds its own diff for its client.

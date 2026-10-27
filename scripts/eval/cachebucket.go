@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -28,6 +29,10 @@ type cacheBucket struct {
 	// so the steady 95% target is read with it (reuse it is, see Reuse).
 	PrefixTokens int64   `json:"prefix_reused_tokens"`
 	Reuse        float64 `json:"prefix_reuse_rate"`
+	// HandoffReuse counts the handoff-package calls of segment breaks by how they
+	// were made (prefix, fallback:<reason>): whether writing the package
+	// continued the segment's main-loop prefix (design 2026-10-27).
+	HandoffReuse map[string]int `json:"handoff_reuse,omitempty"`
 }
 
 // prompt is every prompt token the bucket sent.
@@ -91,6 +96,12 @@ func poolBuckets(rs []Result) []cacheBucket {
 			st.CacheWrite += b.CacheWrite
 			st.PrefixTokens += b.PrefixTokens
 			st.CacheReported = st.CacheReported || b.CacheReported
+			for why, n := range b.HandoffReuse {
+				if st.HandoffReuse == nil {
+					st.HandoffReuse = map[string]int{}
+				}
+				st.HandoffReuse[why] += n
+			}
 		}
 	}
 	if len(sums) == 0 {
@@ -180,7 +191,32 @@ func printCacheBuckets(w io.Writer, rs []Result) {
 		}
 		fmt.Fprintf(w, "  %-14s %5d   %-9d  %-9d  %-5s  %s\n", b.Bucket, b.Calls, b.prompt(), b.CacheRead, hit, reuse)
 	}
+	if line := handoffReuseLine(buckets); line != "" {
+		fmt.Fprintf(w, "handoff package calls: %s\n", line)
+	}
 	printSteadyLowHits(w, rs)
+}
+
+// handoffReuseLine renders how the handoff-package calls of segment breaks were
+// made, pooled over every run: prefix (the call continued the segment's
+// main-loop request) and the fallback reasons ("" without such data).
+func handoffReuseLine(buckets []cacheBucket) string {
+	for _, b := range buckets {
+		if b.Bucket != "handoff" || len(b.HandoffReuse) == 0 {
+			continue
+		}
+		names := make([]string, 0, len(b.HandoffReuse))
+		for why := range b.HandoffReuse {
+			names = append(names, why)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, why := range names {
+			parts = append(parts, fmt.Sprintf("%s %d", why, b.HandoffReuse[why]))
+		}
+		return strings.Join(parts, ", ")
+	}
+	return ""
 }
 
 // printSteadyLowHits lists the steady calls under the target hit rate of every

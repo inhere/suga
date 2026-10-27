@@ -407,6 +407,9 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 	// the new snapshot through compose.
 	b.r.cacheSegmentMeta(wctx, b.sessionID, seg) // also resets the fold baseline
 	b.foldBase, b.foldPending, b.foldActive = 0, nil, false
+	// The closing segment's last request is spent: a later break that finds no
+	// newer main-loop request falls back to the old handoff path (no_request).
+	b.r.rec.prefix.clearRequest(b.sessionID)
 	return &compactOutcome{tokensBefore: before, tokensAfter: after, firstKeptSeq: firstKept, segment: segment}, nil
 }
 
@@ -518,24 +521,19 @@ type packageInput struct {
 	plan       string         // latest plan entry JSON ("" = none)
 	requests   []string       // recent user requests, original text, oldest first
 	candidates []refCandidate // refs the model may pick from
+	// reuse is the segment's last main-loop request the handoff call may
+	// continue (segment_handoff_reuse.go); nil takes the old path.
+	reuse *handoffReuse
+	// reuseFallback names why the reuse was not attempted at all ("" = this path
+	// is no segment break: the cross-session handoff and the idle consolidation).
+	reuseFallback string
 }
 
-// summarize asks the model for the handoff package body (compactTemplate) of
-// in.dropped, folding in the previous package and the latest plan, pointed at
-// the current task by the recent requests and offered the candidate refs. The
-// transcript is size-capped so the request itself fits the window. Context
-// updates are skipped: the next segment re-reads rules and the rest into its
-// own snapshot.
-//
-// The fold is bounded on three sides (research 2026-10-22 §5 #2): the previous
-// package enters deduped and cut to its budgets (foldPreviousPackage), the call
-// sets no output cap (handoffOutputTokens: a cap starved reasoning models), and the body
-// that comes back is normalized again (normalizeHandoffBody) - which cuts the
-// capped sections and never the protected one. A summary cut short by the cap
-// is asked for once more with the budgets restated.
-func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput, threshold int) (string, error) {
-	dropped := withoutContextUpdates(in.dropped)
-	transcript := renderTranscript(dropped, max(threshold*3, 8000))
+// handoffPromptHead renders the parts both handoff requests share: the template,
+// the previous package, the plan, the recent requests and the candidate refs.
+// The two paths differ only in what follows them (the transcript, or the
+// instruction of the reuse path).
+func handoffPromptHead(in packageInput, transcript string) string {
 	var sb strings.Builder
 	sb.WriteString(compactTemplate)
 	if in.previous != "" {
@@ -556,22 +554,69 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 			sb.WriteString("- " + c.ref + " — " + c.note + "\n")
 		}
 	}
-	sb.WriteString("\n\n# 待压缩的对话\n")
-	sb.WriteString(transcript)
+	return sb.String()
+}
+
+// handoffPrompt is the old path's user message: the shared parts and the
+// size-capped transcript of the part of the view that leaves the raw context.
+// The reuse path sends the view itself and appends an instruction instead
+// (segment_handoff_reuse.go), so this text stays byte for byte what it was.
+func handoffPrompt(in packageInput, transcript string) string {
+	return handoffPromptHead(in, transcript) + "\n\n# 待压缩的对话\n" + transcript
+}
+
+// summarize asks the model for the handoff package body (compactTemplate) of
+// in.dropped, folding in the previous package and the latest plan, pointed at
+// the current task by the recent requests and offered the candidate refs. The
+// transcript is size-capped so the request itself fits the window. Context
+// updates are skipped: the next segment re-reads rules and the rest into its
+// own snapshot.
+//
+// The fold is bounded on three sides (research 2026-10-22 §5 #2): the previous
+// package enters deduped and cut to its budgets (foldPreviousPackage), the call
+// sets no output cap (handoffOutputTokens: a cap starved reasoning models), and the body
+// that comes back is normalized again (normalizeHandoffBody) - which cuts the
+// capped sections and never the protected one. A summary cut short by the cap
+// is asked for once more with the budgets restated.
+func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput, threshold int) (string, error) {
+	dropped := withoutContextUpdates(in.dropped)
+	transcript := renderTranscript(dropped, max(threshold*3, 8000))
 
 	// No cap of our own (handoffOutputTokens is 0): going over the budgets is
 	// handled downstream by normalizeHandoffBody (capped sections cut, protected
 	// section kept), and an answer the provider still truncated is asked for once
 	// more.
 	maxTokens := handoffOutputTokens()
-	body, truncated, err := r.summaryCall(ctx, scenario, sb.String(), maxTokens)
+	fallback := in.reuseFallback
+	if in.reuse != nil {
+		// The reuse path: the segment's own request plus one instruction, so the
+		// provider cache serves the conversation (design 2026-10-27, H1/H2).
+		instruction := handoffPromptHead(in, transcript) + "\n\n" + r.reuseScopeText(in.reuse.tail)
+		body, truncated, reason := r.reuseCall(ctx, in.reuse, instruction, maxTokens)
+		if reason == "" {
+			if truncated {
+				slog.Warn("handoff summary hit the output cap; asking once more with the budgets restated",
+					"max_tokens", maxTokens, "summary_bytes", len(body))
+				if again, _, why := r.reuseCall(ctx, in.reuse, instruction+completeProtectedNote, maxTokens); why == "" && strings.TrimSpace(again) != "" {
+					body = again
+				}
+			}
+			return normalizeHandoffBody(strings.TrimSpace(body)), nil
+		}
+		fallback = reason
+	}
+	if fallback != "" {
+		// The trace says why this handoff call did not continue the prefix.
+		ctx = withHandoffReuse(ctx, handoffReuseFallbackPrefix+fallback)
+	}
+	body, truncated, err := r.summaryCall(ctx, scenario, handoffPrompt(in, transcript), maxTokens)
 	if err != nil {
 		return "", err
 	}
 	if truncated {
 		slog.Warn("handoff summary hit the output cap; asking once more with the budgets restated",
 			"max_tokens", maxTokens, "summary_bytes", len(body))
-		if again, _, aerr := r.summaryCall(ctx, scenario, sb.String()+completeProtectedNote, maxTokens); aerr == nil && strings.TrimSpace(again) != "" {
+		if again, _, aerr := r.summaryCall(ctx, scenario, handoffPrompt(in, transcript)+completeProtectedNote, maxTokens); aerr == nil && strings.TrimSpace(again) != "" {
 			body = again
 		}
 	}
@@ -597,6 +642,21 @@ func (r *Runner) summaryCall(ctx context.Context, scenario, prompt string, maxTo
 		return "", false, errors.New("summarize context: empty summary")
 	}
 	return res.Content, res.Truncated, nil
+}
+
+// summaryRequest makes one already built summary request (the reuse path of a
+// segment break) and reports the answer's text, how many tool calls it asked
+// for and whether the provider cut it at the output limit. An empty answer is
+// not an error here: the reuse path discards it and asks the old way.
+func summaryRequest(ctx context.Context, p agentcore.Provider, req *agentcore.GenerateRequest) (body string, toolCalls int, truncated bool, err error) {
+	res, err := generateQuietly(withPurpose(ctx, purposeCompact), p, req)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("summarize context: %w", err)
+	}
+	if res == nil {
+		return "", 0, false, nil
+	}
+	return res.Content, len(res.ToolCalls), res.Truncated, nil
 }
 
 // withoutContextUpdates returns items without replayed context updates

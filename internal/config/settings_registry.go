@@ -130,6 +130,11 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "context.fold_every", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
 	{Pattern: "context.fold_keep", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
 	{Pattern: "context.fold_at", Type: ConfigTypeFloat, Writable: true, Reader: "fold"},
+	// context.handoff_reuse_prefix: the handoff package of a segment break is
+	// written on top of the segment's last main-loop request (same system, tools
+	// and messages plus one instruction), so the provider cache serves it; false
+	// keeps the old separate request (the rollback switch).
+	{Pattern: "context.handoff_reuse_prefix", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "images.history_turns", Type: ConfigTypeInt, Writable: true, Reader: "images"},
 	{Pattern: "images.max_request_count", Type: ConfigTypeInt, Writable: true, Reader: "images"},
 	{Pattern: "images.max_request_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "images"},
