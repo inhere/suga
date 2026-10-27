@@ -22,6 +22,12 @@ type cacheBucket struct {
 	CacheWrite    int64   `json:"cache_write_tokens"`
 	Hit           float64 `json:"cache_hit_rate"`
 	CacheReported bool    `json:"cache_reported"`
+	// PrefixTokens is the estimated cacheable prefix of the calls' previous
+	// requests (tokens) and Reuse = cache read / that: of what the provider could
+	// have served, how much it did. It does not depend on how much a call added,
+	// so the steady 95% target is read with it (reuse it is, see Reuse).
+	PrefixTokens int64   `json:"prefix_reused_tokens"`
+	Reuse        float64 `json:"prefix_reuse_rate"`
 }
 
 // prompt is every prompt token the bucket sent.
@@ -83,6 +89,7 @@ func poolBuckets(rs []Result) []cacheBucket {
 			st.Input += b.Input
 			st.CacheRead += b.CacheRead
 			st.CacheWrite += b.CacheWrite
+			st.PrefixTokens += b.PrefixTokens
 			st.CacheReported = st.CacheReported || b.CacheReported
 		}
 	}
@@ -97,23 +104,27 @@ func poolBuckets(rs []Result) []cacheBucket {
 			continue
 		}
 		st.Hit = hitOf(st.CacheRead, st.Input+st.CacheRead+st.CacheWrite)
+		st.Reuse = reuseOf(st.CacheRead, st.PrefixTokens)
 		out = append(out, *st)
 		overall.Calls += st.Calls
 		overall.Input += st.Input
 		overall.CacheRead += st.CacheRead
 		overall.CacheWrite += st.CacheWrite
+		overall.PrefixTokens += st.PrefixTokens
 		overall.CacheReported = overall.CacheReported || st.CacheReported
 	}
 	overall.Bucket = "overall"
 	overall.Hit = hitOf(overall.CacheRead, overall.Input+overall.CacheRead+overall.CacheWrite)
+	overall.Reuse = reuseOf(overall.CacheRead, overall.PrefixTokens)
 	return append(out, overall)
 }
 
 // cacheBucketNames is the report order of the buckets, as suga names them
-// (store.Bucket*): the session's first call, the prefix breaks, the steady
-// calls and the buckets that are not a step of the loop.
+// (store.Bucket*): the session's first call, the prefix breaks, the resumed and
+// steady calls and the buckets that are not a step of the loop.
 func cacheBucketNames() []string {
-	return []string{"cold", "segment_start", "after_fold", "resume", "steady", "handoff", "unknown"}
+	return []string{"cold", "segment_start", "after_fold", "resume", "resume_same", "resume_changed",
+		"provider_switch", "steady", "handoff", "unknown"}
 }
 
 // hitOf is cache read over prompt tokens, 0 when the bucket sent nothing.
@@ -122,6 +133,28 @@ func hitOf(read, prompt int64) float64 {
 		return 0
 	}
 	return float64(read) / float64(prompt)
+}
+
+// reuseOf is cache read over the estimated cacheable prefix of the previous
+// requests, capped at 100% (the estimate is derived from JSON sizes, so a
+// provider serving the whole prompt is not read as more than all).
+func reuseOf(read, prefix int64) float64 {
+	if prefix <= 0 {
+		return 0
+	}
+	return float64(min(read, prefix)) / float64(prefix)
+}
+
+// reuseCell renders one pooled bucket's prefix reuse rate of rs: "-" when no
+// row of the bucket carried a prefix estimate (an older binary's trace).
+func reuseCell(buckets []cacheBucket, name string) string {
+	for _, b := range buckets {
+		if b.Bucket != name || b.PrefixTokens == 0 {
+			continue
+		}
+		return fmt.Sprintf("%.1f", b.Reuse*100)
+	}
+	return "-"
 }
 
 // printCacheBuckets writes the cache hit rate per bucket, pooled over every run
@@ -135,13 +168,17 @@ func printCacheBuckets(w io.Writer, rs []Result) {
 		return
 	}
 	fmt.Fprintln(w, "\ncache by bucket (pooled over all runs; steady = unchanged context inside one segment, the 95% target; overall = every call):")
-	fmt.Fprintln(w, "  BUCKET         CALLS   PROMPT     CACHE-R    HIT%")
+	fmt.Fprintln(w, "  BUCKET         CALLS   PROMPT     CACHE-R    HIT%   REUSE%")
 	for _, b := range buckets {
 		hit := "-"
 		if b.CacheReported && b.prompt() > 0 {
 			hit = fmt.Sprintf("%.1f", b.Hit*100)
 		}
-		fmt.Fprintf(w, "  %-14s %5d   %-9d  %-9d  %s\n", b.Bucket, b.Calls, b.prompt(), b.CacheRead, hit)
+		reuse := "-"
+		if b.PrefixTokens > 0 {
+			reuse = fmt.Sprintf("%.1f", b.Reuse*100)
+		}
+		fmt.Fprintf(w, "  %-14s %5d   %-9d  %-9d  %-5s  %s\n", b.Bucket, b.Calls, b.prompt(), b.CacheRead, hit, reuse)
 	}
 	printSteadyLowHits(w, rs)
 }

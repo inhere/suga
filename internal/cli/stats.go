@@ -133,23 +133,30 @@ func writeStatsText(out io.Writer, rep store.Report) error {
 	}
 	if len(rep.CacheBuckets) > 0 {
 		fmt.Fprintln(tw, "\t\t\t\t\t\t\t\t\t\t\t")
-		fmt.Fprintln(tw, "CACHE BUCKET\tCALLS\tPROMPT\tCACHE-R\tHIT%\t\t\t\t\t\t")
+		fmt.Fprintln(tw, "CACHE BUCKET\tCALLS\tPROMPT\tCACHE-R\tHIT%\tREUSE%\t\t\t\t\t")
 		var total store.CacheBucketStat
 		for _, b := range rep.CacheBuckets {
-			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t\t\t\t\t\t\n", b.Bucket, b.Calls,
-				b.InputTokens+b.CacheRead+b.CacheWrite, b.CacheRead, hitCell(b))
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\t\t\t\t\t\n", b.Bucket, b.Calls,
+				b.InputTokens+b.CacheRead+b.CacheWrite, b.CacheRead, hitCell(b), reuseCell(b))
 			total.Calls += b.Calls
 			total.InputTokens += b.InputTokens
 			total.CacheRead += b.CacheRead
 			total.CacheWrite += b.CacheWrite
+			total.PrefixTokens += b.PrefixTokens
 			total.CacheReported = total.CacheReported || b.CacheReported
 		}
 		// The overall row beside the buckets: what the per-bucket numbers add up to.
 		if prompt := total.InputTokens + total.CacheRead + total.CacheWrite; prompt > 0 {
 			total.CacheHitRate = float64(total.CacheRead) / float64(prompt)
 		}
-		fmt.Fprintf(tw, "total\t%d\t%d\t%d\t%s\t\t\t\t\t\t\n", total.Calls,
-			total.InputTokens+total.CacheRead+total.CacheWrite, total.CacheRead, hitCell(total))
+		// REUSE% is cache read over the estimated cacheable prefix of the previous
+		// requests (see store.CacheBucketStat.PrefixTokens), capped at 100%.
+		total.PrefixReuse = float64(min(total.CacheRead, total.PrefixTokens)) / float64(max(total.PrefixTokens, 1))
+		if total.PrefixTokens == 0 {
+			total.PrefixReuse = 0
+		}
+		fmt.Fprintf(tw, "total\t%d\t%d\t%d\t%s\t%s\t\t\t\t\t\n", total.Calls,
+			total.InputTokens+total.CacheRead+total.CacheWrite, total.CacheRead, hitCell(total), reuseCell(total))
 	}
 	fmt.Fprintln(tw, "\t\t\t\t\t\t\t\t\t\t\t")
 	fmt.Fprintln(tw, "TOOL\tCALLS\tERR%\tDENIED\tP50\tP95\t\t\t\t\t\t")
@@ -170,4 +177,14 @@ func hitCell(b store.CacheBucketStat) string {
 		return "-"
 	}
 	return fmt.Sprintf("%.1f", b.CacheHitRate*100)
+}
+
+// reuseCell renders a cache bucket's prefix reuse rate (cache read over the
+// estimated cacheable prefix), "-" when no call of the bucket carried a prefix
+// estimate (an older session).
+func reuseCell(b store.CacheBucketStat) string {
+	if b.PrefixTokens == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%.1f", b.PrefixReuse*100)
 }

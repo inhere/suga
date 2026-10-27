@@ -20,8 +20,8 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 	// context inside one segment, the 95% target), so a low overall rate can be
 	// told apart from a low in-context one.
 	fmt.Fprintf(&b, "## variant 总览\n\n")
-	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | steady 命中% | 平均耗时 | 平均 turn/compact/fault | WEB |")
-	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|---|---|")
+	fmt.Fprintln(&b, "| variant | 通过 | 平均 CALLS | 平均 prompt(in+缓存) | 平均未缓存输入 | 总 prompt | 缓存命中% | steady 命中% | steady 复用% | 平均耗时 | 平均 turn/compact/fault | WEB |")
+	fmt.Fprintln(&b, "|---|---|---|---|---|---|---|---|---|---|---|---|")
 	for _, v := range variants {
 		sub := variantResults(rs, v.Name)
 		if len(sub) == 0 {
@@ -30,8 +30,9 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 		a := averageRounds(sub)
 		total, hit := totals(sub)
 		turn, compact, fault := meanTiming(sub)
-		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %s | %.1fs | %.1f/%.1f/%.1fs | %s |\n",
-			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, steadyCell(sub), a.Seconds, turn, compact, fault, webLabel(sub))
+		fmt.Fprintf(&b, "| %s | %d/%d | %.1f | %.0f | %.0f | %.0f | %.1f | %s | %s | %.1fs | %.1f/%.1f/%.1fs | %s |\n",
+			v.Name, a.Passed, a.Rounds, a.Calls, a.Prompt, a.Uncached, total, hit*100, steadyCell(sub),
+			reuseCell(poolBuckets(sub), "steady"), a.Seconds, turn, compact, fault, webLabel(sub))
 	}
 	fmt.Fprintln(&b)
 	writeCompareBuckets(&b, variants, rs)
@@ -122,6 +123,44 @@ func writeCompareBuckets(b *strings.Builder, variants []*Variant, rs []Result) {
 	cells := make([]string, 0, len(variants))
 	for _, v := range variants {
 		cells = append(cells, bucketCellFor(variantResults(rs, v.Name), "overall"))
+	}
+	fmt.Fprintf(b, "| overall | %s |\n\n", strings.Join(cells, " | "))
+	writeCompareReuse(b, variants, rs)
+}
+
+// writeCompareReuse appends the prefix reuse rate per bucket of every variant:
+// cache read over the cacheable prefix of the previous requests, which does not
+// depend on how much a call added. A steady bucket far below 100% is a real
+// cache miss, wherever the hit rate of a single run lands.
+func writeCompareReuse(b *strings.Builder, variants []*Variant, rs []Result) {
+	if len(poolBuckets(rs)) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "## 按桶前缀复用率（复用 = cache read / 上次可缓存前缀，目标 steady 95%%+）\n\n")
+	b.WriteString("| bucket |")
+	for _, v := range variants {
+		fmt.Fprintf(b, " %s |", v.Name)
+	}
+	b.WriteString("\n|---|")
+	for range variants {
+		b.WriteString("---|")
+	}
+	b.WriteString("\n")
+	for _, name := range cacheBucketNames() {
+		present := false
+		cells := make([]string, 0, len(variants))
+		for _, v := range variants {
+			cell := reuseCell(poolBuckets(variantResults(rs, v.Name)), name)
+			present = present || cell != "-"
+			cells = append(cells, cell)
+		}
+		if present {
+			fmt.Fprintf(b, "| %s | %s |\n", name, strings.Join(cells, " | "))
+		}
+	}
+	cells := make([]string, 0, len(variants))
+	for _, v := range variants {
+		cells = append(cells, reuseCell(poolBuckets(variantResults(rs, v.Name)), "overall"))
 	}
 	fmt.Fprintf(b, "| overall | %s |\n\n", strings.Join(cells, " | "))
 }
