@@ -508,7 +508,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			budget: personal.BudgetSettings{Tokens: budget.Tokens, CostUSD: budget.CostUSD, Scope: budget.Scope,
 				Estimate: budget.Estimate, EstimateFactor: budget.EstimateFactor, NoticeRatio: budget.NoticeRatio},
 			deadlineEnv:    appconfig.ReadRunDeadlineEnv(),
-			policySnapshot: approvalSnapshot})
+			policySnapshot: approvalSnapshot, translator: translator})
 		if opts.Tasks != nil {
 			agentTool.SetTasks(opts.Tasks)
 		}
@@ -522,7 +522,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// read-only modes keep get/search only (the tool refuses writes itself).
 	// The runner and the provenance store are bound after personal.New.
 	memHost := &memoryHost{}
-	mem := newMemoryRuntime(memSetup, memPolicy, opts.MemoryReadOnly, opts.MemoryConfirm, memHost)
+	mem := newMemoryRuntime(memSetup, memPolicy, opts.MemoryReadOnly, opts.MemoryConfirm, memHost, resolveMemoryTexts(translator))
 	capabilities.Registry.Register(mem.tool)
 	// session_search / recall only read the session store and the saved
 	// outputs, so they are registered in every mode as well; the ledger is
@@ -716,8 +716,13 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		SessionsDir:       sessionsDir,
 		Spiller:           personal.NewSessionSpiller(sessionsDir).WithQuota(appconfig.SpillQuotaBytes()),
 		MinimizeOutput:    minimizeOutput(workspace),
-		NudgeRules:        nudgeRuleSource(workspace),
-		PrefetchTools:     prefetchTools(capabilities.Registry),
+		// The model-facing wording of the tool stack and of this package's
+		// hooks (i18n phase 1b): zh keeps the historical text, en is the
+		// English catalog entry.
+		OutputTexts:   resolveToolTexts(translator),
+		Translator:    translator,
+		NudgeRules:    nudgeRuleSource(workspace),
+		PrefetchTools: prefetchTools(capabilities.Registry),
 		// The loop guard is on unless tools.loop_guard says otherwise.
 		LoopGuard:     gkconfig.Bool("tools.loop_guard", true),
 		Repository:    repo,

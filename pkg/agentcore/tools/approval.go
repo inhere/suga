@@ -274,13 +274,15 @@ func ReportDanger(ctx context.Context, reason string) {
 // remembered-always allowed call.
 const ApprovedResultNote = "[已经人工批准执行]"
 
-// annotateApproved appends ApprovedResultNote to the result a person approved
-// this very call. The note goes after the content, not before it: the first
+// annotateApproved appends note to the result a person approved this very
+// call; note is ApprovedResultNote, or the translation the host injected
+// (OutputConfig.Texts, see ModelTexts). The note goes after the content, not
+// before it: the first
 // line of a tool result is what the chat `⎿ ok:` summary (and any head-kept
 // truncation) shows, and that should stay the tool's own output. It only
 // shapes the text the model reads: the tool's exit codes and error semantics,
 // and the result the trace stores, stay untouched.
-func annotateApproved(ctx context.Context, res *api.ToolResult) {
+func annotateApproved(ctx context.Context, res *api.ToolResult, note string) {
 	if res == nil {
 		return
 	}
@@ -288,7 +290,7 @@ func annotateApproved(ctx context.Context, res *api.ToolResult) {
 	if r == nil || !r.Answered {
 		return
 	}
-	res.Content = res.Content + "\n" + ApprovedResultNote
+	res.Content = res.Content + "\n" + note
 }
 
 func approvalReportOf(ctx context.Context) *ApprovalReport {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	sugahooks "github.com/inhere/suga/internal/hooks"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore"
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -27,11 +28,14 @@ type toolGate struct {
 	recorder eventRecorder
 	// cwd is the directory the hook command runs for (Event.CWD).
 	cwd string
+	// translator renders the model-facing refusal (i18n phase 1b); nil is the
+	// Chinese compatibility fallback.
+	translator i18n.Translator
 }
 
-func newToolGate(gate sugahooks.ToolGate, recorder eventRecorder) *toolGate {
+func newToolGate(gate sugahooks.ToolGate, recorder eventRecorder, translator i18n.Translator) *toolGate {
 	cwd, _ := os.Getwd()
-	return &toolGate{gate: gate, recorder: recorder, cwd: cwd}
+	return &toolGate{gate: gate, recorder: recorder, cwd: cwd, translator: translator}
 }
 
 // Rewrite runs the PreToolUse hook for the call. It returns the call unchanged
@@ -53,14 +57,14 @@ func (g *toolGate) Rewrite(ctx context.Context, call agentcore.ToolCall, _ agent
 	extra := map[string]any{"rewritten_args": len(response.UpdatedInput) > 0}
 	recordHookRun(g.recorder, event, sugahooks.Result{Response: response, Err: err}, time.Since(start), extra)
 	if err != nil {
-		return call, tools.Denied(fmt.Sprintf("调用前 hook 未能确认，已拒绝执行 %s：%s", call.Name, err))
+		return call, tools.Denied(fmt.Sprintf(trOf(g.translator).T(modelHookPreToolError), call.Name, err))
 	}
 	if denyDecision(response.Decision) {
 		reason := strings.TrimSpace(response.Reason)
 		if reason == "" {
-			reason = "调用前 hook 拒绝执行"
+			reason = trOf(g.translator).T(modelHookDeniedDefault)
 		}
-		return call, tools.Denied(fmt.Sprintf("%s（%s）", reason, call.Name))
+		return call, tools.Denied(fmt.Sprintf(trOf(g.translator).T(modelHookPreToolDenied), reason, call.Name))
 	}
 	if len(response.UpdatedInput) == 0 {
 		return call, nil

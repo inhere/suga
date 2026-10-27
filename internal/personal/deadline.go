@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore"
 )
 
@@ -56,6 +57,9 @@ type deadlineState struct {
 	// now is the injected clock (Runner.clock): the hint text and the
 	// remaining share are computed from it, so tests can pin both.
 	now func() time.Time
+	// tr is Config.Translator, the catalog the hint wording is read from
+	// (i18n phase 1b); nil is the Chinese compatibility fallback.
+	tr i18n.Translator
 	// start is the earliest now this state observed; startMu guards it: ACP
 	// serves prompts concurrently.
 	startMu sync.Mutex
@@ -128,15 +132,16 @@ func (s *deadlineState) hint() string {
 	zone := now.Format("-07:00")
 	nowText := now.Format("15:04")
 	deadlineText := s.deadline.In(location).Format("15:04")
-	prefix := fmt.Sprintf("[时间] 现在 %s（%s），", nowText, zone)
+	tr := modelTr(s.tr)
+	prefix := fmt.Sprintf(tr.T(modelDeadlinePrefix), nowText, zone)
 	switch {
 	case remaining <= 0:
-		return prefix + fmt.Sprintf("已超过本任务截止 %s，本任务已超时：请立即停止新的工作，直接汇报已完成与未完成的部分。", deadlineText)
+		return prefix + fmt.Sprintf(tr.T(modelDeadlineOverdue), deadlineText)
 	case remaining < nearDeadlineLeft || (window > 0 && remaining < window/10):
-		return prefix + fmt.Sprintf("本任务截止 %s，即将到达时限：请尽快提交已完成的工作并汇报未完成项。", deadlineText)
+		return prefix + fmt.Sprintf(tr.T(modelDeadlineNear), deadlineText)
 	default:
 		minutes := int(math.Round(remaining.Minutes()))
-		return prefix + fmt.Sprintf("本任务截止 %s，剩余约 %d 分钟。", deadlineText, minutes)
+		return prefix + fmt.Sprintf(tr.T(modelDeadlineRemaining), deadlineText, minutes)
 	}
 }
 

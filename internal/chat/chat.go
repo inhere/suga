@@ -205,7 +205,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// client itself: the recording wrapper below only forwards Client, so
 	// GateOf on it would find no gate (the gate records its own trace events).
 	if gate := sugahooks.GateOf(hooks); gate != nil && opts.SetCallRewriter != nil {
-		opts.SetCallRewriter(newToolGate(gate, runner))
+		opts.SetCallRewriter(newToolGate(gate, runner, opts.Translator))
 	}
 	hooks = recordHooks(hooks, runner)
 	sessionID := ""

@@ -604,7 +604,7 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 	if agents, err := appconfig.ReadAgentSettings(); err == nil && agents.Enabled {
 		reg.Register(native.NewAgentTool(nil))
 	}
-	mem := newMemoryRuntime(st.memSetup, st.memPolicy, false, nil, &memoryHost{})
+	mem := newMemoryRuntime(st.memSetup, st.memPolicy, false, nil, &memoryHost{}, native.MemoryTexts{})
 	reg.Register(mem.tool)
 	ledger := personal.NewLedger(st.sessionsDir)
 	reg.Register(native.NewSessionSearchTool(ledger))
