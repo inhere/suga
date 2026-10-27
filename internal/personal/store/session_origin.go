@@ -19,6 +19,9 @@ const (
 	// (xhen). Its lifecycle belongs to the host: the default `suga session list`
 	// listing leaves it out and `suga data gc --retention` never removes it.
 	OriginXhen = "xhen"
+	// MetaPinned marks a session that an embedding host still references. GC
+	// treats a JSON boolean true as a keep-forever marker until it is cleared.
+	MetaPinned = "pinned"
 	// MetaUsedInteractively marks a session created by a non-interactive entry
 	// point that a chat continued afterwards: from then on it counts as
 	// interactive.
@@ -53,6 +56,14 @@ func InteractiveSession(sess Session) bool {
 	default:
 		return true // chat, and any session from before the key existed
 	}
+}
+
+// PinnedSession reports whether an embedding host has kept a durable reference
+// to the session. It is deliberately independent of the session origin: a
+// non-xhen session can be pinned too.
+func PinnedSession(sess Session) bool {
+	pinned, _ := sess.Meta[MetaPinned].(bool)
+	return pinned
 }
 
 // HostManagedSession reports whether a session belongs to a host application

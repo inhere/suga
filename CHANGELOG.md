@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+- 新增 `sugasdk.Engine.Pin` 会话 pin 契约；age GC 与 retention GC 均跳过被 pin 的会话（包括非 xhen 来源）。
+
 ## [0.51.0] - 2026-10-27
 
 本版细化缓存命中率统计：续接调用按前缀是否变化分桶、识别 provider/模型切换、给出前缀复用率与换段分节变化，失败尝试不再计入分桶；另加实验性设置 `context.handoff_reuse_prefix`（默认关闭），让换段写交接包的调用沿用会话前缀。
