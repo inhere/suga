@@ -1,92 +1,42 @@
 package chat
 
 import (
-	"strings"
-
 	"github.com/inhere/suga/internal/i18n"
+	"github.com/inhere/suga/pkg/chatui"
 )
 
-// ApprovalReply is the decision made from the one-line answer to an approval
-// question. The wiring layer turns the two persistent replies into session rules.
-type ApprovalReply uint8
+// ApprovalReply and PersistReply remain chat aliases for compatibility; the
+// reusable parsing and prompt component lives in pkg/chatui.
+type ApprovalReply = chatui.ApprovalReply
 
 const (
-	ReplyDeny ApprovalReply = iota
-	ReplyAllow
-	ReplyAllowAlways
-	ReplyDenyAlways
+	ReplyDeny        = chatui.ReplyDeny
+	ReplyAllow       = chatui.ReplyAllow
+	ReplyAllowAlways = chatui.ReplyAllowAlways
+	ReplyDenyAlways  = chatui.ReplyDenyAlways
 )
 
-// ParseApprovalReply accepts the stable answer aliases used by chat. Empty and
-// unknown answers stay deny, preserving the old fail-closed behavior.
-func ParseApprovalReply(answer string) ApprovalReply {
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "y", "yes":
-		return ReplyAllow
-	case "a", "always":
-		return ReplyAllowAlways
-	case "d", "deny":
-		return ReplyDenyAlways
-	default:
-		return ReplyDeny
-	}
-}
+func ParseApprovalReply(answer string) ApprovalReply { return chatui.ParseApprovalReply(answer) }
 
-// PersistReply identifies the requested persistence destination. The wiring layer
-// performs the writeback after the session rule has been installed in memory.
-type PersistReply uint8
+type PersistReply = chatui.PersistReply
 
 const (
-	PersistSession PersistReply = iota
-	PersistUser
-	PersistProject
+	PersistSession = chatui.PersistSession
+	PersistUser    = chatui.PersistUser
+	PersistProject = chatui.PersistProject
 )
 
-// ParsePersistReply keeps Enter as the safe default and recognizes only the
-// explicit destinations shown in the follow-up question.
-func ParsePersistReply(answer string) PersistReply {
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "u", "user":
-		return PersistUser
-	case "p", "project":
-		return PersistProject
-	default:
-		return PersistSession
-	}
-}
+func ParsePersistReply(answer string) PersistReply { return chatui.ParsePersistReply(answer) }
 
-// ApprovalPrompt builds the compact answer line. allowAlways is false for an
-// unsafe shell command: a deny scope is still useful, but an allow scope must
-// never bypass the command safety matcher.
 func ApprovalPrompt(tool, scopeDescription string, allowAlways bool) string {
-	return ApprovalPromptWithTranslator(i18n.Fallback(), tool, scopeDescription, allowAlways)
+	return chatui.ApprovalPrompt(tool, scopeDescription, allowAlways)
 }
 
-// ApprovalPromptWithTranslator builds the compact answer line with the injected
-// host UI translator; the compatibility wrapper above keeps older callers in zh.
 func ApprovalPromptWithTranslator(t i18n.Translator, tool, scopeDescription string, allowAlways bool) string {
-	tr := trOf(t)
-	if allowAlways && scopeDescription == "" {
-		return tr.T("approval.prompt.allow", map[string]any{"tool": tool})
-	}
-	if allowAlways {
-		return tr.T("approval.prompt.allow_scope", map[string]any{"tool": tool, "scope": scopeDescription})
-	}
-	return tr.T("approval.prompt.deny_scope", map[string]any{"tool": tool})
+	return chatui.ApprovalPromptWithTranslator(t, tool, scopeDescription, allowAlways)
 }
 
-// PersistPrompt is explicit about the safe default: an empty answer keeps the
-// rule in the current session, while only u/p request a file writeback.
-func PersistPrompt(action string) string {
-	return PersistPromptWithTranslator(i18n.Fallback(), action)
-}
-
-// PersistPromptWithTranslator builds the rule writeback question using the
-// injected translator while retaining the safe session-only default.
+func PersistPrompt(action string) string { return chatui.PersistPrompt(action) }
 func PersistPromptWithTranslator(t i18n.Translator, action string) string {
-	key := "approval.prompt.persist.allow"
-	if action == "deny" {
-		key = "approval.prompt.persist.deny"
-	}
-	return trOf(t).T(key)
+	return chatui.PersistPromptWithTranslator(t, action)
 }
