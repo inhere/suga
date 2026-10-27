@@ -95,3 +95,28 @@ func TestWriteCompareBuckets(t *testing.T) {
 	assert.Eq(t, "90.0", steadyCell(variantResults(rs, "v1")))
 	assert.Eq(t, "-", steadyCell(nil))
 }
+
+// TestWriteCompareResumeBuckets covers the resume and provider-switch buckets in
+// compare.md: a resumed session and a switched provider lose the cache for
+// reasons of their own, so they are listed apart from steady and overall in the
+// hit-rate and the reuse table.
+func TestWriteCompareResumeBuckets(t *testing.T) {
+	buckets := []cacheBucket{
+		{Bucket: "resume_same", Calls: 1, Input: 100, CacheRead: 900, PrefixTokens: 1200, CacheReported: true},
+		{Bucket: "resume_changed", Calls: 1, Input: 500, CacheRead: 500, PrefixTokens: 2000, CacheReported: true},
+		{Bucket: "provider_switch", Calls: 1, Input: 900, CacheRead: 100, PrefixTokens: 500, CacheReported: true},
+	}
+	rs := []Result{{Task: "a", Variant: "v1", CacheBuckets: buckets}}
+	var b strings.Builder
+	writeCompareBuckets(&b, []*Variant{{Name: "v1"}}, rs)
+	out := b.String()
+	assert.StrContains(t, out, "按桶命中率")
+	assert.StrContains(t, out, "按桶前缀复用率")
+	assert.Eq(t, 1, strings.Count(out, "| resume_same | 90.0 |"))
+	assert.Eq(t, 1, strings.Count(out, "| resume_changed | 50.0 |"))
+	assert.Eq(t, 1, strings.Count(out, "| provider_switch | 10.0 |"))
+	// The reuse table reads the prefix estimate, not the prompt.
+	assert.Eq(t, 1, strings.Count(out, "| resume_same | 75.0 |"))
+	assert.Eq(t, 1, strings.Count(out, "| resume_changed | 25.0 |"))
+	assert.Eq(t, 1, strings.Count(out, "| provider_switch | 20.0 |"))
+}
