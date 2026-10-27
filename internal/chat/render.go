@@ -14,7 +14,6 @@ import (
 
 	"github.com/gookit/cliui/show/symbols"
 	"github.com/gookit/color"
-	"github.com/inhere/suga/internal/chat/lineedit"
 	"github.com/inhere/suga/internal/diffview"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/output/termtext"
@@ -23,6 +22,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 	"golang.org/x/term"
 )
 

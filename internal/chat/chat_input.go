@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inhere/suga/internal/chat/lineedit"
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 	"golang.org/x/term"
 )
 

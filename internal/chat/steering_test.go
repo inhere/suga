@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/suga/internal/chat/lineedit"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 )
 
 // gateProv holds every model request until the test releases it and records the
