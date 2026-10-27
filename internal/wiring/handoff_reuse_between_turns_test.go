@@ -128,6 +128,8 @@ func TestHandoffReuseBetweenTurnsThroughAssembly(t *testing.T) {
 	server := fake.start(t)
 	setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k", "base_url": server.URL}})
 	assert.NoErr(t, gkconfig.Set("model", "openai/gpt-4o"))
+	// The reuse path is off by default since the 2026-10-27 evaluation.
+	assert.NoErr(t, gkconfig.Set("context.handoff_reuse_prefix", true))
 
 	open := func() *Runtime {
 		rt, err := Open(context.Background(), Options{Workspace: t.TempDir(), RuleCWD: t.TempDir()})

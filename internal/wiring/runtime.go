@@ -690,9 +690,10 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		CompactProvider:   compactProvider,
 		CompactModel:      compactModel,
 		// The handoff package of a segment break continues the segment's own
-		// prefix unless context.handoff_reuse_prefix says otherwise (the rollback
-		// switch of design 2026-10-27).
-		HandoffReusePrefix: gkconfig.Bool("context.handoff_reuse_prefix", true),
+		// prefix only when context.handoff_reuse_prefix turns it on: off by
+		// default since the evaluation of design 2026-10-27 (0.5) found little
+		// saving on the handoff call.
+		HandoffReusePrefix: gkconfig.Bool("context.handoff_reuse_prefix", false),
 		IdleProvider:       idleProvider,
 		IdleModel:          idleModel,
 		HandoffProvider:    handoffProvider,

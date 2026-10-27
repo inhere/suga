@@ -151,8 +151,8 @@ type Config struct {
 	CompactProvider agentcore.Provider
 	CompactModel    string
 	// HandoffReusePrefix lets the handoff package of a segment break continue the
-	// segment's last main-loop request (context.handoff_reuse_prefix, default on
-	// at the wiring): the request is then the same System, tools and messages
+	// segment's last main-loop request (context.handoff_reuse_prefix, default off
+	// at the wiring since the 2026-10-27 evaluation): the request is then the same System, tools and messages
 	// plus one instruction, so the provider cache serves it. Off keeps the old
 	// request byte for byte (the rollback switch, design 2026-10-27).
 	HandoffReusePrefix bool

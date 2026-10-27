@@ -142,7 +142,7 @@ providers:
 #   idle_min_ratio: 0.65 # share of the threshold (window - reserve), 0..1
 #   fold_every: 0       # history folding: fold older steps every N steps (e.g. 10); 0 (default) = off
 #   fold_keep: 5        # steps kept whole (>= 1)
-#   handoff_reuse_prefix: true # write a segment break's handoff package on top of
+#   handoff_reuse_prefix: false # (default off) write a segment break's handoff package on top of
 #                       # the segment's last main-loop request (same system prompt,
 #                       # tools and messages plus one instruction), so the provider
 #                       # prompt cache serves it; false keeps the old separate request

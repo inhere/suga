@@ -62,7 +62,7 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `context.fold_every` | `0`（关） | 每 N 步前移一次历史折叠点（如 `10`） |
 | `context.fold_keep` | `5`（≥1） | 最近多少步保持完整 |
 | `context.fold_at` | `0`（关；0..1，建议 `0.5`） | 折叠加前估算体积超过压缩阈值的这个比例时，本段开始折叠（之后本段保持）；`0` 时只按 `context.fold_every` 从第一步折叠 |
-| `context.handoff_reuse_prefix` | `true` | 换段写交接包时沿用本段最后一次主循环请求（系统提示、工具表、全部消息逐字节相同）再加一条指令，让 provider 的提示缓存服务大部分输入；`false` 走旧的独立请求（回滚开关，请求与旧版逐字节相同） |
+| `context.handoff_reuse_prefix` | `false` | 换段写交接包时沿用本段最后一次主循环请求（系统提示、工具表、全部消息逐字节相同）再加一条指令，让 provider 的提示缓存服务大部分输入；默认关闭（2026-10-27 评测省得有限）；`false` 时请求与旧版逐字节相同 |
 | `context.idle_after` | `15m`（`0` 关） | 仅 chat：空闲这么久且上下文达到阈值比例时在后台开启新段 |
 | `context.idle_min_ratio` | `0.65` | 空闲整理要求的上下文占比（相对阈值 `窗口-预留`；0..1） |
 

@@ -324,12 +324,18 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return value, true, nil
 		}
 		return "ask", false, nil
-	case "tools.parallel_reads", "tools.minimize_output", "tools.loop_guard", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots",
-		"context.handoff_reuse_prefix":
+	case "tools.parallel_reads", "tools.minimize_output", "tools.loop_guard", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots":
 		if value, present := lookupRawConfig(key); present {
 			return value, true, nil
 		}
 		return true, false, nil
+	case "context.handoff_reuse_prefix":
+		// Off by default: the 2026-10-27 evaluation found the reuse path saves
+		// little on the handoff call (design 2026-10-27, 0.5).
+		if value, present := lookupRawConfig(key); present {
+			return value, true, nil
+		}
+		return false, false, nil
 	case "tools.web_fetch.allow_private":
 		if value, present := lookupRawConfig(key); present {
 			return value, true, nil

@@ -39,6 +39,8 @@ func TestCompactCommandContinuesTheTurnsPrefix(t *testing.T) {
 	t.Chdir(workspace)
 	_ = gkconfig.Set("workspace", workspace)
 	_ = gkconfig.Set("model", "openai/gpt-4o")
+	// The reuse path is off by default since the 2026-10-27 evaluation.
+	_ = gkconfig.Set("context.handoff_reuse_prefix", true)
 
 	var mu sync.Mutex
 	var requests []modelRequest

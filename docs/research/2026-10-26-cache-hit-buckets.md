@@ -149,3 +149,12 @@ prefix_tokens = 本次 prompt token × reused 字节 / (reused+rebuilt+fresh 字
 ## 第四十六批：写交接包的调用沿用会话前缀（本设计）
 
 上面「写交接包的调用几乎不命中」是本节最大的可省部分；换段交接包改成沿用本段最后一次主循环请求（只多末尾一条指令）的方案、回退条件与验收口径见 `docs/design/2026-10-27-handoff-prefix-reuse-design.md`，新的计数看 `inspect trace --analyze` 的 `handoff reuse` 行与 `scripts/eval` 汇总里的交接包调用统计。
+
+## 第二步结论（2026-10-27，第四十五批）
+
+- 段内调用前缀复用率三个难版任务都是 100%：命中率不到 95% 只因每轮有新内容，按复用率口径 95% 目标已达到。
+- 续接（新进程）复用率 79%–100%：前缀未变，缺口在 provider 侧缓存变冷。
+- 换段时段上下文只有交接包一节变化（13 次换段），段上下文重排暂不做。
+- 写交接包调用沿用前缀：命中可到 67%–80%，但整体只省约 1%–2%，默认关闭；详见 `docs/design/2026-10-27-handoff-prefix-reuse-design.md` 的“评测结论”。
+- 统计口径新增：`resume_same` / `resume_changed` / `provider_switch` 桶、前缀复用率、换段分节变化、`failed_attempts`。
+
