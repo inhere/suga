@@ -296,6 +296,10 @@ type contextBuilder struct {
 	haveFixed      bool
 	lastViewTokens int // tokens of the view sent in the latest model call
 	haveView       bool
+	// reuseBase is the request the main loop is about to send for the step of a
+	// segment break, rebuilt from the view before the break (requestBase): the
+	// handoff call continues it when this process sent no request yet (H2).
+	reuseBase *agentcore.GenerateRequest
 
 	// foldBase is the fold boundary already recorded in this segment (session
 	// meta fold_boundary); foldPending is a larger boundary seen by the latest
@@ -362,6 +366,11 @@ func (b *contextBuilder) BuildMessages(ctx context.Context, state *agentcore.Run
 		est = b.estimate(ctx, state, view)
 	}
 	if est > b.threshold() {
+		// The handoff call of this break may continue the request this step is about
+		// to send: rebuild it from the view of before the break, so a process that
+		// resumed the session and has not sent a request yet still reuses the
+		// segment prefix (segment_handoff_reuse.go, H2).
+		b.reuseBase = b.requestBase(ctx, state, view)
 		_, err := b.startSegment(ctx, state, segmentReasonThreshold, est)
 		switch {
 		case err == nil:
