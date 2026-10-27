@@ -10,6 +10,7 @@ import (
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/chatui"
 )
 
 // LiveText prints a turn's text deltas as they stream in. Each model message
@@ -17,11 +18,11 @@ import (
 // do not run together.
 type LiveText struct {
 	w        io.Writer
-	prefix   string  // printed before each model message; empty for none
-	md       *MDTerm // non-nil: the text is rendered as terminal markdown
-	streamed bool    // any delta printed this turn
-	open     bool    // the last printed delta did not end with a newline
-	started  bool    // the current model message already printed its prefix
+	prefix   string         // printed before each model message; empty for none
+	md       *chatui.MDTerm // non-nil: the text is rendered as terminal markdown
+	streamed bool           // any delta printed this turn
+	open     bool           // the last printed delta did not end with a newline
+	started  bool           // the current model message already printed its prefix
 	// whole makes the text wait for line ends (SetWholeLines): only complete lines
 	// leave, the unfinished rest waits in tail.
 	whole   bool
@@ -44,7 +45,7 @@ func NewPrefixedLiveText(w io.Writer, prefix string) *LiveText {
 // instead of printing the deltas as they are (chat). color styles the rendered
 // lines; without it the markers are still replaced, but nothing is colored.
 func (l *LiveText) SetMarkdown(color bool) {
-	l.md = NewMDTerm(l.w, color)
+	l.md = chatui.NewMDTerm(l.w, color)
 	l.md.SetTranslator(l.translator)
 	l.md.SetLinePrefix(l.wholePrefix())
 }
@@ -98,7 +99,7 @@ func (l *LiveText) SetMarkdownTheme(theme string) {
 
 // CodeBlocks returns the code blocks of the most recent rendered message, for
 // chat's :code command (nil without markdown rendering).
-func (l *LiveText) CodeBlocks() []CodeBlock {
+func (l *LiveText) CodeBlocks() []chatui.CodeBlock {
 	if l.md == nil {
 		return nil
 	}
