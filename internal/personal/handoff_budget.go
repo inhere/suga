@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/inhere/suga/internal/i18n"
 )
 
 // Handoff package section names (compactTemplate). They are matched by name
@@ -79,17 +81,98 @@ func handoffSectionKnown(name string) bool {
 var handoffSectionNames = []string{handoffSectionTask, handoffSectionCoords, handoffProtectedSection,
 	handoffSectionVerified, handoffSectionProgress, handoffSectionNext, handoffSectionRefs}
 
+// handoffSectionKeySuffix names the catalog key of one section's accepted
+// heading names (model.handoff.section.<suffix>, see handoffHeadingsFor).
+var handoffSectionKeySuffix = map[string]string{
+	handoffSectionTask:      "task",
+	handoffSectionCoords:    "coords",
+	handoffProtectedSection: "protected",
+	handoffSectionVerified:  "verified",
+	handoffSectionProgress:  "progress",
+	handoffSectionNext:      "next",
+	handoffSectionRefs:      "refs",
+}
+
+// handoffHeadings is the set of heading names one handoff package may be
+// written with: every accepted spelling maps to the canonical (stored) section
+// name.
+//
+// It exists because the conversation decides the language of the answer, not
+// the UI language of the session: an evaluation of 2026-10-27 (H6) lost about a
+// third of the reuse-path handoffs to fallback:missing_sections:当前任务,坐标,…
+// - an answer of 3-6k characters carrying all six sections, written with
+// translated headings such as "## Current task" - and the shape check only knew
+// the canonical Chinese names. The spellings come from the model catalog
+// (handoff.section.*), so no heading name is written in Go.
+//
+// The zero value accepts the canonical names only, which is what a stored
+// package always carries: the aliases matter on input, and
+// canonicalHandoffHeadings rewrites them before anything is stored.
+type handoffHeadings struct{ alias map[string]string }
+
+// handoffHeadingsFor builds the heading-name set of a run's catalog. The first
+// name of a catalog value is the canonical one; a missing key (T returns the
+// key itself) simply adds no alias.
+func handoffHeadingsFor(tr i18n.Translator) handoffHeadings {
+	cat := modelTr(tr)
+	h := handoffHeadings{alias: make(map[string]string, 2*len(handoffSectionNames))}
+	for _, name := range handoffSectionNames {
+		h.alias[headingKey(name)] = name
+		suffix, ok := handoffSectionKeySuffix[name]
+		if !ok {
+			continue
+		}
+		key := modelHandoffSection + suffix
+		for _, alt := range strings.Split(cat.T(key), "|") {
+			alt = strings.TrimSpace(alt)
+			if alt == "" || alt == key {
+				continue
+			}
+			// The canonical name of another section always wins: a spelling is
+			// never taken over by a later key.
+			if _, taken := h.alias[headingKey(alt)]; taken {
+				continue
+			}
+			h.alias[headingKey(alt)] = name
+		}
+	}
+	return h
+}
+
+// headingKey normalizes a heading name for matching: a translated heading may
+// differ in case or spacing from the catalog ("Current  Task"), and the
+// canonical Chinese names are unaffected by the lowering.
+func headingKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// canonicalName returns the canonical section name of an accepted heading name
+// and whether name is one of them.
+func (h handoffHeadings) canonicalName(name string) (string, bool) {
+	if handoffSectionKnown(name) {
+		return name, true
+	}
+	if len(h.alias) == 0 || name == "" {
+		return "", false
+	}
+	canon, ok := h.alias[headingKey(name)]
+	return canon, ok
+}
+
 // canonicalHandoffHeadings rewrites the section headings of body to the "## "
 // form splitHandoffSections recognises, so the shape check, the budgets and the
 // fold see the same headings for an answer that wrote them another way.
 //
 // The template asks for "## 当前任务", but an answer generated on top of a
 // session's own system prompt may write them one level deeper ("### 当前任务"),
-// in bold ("**当前任务**", "**当前任务**：修解析器") or with the template's
-// parenthetical note kept. Only a line carrying a heading marker (2-4 '#') or a
-// bold wrapper is rewritten: a body line that merely begins with a section name
-// stays text, so prose cannot pass as a package.
-func canonicalHandoffHeadings(body string) string {
+// in bold ("**当前任务**", "**当前任务**：修解析器"), with the template's
+// parenthetical note kept, or - when the conversation runs in another language
+// - with the translated names of the catalog ("## Current task"). Only a line
+// carrying a heading marker (2-4 '#') or a bold wrapper is rewritten: a body
+// line that merely begins with a section name stays text, so prose cannot pass
+// as a package. The accepted spellings are h's; every rewritten heading is the
+// canonical (stored) name.
+func canonicalHandoffHeadings(body string, h handoffHeadings) string {
 	if !strings.Contains(body, "#") && !strings.Contains(body, "**") && !strings.Contains(body, "__") {
 		return body
 	}
@@ -100,7 +183,7 @@ func canonicalHandoffHeadings(body string) string {
 		if name, ok := handoffSectionName(line); ok && handoffSectionKnown(name) {
 			continue
 		}
-		name, text, ok := handoffHeadingName(line)
+		name, text, ok := handoffHeadingName(line, h)
 		if !ok {
 			continue
 		}
@@ -120,10 +203,12 @@ func canonicalHandoffHeadings(body string) string {
 
 // handoffHeadingName returns the section a heading-shaped line names and the
 // text that followed the name on that line ("" = none). A heading of level 2-4
-// ("### 当前任务"), a bold name ("**当前任务**", "**当前任务**：修解析器") and
+// ("### 当前任务"), a bold name ("**当前任务**", "**当前任务**：修解析器"),
 // either with the template's parenthetical note ("坐标（文件 / 符号…）", the note
-// is dropped) are accepted; every other line is ok=false.
-func handoffHeadingName(line string) (name, text string, ok bool) {
+// is dropped, "Coordinates (files…)" likewise) and every spelling h accepts
+// (a translated heading, a numbered one: "## 1. Coordinates") are accepted;
+// every other line is ok=false. The returned name is the canonical one.
+func handoffHeadingName(line string, h handoffHeadings) (name, text string, ok bool) {
 	t := strings.TrimSpace(line)
 	var rest string
 	switch {
@@ -149,15 +234,19 @@ func handoffHeadingName(line string) (name, text string, ok bool) {
 	default:
 		return "", "", false
 	}
+	// A model that numbers its headings ("## 1. 当前任务") names the same
+	// section: the marker is not part of the name.
+	rest = trimHeadingNumber(rest)
 	// The name ends at the note or at the colon that starts the content.
 	tail := ""
 	if idx := strings.IndexAny(rest, "（(:："); idx >= 0 {
 		rest, tail = rest[:idx], rest[idx:]
 	}
-	name = strings.TrimSpace(rest)
-	if !handoffSectionKnown(name) {
+	canon, known := h.canonicalName(strings.TrimSpace(rest))
+	if !known {
 		return "", "", false
 	}
+	name = canon
 	// Only a colon carries content; a parenthetical tail is the template's note.
 	tail = strings.TrimSpace(tail)
 	if strings.HasPrefix(tail, "：") {
@@ -166,6 +255,35 @@ func handoffHeadingName(line string) (name, text string, ok bool) {
 		text = strings.TrimSpace(strings.TrimPrefix(tail, ":"))
 	}
 	return name, text, true
+}
+
+// trimHeadingNumber drops a numbering or bullet prefix a model may put in front
+// of a heading name: "1. ", "2、", "3) ", "- ", "• ". A name itself never
+// starts with one of those, and the rest of the line is unchanged, so this only
+// widens which heading lines are recognized, never which prose lines are.
+func trimHeadingNumber(s string) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) == 0 {
+		return s
+	}
+	if r[0] == '-' || r[0] == '*' || r[0] == '•' {
+		if len(r) > 1 && (r[1] == ' ' || r[1] == '\t') {
+			return strings.TrimSpace(string(r[1:]))
+		}
+		return strings.TrimSpace(s)
+	}
+	i := 0
+	for i < len(r) && r[i] >= '0' && r[i] <= '9' {
+		i++
+	}
+	if i == 0 || i == len(r) {
+		return strings.TrimSpace(s)
+	}
+	switch r[i] {
+	case '.', ')', '）', '、', '．':
+		return strings.TrimSpace(string(r[i+1:]))
+	}
+	return strings.TrimSpace(s)
 }
 
 // handoffSectionName returns the name of a section heading line without its

@@ -16,6 +16,9 @@ const (
 	// instruction that replaces the transcript: how far the summary reaches
 	// (the tail is kept verbatim) and that the call must not go on working.
 	modelHandoffReuseScope = "model.handoff.reuse_scope"
+	// modelHandoffSection prefixes the catalog key of one handoff package
+	// section's accepted heading names (model.handoff.section.<suffix>).
+	modelHandoffSection = "model.handoff.section."
 )
 
 // modelTr returns the catalog the model-facing wording of a run is read from

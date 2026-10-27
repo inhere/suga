@@ -601,7 +601,7 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 					body = again
 				}
 			}
-			return normalizeHandoffBody(canonicalHandoffHeadings(strings.TrimSpace(body))), nil
+			return normalizeHandoffBody(canonicalHandoffHeadings(strings.TrimSpace(body), r.handoffHeadings())), nil
 		}
 		fallback = reason
 	}
@@ -623,7 +623,7 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 	if strings.TrimSpace(body) == "" {
 		return "", errors.New("summarize context: empty summary")
 	}
-	return normalizeHandoffBody(canonicalHandoffHeadings(strings.TrimSpace(body))), nil
+	return normalizeHandoffBody(canonicalHandoffHeadings(strings.TrimSpace(body), r.handoffHeadings())), nil
 }
 
 // summaryCall makes one summary request (prompt is the whole user message).
