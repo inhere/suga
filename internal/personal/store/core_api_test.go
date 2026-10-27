@@ -70,6 +70,7 @@ func TestSessionCRUD(t *testing.T) {
 	})
 	t.Run("delete cascades entries", func(t *testing.T) {
 		newSession(t, s, "del")
+		assert.NoErr(t, s.PatchSessionMeta(ctx, "del", map[string]any{MetaPinned: true}))
 		_, err := s.AppendEntries(ctx, "del", NewEntry{Type: EntryUser, JSON: json.RawMessage(`{}`)})
 		assert.NoErr(t, err)
 		assert.NoErr(t, s.DeleteSession(ctx, "del"))
