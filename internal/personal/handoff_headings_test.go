@@ -1,11 +1,14 @@
 package personal
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
 	"github.com/inhere/suga/internal/i18n"
+	"github.com/inhere/suga/pkg/agentcore"
 )
 
 // translatedBody is reuseBody written the way the 2026-10-27 evaluation answers
@@ -142,6 +145,66 @@ func TestHandoffShapeCheckTranslated(t *testing.T) {
 		assert.StrContains(t, why, handoffSectionTask)
 		assert.StrContains(t, why, handoffSectionRefs)
 	})
+}
+
+// translatedHeadingsProv answers the reuse path's handoff call with a package
+// whose headings are translated and the old path's with a marker text, and
+// records the kind of every call. reuseProv's own classifier keys on the Chinese
+// instruction marker, which the English catalog does not carry.
+type translatedHeadingsProv struct {
+	reuseProv
+	mu    sync.Mutex
+	kinds []string
+}
+
+func (p *translatedHeadingsProv) Generate(ctx context.Context, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+	last := ""
+	if len(req.Messages) > 0 {
+		last = req.Messages[len(req.Messages)-1].Content
+	}
+	kind := "main"
+	switch {
+	case req.System == compactSystemPrompt:
+		kind = "old"
+	case strings.Contains(last, "## Current task"): // the reuse instruction lists the headings
+		kind = "reuse"
+	}
+	p.mu.Lock()
+	p.kinds = append(p.kinds, kind)
+	n := len(p.kinds)
+	p.mu.Unlock()
+	switch kind {
+	case "reuse":
+		return finalText(translatedBody)
+	case "old":
+		return finalText("old path answer")
+	}
+	return reuseMain(n, req)
+}
+
+// TestHandoffReuseAcceptsTranslatedHeadings follows the real segment break of an
+// English session (the evaluation's case): the reuse answer's translated
+// headings are accepted, the old path is not asked again, and the stored package
+// carries the canonical headings the budgets, the fold and parseRefs read.
+func TestHandoffReuseAcceptsTranslatedHeadings(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &translatedHeadingsProv{}
+	runner := compactRunner(t, repo, prov, nil, func(c *Config) {
+		c.ContextWindow, c.CompactReserveTokens = 100000, 1000
+		c.HandoffReusePrefix = true
+		c.Translator = testCatalog(t, i18n.LanguageEN)
+	})
+	ctx := context.Background()
+	sid := oneTurn(t, runner)
+	_, err := runner.Compact(ctx, sid)
+	assert.NoErr(t, err)
+	assert.Eq(t, []string{"main", "main", "reuse"}, prov.kinds)
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
+	summary := latestSegment(t, repo, sid).Summary
+	assert.StrContains(t, summary, "## "+handoffSectionTask)
+	assert.StrContains(t, summary, "## "+handoffSectionRefs)
+	assert.Eq(t, false, strings.Contains(summary, "## Current task"))
+	assert.StrContains(t, summary, "fix the parser")
 }
 
 // TestRunnerHandoffHeadingsWireTheCatalog: the two places a generated package
