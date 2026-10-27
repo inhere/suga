@@ -39,6 +39,8 @@ func TestBootstrapExemptRecognizesVersionAndHelp(t *testing.T) {
 		"version":            {args: []string{"version"}, want: true},
 		"bare config group":  {args: []string{"config"}, want: true},
 		"bare inspect group": {args: []string{"inspect"}, want: true},
+		"bare session group": {args: []string{"session"}, want: true},
+		"session subcommand": {args: []string{"session", "list"}, want: false},
 		"config subcommand":  {args: []string{"config", "path"}, want: false},
 		"version args":       {args: []string{"version", "extra"}, want: true},
 		"short version":      {args: []string{"-V"}, want: true},

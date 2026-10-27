@@ -153,7 +153,7 @@ def kill_turn(s, log, prompt, want):
 
 def last_session(binary, env, ws):
     """The id of the only session in the scratch home."""
-    out = subprocess.run([binary, "sessions", "--json", "-n", "1"], capture_output=True, text=True,
+    out = subprocess.run([binary, "session", "list", "--json", "-n", "1"], capture_output=True, text=True,
                          env=env, cwd=ws, timeout=60)
     found = re.search(r'"id":"([^"]+)"', out.stdout)
     return found.group(1) if found else ""

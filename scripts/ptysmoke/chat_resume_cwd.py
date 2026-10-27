@@ -54,10 +54,10 @@ QUESTION = r"请选择 \[1/2/3\]"
 
 
 def session_row(binary, env, cwd, sid):
-    """The `suga sessions --json` row of one session ({} when it is missing)."""
+    """The `suga session list --json` row of one session ({} when it is missing)."""
     # --all: the session may have moved to another directory, and sessions lists
     # the current directory's sessions by default.
-    out = subprocess.run([binary, "sessions", "--json", "-n", "0", "--all"], capture_output=True, text=True,
+    out = subprocess.run([binary, "session", "list", "--json", "-n", "0", "--all"], capture_output=True, text=True,
                          env=env, cwd=cwd, timeout=60)
     try:
         rows = json.loads(out.stdout)

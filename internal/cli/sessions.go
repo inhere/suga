@@ -16,7 +16,7 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// sessionsOptions are the filters of `suga sessions`.
+// sessionsOptions are the filters of `suga session list`.
 type sessionsOptions struct {
 	limit        int
 	since, until string
@@ -35,9 +35,11 @@ type sessionsOptions struct {
 	origin string
 }
 
-func newSessionsCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+// newSessionListCommand builds `suga session list` (alias `ls`): the session
+// listing that used to sit at the top level as `suga sessions`.
+func newSessionListCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	opts := sessionsOptions{limit: 10}
-	cmd := capp.NewCmd("sessions", "List sessions, newest first (default the last 10)", func(c *capp.Cmd) error {
+	cmd := capp.NewCmd("list", "List sessions, newest first (default the last 10)", func(c *capp.Cmd) error {
 		// Keyword arguments add to --query.
 		if words := strings.Join(c.Arg("keywords").Strings(), " "); words != "" {
 			opts.query = strings.TrimSpace(opts.query + " " + words)

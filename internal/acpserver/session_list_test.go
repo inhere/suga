@@ -76,7 +76,7 @@ func TestACPListSessions(t *testing.T) {
 		resp, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Cwd: strPtr("D:/elsewhere/nowhere")})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, 0, len(resp.Sessions))
-		assert.StrContains(t, resp.Meta["suga/hint"].(string), "suga sessions --all")
+		assert.StrContains(t, resp.Meta["suga/hint"].(string), "suga session list --all")
 		resp, err = conn.ListSessions(ctx, acp.ListSessionsRequest{Meta: map[string]any{"suga/all": true}})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, 4, len(resp.Sessions)) // h1, h2, other, nocwd — agent, archived and xhen stay hidden

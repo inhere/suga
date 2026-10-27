@@ -152,7 +152,7 @@ func TestRunWithSubAgent(t *testing.T) {
 		assert.Eq(t, child.ID, events[0].Attrs["child_session_id"])
 		assert.Eq(t, "final", events[0].Attrs["stop"])
 		assert.Eq(t, "description=find Foo", events[0].Attrs["arg"]) // its label, not the whole prompt
-		listedOut, err := runCLI(t, context.Background(), "sessions", "--json")
+		listedOut, err := runCLI(t, context.Background(), "session", "list", "--json")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.NotContains(t, listedOut, child.ID)
 		// The parent's stats include what its sub-agent spent.

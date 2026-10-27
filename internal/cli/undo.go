@@ -18,8 +18,8 @@ import (
 	"github.com/inhere/suga/internal/personal/store"
 )
 
-// newUndoCommand builds the provider-independent `suga undo` command. The
-// command opens the core store directly: undo must remain available when no
+// newUndoCommand builds the provider-independent `suga session undo` command.
+// The command opens the core store directly: undo must remain available when no
 // model/provider is configured.
 func newUndoCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
 	var list, force, yes, asJSON bool
@@ -47,7 +47,7 @@ func newUndoCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	cmd.BoolVar(&yes, "yes", false, "skip the destructive-operation confirmation")
 	cmd.BoolVar(&asJSON, "json", false, "write checkpoint/result JSON")
 	cmd.AddArg("session", "session ID or unique ID prefix", true)
-	cmd.Usage = "suga undo <session> [--list] [--turn <id>] [-n <count>] [--force] [--yes] [--json]"
+	cmd.Usage = "suga session undo <session> [--list] [--turn <id>] [-n <count>] [--force] [--yes] [--json]"
 	return cmd
 }
 

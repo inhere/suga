@@ -98,7 +98,7 @@ func (r *Runner) SessionCwd(ctx context.Context, sessionID string) (string, erro
 // AdoptSessionCwd records that sessionID is now worked on in dir: sessions.cwd
 // is updated and the move is written to the trace as a session_cwd_changed
 // event (attrs from/to), so `suga inspect trace` shows where the session moved and
-// `suga sessions` follows it. It returns the directory the session had before.
+// `suga session list` follows it. It returns the directory the session had before.
 //
 // The callers only reach it after comparing the directories themselves
 // (SameDir), so a session already on dir is left untouched, as is an empty dir.

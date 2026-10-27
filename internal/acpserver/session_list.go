@@ -27,7 +27,7 @@ const (
 	metaOtherDirs = "suga/otherDirs"
 	metaHint      = "suga/hint"
 	// metaXhen asks for the host-managed sessions (origin xhen) too; the
-	// default view keeps them out, like `suga sessions` does (design 2026-10-20,
+	// default view keeps them out, like `suga session list` does (design 2026-10-20,
 	// 会话来源).
 	metaXhen = "suga/xhen"
 	// metaHiddenXhen reports how many host-managed sessions the default view
@@ -46,7 +46,7 @@ var closeWaitTimeout = 30 * time.Second
 // the client started suga in; design 2026-10-20 会话列表默认当前目录), newest
 // first, listPageSize per page. Sub-agent sessions and archived ones stay
 // hidden, and so do the host-managed ones (origin xhen, which belong to the
-// host application; _meta.suga/xhen: true includes them like `suga sessions
+// host application; _meta.suga/xhen: true includes them like `suga session list
 // --origin xhen`). _meta.suga/all lists every directory instead; the response's
 // _meta always reports how many sessions the other directories (and the host
 // application) hold, and names the way out on an empty result (suga/hint). Only
@@ -143,7 +143,7 @@ func (a *Agent) ListSessions(ctx context.Context, req acp.ListSessionsRequest) (
 	// The hint only rides on a genuinely empty view: with suga/all the client
 	// itself asked for every directory, so no directory needs naming. The
 	// host-managed sessions get their own line, naming the extension that
-	// includes them (suga/xhen), like `suga sessions` names --origin xhen.
+	// includes them (suga/xhen), like `suga session list` names --origin xhen.
 	if len(infos) == 0 {
 		var hints []string
 		if !all && otherDirs > 0 {

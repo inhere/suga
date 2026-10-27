@@ -76,7 +76,7 @@ func main() {
 
 // bootstrapExempt reports the pure-query invocations that must not create the
 // user's home: help and version commands, plus a command group without a
-// subcommand, which only prints its help (suga config, suga inspect).
+// subcommand, which only prints its help (suga config, suga inspect, suga session).
 func bootstrapExempt(args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -90,8 +90,8 @@ func bootstrapExempt(args []string) bool {
 		}
 	}
 	// A command group without a subcommand only prints its help (suga config,
-	// suga inspect).
-	if len(args) == 1 && (args[0] == "config" || args[0] == "inspect") {
+	// suga inspect, suga session).
+	if len(args) == 1 && (args[0] == "config" || args[0] == "inspect" || args[0] == "session") {
 		return true
 	}
 	return args[0] == "help" || args[0] == "version" || args[0] == "--version" || args[0] == "-V"

@@ -273,7 +273,7 @@ tools:
   #     kind: mcp
   #     when: 跨文件查符号与调用关系
   # File-tool checkpoints. Enabled by default; sensitive before-images live under
-  # sessions/<id>/snapshots/. :undo and suga undo remain available when it is off.
+  # sessions/<id>/snapshots/. :undo and suga session undo remain available when it is off.
   snapshots:
     enabled: true
     max_file_bytes: 16777216       # 16 MiB

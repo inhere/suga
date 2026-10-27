@@ -33,7 +33,7 @@ type Options struct {
 	Model     string
 	// SessionOrigin is the meta.origin an embedded host records on the sessions
 	// it creates (e.g. personal.OriginXhen for xhen): its sessions then stay out
-	// of the default `suga sessions` list and of gc --retention. Empty keeps the
+	// of the default `suga session list` list and of gc --retention. Empty keeps the
 	// entry point's own origin (chat, run, ACP).
 	SessionOrigin string
 	// Thinking overrides the main model's thinking level (--thinking).

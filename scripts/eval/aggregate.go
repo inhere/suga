@@ -97,7 +97,7 @@ func resultLabel(r Result, repeated bool) string {
 
 // fillBreakdown records the wall-clock split of a run's DurationMs: TurnMs sums
 // the turn durations (suga's per-turn `run` calls), CompactionMs the forced
-// segment breaks (`suga compact`) and OverheadMs what the runner spent between
+// segment breaks (`suga session compact`) and OverheadMs what the runner spent between
 // them. Preparation and judging happen outside DurationMs, so they are not in
 // the split. An agent that keeps no per-turn record (omp, claude) reports its
 // whole run as turn time.

@@ -67,7 +67,7 @@ def run_scenario(s, binary, env, ws):
     s.check("run: did not wait for the 30s task", took < 20)
     # sessions lists the current directory's sessions by default: ask from ws,
     # the directory the run worked in.
-    sessions = subprocess.run([binary, "sessions", "--json", "-n", "1"], capture_output=True, text=True, env=env,
+    sessions = subprocess.run([binary, "session", "list", "--json", "-n", "1"], capture_output=True, text=True, env=env,
                               cwd=ws, timeout=30)
     sid = re.search(r'"id":"([^"]+)"', sessions.stdout)
     events = trace_events(binary, env, sid.group(1)) if sid else []

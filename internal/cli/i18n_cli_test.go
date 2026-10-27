@@ -235,7 +235,7 @@ func TestCompileErrorText(t *testing.T) {
 	})
 }
 
-// TestCLIEnglishUndoDetail covers the `suga undo` lines this task migrated: the
+// TestCLIEnglishUndoDetail covers the `suga session undo` lines this task migrated: the
 // confirmation prompt, the action labels of the plan and the result sentence.
 func TestCLIEnglishUndoDetail(t *testing.T) {
 	en, err := i18n.New(i18n.LanguageEN)

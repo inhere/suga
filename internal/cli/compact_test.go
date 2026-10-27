@@ -16,7 +16,7 @@ import (
 )
 
 // TestCompactCommandStartsNewSegment covers the CLI form of chat's :compact:
-// a turn, then `suga compact`, then a turn whose context is the new segment
+// a turn, then `suga session compact`, then a turn whose context is the new segment
 // (the summary instead of the dropped messages).
 func TestCompactCommandStartsNewSegment(t *testing.T) {
 	gkconfig.Reset()
@@ -67,7 +67,7 @@ func TestCompactCommandStartsNewSegment(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	assert.NoErr(t, newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"compact", "compact-cli", "--json"}))
+	assert.NoErr(t, newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"session", "compact", "compact-cli", "--json"}))
 	var rep compactReport
 	assert.NoErr(t, json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &rep))
 	assert.Eq(t, "compact-cli", rep.SessionID)
@@ -83,19 +83,19 @@ func TestCompactCommandStartsNewSegment(t *testing.T) {
 	t.Run("text report", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		assert.NoErr(t, newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"compact", "compact-cli"}))
+		assert.NoErr(t, newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"session", "compact", "compact-cli"}))
 		assert.StrContains(t, stdout.String(), "Compacted context: ~")
 	})
 	t.Run("unknown session", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"compact", "no-such-session"})
+		err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"session", "compact", "no-such-session"})
 		assert.Err(t, err)
 	})
 	t.Run("session id required", func(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
-		err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"compact"})
+		err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"session", "compact"})
 		assert.Err(t, err)
 	})
 }
