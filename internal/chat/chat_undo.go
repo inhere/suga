@@ -17,10 +17,6 @@ const (
 	checkpointsCmd = ":checkpoints"
 	undoCmd        = ":undo"
 	undoForceArg   = "force"
-	// undoBusyHint is the hint the refusal steering.go prints for a local command
-	// typed during a turn (that prompt is not this file's text); the text itself
-	// comes from the catalog (status.undo.busy), this is what the tests expect.
-	undoBusyHint = "回合进行中，等它结束再执行本地命令"
 )
 
 // Catalog keys of the :undo answers; the checkpoint listing and the undo plan

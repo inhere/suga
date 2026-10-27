@@ -21,10 +21,6 @@ const (
 	// writes it once more, so the output that follows starts at column 0 with
 	// no trace of the hint left on screen.
 	spinnerClear = "\r\x1b[2K"
-	// spinnerLabel leads the waiting line until the renderer says what the turn
-	// waits for; the elapsed seconds follow it. It is the zh catalog's
-	// status.spinner.thinking, kept for a spinner built without a translator.
-	spinnerLabel = "思考中…"
 )
 
 // toolLabel is what the status line says while a tool of the turn runs: the tool's
@@ -101,16 +97,15 @@ type spinnerConfig struct {
 	speed   time.Duration
 	now     func() time.Time
 	ticks   func(time.Duration) (<-chan time.Time, func())
-	// translator renders the line's text; nil keeps the Chinese label
-	// (spinnerLabel), like every other unwired chat text.
+	// translator renders the line's text; nil takes the Chinese fallback catalog
+	// through trOf, like every other unwired chat text.
 	translator i18n.Translator
 }
 
+// newThinkingSpinner builds a spinner; its first label is the catalog's thinking
+// line (status.spinner.thinking).
 func newThinkingSpinner(cfg spinnerConfig) *thinkingSpinner {
-	label := spinnerLabel
-	if cfg.translator != nil {
-		label = trOf(cfg.translator).T("status.spinner.thinking")
-	}
+	label := trOf(cfg.translator).T("status.spinner.thinking")
 	s := &thinkingSpinner{
 		enabled: cfg.enabled, out: cfg.out, status: cfg.status, paint: cfg.paint, speed: cfg.speed,
 		now: cfg.now, ticks: cfg.ticks, frame: progress.LoadingWidget(spinnerChars),
@@ -140,11 +135,12 @@ func realTicks(d time.Duration) (<-chan time.Time, func()) {
 // line): what the renderer's writes have to do about the line depends on it.
 func (s *thinkingSpinner) statusRow() bool { return s.status != nil }
 
-// SetLabel switches what the line says: the model is thinking (spinnerLabel) or a
-// tool runs right now (toolLabel). The elapsed seconds count from there on (the
-// line reports how long the current state lasts), and a line that is already up
-// changes in place. A no-op without a status line (the line of its own only ever
-// says 思考中…) and while the line is not running.
+// SetLabel switches what the line says: the model is thinking
+// (status.spinner.thinking) or a tool runs right now (toolLabel). The elapsed
+// seconds count from there on (the line reports how long the current state
+// lasts), and a line that is already up changes in place. A no-op without a
+// status line (the line of its own only ever says 思考中…) and while the line is
+// not running.
 func (s *thinkingSpinner) SetLabel(label string) {
 	if !s.enabled {
 		return

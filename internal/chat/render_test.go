@@ -222,7 +222,7 @@ func TestRendererPlainTurn(t *testing.T) {
 func TestRendererInterrupt(t *testing.T) {
 	var out, errOut bytes.Buffer
 	newRenderer(rendererOptions{Out: &out, Err: &errOut}).Interrupt()
-	assert.Eq(t, interruptNotice+"\n", out.String())
+	assert.Eq(t, zhInterruptNotice+"\n", out.String())
 	assert.Eq(t, "", errOut.String())
 	assert.StrNotContains(t, out.String(), "context canceled")
 }
@@ -515,7 +515,7 @@ func TestRendererAgentStatusLifecycle(t *testing.T) {
 		assert.StrContains(t, r.agentStatusLabel(), "survey")
 		// A sub-agent that failed: an error result without any summary.
 		r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "sub-agent failed", IsError: true})
-		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+		assert.Eq(t, zhSpinnerLabel, r.agentStatusLabel())
 	})
 
 	t.Run("the end of the turn ends the entries no task backs", func(t *testing.T) {
@@ -524,13 +524,13 @@ func TestRendererAgentStatusLifecycle(t *testing.T) {
 		r.Handle(agentCall("c2", false))
 		r.Handle(personal.Event{Kind: "agent_progress", CallID: "c2", Agent: "survey", ToolName: "file_grep"})
 		r.EndTurnAgents() // a cancelled turn leaves no tool result at all
-		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+		assert.Eq(t, zhSpinnerLabel, r.agentStatusLabel())
 	})
 
 	t.Run("progress of an unknown call adds nothing", func(t *testing.T) {
 		r := newRenderer(rendererOptions{Out: io.Discard, AgentProgress: "summary"})
 		r.Handle(personal.Event{Kind: "agent_progress", CallID: "gone", Agent: "ghost", ToolName: "file_grep"})
-		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+		assert.Eq(t, zhSpinnerLabel, r.agentStatusLabel())
 	})
 
 	t.Run("a provider without call ids falls back to the description", func(t *testing.T) {
@@ -540,7 +540,7 @@ func TestRendererAgentStatusLifecycle(t *testing.T) {
 		assert.StrContains(t, r.agentStatusLabel(), "survey 1 次调用")
 		r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", Text: "report",
 			AgentSummary: &personal.AgentSummary{Description: "survey", ToolCalls: 1}})
-		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+		assert.Eq(t, zhSpinnerLabel, r.agentStatusLabel())
 	})
 
 	t.Run("the same description stays two entries", func(t *testing.T) {
@@ -568,7 +568,7 @@ func TestRendererAgentStatusLifecycle(t *testing.T) {
 		// The task ended or was killed: gone from the manager, gone from the line,
 		// whether or not its notice was ever delivered.
 		running = false
-		assert.Eq(t, spinnerLabel, r.agentStatusLabel())
+		assert.Eq(t, zhSpinnerLabel, r.agentStatusLabel())
 	})
 
 	t.Run("a running agent task is counted without an entry", func(t *testing.T) {

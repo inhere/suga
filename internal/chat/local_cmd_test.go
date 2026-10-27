@@ -309,7 +309,7 @@ func TestRunTurnRefusesLocalCommand(t *testing.T) {
 
 	h.kb.Type("!echo steer-mark\r")
 	waitUntil(t, "the refusal hint", func() bool {
-		return strings.Contains(h.out.String(), localCommandBusyHint)
+		return strings.Contains(h.out.String(), zhLocalCommandBusyHint)
 	})
 	h.cast.letGo()
 

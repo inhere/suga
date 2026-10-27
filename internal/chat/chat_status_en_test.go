@@ -150,7 +150,7 @@ func TestChatENSpinner(t *testing.T) {
 		clock.tick(time.Second)
 		assert.Require(t, waitOutput(t, out, "thinking… 1s"))
 		spin.Stop()
-		assert.StrNotContains(t, out.String(), spinnerLabel)
+		assert.StrNotContains(t, out.String(), zhSpinnerLabel)
 	})
 
 	t.Run("the status line names the running tool", func(t *testing.T) {
