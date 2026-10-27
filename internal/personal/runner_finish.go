@@ -170,6 +170,10 @@ func (r *Runner) finish(ctx context.Context, model Session, result RunResult, tu
 			slog.Warn("write the interruption note", "session_id", model.ID, "turn_id", result.TurnID, "err", err)
 		}
 	}
+	// The request fingerprint of this turn's last request is kept in the session
+	// meta, so a process that resumes the session reports its first call as
+	// resume_same / resume_changed instead of a bare first (prefix.go).
+	r.savePrefixPrint(finishCtx, model.ID)
 	// The turn event is written outside the entry transactions and is
 	// best-effort; it is also what the trace timeline anchors on.
 	turnAttrs := map[string]any{"stop_reason": stopReason, "status": string(result.Status)}

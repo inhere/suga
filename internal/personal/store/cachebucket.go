@@ -31,18 +31,35 @@ const (
 	// (attrs.purpose=compact): it sends its own prompt, not the conversation.
 	BucketHandoff = "handoff"
 	// BucketResume is the first call of a new process that resumed the session
-	// inside the same segment (prefix=first, no segment break in between): the
-	// history is unchanged, only the provider cache may have cooled. `suga run
-	// --resume` from gofer and the per-turn processes of the eval land here.
+	// inside the same segment (prefix=first, no segment break in between) without
+	// a persisted request fingerprint (a session recorded before it existed):
+	// `suga run --resume` from gofer and the per-turn processes of the eval land
+	// here when nothing was persisted to compare with.
 	BucketResume = "resume"
+	// BucketResumeSame is that first call when the persisted fingerprint of the
+	// previous process is a prefix of it: the request was only appended to, so a
+	// provider cache that still holds the session serves it like a steady call.
+	BucketResumeSame = "resume_same"
+	// BucketResumeChanged is that first call when the persisted fingerprint
+	// differs (system prompt, tool table or an earlier message): the prefix has
+	// to be sent again however warm the cache is.
+	BucketResumeChanged = "resume_changed"
+	// BucketProviderSwitch is a call the previous main-loop call's cache cannot
+	// serve because another model or provider answered it: the model attr changed,
+	// the pool fell back to the next provider, or a model_switch session event lies
+	// in between. The request bytes only grow (fold/rewrite would be needed to
+	// change them), so without this bucket such a call reads as steady.
+	BucketProviderSwitch = "provider_switch"
 	// BucketUnknown is a call the trace cannot classify; today only kept for a
 	// prefix reason this code does not know.
 	BucketUnknown = "unknown"
 )
 
 // cacheBucketOrder is the order the buckets are reported in: the first call,
-// then the prefix breaks by cause, then the steady calls and the specials.
-var cacheBucketOrder = []string{BucketCold, BucketSegmentStart, BucketAfterFold, BucketResume, BucketSteady, BucketHandoff, BucketUnknown}
+// then the prefix breaks by cause, then the resumed and steady calls and the
+// specials.
+var cacheBucketOrder = []string{BucketCold, BucketSegmentStart, BucketAfterFold, BucketResume, BucketResumeSame,
+	BucketResumeChanged, BucketProviderSwitch, BucketSteady, BucketHandoff, BucketUnknown}
 
 // SteadyLowHitBelow is the per-call hit rate under which a steady call is
 // listed as a low hit (the target inside one context is higher, see BucketSteady).
@@ -61,6 +78,19 @@ const (
 	prefixReasonRewrite = "rewrite" // any other change to an earlier message
 )
 
+// The persisted-fingerprint outcome of a resumed session (attrs.prefix_resume,
+// written by personal.prefixTracker): same = the previous process's request is a
+// prefix of this one, changed = an earlier part differs (attrs.prefix_resume_reason
+// then names it). They must stay in sync with personal/prefix.go.
+const (
+	prefixResumeSame    = "same"
+	prefixResumeChanged = "changed"
+)
+
+// modelSwitchEvent is the session event recording a :model switch; a model call
+// after it is a provider_switch however much its bytes only append.
+const modelSwitchEvent = "model_switch"
+
 // CacheCall is one classified model call.
 type CacheCall struct {
 	Bucket string `json:"bucket"`
@@ -76,6 +106,13 @@ type CacheCall struct {
 	// After names the prefix-changing events (fold, segment, truncate, tools)
 	// recorded between the previous main-loop call and this one.
 	After []string `json:"after,omitempty"`
+	// Reason names why the call is in its bucket when the bucket is about a prefix
+	// change: the request-prefix reason (system / tools / fold / segment / rewrite),
+	// from attrs.prefix_resume_reason for a changed resume.
+	Reason string `json:"reason,omitempty"`
+	// PrefixTokens is the estimated size of the cacheable prefix of the previous
+	// request, in tokens: what a provider cache could have served of this call.
+	PrefixTokens int64 `json:"prefix_reused_tokens,omitempty"`
 }
 
 // CacheBucketStat aggregates the calls of one cache bucket. InputTokens follows
@@ -91,6 +128,17 @@ type CacheBucketStat struct {
 	// CacheReported is false when no call of the bucket reported cache
 	// read/write: a provider without cache then shows "-" instead of 0%.
 	CacheReported bool `json:"cache_reported"`
+	// PrefixTokens is the summed estimated cacheable prefix of the calls' previous
+	// requests (tokens) and PrefixReuseRate = cache read / that: of what the
+	// provider could have served from its cache, how much it did serve. Unlike the
+	// hit rate it does not depend on how much a call added, so the steady 95%
+	// target is measured with it (docs/research/2026-10-26-cache-hit-buckets.md).
+	// A provider serving more than the estimate is counted as 100%, not more.
+	PrefixTokens int64   `json:"prefix_reused_tokens"`
+	PrefixReuse  float64 `json:"prefix_reuse_rate"`
+	// Reasons counts the calls of a prefix-change bucket by cause (system, tools,
+	// fold, segment, rewrite): what to fix first.
+	Reasons map[string]int `json:"reasons,omitempty"`
 }
 
 // CacheLowHit is one steady call whose hit rate stayed below SteadyLowHitBelow:
@@ -115,12 +163,22 @@ type bucketRow struct {
 	Kind, Name, Status           string
 	Input, CacheRead, CacheWrite int64
 	Purpose, Prefix              string
-	CacheInvalidated             bool
+	// PrefixResume / ResumeReason: the persisted-fingerprint outcome of a first
+	// call of a resumed process (attrs prefix_resume / prefix_resume_reason).
+	PrefixResume, ResumeReason string
+	// Reused, Rebuilt, Fresh are the JSON sizes of the request parts (attrs
+	// prefix_reused / prefix_rebuilt / prefix_fresh), Model the model that served
+	// the call and Fallback whether the pool moved on after it (provider_switch).
+	Reused, Rebuilt, Fresh int
+	Model                  string
+	Fallback               bool
+	CacheInvalidated       bool
 }
 
 // bucketKinds are the event kinds the cache classification reads: the model
-// calls themselves and the events that break the request prefix.
-var bucketKinds = []string{EventModel, EventFold, EventCompaction, EventToolSearch}
+// calls themselves, the events that break the request prefix and the session
+// events that switch the model.
+var bucketKinds = []string{EventModel, EventFold, EventCompaction, EventToolSearch, EventSession}
 
 // ClassifyEvents classifies the model calls of one session's events (oldest
 // first, as ListEvents returns them).
@@ -141,10 +199,40 @@ func eventBucketRow(e Event) bucketRow {
 	case EventModel:
 		r.Purpose, _ = e.Attrs["purpose"].(string)
 		r.Prefix, _ = e.Attrs["prefix"].(string)
+		r.PrefixResume, _ = e.Attrs["prefix_resume"].(string)
+		r.ResumeReason, _ = e.Attrs["prefix_resume_reason"].(string)
+		r.Model, _ = e.Attrs["model"].(string)
+		_, r.Fallback = e.Attrs["fallback"]
+		r.Reused, r.Rebuilt, r.Fresh = attrInt(e.Attrs["prefix_reused"]), attrInt(e.Attrs["prefix_rebuilt"]), attrInt(e.Attrs["prefix_fresh"])
 	case EventToolSearch:
 		r.CacheInvalidated, _ = e.Attrs["cache_invalidated"].(bool)
 	}
 	return r
+}
+
+// attrInt reads an integer attr (JSON numbers come back as float64).
+func attrInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	}
+	return 0
+}
+
+// bucketState is what the classification carries from one call of a session to
+// the next.
+type bucketState struct {
+	step     int      // 1-based ordinal of the main-loop calls
+	seenMain bool     // a main-loop call happened
+	pending  []string // prefix-changing events since the previous main-loop call
+	// What served the previous main-loop call, to spot a provider switch (a
+	// model_switch event in between counts as one too).
+	lastProvider, lastModel string
+	switched                bool
 }
 
 // classifyRows assigns one bucket to every model call of ONE session's events
@@ -154,9 +242,7 @@ func eventBucketRow(e Event) bucketRow {
 // in BucketUnknown.
 func classifyRows(rows []bucketRow) []CacheCall {
 	out := make([]CacheCall, 0, len(rows)/4+1)
-	step, seenMain := 0, false
-	// pending are the prefix-changing events since the previous main-loop call.
-	var pending []string
+	st := &bucketState{}
 	for _, r := range rows {
 		switch r.Kind {
 		case EventModel:
@@ -164,41 +250,60 @@ func classifyRows(rows []bucketRow) []CacheCall {
 				// A side call (purpose=compact writes the handoff package) sends a
 				// prompt of its own and does not interrupt the conversation, so it
 				// takes no step and clears nothing.
-				out = append(out, CacheCall{Bucket: BucketHandoff, Step: step,
+				out = append(out, CacheCall{Bucket: BucketHandoff, Step: st.step,
 					Input: r.Input, CacheRead: r.CacheRead, CacheWrite: r.CacheWrite})
 				continue
 			}
-			step++
-			out = append(out, CacheCall{Bucket: r.bucketOf(!seenMain, pending), Step: step,
-				Input: r.Input, CacheRead: r.CacheRead, CacheWrite: r.CacheWrite, After: pending})
-			seenMain, pending = true, nil
+			st.step++
+			out = append(out, CacheCall{Bucket: r.bucketOf(st), Step: st.step,
+				Input: r.Input, CacheRead: r.CacheRead, CacheWrite: r.CacheWrite, After: st.pending,
+				Reason: r.bucketReason(), PrefixTokens: r.prefixTokens()})
+			st.seenMain, st.pending, st.switched = true, nil, false
+			st.lastProvider, st.lastModel = r.Name, r.Model
+		case EventSession:
+			if r.Name == modelSwitchEvent {
+				st.switched = true
+			}
 		case EventFold:
-			pending = append(pending, "fold")
+			st.pending = append(st.pending, "fold")
 		case EventCompaction:
 			switch {
 			case r.Name == "compact" && r.Status == "ok":
-				pending = append(pending, "segment")
+				st.pending = append(st.pending, "segment")
 			case r.Name == "truncate":
 				// The truncation ladder cut old tool results, not a new segment.
-				pending = append(pending, "truncate")
+				st.pending = append(st.pending, "truncate")
 			}
 		case EventToolSearch:
 			// Only a search that loaded a deferred tool changes the tool table
 			// (and so the request prefix).
 			if r.CacheInvalidated {
-				pending = append(pending, "tools")
+				st.pending = append(st.pending, "tools")
 			}
 		}
 	}
 	return out
 }
 
-// bucketOf decides the bucket of one main-loop model call. isFirst marks the
-// session's first call; pending lists the prefix-changing events since the
-// previous one.
-func (r bucketRow) bucketOf(isFirst bool, pending []string) string {
-	if isFirst {
+// bucketOf decides the bucket of one main-loop model call; st carries what the
+// previous calls of the session left.
+func (r bucketRow) bucketOf(st *bucketState) string {
+	if !st.seenMain {
 		return BucketCold
+	}
+	// A segment break replaces the history: that is the structural cause of the
+	// low hit rate of this call, whatever else changed beside it.
+	if r.Prefix == prefixReasonSegment || hasPending(st.pending, "segment") {
+		return BucketSegmentStart
+	}
+	if r.providerSwitched(st) {
+		return BucketProviderSwitch
+	}
+	switch r.PrefixResume {
+	case prefixResumeSame:
+		return BucketResumeSame
+	case prefixResumeChanged:
+		return BucketResumeChanged
 	}
 	switch r.Prefix {
 	case prefixReasonAppend:
@@ -208,12 +313,9 @@ func (r bucketRow) bucketOf(isFirst bool, pending []string) string {
 	case prefixReasonFold, prefixReasonSystem, prefixReasonTools, prefixReasonRewrite:
 		return BucketAfterFold
 	case prefixReasonFirst:
-		// A new process resumed the session: the history is the same, the
-		// provider cache may still hold the prefix. A segment break in between
-		// makes it a segment start instead.
-		if hasPending(pending, "segment") {
-			return BucketSegmentStart
-		}
+		// A new process resumed the session without a persisted fingerprint: the
+		// history is the same, the provider cache may still hold the prefix. A
+		// segment break in between makes it a segment start instead (checked above).
 		return BucketResume
 	}
 	if r.Prefix != "" {
@@ -223,13 +325,51 @@ func (r bucketRow) bucketOf(isFirst bool, pending []string) string {
 	}
 	// No prefix attr (a session recorded before it existed): the events alone
 	// decide; lacking any, the request is assumed to extend the previous one.
-	switch {
-	case hasPending(pending, "segment"):
-		return BucketSegmentStart
-	case len(pending) > 0:
+	if len(st.pending) > 0 {
 		return BucketAfterFold
 	}
 	return BucketSteady
+}
+
+// providerSwitched reports whether the previous main-loop call's cache cannot
+// serve this one: another model or provider answered (attrs.model / the event's
+// provider), the pool moved on after the previous attempt (attrs.fallback), or a
+// model_switch session event lies in between.
+func (r bucketRow) providerSwitched(st *bucketState) bool {
+	if st.switched || r.Fallback {
+		return true
+	}
+	if r.Model != "" && st.lastModel != "" && r.Model != st.lastModel {
+		return true
+	}
+	return r.Name != "" && st.lastProvider != "" && r.Name != st.lastProvider
+}
+
+// bucketReason names why the call sits in its bucket: the change cause for the
+// buckets that are about a prefix break (system / tools / fold / segment /
+// rewrite, or the model for a provider switch).
+func (r bucketRow) bucketReason() string {
+	if r.PrefixResume == prefixResumeChanged && r.ResumeReason != "" {
+		return r.ResumeReason
+	}
+	if r.Model != "" && r.Fallback {
+		return r.Model
+	}
+	return ""
+}
+
+// prefixTokens estimates in tokens how much of the previous request the provider
+// could have served from its cache: the reused part of the request (prefix
+// attrs, JSON characters) scaled by the call's reported prompt tokens. The sizes
+// are only a proxy for tokens, so the reuse rate caps its numerator at this
+// estimate rather than trusting a higher cache read.
+func (r bucketRow) prefixTokens() int64 {
+	chars := r.Reused + r.Rebuilt + r.Fresh
+	if chars <= 0 || r.Input <= 0 {
+		return 0
+	}
+	// Input includes the cache read/write (the store's raw convention).
+	return r.Input * int64(r.Reused) / int64(chars)
 }
 
 // hasPending reports whether the prefix-changing events include name.
@@ -257,6 +397,13 @@ func AggregateCacheBuckets(calls []CacheCall, lowHitLimit int) CacheBuckets {
 		st.InputTokens += max(c.Input-c.CacheRead-c.CacheWrite, 0)
 		st.CacheRead += c.CacheRead
 		st.CacheWrite += c.CacheWrite
+		st.PrefixTokens += c.PrefixTokens
+		if c.Reason != "" {
+			if st.Reasons == nil {
+				st.Reasons = map[string]int{}
+			}
+			st.Reasons[c.Reason]++
+		}
 		if c.CacheRead+c.CacheWrite > 0 {
 			st.CacheReported = true
 		}
@@ -268,6 +415,10 @@ func AggregateCacheBuckets(calls []CacheCall, lowHitLimit int) CacheBuckets {
 			continue // a bucket this session never reached
 		}
 		st.CacheHitRate = ratio(st.CacheRead, st.InputTokens+st.CacheRead+st.CacheWrite)
+		// Prefix reuse: of the prefix the provider could have served, how much it
+		// did. Capped at 100%: the estimate is in tokens derived from JSON sizes,
+		// so a provider serving the whole prompt is not read as more than all.
+		st.PrefixReuse = ratio(min(st.CacheRead, st.PrefixTokens), st.PrefixTokens)
 		out.Buckets = append(out.Buckets, *st)
 	}
 	if lowHitLimit > 0 {
@@ -309,7 +460,20 @@ func (s *Store) BuildCacheBuckets(ctx context.Context, f EventFilter, lowHitLimi
 			THEN json_extract(attrs_json, '$.purpose') ELSE '' END,
 		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix') = 'text'
 			THEN json_extract(attrs_json, '$.prefix') ELSE '' END,
-		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.cache_invalidated') = 'true' THEN 1 ELSE 0 END
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.cache_invalidated') = 'true' THEN 1 ELSE 0 END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix_resume') = 'text'
+			THEN json_extract(attrs_json, '$.prefix_resume') ELSE '' END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix_resume_reason') = 'text'
+			THEN json_extract(attrs_json, '$.prefix_resume_reason') ELSE '' END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.model') = 'text'
+			THEN json_extract(attrs_json, '$.model') ELSE '' END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.fallback') = 'text' THEN 1 ELSE 0 END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix_reused') = 'integer'
+			THEN json_extract(attrs_json, '$.prefix_reused') ELSE 0 END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix_rebuilt') = 'integer'
+			THEN json_extract(attrs_json, '$.prefix_rebuilt') ELSE 0 END,
+		CASE WHEN json_valid(attrs_json) AND json_type(attrs_json, '$.prefix_fresh') = 'integer'
+			THEN json_extract(attrs_json, '$.prefix_fresh') ELSE 0 END
 		FROM events WHERE ` + where + ` ORDER BY session_id ASC, started_at ASC, id ASC`
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -332,12 +496,14 @@ func (s *Store) BuildCacheBuckets(ctx context.Context, f EventFilter, lowHitLimi
 			sid         string
 			r           bucketRow
 			invalidated int
+			fallback    int
 		)
 		if err := rows.Scan(&sid, &r.Kind, &r.Name, &r.Status, &r.Input, &r.CacheRead, &r.CacheWrite,
-			&r.Purpose, &r.Prefix, &invalidated); err != nil {
+			&r.Purpose, &r.Prefix, &invalidated, &r.PrefixResume, &r.ResumeReason, &r.Model, &fallback,
+			&r.Reused, &r.Rebuilt, &r.Fresh); err != nil {
 			return CacheBuckets{}, fmt.Errorf("cache buckets: %w", err)
 		}
-		r.CacheInvalidated = invalidated != 0
+		r.CacheInvalidated, r.Fallback = invalidated != 0, fallback != 0
 		if sid != session {
 			flush()
 			session = sid

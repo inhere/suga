@@ -171,6 +171,15 @@ func (r *recorder) attemptObserver(defName, defModel string) llm.AttemptObserver
 			// How this request relates to the previous one (cache attribution).
 			e.Attrs["prefix"] = rep.Reason
 			e.Attrs["prefix_reused"], e.Attrs["prefix_rebuilt"], e.Attrs["prefix_fresh"] = rep.Reused, rep.Rebuilt, rep.Fresh
+			if rep.Resume != "" {
+				// The first call of a resumed session compared with the fingerprint the
+				// previous process persisted (prefix.go): same = only appended;
+				// changed names what differs (system / tools / a message).
+				e.Attrs["prefix_resume"] = rep.Resume
+				if rep.Resume != resumeSame {
+					e.Attrs["prefix_resume_reason"] = rep.Reason
+				}
+			}
 		}
 		// Provider-reported cost wins; otherwise price the call from config.
 		// The store's session/stats totals sum this attr.

@@ -609,6 +609,10 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	if err != nil {
 		return r.finish(ctx, model, result, turnStart, usage, nil, err, req.Emit)
 	}
+	// A resumed session: the previous process kept the last request fingerprint,
+	// so this turn's first call can tell a continuation from a rewritten prefix
+	// (prefix.go, attr prefix_resume).
+	r.rec.prefix.seed(model.ID, prefixPrintFromMeta(model.Meta))
 	// The update is an entry of this turn written before the turn's user
 	// message, so it is adopted with the turn and replayed at the same place
 	// (a ctxItem: stable position, a cut candidate, never in state.Messages).
