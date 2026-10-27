@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gookit/goutil/x/assert"
 
@@ -32,6 +33,7 @@ func TestMemoryProvenance(t *testing.T) {
 		assert.Eq(t, "t1", first.TurnID)
 		assert.Eq(t, "tool", first.Source)
 		assert.True(t, first.Tainted)
+		assert.True(t, first.UUID != "")
 		assert.Eq(t, fpA, first.Fingerprint)
 		assert.True(t, first.DeletedAt.IsZero())
 
@@ -94,7 +96,12 @@ func TestMemoryProvenance(t *testing.T) {
 
 	t.Run("reusing an id keeps the old tombstone", func(t *testing.T) {
 		s := openTemp(t)
-		assert.NoErr(t, s.Record(ctx, "files", user, memory.Entry{ID: "ports"}, fpA))
+		firstEntry := memory.Entry{ID: "ports"}
+		assert.NoErr(t, s.Record(ctx, "files", user, firstEntry, fpA))
+		firstRows, err := s.MemoryMetaRows(ctx, "files", user)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Require(t, assert.Len(t, firstRows, 1))
+		firstUUID := firstRows[0].UUID
 		assert.NoErr(t, s.Tombstone(ctx, "files", user, "ports", fpA))
 		// A different entry later gets the same id.
 		assert.NoErr(t, s.Record(ctx, "files", user, memory.Entry{ID: "ports"}, fpB))
@@ -112,8 +119,35 @@ func TestMemoryProvenance(t *testing.T) {
 		assert.Eq(t, "ports", rows[0].EntryID)
 		assert.True(t, rows[0].DeletedAt.IsZero())
 		assert.Eq(t, "ports@"+fpA[:16], rows[1].EntryID)
+		assert.Eq(t, firstUUID, rows[1].UUID, "the tombstone keeps the removed entry UUID")
 		assert.False(t, rows[1].DeletedAt.IsZero())
+		assert.NotEq(t, firstUUID, rows[0].UUID, "a reused id gets a new UUID")
 	})
+}
+
+// TestMemoryUUIDMigrationBackfillsLargeLegacyMetadata verifies that upgrading
+// a legacy metadata table fills every UUID in one short transaction.
+func TestMemoryUUIDMigrationBackfillsLargeLegacyMetadata(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openAtCoreSchema(t)
+	defer s.Close()
+	assert.Require(t, assert.NoErr(t, s.migrateUpTo(ctx, ledgerFTSMigration)))
+	assert.Require(t, assert.NoErr(t, execNone(s, `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 20001)
+		INSERT INTO memory_meta(backend, scope, entry_id, created_at, updated_at)
+		SELECT 'files', 'user', 'legacy-' || x, 't', 't' FROM c`)))
+
+	start := time.Now()
+	assert.Require(t, assert.NoErr(t, s.migrate(ctx)))
+	elapsed := time.Since(start)
+	t.Logf("memory UUID migration over 20001 rows: %v", elapsed)
+	budget := 5 * time.Second
+	if raceEnabled {
+		budget = 20 * time.Second
+	}
+	assert.True(t, elapsed < budget, "memory UUID migration took "+elapsed.String())
+	var missing int
+	assert.NoErr(t, s.db.QueryRow(`SELECT COUNT(1) FROM memory_meta WHERE uuid IS NULL OR uuid = ''`).Scan(&missing))
+	assert.Eq(t, 0, missing)
 }
 
 // TestMemoryProvenanceWithGoverned runs the store as the injected
