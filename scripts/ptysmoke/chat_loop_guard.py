@@ -203,7 +203,8 @@ def verify_fail_shell(s, reqs, events):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--bin", default="suga", help="the suga binary under test")
+    # Like the other smoke scripts: the tree's build output, not a suga on PATH.
+    p.add_argument("--bin", default="tmp/smoke/suga", help="the suga binary under test")
     p.add_argument("--work", default="tmp/smoke-loop-guard")
     p.add_argument("--port", type=int, default=0,
                    help="fake model port; 0 picks free ports (one per scenario)")
