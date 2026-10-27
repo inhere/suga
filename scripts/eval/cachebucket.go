@@ -52,15 +52,16 @@ type cacheLowHit struct {
 // parseCacheBuckets reads the bucket part of an --analyze JSON object. Both
 // results are nil when the object carries no buckets (an older binary, an agent
 // whose trace the eval cannot read, or a session without model events).
-func parseCacheBuckets(raw []byte) ([]cacheBucket, []cacheLowHit) {
+func parseCacheBuckets(raw []byte) ([]cacheBucket, []cacheLowHit, int) {
 	var rep struct {
-		Buckets []cacheBucket `json:"cache_buckets"`
-		Low     []cacheLowHit `json:"steady_low_hit"`
+		Buckets        []cacheBucket `json:"cache_buckets"`
+		Low            []cacheLowHit `json:"steady_low_hit"`
+		FailedAttempts int           `json:"failed_attempts"`
 	}
 	if json.Unmarshal(bytes.TrimSpace(raw), &rep) != nil {
-		return nil, nil
+		return nil, nil, 0
 	}
-	return rep.Buckets, rep.Low
+	return rep.Buckets, rep.Low, rep.FailedAttempts
 }
 
 // bucketCell renders one bucket's hit rate of a run: "-" when the bucket has no
@@ -172,10 +173,17 @@ func reuseCell(buckets []cacheBucket, name string) string {
 // and round, with the overall row of the same calls beside it: the steady
 // bucket is the one the 95% target is about, so the two are comparable here.
 // Nothing is printed when no run carries bucket data (another agent, an older
-// suga binary).
+// suga binary), except a nonzero failed-attempt count, which is still useful.
 func printCacheBuckets(w io.Writer, rs []Result) {
 	buckets := poolBuckets(rs)
+	var failedAttempts int
+	for _, r := range rs {
+		failedAttempts += r.FailedAttempts
+	}
 	if len(buckets) == 0 {
+		if failedAttempts > 0 {
+			fmt.Fprintf(w, "failed attempts: %d (omitted from cache buckets)\n", failedAttempts)
+		}
 		return
 	}
 	fmt.Fprintln(w, "\ncache by bucket (pooled over all runs; steady = unchanged context inside one segment, the 95% target; overall = every call):")
@@ -193,6 +201,12 @@ func printCacheBuckets(w io.Writer, rs []Result) {
 	}
 	if line := handoffReuseLine(buckets); line != "" {
 		fmt.Fprintf(w, "handoff package calls: %s\n", line)
+	}
+	if failedAttempts > 0 {
+		// Provider attempts with no usage of their own: they are in no bucket row
+		// above, so their count is printed apart (a downgraded attempt then reads as
+		// provider_switch however often the pool retried first).
+		fmt.Fprintf(w, "  failed attempts: %d (omitted from cache buckets)\n", failedAttempts)
 	}
 	printSteadyLowHits(w, rs)
 }

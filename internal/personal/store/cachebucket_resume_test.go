@@ -89,12 +89,55 @@ func TestClassifyProviderSwitch(t *testing.T) {
 		})
 		assert.Eq(t, BucketProviderSwitch, calls[1].Bucket)
 	})
-	t.Run("the same model keeps steady", func(t *testing.T) {
+	t.Run("failed fallback attempts are omitted but the successful downgrade is provider_switch", func(t *testing.T) {
+		failed := modelEvent(200, 0, map[string]any{"prefix": "append", "model": "m1", "fallback": "next, transient"})
+		failed.Status = "error"
 		calls := ClassifyEvents([]Event{
 			modelEvent(100, 0, map[string]any{"prefix": "first", "model": "m1"}),
+			failed,
 			modelEvent(2000, 1900, map[string]any{"prefix": "append", "model": "m1"}),
 		})
-		assert.Eq(t, BucketSteady, calls[1].Bucket)
+		assert.Require(t, assert.Eq(t, 3, len(calls)))
+		assert.Eq(t, true, calls[1].FailedAttempt)
+		assert.Eq(t, "", calls[1].Bucket)
+		// The trace analysis counts every main-loop model event as a step, failed
+		// attempts included, so the call after one keeps the analysis' number.
+		assert.Eq(t, 1, calls[0].Step)
+		assert.Eq(t, 3, calls[2].Step)
+		got := AggregateCacheBuckets(calls, 0)
+		assert.Eq(t, 1, got.FailedAttempts)
+		assert.Require(t, assert.Eq(t, 2, len(got.Buckets)))
+		assert.Eq(t, BucketProviderSwitch, got.Buckets[1].Bucket)
+		assert.Eq(t, 1, got.Buckets[1].Calls)
+	})
+	t.Run("a failed side call takes no step", func(t *testing.T) {
+		failed := modelEvent(0, 0, map[string]any{"purpose": "compact"})
+		failed.Status = "error"
+		calls := ClassifyEvents([]Event{
+			modelEvent(100, 0, map[string]any{"prefix": "first", "model": "m1"}),
+			failed,
+			modelEvent(2000, 1900, map[string]any{"prefix": "append", "model": "m1"}),
+		})
+		assert.Require(t, assert.Eq(t, 3, len(calls)))
+		assert.Eq(t, true, calls[1].FailedAttempt)
+		assert.Eq(t, 0, calls[1].Step)
+		assert.Eq(t, 2, calls[2].Step)
+		assert.Eq(t, BucketSteady, calls[2].Bucket)
+	})
+}
+
+func TestNoUsageCacheAttempts(t *testing.T) {
+	t.Run("successful attempts without usage are omitted", func(t *testing.T) {
+		noUsage := modelEvent(0, 0, map[string]any{"prefix": "append", "model": "m1"})
+		calls := ClassifyEvents([]Event{
+			modelEvent(100, 0, map[string]any{"prefix": "first", "model": "m1"}),
+			noUsage,
+			modelEvent(2000, 1900, map[string]any{"prefix": "append", "model": "m1"}),
+		})
+		got := AggregateCacheBuckets(calls, 0)
+		assert.Eq(t, 1, got.FailedAttempts)
+		assert.Eq(t, BucketSteady, got.Buckets[1].Bucket)
+		assert.Eq(t, 1, got.Buckets[1].Calls)
 	})
 }
 

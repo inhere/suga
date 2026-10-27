@@ -95,6 +95,7 @@ func runStats(ctx context.Context, out io.Writer, since, session string, asJSON 
 		return err
 	}
 	rep.CacheBuckets = buckets.Buckets
+	rep.FailedAttempts = buckets.FailedAttempts
 	if asJSON {
 		return json.NewEncoder(out).Encode(rep)
 	}
@@ -131,7 +132,7 @@ func writeStatsText(out io.Writer, rep store.Report) error {
 				m.InputTokens, m.OutputTokens, m.CacheRead, m.CacheWrite, m.CacheHitRate*100, m.CostUSD)
 		}
 	}
-	if len(rep.CacheBuckets) > 0 {
+	if len(rep.CacheBuckets) > 0 || rep.FailedAttempts > 0 {
 		fmt.Fprintln(tw, "\t\t\t\t\t\t\t\t\t\t\t")
 		fmt.Fprintln(tw, "CACHE BUCKET\tCALLS\tPROMPT\tCACHE-R\tHIT%\tREUSE%\t\t\t\t\t")
 		var total store.CacheBucketStat
@@ -157,6 +158,9 @@ func writeStatsText(out io.Writer, rep store.Report) error {
 		}
 		fmt.Fprintf(tw, "total\t%d\t%d\t%d\t%s\t%s\t\t\t\t\t\n", total.Calls,
 			total.InputTokens+total.CacheRead+total.CacheWrite, total.CacheRead, hitCell(total), reuseCell(total))
+		if rep.FailedAttempts > 0 {
+			fmt.Fprintf(tw, "failed_attempts\t%d\t\t\t\t\t\t\t\t\t\n", rep.FailedAttempts)
+		}
 	}
 	fmt.Fprintln(tw, "\t\t\t\t\t\t\t\t\t\t\t")
 	fmt.Fprintln(tw, "TOOL\tCALLS\tERR%\tDENIED\tP50\tP95\t\t\t\t\t\t")

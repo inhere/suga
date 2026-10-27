@@ -114,6 +114,12 @@ steady 桶低于 90% 的 4 次调用（`inspect trace <sid> --analyze`，`step` 
 
 判定优先级：会话首次调用 `cold` → 换段（`prefix=segment` 或其间有成功的 `compact`）`segment_start` → `provider_switch` → `resume_same`/`resume_changed` → `prefix=first` 的 `resume` → `fold`/`system`/`tools`/`rewrite` 的 `after_fold` → `append` 的 `steady`。换段优先：它才是那次低命中的结构性原因。
 
+### 失败尝试不进桶（2026-10-27）
+
+没有可用用量的尝试（`status` 非 `ok`，或 provider 未报告 usage）不进任何桶的 CALLS 与命中率：它没有自己的 cache 读写，混进 `provider_switch` 之类的桶只会抬高调用数、拉低命中率。第四十五批 E2 实测就是这样：pool 降级前那次 `status=error`、usage 全 0、`attrs.fallback="next, provider_transient (connect_failed)"` 的尝试被记成 `provider_switch` 的一次调用（prompt 0、`cache_reported=false`），而降级成功的那次被算进 `steady`。
+
+修正后：这类尝试单独计数为 `failed_attempts`（`inspect stats` 文本表在 total 下一行、`--json` 字段 `failed_attempts`；`inspect trace --analyze` 的 `failed attempts` 行与同名字段；`scripts/eval` 汇总的 `failed attempts` 行），为 0 时不显示；它带的 `attrs.fallback` 仍然算数，紧随其后的那次可用调用归 `provider_switch`（即真正换了 provider 的那次）。步号仍与 `--analyze` 的主循环模型调用序号一致（失败尝试在那个视图里也是一步）。
+
 ### 前缀复用率
 
 ```
