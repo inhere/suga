@@ -316,37 +316,65 @@ func logRebuildDiff(i int, old, cur messagePrint, req *agentcore.GenerateRequest
 // handoffBodyComplete reports whether body carries every section compactTemplate
 // asks for. It is the reuse path's shape check: a reply that only answers in
 // prose, or that stops after a few sections, is not a handoff package and the
-// old path asks again. A section present with "无" counts.
+// old path asks again. A section present with "无" counts. The headings may come
+// in the shapes canonicalHandoffHeadings accepts (###, bold), so a package the
+// model wrote one level deeper is still a package.
 func handoffBodyComplete(body string) bool {
+	return len(handoffMissingSections(body)) == 0
+}
+
+// handoffMissingSections names the sections compactTemplate asks for that body
+// does not carry (nil when it carries all of them): the reuse path's fallback
+// reason spells them out, so a discarded answer says which sections the model
+// dropped (H5).
+func handoffMissingSections(body string) []string {
 	seen := make(map[string]bool, 8)
-	for _, s := range splitHandoffSections(body) {
+	for _, s := range splitHandoffSections(canonicalHandoffHeadings(body)) {
 		if name, ok := handoffSectionName(s.heading); ok {
 			seen[name] = true
 		}
 	}
-	for _, name := range []string{handoffSectionTask, handoffSectionCoords, handoffSectionVerified,
-		handoffSectionProgress, handoffSectionNext, handoffSectionRefs} {
-		if !seen[name] {
-			return false
+	var missing []string
+	for _, name := range handoffSectionNames {
+		// The protected section is not required here: a package that lost it still
+		// continues the task, and every other section has to be there.
+		if name == handoffProtectedSection || seen[name] {
+			continue
 		}
+		missing = append(missing, name)
 	}
-	return true
+	return missing
 }
 
 // handoffAnswerReason names why an answer of the reuse path cannot become the
 // handoff package ("" = it can): a reply that asks for tools went on working
 // instead of writing the package, an empty reply says nothing, and a body
-// without the template's sections is no package.
+// without the template's sections is no package - then the reason names the
+// missing sections (missing_sections:<名,名>).
 func handoffAnswerReason(body string, toolCalls int) string {
 	switch {
 	case toolCalls > 0:
 		return handoffFallbackToolCall
 	case strings.TrimSpace(body) == "":
 		return handoffFallbackEmpty
-	case !handoffBodyComplete(body):
-		return handoffFallbackMissingSections
+	}
+	if missing := handoffMissingSections(body); len(missing) > 0 {
+		return handoffFallbackMissingSections + ":" + strings.Join(missing, ",")
 	}
 	return ""
+}
+
+// handoffAnswerHead is the first 400 characters of a discarded answer, for the
+// debug log: the shape a model actually wrote (heading level, language, which
+// sections came first) is what the instruction and the heading forms are fixed
+// from, and the discarded answer is stored nowhere (H5).
+func handoffAnswerHead(body string) string {
+	const limit = 400
+	r := []rune(body)
+	if len(r) <= limit {
+		return body
+	}
+	return string(r[:limit]) + "…"
 }
 
 // reuseCall sends one handoff request on top of the segment's main-loop prefix
@@ -365,6 +393,7 @@ func (r *Runner) reuseCall(ctx context.Context, ru *handoffReuse, instruction st
 	}
 	if why := handoffAnswerReason(text, calls); why != "" {
 		slog.Warn("handoff package on the segment prefix unusable; asking the old way", "reason", why)
+		slog.Debug("discarded handoff answer", "reason", why, "head", handoffAnswerHead(text))
 		return "", false, why
 	}
 	return text, truncated, ""

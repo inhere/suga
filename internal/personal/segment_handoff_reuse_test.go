@@ -309,11 +309,46 @@ func TestHandoffReuseDiscardsBadAnswer(t *testing.T) {
 			reuse, old := prov.handoffCalls()
 			assert.Eq(t, 1, len(reuse))
 			assert.Eq(t, 1, len(old))
-			assert.Eq(t, []string{handoffReusePrefix, handoffReuseFallbackPrefix + reason}, handoffReuseAttrs(t, repo, sid))
+			want := handoffReuseFallbackPrefix + reason
+			if reason == handoffFallbackMissingSections {
+				// The reason names the sections the answer dropped, in template order
+				// (H5): this answer has the task and the next step only.
+				want += ":" + handoffSectionCoords + "," + handoffSectionVerified + "," +
+					handoffSectionProgress + "," + handoffSectionRefs
+			}
+			assert.Eq(t, []string{handoffReusePrefix, want}, handoffReuseAttrs(t, repo, sid))
 			// The stored package is the old path's good answer.
 			assert.StrContains(t, latestSegment(t, repo, sid).Summary, "修解析器")
 		})
 	}
+}
+
+// The model may write the package's headings one level deeper - what the answers
+// discarded in the pre-run looked like (H5): such an answer is a package, the
+// old path is not asked again, and the headings are stored in the "## " form the
+// store, the budgets and the fold read.
+func TestHandoffReuseAcceptsDeeperHeadings(t *testing.T) {
+	repo := openObserveRepo(t)
+	deep := strings.ReplaceAll(reuseBody, "## ", "### ")
+	prov := &reuseProv{main: reuseMain, handoff: func(_ int, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		if isReuseCall(req) {
+			return finalText(deep)
+		}
+		return finalText("old path answer")
+	}}
+	runner := reusedRunner(t, repo, prov)
+	ctx := context.Background()
+	sid := oneTurn(t, runner)
+	_, err := runner.Compact(ctx, sid)
+	assert.NoErr(t, err)
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 1, len(reuse))
+	assert.Eq(t, 0, len(old))
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
+	summary := latestSegment(t, repo, sid).Summary
+	assert.StrContains(t, summary, "## "+handoffSectionTask)
+	assert.StrContains(t, summary, "## "+handoffSectionRefs)
+	assert.Eq(t, false, strings.Contains(summary, "### "))
 }
 
 // A truncated reuse answer is asked for once more on the same path, with the
