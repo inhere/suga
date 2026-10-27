@@ -257,6 +257,43 @@ const (
 	hostContextHeading = "## Host context"
 )
 
+// segmentSection is one named part of the segment context message. The names are
+// stable: they are what the segment event's sections attr and the --analyze
+// "which part changed" report use (docs/research/2026-10-26-cache-hit-buckets.md).
+type segmentSection struct {
+	Name string
+	Text string
+}
+
+// segmentSections builds the snapshot parts in the fixed order 环境 → 项目规则
+// → 记忆索引 → skills → 附加提示 → 宿主上下文 → 延迟工具列表; empty parts are
+// skipped. renderSegmentParts is its text view.
+func segmentSections(c *segmentContext) []segmentSection {
+	if c == nil {
+		return nil
+	}
+	var out []segmentSection
+	add := func(name, s string) {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, segmentSection{Name: name, Text: s})
+		}
+	}
+	add("environment", c.Environment)
+	if strings.TrimSpace(c.Rules) != "" {
+		add("rules", rulesHeading+"\n\n"+c.Rules)
+	}
+	add("memory_index", c.MemoryIndex)
+	add("skills", c.Skills)
+	if strings.TrimSpace(c.AppendPrompt) != "" {
+		add("append_prompt", appendHeading+"\n\n"+c.AppendPrompt)
+	}
+	if strings.TrimSpace(c.HostContext) != "" {
+		add("host_context", hostContextHeading+"\n\n"+c.HostContext)
+	}
+	add("deferred_tools", c.DeferredTools)
+	return out
+}
+
 // renderSegmentParts renders the snapshot parts in the fixed order 环境 → 项目规则
 // → 记忆索引 → skills → 附加提示 → 宿主上下文 → 延迟工具列表; empty parts are skipped.
 func renderSegmentParts(c *segmentContext) []string {
@@ -264,25 +301,34 @@ func renderSegmentParts(c *segmentContext) []string {
 		return nil
 	}
 	var parts []string
-	add := func(s string) {
-		if s = strings.TrimSpace(s); s != "" {
-			parts = append(parts, s)
-		}
+	for _, s := range segmentSections(c) {
+		parts = append(parts, s.Text)
 	}
-	add(c.Environment)
-	if strings.TrimSpace(c.Rules) != "" {
-		add(rulesHeading + "\n\n" + c.Rules)
-	}
-	add(c.MemoryIndex)
-	add(c.Skills)
-	if strings.TrimSpace(c.AppendPrompt) != "" {
-		add(appendHeading + "\n\n" + c.AppendPrompt)
-	}
-	if strings.TrimSpace(c.HostContext) != "" {
-		add(hostContextHeading + "\n\n" + c.HostContext)
-	}
-	add(c.DeferredTools)
 	return parts
+}
+
+// segmentSectionAttrs is the sections attr of a segment start event: the name,
+// byte size and hash of every part of the segment context message this segment
+// begins with, the handoff package included. --analyze compares consecutive
+// segments by it, to see which part costs the prefix after a break.
+func segmentSectionAttrs(seg *segmentContext, pkg string) []any {
+	parts := segmentSections(seg)
+	out := make([]any, 0, len(parts)+1)
+	for _, p := range parts {
+		out = append(out, sectionAttr(p.Name, p.Text))
+	}
+	if pkg != "" {
+		out = append(out, sectionAttr("handoff", summaryMessage(pkg).Content))
+	}
+	return out
+}
+
+// sectionAttr is one entry of the sections attr: the hash is a short sha256 (16
+// hex characters) so the event stays small and the comparison still pins the
+// content.
+func sectionAttr(name, text string) map[string]any {
+	sum := sha256.Sum256([]byte(text))
+	return map[string]any{"name": name, "bytes": len(text), "hash": hex.EncodeToString(sum[:])[:16]}
 }
 
 // segmentContextMessage renders the segment context message: the snapshot

@@ -397,7 +397,10 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 		StartedAt: started, DurationMs: time.Since(started).Milliseconds(),
 		Attrs: map[string]any{"trigger": trigger, "reason": reason, "tokens_before": before, "tokens_after": after,
 			"first_kept_seq": firstKept, "dropped_messages": cut, "model": b.r.scenarioModelName(scenario),
-			"segment": segment, "requests": len(pkg.requests), "refs": len(pkg.refs)},
+			"segment": segment, "requests": len(pkg.requests), "refs": len(pkg.refs),
+			// Which part of the new segment context cost bytes and which changed
+			// since the previous segment (cache attribution after a break).
+			"sections": segmentSectionAttrs(seg, pkg.rendered)},
 	})
 	// The meta cache follows the record (best-effort). The system prompt is
 	// the stable prefix and does not change: this very step already renders

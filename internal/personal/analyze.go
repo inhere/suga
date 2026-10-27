@@ -83,7 +83,22 @@ type TraceAnalysis struct {
 	// events that preceded them: where a low hit rate is investigated.
 	CacheBuckets []store.CacheBucketStat `json:"cache_buckets,omitempty"`
 	SteadyLowHit []store.CacheLowHit     `json:"steady_low_hit,omitempty"`
-	Compactions  int                     `json:"compactions"`
+	// PrefixTokens and PrefixReuse are the prefix reuse rate over every model
+	// call: cache read over the estimated cacheable prefix of the previous
+	// requests, capped at 1. It measures "of what the provider could have served,
+	// how much did it serve", so adding content to a call does not lower it; the
+	// steady 95% target is read with it beside the hit rate.
+	PrefixTokens int64   `json:"prefix_reused_tokens"`
+	PrefixReuse  float64 `json:"prefix_reuse_rate"`
+	// PrefixReuseRead is the part of PrefixTokens the providers served from cache.
+	PrefixReuseRead int64 `json:"prefix_reuse_read_tokens"`
+	// Segments reports what each segment started with (the parts of its context
+	// message: environment, rules, memory index, skills, append prompt, host
+	// context, deferred tools, handoff package) and which parts changed since the
+	// previous segment: the data for judging whether the part order should follow
+	// how often a part changes.
+	Segments    []SegmentSections `json:"segment_sections,omitempty"`
+	Compactions int               `json:"compactions"`
 	// Retries are the model request retries after transient failures (every
 	// model call, side calls included) and RetryWaitMs the time waited.
 	Retries     int   `json:"retries"`
@@ -150,6 +165,27 @@ type SlowCall struct {
 	DurationMs   int64 `json:"duration_ms"`
 	OutputTokens int64 `json:"output_tokens"`
 	ToolCalls    int   `json:"tool_calls"`
+}
+
+// SegmentSections is what one segment started with (the sections attr of its
+// compact event) and which sections changed since the previous segment.
+type SegmentSections struct {
+	// Segment is the 1-based ordinal of the segment (0 when the event did not
+	// carry one); Reason is why it started (threshold, manual, idle).
+	Segment  int           `json:"segment"`
+	Reason   string        `json:"reason,omitempty"`
+	Bytes    int           `json:"bytes"`
+	Sections []SectionSize `json:"sections,omitempty"`
+	// Changed names the sections whose hash differs from the previous segment (a
+	// section the new segment lacks counts as changed too). The first segment has
+	// no previous one, so it lists nothing.
+	Changed []string `json:"changed,omitempty"`
+}
+
+// SectionSize is one section of a segment context message.
+type SectionSize struct {
+	Name  string `json:"name"`
+	Bytes int    `json:"bytes"`
 }
 
 // AnalyzeTrace derives a TraceAnalysis from a session's events (in order).
@@ -341,8 +377,20 @@ func AnalyzeTrace(events []store.Event) TraceAnalysis {
 	closeStep()
 	// The cache buckets classify every model call of the same events (see
 	// store.ClassifyEvents); the low-hit list is capped for the report.
-	buckets := store.AggregateCacheBuckets(store.ClassifyEvents(events), steadyLowHitListed)
+	calls := store.ClassifyEvents(events)
+	buckets := store.AggregateCacheBuckets(calls, steadyLowHitListed)
 	a.CacheBuckets, a.SteadyLowHit = buckets.Buckets, buckets.LowSteady
+	// The prefix reuse rate over every call: cache read over the estimated
+	// cacheable prefix of the previous requests (capped per call, so a provider
+	// that served everything reads as 100%).
+	for _, c := range calls {
+		a.PrefixTokens += c.PrefixTokens
+		a.PrefixReuseRead += min(c.CacheRead, c.PrefixTokens)
+	}
+	if a.PrefixTokens > 0 {
+		a.PrefixReuse = float64(a.PrefixReuseRead) / float64(a.PrefixTokens)
+	}
+	a.Segments = segmentSectionsReport(events)
 	// The background runs that met foreground work: the time the loop spent in
 	// model and tool calls while a task ran in the background. Each task adds
 	// its own share, so tasks running at the same time count their shared time
@@ -407,6 +455,88 @@ func (a *TraceAnalysis) agentSpent(attrs map[string]any) {
 
 // steadyLowHitListed caps the steady low-hit calls the trace analysis lists.
 const steadyLowHitListed = 5
+
+// segmentSectionsReport reads the sections attr of every segment start event and
+// lists, per segment, which sections changed since the previous one. Segments
+// recorded before the attr existed are skipped (nothing to report for them).
+func segmentSectionsReport(events []store.Event) []SegmentSections {
+	var out []SegmentSections
+	var prev map[string]string
+	for _, e := range events {
+		if e.Kind != store.EventCompaction || e.Name != "compact" || e.Status != eventOK {
+			continue
+		}
+		sections, hashes := sectionAttrs(e.Attrs["sections"])
+		if len(sections) == 0 {
+			continue
+		}
+		s := SegmentSections{Segment: attrInt(e.Attrs["segment"]), Reason: attrString(e.Attrs["reason"]), Sections: sections}
+		for _, sec := range sections {
+			s.Bytes += sec.Bytes
+		}
+		if prev != nil {
+			s.Changed = changedSections(prev, sections, hashes)
+		}
+		prev = hashes
+		out = append(out, s)
+	}
+	return out
+}
+
+// sectionAttrs reads a segment event's sections attr: the section list in the
+// order it was recorded and a name -> hash map for the comparison.
+func sectionAttrs(v any) ([]SectionSize, map[string]string) {
+	list, _ := v.([]any)
+	out := make([]SectionSize, 0, len(list))
+	hashes := make(map[string]string, len(list))
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := m["name"].(string)
+		if name == "" {
+			continue
+		}
+		out = append(out, SectionSize{Name: name, Bytes: attrInt(m["bytes"])})
+		hashes[name], _ = m["hash"].(string)
+	}
+	return out, hashes
+}
+
+// changedSections names the sections whose hash differs from the previous
+// segment; a section the new segment dropped counts as changed too (its bytes
+// left the context message, so everything after it moved).
+func changedSections(prev map[string]string, sections []SectionSize, hashes map[string]string) []string {
+	var out []string
+	for _, sec := range sections {
+		if prev[sec.Name] != hashes[sec.Name] {
+			out = append(out, sec.Name)
+		}
+	}
+	var dropped []string
+	for name := range prev {
+		if _, ok := hashes[name]; !ok {
+			dropped = append(dropped, name)
+		}
+	}
+	sort.Strings(dropped)
+	return append(out, dropped...)
+}
+
+// segmentSectionsSummary renders the per-segment section report: bytes and the
+// sections that changed since the previous segment.
+func segmentSectionsSummary(segments []SegmentSections) string {
+	parts := make([]string, 0, len(segments))
+	for _, s := range segments {
+		changed := "no section changed"
+		if len(s.Changed) > 0 {
+			changed = "changed " + strings.Join(s.Changed, ",")
+		}
+		parts = append(parts, fmt.Sprintf("segment %d %dB: %s", s.Segment, s.Bytes, changed))
+	}
+	return strings.Join(parts, "; ")
+}
 
 // cacheBucketSummary renders the per-bucket hit rates: one entry per bucket
 // with its calls, hit rate and the tokens behind them.
@@ -496,6 +626,13 @@ func WriteTraceAnalysis(w io.Writer, a TraceAnalysis, asJSON bool) error {
 	if len(a.CacheBuckets) > 0 {
 		row("cache by bucket", "%s", cacheBucketSummary(a.CacheBuckets))
 	}
+	if a.PrefixTokens > 0 {
+		row("prefix reuse", "%s of %s cacheable prefix served from cache (%.1f%%; unaffected by what a call added)",
+			human(a.PrefixReuseRead), human(a.PrefixTokens), a.PrefixReuse*100)
+	}
+	if len(a.Segments) > 0 {
+		row("segment sections", "%s", segmentSectionsSummary(a.Segments))
+	}
 	if len(a.SteadyLowHit) > 0 {
 		row("steady low hit", "%s", cacheLowHitSummary(a.SteadyLowHit))
 	}
@@ -540,6 +677,12 @@ func attrInt(v any) int {
 		return int(n)
 	}
 	return 0
+}
+
+// attrString reads a string attribute ("" when it is missing or another type).
+func attrString(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // attrFloat reads a numeric attribute (a cost, say); json numbers arrive as
