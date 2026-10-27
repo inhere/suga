@@ -31,8 +31,8 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 	root.SetOutput(stdout)
 	root.BoolVar(&showVersion, "version", false, "show version then exit;false;V")
 	root.LongHelp = `<ylw>Options for chat</>:
-  --resume, -r <session>              Resume a chat
-  --model, -r <model_id>              Custom a model for the chat
+  --resume, -r <session>              Resume a chat session
+  --model, -m <model_id>              Custom a model for the chat
 
 <info>Examples</>:
   suga                                 Start interactive chat
