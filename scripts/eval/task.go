@@ -42,7 +42,7 @@ type Task struct {
 	// CompactAfter lists 1-based turns after which the runner forces a context
 	// compaction (a new segment) of the session, so a long-session task can
 	// measure whether a constraint, a fact or a conclusion survives it. The
-	// break is `suga compact <session>`, the CLI form of chat's :compact.
+	// break is `suga session compact <session>`, the CLI form of chat's :compact.
 	CompactAfter []int `yaml:"compact_after"`
 	// FakeReply is the text the fake model answers with (fakellm --reply); it
 	// makes a --fake run of the task deterministic. Ignored on a real run.
@@ -115,7 +115,7 @@ type TurnRun struct {
 }
 
 // TurnCompaction is the segment break the runner forced after a turn
-// (`suga compact <session> --json`); DurationMs is its own wall time, measured
+// (`suga session compact <session> --json`); DurationMs is its own wall time, measured
 // by the runner.
 type TurnCompaction struct {
 	TokensBefore int   `json:"tokens_before"`

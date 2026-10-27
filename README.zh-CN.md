@@ -129,7 +129,7 @@ providers:
 - **工具**：`file_read`/`file_list`/`file_grep`/`file_find`、`web_fetch`/`web_search`、`skill`、`session_search`/`recall`、`agent`、`memory`、`file_write`/`file_edit`/`file_remove`、`shell_exec`、`task`。
 - **默认只读**：写工具需 `run --allow-write`、chat 的 `tools.allow_write: true` 或 ACP `default` 模式；`--read-only` 永远优先。
 - **审批**：`tools.approval: ask` 时写/shell 前询问：`y` 一次，`a`/`d` 对同一范围（命令前缀、目录、路径）本会话允许或拒绝，可选写回规则文件；递归删除根目录、工作区等危险命令总要手动输入 `yes`。
-- **回滚改动**：`file_write`/`file_edit`/`file_remove` 改文件前自动快照；chat 里 `:checkpoints` 查看、`:undo [N] [force]` 回滚，CLI 用 `suga undo <session>`；`shell_exec` 的改动只列出、不回滚（`tools.snapshots.*`）。
+- **回滚改动**：`file_write`/`file_edit`/`file_remove` 改文件前自动快照；chat 里 `:checkpoints` 查看、`:undo [N] [force]` 回滚，CLI 用 `suga session undo <session>`；`shell_exec` 的改动只列出、不回滚（`tools.snapshots.*`）。
 - **审批规则**：`tools.approval_rules` 从 `$SUGA_HOME/approval-rules.yaml` 与 `<workspace>/.suga/approval-rules.yaml` 读取 `allow`/`ask`/`deny` 规则（工具、命令与路径 glob）；取最强命中，项目级 `allow` 需 `project_trust`，规则不会放开受保护路径（`$SUGA_HOME`、`.suga/`、`.git/`）。
 - **目录**：`--add-dir <绝对目录>[:ro|:rw]` / `SUGA_ADD_DIRS` 追加授权目录；chat 中越界访问会询问 `[r]/[w]/[n]`。
 - **只读根**：自动识别依赖源码缓存与 idev-std 目录（`tools.dependency_roots`、`tools.standards_roots`），也可用 `tools.read_roots` 显式配置。
@@ -146,7 +146,7 @@ providers:
 - `explore`（默认，工作区只读工具）与 `research`（再加 `web_fetch`、`web_search`）两种类型。
 - `background: true` 作为后台任务运行，用 `task wait` 取报告，可并行派多个。
 - 上限 `agents.max_steps`（30）、`agents.max_tokens`（400000）、`agents.timeout`（10m）；`agents.model` 可换便宜模型。
-- 每次调用是一个子会话：`suga sessions --agents` 列出，用量计入父会话。
+- 每次调用是一个子会话：`suga session list --agents` 列出，用量计入父会话。
 
 ## Skills
 
@@ -192,8 +192,8 @@ providers:
 ```text
 suga inspect trace <session> [--turn <id>] [--json]            # 时间线：模型调用、工具、拒绝、计划
 suga inspect trace <session> --analyze | --web                 # 循环分析 / 本机网页
-suga sessions [关键词] [--since 7d] [--agents]                    # 会话列表
-suga compact <session> [--json]                                # 立即开新段（相当于 chat 的 :compact）
+suga session list [关键词] [--since 7d] [--agents]              # 会话列表
+suga session compact <session> [--json]                        # 立即开新段（相当于 chat 的 :compact）
 suga inspect stats [--session <id>] [--json]                   # 调用次数、耗时、token、缓存、成本
 suga inspect export <session> | suga data gc --older-than 30d  # 导出 / 清理
 suga data gc --retention [--apply]                             # 按来源清理：chat 180 天 / run+ACP 30 天

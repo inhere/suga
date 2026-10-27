@@ -126,7 +126,7 @@ Details: [references/tools.md](skills/suga-guide/references/tools.md) (Chinese)
 - **Images**: `file_read` reads a local picture too (PNG, JPEG, GIF first frame, WebP; recognized by its file header, whatever the extension) and hands it to a model that can see; a gofer attachment such as `[attach 1] /path/shot.png` is read the same way. A model that cannot see images gets a one-line note with the format, the pixel size and how to switch (`:model`) instead of an error. The bytes are stored in `$SUGA_HOME/sessions/<id>/images/` and the database keeps only the reference; pictures older than the last history fold, or over the per-request caps (8 images, 20MB), are replaced by a text note that names the image and says `file_read <ref>`. `view_image` stays one version as a *hidden alias* of the same pipeline (callable by name for old sessions and name-based configuration, not listed in the tool table, manifest or `tool_search`); `tools.disabled: [view_image]` therefore only turns off the alias - to turn picture reading off use `tools.disabled: [file_read]` or a hook. The tool table no longer depends on the model's vision, so `:model` switches no longer change it. From the CLI, `suga run --image <path>` (repeatable, order kept) attaches pictures to that turn's user message with the same checks, scaling and `sessions/<id>/images/` storage; relative paths resolve against the run's working directory, and a model without vision or an unreadable picture fails the run before the first turn (exit 1, naming the picture) instead of quietly dropping it. Over ACP, `initialize` declares `promptCapabilities.image` when any configured model can see, and `session/prompt` image blocks (base64 or a local-file URI) follow the same checks and scaling; a model without vision gets a one-time notice and text notes instead (see [docs/usage/gofer-personal-agent.md](docs/usage/gofer-personal-agent.md)).
 - **Read-only by default**: write tools need `run --allow-write`, `tools.allow_write: true` in chat, or ACP `default` mode; `--read-only` always wins.
 - **Approval**: with `tools.approval: ask` chat asks before writes and shell: `y` once, `a`/`d` allow or deny the same scope (command prefix, directory, path) for this session, optionally saved to a rules file; dangerous recursive deletes always need a typed `yes`.
-- **Undo**: `file_write`/`file_edit`/`file_remove` snapshot a file before changing it; in chat `:checkpoints [N]` lists (N = the last N turns) and `:undo [N] [force]` rolls back, from the CLI `suga undo <session>`; `shell_exec` changes are listed, not rolled back (`tools.snapshots.*`).
+- **Undo**: `file_write`/`file_edit`/`file_remove` snapshot a file before changing it; in chat `:checkpoints [N]` lists (N = the last N turns) and `:undo [N] [force]` rolls back, from the CLI `suga session undo <session>`; `shell_exec` changes are listed, not rolled back (`tools.snapshots.*`).
 - **Approval rules**: `tools.approval_rules` reads `allow`/`ask`/`deny` rules (tool, command and path globs) from `$SUGA_HOME/approval-rules.yaml` and `<workspace>/.suga/approval-rules.yaml`; the strongest match wins, project `allow` needs `project_trust`, and rules never open protected paths (`$SUGA_HOME`, `.suga/`, `.git/`).
 - **Directories**: `--add-dir <absolute dir>[:ro|:rw]` / `SUGA_ADD_DIRS` add directories; in chat, access outside them asks `[r]/[w]/[n]`.
 - **Read-only roots**: dependency source caches and idev-std directories are found automatically (`tools.dependency_roots`, `tools.standards_roots`); add more with `tools.read_roots`.
@@ -146,7 +146,7 @@ Details: [references/tools.md#Â≠êagent](skills/suga-guide/references/tools.md#Â≠
 - Two types: `explore` (default, workspace read tools) and `research` (adds `web_fetch` and `web_search`).
 - `background: true` runs it as a task; `task wait` returns the report, and several can run in parallel.
 - Limits `agents.max_steps` (30), `agents.max_tokens` (400000), `agents.timeout` (10m); `agents.model` picks a cheaper model.
-- Each call is a child session: `suga sessions --agents` lists them, and their usage counts toward the parent.
+- Each call is a child session: `suga session list --agents` lists them, and their usage counts toward the parent.
 
 ## Skills
 
@@ -195,7 +195,7 @@ Details: [references/sessions.md](skills/suga-guide/references/sessions.md) (Chi
 - `pkg/sugasdk` lets another Go program drive suga in its own process: `Open` an engine, `OpenSession` per conversation, `Send` a turn and receive `Event`s, then `Card`, `Compact`, `Steer`, `Search`, `Sessions` and `Memory`.
 - Experimental: the API may change in a minor release until the embedding host (xhen) has settled. The exported surface names no `internal` package; `extra tools`, `host context`, the approver and the memory confirmation are the same extension points `wiring` offers.
 - suga's configuration is process global: one engine per process (`ErrEngineOpen` on a second `Open`, an `Open` after `Close` is fine), and the data root is guarded (`Open` sets and loads `SUGA_HOME`, reuses the same root, returns `ErrSugaHomeMismatch` for another one).
-- Sessions record origin `xhen` by default, so `suga sessions` hides them; list them with `Engine.Sessions(SessionFilter{Origin: "xhen"})`. A session runs one turn at a time (`ErrBusy` instead of queueing), `Steer` inserts into the running turn, and a panic inside a turn comes back as an error.
+- Sessions record origin `xhen` by default, so `suga session list` hides them; list them with `Engine.Sessions(SessionFilter{Origin: "xhen"})`. A session runs one turn at a time (`ErrBusy` instead of queueing), `Steer` inserts into the running turn, and a panic inside a turn comes back as an error.
 
 ## Using with Gofer
 
@@ -212,9 +212,9 @@ Details: [references/observability.md](skills/suga-guide/references/observabilit
 suga inspect trace <session> [--turn <id>] [--json]            # timeline: model calls, tools, denials, plans
 suga inspect trace <session> --analyze | --web                 # loop analysis / local web page
 suga inspect trace <session> --transcript [--turn <id>] [-o <file>]  # model-readable transcript (see below)
-suga sessions [keywords] [--since 7d] [--agents] [--all | --cwd <path>] [--origin <name>]  # session list; default: the current directory only, without origin=xhen sessions (empty result -> stderr hint naming --all and the hidden xhen count); --origin all lists every origin
+suga session list [keywords] [--since 7d] [--agents] [--all | --cwd <path>] [--origin <name>]  # session list; default: the current directory only, without origin=xhen sessions (empty result -> stderr hint naming --all and the hidden xhen count); --origin all lists every origin
 suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
-suga compact <session> [--json]                                # start a new segment now (the CLI form of chat :compact)
+suga session compact <session> [--json]                        # start a new segment now (the CLI form of chat :compact)
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
 suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP; origin=xhen sessions follow their host and are only reported
 suga data bodies [--status|--move|--undo|--check|--remove-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (the v0.36 name tool-bodies, --slim, --rename-files and the one-time migrations shrink-fts / dedupe-tool-results were removed in v0.41.0: a pre-v0.36 ledger needs suga v0.40 for them)

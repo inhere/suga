@@ -103,7 +103,7 @@ suga inspect manifest                            # 生效的模型、工具、sk
 
 - 默认情况下，`file_write`、`file_edit`、`file_remove` 在写入前把原内容保存到 `$SUGA_HOME/sessions/<session-id>/snapshots/`。快照不进入模型上下文、transcript 或 export；`shell_exec` 的改动不在回滚范围内，`file_remove` 的 7 天回收区语义不变。
 - chat 提示符使用 `:checkpoints` 查看清单，使用 `:undo`、`:undo N` 回滚最近的文件改动，`force` 只覆盖内容冲突；默认会确认，可用 `chat.undo_confirm: false` 关闭。只认本地键盘输入，投递消息不会触发这些命令。
-- CLI 使用 `suga undo <session> --list [--json]`，或 `suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]`。session 支持唯一前缀；非终端破坏性调用必须 `--yes`。该命令不需要 provider，可在没有模型配置时列出或回滚。
+- CLI 使用 `suga session undo <session> --list [--json]`，或 `suga session undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]`。session 支持唯一前缀；非终端破坏性调用必须 `--yes`。该命令不需要 provider，可在没有模型配置时列出或回滚。
 - 默认上限为单次 16 MiB、会话 256 MiB、全局 1 GiB，保留 20 个已完成回合或 7 天。`on_error: deny` 在快照不可靠时拒绝文件 I/O；`continue` 会继续但标为不可恢复。`shell_exec`、cwd/可写附加目录变更、冲突与 `--force` 的安全边界见 README 的回滚章节。
 - 回滚后下一次显式回合会收到 `suga.undo` 事实通知；用 `suga inspect trace <session> --json` 检查 undo 事件和写工具事件的 `attrs.snapshot`。没有 redo，也没有 ACP 内置 undo 命令，但 ACP/run 的文件写操作照常快照。
 
@@ -199,6 +199,6 @@ hooks:
 - `references/tools.md`：工具与权限：工具清单、写权限与审批、`--add-dir` 与越界授权、只读根（依赖/idev-std）、危险删除拦截、大输出外置与输出规则、后台/监听任务、后台 Stop hook、MCP、子 agent。用户问某个工具能做什么、为什么被拒、怎么放行时读。
 - `references/rules.md`：suga 的四种规则文件（审批、输出整理、收工检查、语言）的完整参考：文件位置与分层、替换语义、逐字段表、每种一个完整示例、核对命令与受保护路径（先给用户看再写）。用户或你要加/改规则文件时读它。
 - `references/sessions.md`：会话、记忆与 skills：续接与交接、换目录续接、分段压缩、中断回合、历史折叠、空闲整理、提示词结构、记忆后端与污染确认、skills 扫描与加载。用户问会话/记忆/skill 行为时读。
-- `references/observability.md`：观测：`suga inspect trace`（各类行、`--analyze` 字段、`--transcript` 的纯文本轨迹与截断规则）、`sessions`/`stats`/`export`/`gc`、stream-json 的 `usage`/`retry`/`wrap_up`、进程日志与 `SUGA_DEBUG`。排查一次运行、看用量成本时读。
+- `references/observability.md`：观测：`suga inspect trace`（各类行、`--analyze` 字段、`--transcript` 的纯文本轨迹与截断规则）、`suga session list`/`stats`/`export`/`gc`、stream-json 的 `usage`/`retry`/`wrap_up`、进程日志与 `SUGA_DEBUG`。排查一次运行、看用量成本时读。
 
 只有在需要某个具体键的默认值或取值范围、或要回答“能不能配 X”时再读 `references/config.md`；回答“怎么装、怎么改、报错怎么办”通常上面的向导就够了。

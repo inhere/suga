@@ -61,7 +61,7 @@ type SessionOptions struct {
 	// content. nil refuses such writes.
 	MemoryConfirm func(ctx context.Context, req MemoryConfirmRequest) bool
 	// Origin is the session origin recorded on the sessions this engine
-	// creates; empty is "xhen". `suga sessions` hides origin xhen sessions by
+	// creates; empty is "xhen". `suga session list` hides origin xhen sessions by
 	// default (the host lists and keeps them on its own terms).
 	Origin string
 }

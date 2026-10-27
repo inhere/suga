@@ -4,7 +4,7 @@
 fakellm.py (tool mode, --agent) has the model call the agent tool; the
 sub-agent's requests (its system prompt names it) grep once and report.
 
-sync: by default the sub-agent's grep is summarized (no `  ·` line) with a count/duration line; the `sync-full` case keeps the old per-call progress line. The report comes back as the tool result, and the trace has the agent tool event naming the sub-agent session, which `suga sessions` hides and `suga sessions --agents` lists.
+sync: by default the sub-agent's grep is summarized (no `  ·` line) with a count/duration line; the `sync-full` case keeps the old per-call progress line. The report comes back as the tool result, and the trace has the agent tool event naming the sub-agent session, which `suga session list` hides and `suga session list --agents` lists.
 
 cancel: the sub-agent is slow (--child-delay); Ctrl-C during it ends chat
 cleanly (resume line), the interrupted turn reads 已中断本轮 (never the raw
@@ -63,7 +63,7 @@ def exit_chat(s):
 def sessions(binary, env, *args):
     # --all: sessions lists the current directory's sessions by default, and
     # this scenario's chat ran in its own workspace.
-    out = subprocess.run([binary, "sessions", "--json", "-n", "0", "--all", *args], capture_output=True, text=True,
+    out = subprocess.run([binary, "session", "list", "--json", "-n", "0", "--all", *args], capture_output=True, text=True,
                          env=env, timeout=30)
     try:
         return json.loads(out.stdout or "[]")

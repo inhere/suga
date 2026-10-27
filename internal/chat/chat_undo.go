@@ -20,7 +20,7 @@ const (
 )
 
 // Catalog keys of the :undo answers; the checkpoint listing and the undo plan
-// and result are shared with the CLI "suga undo" display.
+// and result are shared with the CLI "suga session undo" display.
 const (
 	undoNoHintKey    = "cmd.undo.none"
 	undoConflictKey  = "cmd.undo.conflict"

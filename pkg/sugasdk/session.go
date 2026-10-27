@@ -23,7 +23,7 @@ import (
 
 // DefaultOrigin is the session origin the SDK records when SessionOptions.Origin
 // is empty: the host application's sessions stay out of the default
-// `suga sessions` list.
+// `suga session list` list.
 const DefaultOrigin = "xhen"
 
 // steerSource is the source recorded on the steers this SDK sends; the trace
@@ -138,7 +138,7 @@ func memoryConfirmAdapter(confirm func(ctx context.Context, req MemoryConfirmReq
 	}
 }
 
-// ID is the persisted session id; `suga sessions --origin xhen` lists it.
+// ID is the persisted session id; `suga session list --origin xhen` lists it.
 func (s *Session) ID() string { return s.id }
 
 // Workspace is the directory the session's tools work in.

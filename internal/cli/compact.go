@@ -12,7 +12,7 @@ import (
 	"github.com/inhere/suga/internal/wiring"
 )
 
-// compactReport is the result of `suga compact` (also its --json form).
+// compactReport is the result of `suga session compact` (also its --json form).
 type compactReport struct {
 	SessionID    string `json:"session_id"`
 	TokensBefore int    `json:"tokens_before"`
@@ -20,7 +20,7 @@ type compactReport struct {
 	Segment      int    `json:"segment"`
 }
 
-// newCompactCommand builds `suga compact`: the command-line form of chat's
+// newCompactCommand builds `suga session compact`: the command-line form of chat's
 // :compact. It starts a new segment of an existing session between two turns,
 // so a script (the eval runner's compact_after) or a job can force a context
 // compaction at a chosen point of a long conversation without a terminal.

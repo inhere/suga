@@ -40,7 +40,7 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
   suga run --prompt "hello"            Run one turn
   suga config get model                Show the effective model and source
   suga models --json                   List configured models offline
-  suga undo <session> --list           List file checkpoints
+  suga session undo <session> --list   List file checkpoints
   suga inspect trace <session> --json  Show the event timeline of a session
   suga data gc --older-than 30d        Remove idle sessions (dry run)
 `
@@ -60,9 +60,7 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
 		NewPersonalCommand(ctx, "run", stdin, stdout, stderr),
 		newSendCommand(stdin, stderr),
 		newPSCommand(stdout, stderr),
-		newSessionsCommand(ctx, stdout, stderr),
-		newCompactCommand(ctx, stdout, stderr),
-		newUndoCommand(ctx, stdin, stdout, stderr),
+		newSessionCommand(ctx, stdin, stdout, stderr),
 		newConfigCommand(stdout, stderr),
 		newModelsCommand(stdout, stderr),
 		newInitCommand(stdout, stderr),
@@ -89,6 +87,21 @@ func newInspectCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 		newInspectRulesCommand(ctx, stdout, stderr),
 	)
 	return inspect
+}
+
+// newSessionCommand builds the `session` group: the session commands that used
+// to sit at the top level (list, compact, undo). Like the other groups it only
+// holds subcommands, so `suga session` alone prints its help; the leaves keep
+// their own flags, arguments and output.
+func newSessionCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
+	session := capp.NewCmd("session", "Manage sessions: list / compact / undo")
+	session.SetOutput(stderr)
+	session.Add(
+		newSessionListCommand(ctx, stdout, stderr),
+		newCompactCommand(ctx, stdout, stderr),
+		newUndoCommand(ctx, stdin, stdout, stderr),
+	)
+	return session
 }
 
 // newDataCommand builds the `data` group: the data maintenance commands (gc,

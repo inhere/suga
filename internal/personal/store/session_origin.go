@@ -16,7 +16,7 @@ const (
 	OriginACP   = "acp"
 	OriginAgent = "agent"
 	// OriginXhen names a session of a host application that embeds suga
-	// (xhen). Its lifecycle belongs to the host: the default `suga sessions`
+	// (xhen). Its lifecycle belongs to the host: the default `suga session list`
 	// listing leaves it out and `suga data gc --retention` never removes it.
 	OriginXhen = "xhen"
 	// MetaUsedInteractively marks a session created by a non-interactive entry
@@ -57,7 +57,7 @@ func InteractiveSession(sess Session) bool {
 
 // HostManagedSession reports whether a session belongs to a host application
 // that embeds suga (origin xhen). Such a session is kept out of the default
-// `suga sessions` listing and out of the age-based retention pass of
+// `suga session list` listing and out of the age-based retention pass of
 // `suga data gc --retention`: the host decides how long it lives, while an
 // explicit `--older-than` still removes it.
 func HostManagedSession(sess Session) bool {

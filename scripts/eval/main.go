@@ -64,7 +64,7 @@ type Result struct {
 	Fake       bool   `json:"fake"`
 	DurationMs int64  `json:"duration_ms"`
 	// The wall-clock split of DurationMs: TurnMs covers the agent's turns,
-	// CompactionMs the forced segment breaks (`suga compact`), OverheadMs what
+	// CompactionMs the forced segment breaks (`suga session compact`), OverheadMs what
 	// the runner spent between them; the three add up to DurationMs.
 	TurnMs       int64 `json:"turn_ms"`
 	CompactionMs int64 `json:"compaction_ms"`
@@ -338,7 +338,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 		}
 	}
 	if len(t.CompactAfter) > 0 && o.agent != "suga" {
-		return r, errors.New("compact_after works only with --agent suga (the forced break is `suga compact`)")
+		return r, errors.New("compact_after works only with --agent suga (the forced break is `suga session compact`)")
 	}
 	// A multi-turn task sends its prompts in order to the same session; the
 	// run stops at the first failing turn. Every turn's answer is judged by the

@@ -24,7 +24,7 @@ go run ./scripts/eval --model opencode-go/deepseek-v4.1-flash --config-from ~/.s
 终端输出汇总表；`<out>/results.jsonl` 每任务一行（成败、checks 明细、答案、调用/token/命中率/成本/工具调用数、
 `tool_raw_bytes`/`tool_inline_bytes`，后两项在 `suga inspect stats` 提供之前为 null；
 `web` 记录本次是否禁网、`removed_tests` 记录判分前移出模型自写的测试）。个别任务失败退出码仍为 0，运行器自身出错才非 0。
-耗时拆成 `turn_ms`（各回合 `suga run` 的墙钟之和）、`compaction_ms`（强制换段 `suga compact` 之和）与
+耗时拆成 `turn_ms`（各回合 `suga run` 的墙钟之和）、`compaction_ms`（强制换段 `suga session compact` 之和）与
 `overhead_ms`（运行器在回合之间花的），三者相加等于 `duration_ms`；`provider_fault_ms` 是 `turn_ms` 里花在失败重试/切换上的部分
 （取自 trace 的 model 事件，见“耗时拆分”）。准备与判分在 `duration_ms` 之外，不计入拆分。
 `--model` 未传时，suga 运行会问一次 `suga config get model`，把临时 SUGA_HOME 解析出的实际模型写进 `model` 字段
@@ -43,7 +43,7 @@ prompt: ...              # 单轮；多轮改用 prompts（二选一）
 prompts:                 # 多轮：同一会话按顺序发送；answer_contains 判定最后一轮的回答
   - 第一轮 ...
   - 第二轮 ...
-compact_after: [2]       # 可选：第 2 轮之后强制换段（`suga compact <会话>`），见“长会话任务”
+compact_after: [2]       # 可选：第 2 轮之后强制换段（`suga session compact <会话>`），见“长会话任务”
 generate:                # 可选：运行时生成文件，避免提交大文件
   - path: logs/app.log
     count: 6000
@@ -112,7 +112,7 @@ task.yaml 写 `keep_tests: true`，本题不做清理。
 在指定轮次之后**强制压缩**，再切回原题；检查只看确定性证据（回答文本的正则/包含、工作区文件状态、命令退出码），
 不依赖模型评判。
 
-- `compact_after: [2]`：第 2 轮结束后运行 `suga compact <会话> --json`（chat `:compact` 的命令行形式，
+- `compact_after: [2]`：第 2 轮结束后运行 `suga session compact <会话> --json`（chat `:compact` 的命令行形式，
   由 `internal/cli/compact.go` 实现），把上下文强制换到新段；结果（`tokens_before`/`tokens_after`/`segment`）
   记入 results.jsonl 的 `turns[].compacted`。仅 `--agent suga` 支持（omp/claude 有该字段的任务直接报错）。
 - 每轮回答都保留：results.jsonl 的 `turns` 数组逐轮记录 `turn`/`answer`/`duration_ms`/`compacted`；
@@ -288,7 +288,7 @@ go run ./scripts/eval --fake --task repo-t9-schedule --repeat 2 --suga-args "--n
 主表之后多一段 `timing (...)`，每行一个任务）：
 
 - `turn_ms`：各回合 `suga run` 的墙钟之和（suga 有逐轮记录；omp/claude 没有逐轮记录，整段运行都算回合时间）。
-- `compaction_ms`：强制换段 `suga compact <会话>` 的墙钟之和，逐次的耗时另记在 `turns[].compacted.duration_ms`，
+- `compaction_ms`：强制换段 `suga session compact <会话>` 的墙钟之和，逐次的耗时另记在 `turns[].compacted.duration_ms`，
   长会话逐轮输出里显示为 `[compacted ~A -> ~B tokens, segment N, 耗时]`。
 - `overhead_ms`：运行器在回合之间花的（cli 之间的小间隔）；`turn_ms + compaction_ms + overhead_ms = duration_ms`。
   工作区准备、判分与 `inspect` 调用在 `duration_ms` 之外，不计入拆分。

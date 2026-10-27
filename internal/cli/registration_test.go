@@ -72,6 +72,7 @@ func TestGroupHelpListsLeaves(t *testing.T) {
 	}{
 		{group: "inspect", leaves: []string{"trace", "stats", "export", "manifest", "rules"}},
 		{group: "data", leaves: []string{"gc", "bodies", "vacuum", "compress-spill", "backup", "restore"}},
+		{group: "session", leaves: []string{"list", "compact", "undo"}},
 	} {
 		t.Run(tc.group, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -80,6 +81,22 @@ func TestGroupHelpListsLeaves(t *testing.T) {
 			for _, name := range tc.leaves {
 				assert.StrContains(t, stderr.String(), name)
 			}
+		})
+	}
+}
+
+// TestRemovedTopLevelSessionCommands pins that `suga sessions`, `suga compact`
+// and `suga undo` are gone from the top level: they moved into the `session`
+// group without a compatibility alias (user 2026-10-27), so they fail as
+// unknown commands instead of still running.
+func TestRemovedTopLevelSessionCommands(t *testing.T) {
+	for _, old := range []string{"sessions", "compact", "undo"} {
+		t.Run(old, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := newCLI(context.Background(), strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{old, "x"})
+			assert.Require(t, assert.Err(t, err))
+			assert.ErrMsgContains(t, err, old)
+			assert.ErrMsgContains(t, err, "not exists")
 		})
 	}
 }

@@ -133,7 +133,7 @@ MCP 工具默认一律不放行，由 YAML 中两个 glob 列表控制，条目�
 
 可写的 `suga run`、chat 和 ACP 共享同一套写操作快照配置；`file_write`、`file_edit`、`file_remove` 在实际 I/O 前保存写前状态，快照位于 `$SUGA_HOME/sessions/<session-id>/snapshots/`。默认单次 16 MiB、会话 256 MiB、全局 1 GiB，保留 20 个已完成回合或 7 天。默认 `tools.snapshots.on_error: deny` 时快照不可写、清理或状态不确定会在写盘前拒绝；只有显式 `continue` 才允许写入并标明不可恢复，因此 Gofer 派发的 `suga run` 也遵守 fail-closed。
 
-ACP 没有内置 undo 命令，但它的文件写操作照常创建快照；可在同一用户的 Suga 环境中用 `suga undo <session>` 列出或回滚。`shell_exec`（含后台任务）不自动回滚，`file_remove` 的回收区仍只保留 7 天。快照不进模型上下文、transcript 或 export；回滚后的 `suga.undo` 通知在下一次显式回合投递，`suga inspect trace <session> --json` 可查看 undo 事件和工具事件的 `attrs.snapshot`。关闭 `tools.snapshots.enabled` 只停止新快照，不删除已有数据或命令面。
+ACP 没有内置 undo 命令，但它的文件写操作照常创建快照；可在同一用户的 Suga 环境中用 `suga session undo <session>` 列出或回滚。`shell_exec`（含后台任务）不自动回滚，`file_remove` 的回收区仍只保留 7 天。快照不进模型上下文、transcript 或 export；回滚后的 `suga.undo` 通知在下一次显式回合投递，`suga inspect trace <session> --json` 可查看 undo 事件和工具事件的 `attrs.snapshot`。关闭 `tools.snapshots.enabled` 只停止新快照，不删除已有数据或命令面。
 
 ### 子 agent（`agent` 工具）
 
@@ -142,7 +142,7 @@ ACP 没有内置 undo 命令，但它的文件写操作照常创建快照；可�
 - **只读会话也可用**：子 agent 自己只读（不能写文件、执行命令、询问用户，也不能再派子 agent），所以 `agent` 工具在 `read_only` mode、chat 默认模式与 `run` 缺省模式都注册，且不触发审批。只读模式下注册的是 `task`（`list`/`output`/`wait`/`kill`），用于 `background: true` 的子 agent；`shell_exec` 的 `background` 仍只在写模式出现。
 - **ACP 标题**：每次子 agent 调用是一条普通 `tool_call`，标题为 `agent: <description>`（`toolCallId` 与状态序列与其它工具一致），并按只读工具放行；子 agent 内部的工具调用不发给客户端（第一期），只在 trace 里可见。
 - **用量**：子 agent 的模型调用计入调用它的那次 run——prompt 进行中发出的 `usage_update`（顶层扁平键与 `_meta.run`）已包含子 agent 的 token 与成本；`_meta.session` 与顶层 `cost.amount` 是会话累计，等于父会话加它的全部子会话。后台子 agent 结束时会话若没有进行中的 run，用量暂存到下一个 run 一起上报（不在已结束的 run 之后补发）。
-- **观测**：父会话里有一条 `agent` 工具事件（attrs 含 `child_session_id`、`agent_type`、`steps`、`tool_calls`、`input_tokens`、`cache_read_tokens`、`output_tokens`、`cost_usd`、`stop`），后台子 agent 结束时是一条 `kind=agent` 的 task 事件；子会话自己的事件用 `suga inspect trace <子会话 id>` 查看，`suga sessions --agents` 会列出子会话。
+- **观测**：父会话里有一条 `agent` 工具事件（attrs 含 `child_session_id`、`agent_type`、`steps`、`tool_calls`、`input_tokens`、`cache_read_tokens`、`output_tokens`、`cost_usd`、`stop`），后台子 agent 结束时是一条 `kind=agent` 的 task 事件；子会话自己的事件用 `suga inspect trace <子会话 id>` 查看，`suga session list --agents` 会列出子会话。
 
 ### 输出治理
 
@@ -186,8 +186,8 @@ gofer job resume <job-id> --prompt "继续上个问题"
 - Suga 的进程日志写在 worker 的 `$SUGA_HOME/logs/suga-<YYYYMMDD>.log`（文件名带日期，按大小切分，`log.keep` 份保留），默认不写 stderr（job 的 `stderr` 里只有面向人的提示与 Gofer 自己的事件行）；要在 job 日志里同时看到 suga 的详细日志，给该 agent 加 `env: {SUGA_DEBUG: "1"}`（或配 `log.level: debug` + `log.stderr: always`）。
 - `--from <session>`：`suga run --from <旧会话> --prompt ...` 新建会话并继承来源的摘要、计划与已加载工具（来源只读，不能与 `--resume` 同用）。可同时传 `--session-id` 指定新会话 ID；交接失败（如生成摘要失败）时不会创建会话，同一 ID 可直接重试。Gofer 目前没有对应的模板变量（Gofer 侧计划以 `--from-session` 参数支持），在此之前需要在 job 的 agent args 中手工写入 `--from <session-id>`。
 - 会话不存在：`run`/`chat` 的 `--resume` 目标或 `--from` 来源不存在时，退出码为 4，stderr 输出 `session not found: <id>`；被 Ctrl-C / SIGTERM 中断时退出码为 130，stderr 输出 `已中断`；其他失败为 1。旧版本的会话 ID 在新库中都属于这种情况，可据此改用 `--from` 或新建会话。
-- `suga sessions [关键词] [-n 10] [--since 7d|日期] [--until …] [--cwd 路径|.] [--json]`：列出会话，按最近活动排序，默认 10 条（`-n 0` 全部）；关键词全部命中才列出，匹配标题、id、目录、模型，或对话内容（全文索引，显示命中片段）；`--cwd` 按目录前缀过滤（不区分大小写，`.` 为当前目录）。表格含更新时间、id、模型、suga 版本、标题、目录。
-- `suga compact <session> [--model <ref>] [--json]`：立即给会话开新段（chat `:compact` 的命令行形式，`--json` 输出换段前后的 token 估算与新段序号）；不传 `--model` 时用会话已选的模型写摘要，脚本可以在两轮 `suga run` 之间调用，用于长会话的强制压缩。
+- `suga session list [关键词] [-n 10] [--since 7d|日期] [--until …] [--cwd 路径|.] [--json]`：列出会话，按最近活动排序，默认 10 条（`-n 0` 全部）；关键词全部命中才列出，匹配标题、id、目录、模型，或对话内容（全文索引，显示命中片段）；`--cwd` 按目录前缀过滤（不区分大小写，`.` 为当前目录）。表格含更新时间、id、模型、suga 版本、标题、目录。
+- `suga session compact <session> [--model <ref>] [--json]`：立即给会话开新段（chat `:compact` 的命令行形式，`--json` 输出换段前后的 token 估算与新段序号）；不传 `--model` 时用会话已选的模型写摘要，脚本可以在两轮 `suga run` 之间调用，用于长会话的强制压缩。
 - `suga inspect trace <session> --web [--addr 127.0.0.1:0]`：在本机起一个只绑回环地址的网页，按时间线查看会话（瀑布图、按类型/错误/慢节点筛选与搜索、点开看完整参数与结果、思考与正文、审批与前缀对比；每回合上下文组成的堆叠条与各部分原文；每次调用的缓存命中；`--analyze` 结果），地址带 `#ev=<事件 id>` 或 `#tab=context` 可直接定位；页面以只读方式打开会话库（库不存在或未初始化时报错，不创建、不迁移），头部带“自动刷新”开关（默认关闭），打开后只拉取新增：回合进行中每 5 秒，空闲时每 15 秒检查新回合，页面手动刷新仍是最新。
 - `suga inspect trace <session> [--turn id] [--json] [--analyze]`（`--analyze` 输出循环分析：步数、并行调用、重复读、写后回读、重复命令、首次通过后的测试次数、阶段拆分（探索 / 首次写入到转绿 / 转绿后）、单处编辑步、未命中缓存输入的来源拆分等）、`suga inspect stats [--session id] [--since 7d] [--json]`、`suga inspect export <session> [--redact] [-o file]` 读取同一个会话库，在运行 Suga 的主机上执行（Gofer worker 所在用户的 `SUGA_HOME`）；`export --redact` 去掉工具参数，适合外发。
 - `run` 的 stream-json 另有两种新增行：`tool_call`（`name`、`args` 摘要）与 `tool_result`（`name`、`is_error`、脱敏并截断的 `summary`）；已有行不变。未配置 `ndjson_keep` 的调用方会收到它们，上面的示例 `ndjson_keep` 不含它们，需要在 Gofer 中显示工具调用时再加入。`suga inspect trace` 会显示 plan 行（文本 `plan ✔/▶/○ 步骤`，`--json` 为 `{"kind":"plan",...}`）。
@@ -324,7 +324,7 @@ gofer job resume <job-id> --prompt "从上次会话继续"
 
 `initialize` 声明 `sessionCapabilities.list/resume/close`（`load_session` 仍由顶层 loadSession 能力声明）：
 
-- `session/list`：按 `updated_at` 倒序，每页 50 条，`nextCursor` 为上一页最后一条的 `(updated_at, id)` 编码；只列普通会话，排除 archived 与子 agent。目录规则与 CLI `suga sessions` 一致（设计 2026-10-20「会话列表默认当前目录」）：请求带 `cwd` 按它过滤（同目录，Windows 不区分大小写），不带时用 suga 进程的工作目录；没有记录目录的旧会话只在 `_meta` 带 `suga/all: true` 的请求里出现。与 CLI 一致，宿主会话（`origin=xhen`）默认不返回，数量在响应 `_meta.suga/hiddenXhen` 里；客户端需要时用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 `suga sessions --origin xhen`；默认视图为空时 `suga/hint` 里也会点名）。响应 `_meta` 始终带 `suga/otherDirs`（其它目录的会话数）；默认视图结果为空且 N>0 时另带 `suga/hint`，文本与 CLI 的 stderr 提示相同（“当前目录 <dir> 没有会话…或用 suga sessions --all 列出全部”）。列表只含标题与目录，不含会话内容。
+- `session/list`：按 `updated_at` 倒序，每页 50 条，`nextCursor` 为上一页最后一条的 `(updated_at, id)` 编码；只列普通会话，排除 archived 与子 agent。目录规则与 CLI `suga session list` 一致（设计 2026-10-20「会话列表默认当前目录」）：请求带 `cwd` 按它过滤（同目录，Windows 不区分大小写），不带时用 suga 进程的工作目录；没有记录目录的旧会话只在 `_meta` 带 `suga/all: true` 的请求里出现。与 CLI 一致，宿主会话（`origin=xhen`）默认不返回，数量在响应 `_meta.suga/hiddenXhen` 里；客户端需要时用请求 `_meta` 的 `suga/xhen: true` 显式包含（相当于 `suga session list --origin xhen`；默认视图为空时 `suga/hint` 里也会点名）。响应 `_meta` 始终带 `suga/otherDirs`（其它目录的会话数）；默认视图结果为空且 N>0 时另带 `suga/hint`，文本与 CLI 的 stderr 提示相同（“当前目录 <dir> 没有会话…或用 suga session list --all 列出全部”）。列表只含标题与目录，不含会话内容。
 - `session/load`：按协议把当前分段以 `session/update` 通知回放给客户端——压缩摘要一条 agent 思考（“之前的对话已压缩：…”）、用户消息 `user_message_chunk`、助手正文 `agent_message_chunk`、工具调用与结果 `tool_call`/`tool_call_update`（completed/failed，结果只带前 2KB 文本）；回放总量上限 2MB，超过时只回放最近部分并在开头一条思考说明。回放的边界与采用规则复用上下文组装的 `loadHistory`（`personal.SegmentHistory`），客户端看到的内容与下一回合模型的一致。
 - `session/resume`：与 load 相同的检查（目录一致、没有进行中的回合），不回放任何通知；响应带 `modes` 与 `configOptions`。`chat --resume` 的目录询问与 chdir 逻辑不受影响（v0.25.0）。
 - `session/close`：有进行中的回合先取消并等待结束（同 `session/cancel`），之后释放该会话的进程内状态（always 规则不持久化）；关闭后的 prompt 返回 invalid params。会话本身不删除（数据治理走 `suga data gc`）。

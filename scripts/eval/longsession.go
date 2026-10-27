@@ -10,10 +10,10 @@ import (
 )
 
 // forceCompact starts a new segment of the session between two turns by
-// running `suga compact <session> --json` in the task workspace: the forced
+// running `suga session compact <session> --json` in the task workspace: the forced
 // context compaction of a task's compact_after turn.
 func forceCompact(ctx context.Context, bin, sid, ws string, env []string) (TurnCompaction, error) {
-	out, err := runCmd(ctx, bin, []string{"compact", sid, "--json"}, ws, env)
+	out, err := runCmd(ctx, bin, []string{"session", "compact", sid, "--json"}, ws, env)
 	if err != nil {
 		return TurnCompaction{}, err
 	}

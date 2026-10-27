@@ -53,7 +53,7 @@
 // whitespace-only id) are refused.
 //
 // Sessions opened without SessionOptions.Origin record origin "xhen" and are
-// hidden by the default `suga sessions` list, which the host then filters with
+// hidden by the default `suga session list` list, which the host then filters with
 // Engine.Sessions(SessionFilter{Origin: "xhen"}).
 //
 // # Tool invocations
