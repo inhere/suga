@@ -264,6 +264,21 @@ func (e *Engine) memoryStore() (*memory.Governed, error) {
 	return gov, nil
 }
 
+// memoryDatabase returns the metadata store kept open alongside the governed
+// memory layer. Initializing the layer first keeps SDK and tool writes on the
+// same SQLite database and policy path.
+func (e *Engine) memoryDatabase() (*store.Store, error) {
+	if _, err := e.memoryStore(); err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.memRepo == nil {
+		return nil, ErrEngineClosed
+	}
+	return e.memRepo, nil
+}
+
 // Search runs the session_search query of the whole store: every term must
 // occur in one entry. limit <= 0 means 20, at most 100.
 func (e *Engine) Search(ctx context.Context, query string, limit int) ([]Hit, error) {
