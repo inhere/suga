@@ -266,6 +266,7 @@ type SessionFilter struct {
 
 // MemoryEntry is one memory item.
 type MemoryEntry struct {
+	UUID    string `json:"uuid,omitempty"`
 	ID      string `json:"id,omitempty"`
 	Title   string `json:"title,omitempty"`
 	Body    string `json:"body,omitempty"`

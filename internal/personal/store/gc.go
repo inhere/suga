@@ -55,9 +55,10 @@ func (s *Store) CollectGarbage(ctx context.Context, cutoff time.Time, keep map[s
 	}
 	var report GCReport
 	// A session is stale when it was not updated since the cutoff and no live
-	// process holds it.
-	stale := func(session Session) bool { return session.UpdatedAt.Before(cutoff) && !keep[session.ID] }
-	chosen := selectGCSessions(sessions, keep, stale)
+	// process holds it or a host has persisted a reference to it.
+	protected := protectedSessions(sessions, keep)
+	stale := func(session Session) bool { return session.UpdatedAt.Before(cutoff) && !protected[session.ID] }
+	chosen := selectGCSessions(sessions, protected, stale)
 	report.Sessions = append(report.Sessions, chosen...)
 	ids := sessionIDs(chosen)
 	cut := formatTime(cutoff)
@@ -83,6 +84,24 @@ func (s *Store) CollectGarbage(ctx context.Context, cutoff time.Time, keep map[s
 	}
 	report.Applied = true
 	return report, nil
+}
+
+// protectedSessions combines live-process holds with persistent pins. A pinned
+// child must survive even when its parent is collected, so selectGCSessions gets
+// the same protection map as the age predicate.
+func protectedSessions(sessions []Session, keep map[string]bool) map[string]bool {
+	protected := make(map[string]bool, len(keep))
+	for id, held := range keep {
+		if held {
+			protected[id] = true
+		}
+	}
+	for _, session := range sessions {
+		if PinnedSession(session) {
+			protected[session.ID] = true
+		}
+	}
+	return protected
 }
 
 // selectGCSessions returns the sessions a garbage collection removes: the ones

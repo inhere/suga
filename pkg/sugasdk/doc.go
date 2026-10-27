@@ -59,6 +59,10 @@
 // hidden by the default `suga session list` list, which the host then filters with
 // Engine.Sessions(SessionFilter{Origin: "xhen"}).
 //
+// Engine.Pin keeps a session and its history out of both automatic garbage
+// collection modes until the host clears the marker; it works for xhen and
+// non-xhen origins alike.
+//
 // # Tool invocations
 //
 // The runtime gives every tool call an invocation id and puts it in the

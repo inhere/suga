@@ -264,6 +264,21 @@ func (e *Engine) memoryStore() (*memory.Governed, error) {
 	return gov, nil
 }
 
+// memoryDatabase returns the metadata store kept open alongside the governed
+// memory layer. Initializing the layer first keeps SDK and tool writes on the
+// same SQLite database and policy path.
+func (e *Engine) memoryDatabase() (*store.Store, error) {
+	if _, err := e.memoryStore(); err != nil {
+		return nil, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.memRepo == nil {
+		return nil, ErrEngineClosed
+	}
+	return e.memRepo, nil
+}
+
 // Search runs the session_search query of the whole store: every term must
 // occur in one entry. limit <= 0 means 20, at most 100.
 func (e *Engine) Search(ctx context.Context, query string, limit int) ([]Hit, error) {
@@ -386,6 +401,29 @@ func parseEntryRef(ref string) (string, int64, error) {
 		return "", 0, fmt.Errorf("sugasdk: invalid entry sequence in %q", ref)
 	}
 	return ref[:slash], seq, nil
+}
+
+// Pin changes the persistent keep marker of a session. A pin protects the
+// session from both age-based and origin-retention garbage collection, including
+// sessions that do not use the xhen origin. Explicit DeleteSession remains a
+// deliberate manual deletion and is not blocked by a pin.
+func (e *Engine) Pin(ctx context.Context, sessionID string, pinned bool) error {
+	if e == nil {
+		return ErrEngineClosed
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("sugasdk: session id is empty")
+	}
+	repo, err := e.openStore()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
+	if err := repo.PatchSessionMeta(ctx, sessionID, map[string]any{store.MetaPinned: pinned}); err != nil {
+		return fmt.Errorf("sugasdk: pin session %q: %w", sessionID, err)
+	}
+	return nil
 }
 
 // sessionInDir reports whether cwd is dir or below it (path boundaries, case
