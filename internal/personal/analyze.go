@@ -83,6 +83,9 @@ type TraceAnalysis struct {
 	// events that preceded them: where a low hit rate is investigated.
 	CacheBuckets []store.CacheBucketStat `json:"cache_buckets,omitempty"`
 	SteadyLowHit []store.CacheLowHit     `json:"steady_low_hit,omitempty"`
+	// FailedAttempts are provider attempts omitted from cache buckets because
+	// they failed or reported no token usage.
+	FailedAttempts int `json:"failed_attempts,omitempty"`
 	// PrefixTokens and PrefixReuse are the prefix reuse rate over every model
 	// call: cache read over the estimated cacheable prefix of the previous
 	// requests, capped at 1. It measures "of what the provider could have served,
@@ -379,7 +382,7 @@ func AnalyzeTrace(events []store.Event) TraceAnalysis {
 	// store.ClassifyEvents); the low-hit list is capped for the report.
 	calls := store.ClassifyEvents(events)
 	buckets := store.AggregateCacheBuckets(calls, steadyLowHitListed)
-	a.CacheBuckets, a.SteadyLowHit = buckets.Buckets, buckets.LowSteady
+	a.CacheBuckets, a.SteadyLowHit, a.FailedAttempts = buckets.Buckets, buckets.LowSteady, buckets.FailedAttempts
 	// The prefix reuse rate over every call: cache read over the estimated
 	// cacheable prefix of the previous requests (capped per call, so a provider
 	// that served everything reads as 100%).
@@ -647,6 +650,9 @@ func WriteTraceAnalysis(w io.Writer, a TraceAnalysis, asJSON bool) error {
 	row("uncached input", "%s", uncachedSummary(a))
 	if len(a.CacheBuckets) > 0 {
 		row("cache by bucket", "%s", cacheBucketSummary(a.CacheBuckets))
+	}
+	if a.FailedAttempts > 0 {
+		row("failed attempts", "%d provider attempts omitted from cache buckets", a.FailedAttempts)
 	}
 	if a.PrefixTokens > 0 {
 		row("prefix reuse", "%s of %s cacheable prefix served from cache (%.1f%%; unaffected by what a call added)",

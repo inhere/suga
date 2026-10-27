@@ -249,9 +249,13 @@ func TestBuildCacheBuckets(t *testing.T) {
 	// A second session: its own first call is cold again.
 	add("b", 8, modelCall(prefixReasonFirst, 500, 0, 0))
 	add("b", 9, modelCall(prefixReasonAppend, 600, 550, 0))
+	failed := modelCall(prefixReasonAppend, 0, 0, 0)
+	failed.Status = "error"
+	add("a", 10, failed)
 
 	all, err := s.BuildCacheBuckets(ctx, EventFilter{}, 5)
 	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, 1, all.FailedAttempts)
 	counts := map[string]int{}
 	for _, b := range all.Buckets {
 		counts[b.Bucket] = b.Calls

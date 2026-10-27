@@ -92,6 +92,9 @@ type Result struct {
 	// eval cannot read (the bucket columns then show "-").
 	CacheBuckets []cacheBucket `json:"cache_buckets,omitempty"`
 	SteadyLowHit []cacheLowHit `json:"steady_low_hit,omitempty"`
+	// FailedAttempts are provider attempts omitted from cache buckets because
+	// they failed or reported no token usage.
+	FailedAttempts int `json:"failed_attempts,omitempty"`
 	// SegmentChanges are the segment breaks of this run, read from the same
 	// analyze call: which sections of the segment context message changed since
 	// the previous segment and how many bytes each section had then. nil for an
@@ -408,7 +411,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	// The cache buckets need the per-call order of the whole session, which the
 	// analyze view of the trace provides (the plain trace above is per event).
 	if aout, err := runCmd(context.Background(), bin, []string{"inspect", "trace", sid, "--analyze", "--json"}, ws, env); err == nil {
-		r.CacheBuckets, r.SteadyLowHit = parseCacheBuckets(aout)
+		r.CacheBuckets, r.SteadyLowHit, r.FailedAttempts = parseCacheBuckets(aout)
 		r.SegmentChanges = parseSegmentChanges(aout)
 	}
 	return r, nil
