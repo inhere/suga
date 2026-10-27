@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.51.0] - 2026-10-27
+
+本版细化缓存命中率统计：续接调用按前缀是否变化分桶、识别 provider/模型切换、给出前缀复用率与换段分节变化，失败尝试不再计入分桶；另加实验性设置 `context.handoff_reuse_prefix`（默认关闭），让换段写交接包的调用沿用会话前缀。
+
 ### 新增
 
 - 新增设置 `context.handoff_reuse_prefix`（默认 `false`，实验性；设计 2026-10-27-handoff-prefix-reuse-design）：打开后，换段写交接包的那次调用沿用本段主循环请求（系统提示、工具表、全部消息逐字节相同，新进程与 `suga session compact` 这类轮间换段时按同样配置重建，并用上一轮持久化的请求指纹核对）再追加一条指令，让 provider 的提示缓存服务大部分输入；不满足条件或回答不像交接包（带工具调用、为空、缺小节；标题可用会话语言或三级/加粗写法）时改用原来的独立请求。调用事件记 `handoff_reuse`（`prefix` 或 `fallback:<原因>`），`inspect trace --analyze` 与 `scripts/eval` 汇总显示计数。2026-10-27 评测（3 个难版长会话任务 × 开/关 × 3 轮）：交接包调用缓存命中约 67%–80%，但未缓存输入与旧路径相当，主要省在输出（约少 40%），折算整个会话约省 1%–2%，因此默认关闭。
@@ -1212,7 +1216,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.50.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.51.0...HEAD
+[0.51.0]: https://github.com/inhere/suga/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/inhere/suga/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/inhere/suga/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/inhere/suga/compare/v0.47.0...v0.48.0
