@@ -12,6 +12,10 @@
 - 换段分节记录：换段事件（`compaction name=compact status=ok`）新增 `sections` 属性，记下新段上下文消息每一节（environment、rules、memory_index、skills、append_prompt、host_context、deferred_tools、handoff）的名字、字节数与短哈希；`inspect trace --analyze` 新增 `segment sections` 行与 `segment_sections` 字段，给出连续两段之间哪些节变了（被移除的节也算变了）。
 - 评测记录换段分节（suga-jh7b 第二步的数据准备）：`scripts/eval` 的每条结果在原有的那次 `inspect trace --analyze --json` 调用里再记下 `segment_changes`（每次换段的段序号、变化的节名与各节字节数）；汇总与 `compare`（`--variant` 的 compare.md 与 `compare` 子命令报告）新增「换段时变化的节」小节：按节名统计所有换段里变化的次数与占比、变化时该节的平均字节数，并用 `segment_start` 桶给出该节变化时/未变化时的命中率与前缀复用率，用来判断哪一节导致换段后未命中。
 
+### 修复
+
+- 轮间换段也沿用会话前缀（设计 2026-10-27-handoff-prefix-reuse-design，H3）：`suga session compact`、chat 的 `:compact` 这类在两轮之间换段的调用此前拿不到主循环请求（新进程里内存中没有请求，换段用的构建器也没有提示组装器），每次都记 `fallback:no_request`；现在轮间换段改用与主循环同一个提示组装器与工具注册表重建会话最后一次请求（折叠基线与图片处理也与主循环对齐，使消息就是那次请求的只追加延伸），并用上一轮写进会话元数据的请求指纹核对：系统提示、工具表或已记录的消息与上一进程实际发出的不一致时回退，记 `fallback:prompt_state`（提示组装器读取运行状态）或 `fallback:prefix_changed`（重建结果与指纹不符，例如宿主 hook 上下文、每次请求的临时上下文、被截断的工具结果这类没存进会话的内容）。开关、其余回退规则与交接包格式不变。
+
 ## [0.50.0] - 2026-10-27
 
 本版加入中英文界面：新增 `language` 配置（默认 `auto`，非中文系统改为英文界面，中文用户可设 `language: zh`），`language: en` 时部分给模型看的提示也换成英文；`sessions`/`compact`/`undo` 收进 `suga session` 命令组（旧写法会转发并提示）；另含缓存命中率分桶统计、演示录屏与 MIT 许可证。

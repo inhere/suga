@@ -298,8 +298,12 @@ type contextBuilder struct {
 	haveView       bool
 	// reuseBase is the request the main loop is about to send for the step of a
 	// segment break, rebuilt from the view before the break (requestBase): the
-	// handoff call continues it when this process sent no request yet (H2).
-	reuseBase *agentcore.GenerateRequest
+	// handoff call continues it when this process sent no request yet (H2). A
+	// break between turns rebuilds the session's last request instead
+	// (requestBaseBetweenTurns, H3); reuseBaseWhy names why that rebuild was
+	// refused ("" = it worked or was not attempted).
+	reuseBase    *agentcore.GenerateRequest
+	reuseBaseWhy string
 
 	// foldBase is the fold boundary already recorded in this segment (session
 	// meta fold_boundary); foldPending is a larger boundary seen by the latest
