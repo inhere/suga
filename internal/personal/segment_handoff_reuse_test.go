@@ -351,6 +351,42 @@ func TestHandoffReuseAcceptsDeeperHeadings(t *testing.T) {
 	assert.Eq(t, false, strings.Contains(summary, "### "))
 }
 
+// A discarded answer is kept in the debug log, so the shape a model wrote can be
+// read after a run that fell back (the pre-run's answers were stored nowhere, H5).
+func TestHandoffReuseLogsDiscardedAnswer(t *testing.T) {
+	buf := captureDefaultLogger(t)
+	repo := openObserveRepo(t)
+	const bad = "## 当前任务\nHEAD-MARKER-abc\n## 下一步\n无"
+	prov := &reuseProv{main: reuseMain, handoff: func(_ int, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		if isReuseCall(req) {
+			return finalText(bad)
+		}
+		return finalText(reuseBody)
+	}}
+	runner := reusedRunner(t, repo, prov)
+	ctx := context.Background()
+	sid := oneTurn(t, runner)
+	_, err := runner.Compact(ctx, sid)
+	assert.NoErr(t, err)
+
+	line := buf.String()
+	assert.StrContains(t, line, "discarded handoff answer")
+	assert.StrContains(t, line, handoffFallbackMissingSections+":"+handoffSectionCoords)
+	assert.StrContains(t, line, "HEAD-MARKER-abc")
+}
+
+// The head of a discarded answer stops at 400 characters and stays valid UTF-8.
+func TestHandoffAnswerHeadCapsCharacters(t *testing.T) {
+	short := "## 当前任务\n无"
+	assert.Eq(t, short, handoffAnswerHead(short))
+
+	long := strings.Repeat("交", 401)
+	head := handoffAnswerHead(long)
+	assert.Eq(t, 401, len([]rune(head))) // 400 characters and the ellipsis
+	assert.Eq(t, true, strings.HasSuffix(head, "…"))
+	assert.Eq(t, strings.Repeat("交", 400), strings.TrimSuffix(head, "…"))
+}
+
 // A truncated reuse answer is asked for once more on the same path, with the
 // budgets restated, and the second answer becomes the package.
 func TestHandoffReuseTruncatedAsksAgain(t *testing.T) {
