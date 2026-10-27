@@ -55,9 +55,62 @@ func compileOutputSchema(value string, stdin io.Reader, tr i18n.Translator) (*ou
 	}
 	contract, err := outschema.Compile(raw)
 	if err != nil {
-		return nil, nil, processExitError{code: 2, err: localizedWrap(cliText(tr, "cli.schema.input_invalid"), err)}
+		// The cause stays in the chain (a usage error still answers errors.As) and the
+		// text printed is the localized one.
+		return nil, nil, processExitError{code: 2, err: &localizedWrapError{
+			message:   cliText(tr, "cli.schema.input_invalid"),
+			cause:     err,
+			causeText: compileErrorText(tr, err),
+		}}
 	}
 	return contract, contract.Raw(), nil
+}
+
+// schemaErrorKey picks the catalog key of a compile error's human line. Two kinds
+// carry two wordings, and the parameter tells them apart: a syntax error names the
+// decoder message unless the schema is empty, and a refused reference names the
+// URL when the sandbox loader refused it but the library's load error otherwise.
+func schemaErrorKey(ce *outschema.CompileError) (string, bool) {
+	switch ce.Kind {
+	case outschema.KindSyntax:
+		if _, ok := ce.Params["detail"]; ok {
+			return "cli.schema.error.syntax", true
+		}
+		return "cli.schema.error.empty", true
+	case outschema.KindSize:
+		return "cli.schema.error.size", true
+	case outschema.KindTopLevel:
+		return "cli.schema.error.toplevel", true
+	case outschema.KindExternalRef:
+		if _, ok := ce.Params["url"]; ok {
+			return "cli.schema.error.external_ref", true
+		}
+		return "cli.schema.error.external_ref_detail", true
+	case outschema.KindUnknownDraft:
+		return "cli.schema.error.unknown_draft", true
+	case outschema.KindInvalidSchema:
+		return "cli.schema.error.invalid_schema", true
+	}
+	return "", false
+}
+
+// compileErrorText is the human line of a schema the caller has to fix: Kind and
+// its Params through the catalog, or the error's own Message when the catalog has
+// no line for it (Message stays the text sugasdk and its callers read).
+func compileErrorText(tr i18n.Translator, err error) string {
+	var ce *outschema.CompileError
+	if !errors.As(err, &ce) {
+		return err.Error()
+	}
+	key, ok := schemaErrorKey(ce)
+	if !ok {
+		return ce.Message
+	}
+	// T answers the key itself when the catalog lacks it: that is the fallback.
+	if text := cliText(tr, key, ce.Params); text != key {
+		return text
+	}
+	return ce.Message
 }
 
 // localizedWrap prefixes err with a translated message and keeps err in the
@@ -65,9 +118,18 @@ func compileOutputSchema(value string, stdin io.Reader, tr i18n.Translator) (*ou
 type localizedWrapError struct {
 	message string
 	cause   error
+	// causeText overrides what the cause prints when its own Error() is not the
+	// human line (a CompileError prints Message, which stays untranslated).
+	causeText string
 }
 
-func (e *localizedWrapError) Error() string { return e.message + " " + e.cause.Error() }
+func (e *localizedWrapError) Error() string {
+	text := e.causeText
+	if text == "" {
+		text = e.cause.Error()
+	}
+	return e.message + " " + text
+}
 
 func (e *localizedWrapError) Unwrap() error { return e.cause }
 

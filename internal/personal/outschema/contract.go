@@ -46,10 +46,15 @@ const (
 )
 
 // CompileError is a schema the caller has to fix before a turn may start.
-// Message is one line: the entry layer prints it as is.
+// Message is one line: the entry layer prints it as is when it has no translated
+// line for Kind.
 type CompileError struct {
 	Kind    string
 	Message string
+	// Params are the values of the placeholders of a translated line of Kind (url,
+	// draft, detail, limit, actual): the display layer renders Kind + Params in the
+	// UI language, while Message stays the same text for sugasdk and its callers.
+	Params map[string]any
 }
 
 func (e *CompileError) Error() string { return e.Message }
@@ -78,6 +83,7 @@ type denyLoader struct{}
 
 func (denyLoader) Load(url string) (any, error) {
 	return nil, &CompileError{Kind: KindExternalRef,
+		Params:  map[string]any{"url": oneLine(url)},
 		Message: fmt.Sprintf("输出契约引用了外部资源 %s（不支持，请改用内联 $defs 引用）", oneLine(url))}
 }
 
@@ -99,20 +105,26 @@ func Compile(raw []byte) (*Contract, error) {
 		return nil, &CompileError{Kind: KindSyntax, Message: "输出契约（JSON Schema）为空"}
 	}
 	if len(trimmed) > MaxSchemaBytes {
-		return nil, &CompileError{Kind: KindSize, Message: fmt.Sprintf(
-			"输出契约超过 %d 字节上限（实际 %d 字节）", MaxSchemaBytes, len(trimmed))}
+		return nil, &CompileError{Kind: KindSize,
+			Params: map[string]any{"limit": MaxSchemaBytes, "actual": len(trimmed)},
+			Message: fmt.Sprintf(
+				"输出契约超过 %d 字节上限（实际 %d 字节）", MaxSchemaBytes, len(trimmed))}
 	}
 	// The library's own decoder keeps a number's literal text (probe: 9007199254740993
 	// validates exactly), which the schema side needs as much as the instance side.
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(trimmed))
 	if err != nil {
-		return nil, &CompileError{Kind: KindSyntax, Message: "输出契约不是合法 JSON: " + oneLine(err.Error())}
+		return nil, &CompileError{Kind: KindSyntax,
+			Params:  map[string]any{"detail": oneLine(err.Error())},
+			Message: "输出契约不是合法 JSON: " + oneLine(err.Error())}
 	}
 	switch value := doc.(type) {
 	case map[string]any:
 		if name, ok := value["$schema"].(string); ok && !knownDrafts[name] {
-			return nil, &CompileError{Kind: KindUnknownDraft, Message: fmt.Sprintf(
-				"输出契约的 $schema %q 不受支持（支持 draft-04/06/07/2019-09/2020-12）", oneLine(name))}
+			draft := fmt.Sprintf("%q", oneLine(name))
+			return nil, &CompileError{Kind: KindUnknownDraft,
+				Params:  map[string]any{"draft": draft},
+				Message: fmt.Sprintf("输出契约的 $schema %s 不受支持（支持 draft-04/06/07/2019-09/2020-12）", draft)}
 		}
 	case bool:
 		// "true"/"false" accept or refuse every value; nothing to check.
@@ -127,32 +139,37 @@ func Compile(raw []byte) (*Contract, error) {
 	// loaded, so a schema can never read a file or reach the network (design 3.2).
 	compiler.UseLoader(denyLoader{})
 	if err := compiler.AddResource(schemaURL, doc); err != nil {
-		return nil, &CompileError{Kind: KindInvalidSchema, Message: "输出契约无效: " + oneLine(err.Error())}
+		return nil, &CompileError{Kind: KindInvalidSchema,
+			Params:  map[string]any{"detail": oneLine(err.Error())},
+			Message: "输出契约无效: " + oneLine(err.Error())}
 	}
 	schema, err := compiler.Compile(schemaURL)
 	if err != nil {
-		kind, msg := compileFailure(err)
-		return nil, &CompileError{Kind: kind, Message: msg}
+		kind, msg, params := compileFailure(err)
+		return nil, &CompileError{Kind: kind, Message: msg, Params: params}
 	}
 	return &Contract{schema: schema, raw: append([]byte(nil), trimmed...)}, nil
 }
 
-// compileFailure maps a compiler error to a kind and a one-line message: a
-// refused load is an external reference, anything else means the schema itself
-// does not satisfy its meta schema.
-func compileFailure(err error) (kind, message string) {
+// compileFailure maps a compiler error to a kind, a one-line message and the
+// parameters of the translated line of that kind: a refused load is an external
+// reference, anything else means the schema itself does not satisfy its meta
+// schema.
+func compileFailure(err error) (kind, message string, params map[string]any) {
 	// The deny loader's own error already says what is wrong and why; keep it, so
 	// the caller is told the sandbox refused the reference instead of a "not
 	// valid against metaschema" wall of text.
 	var compileErr *CompileError
 	if errors.As(err, &compileErr) {
-		return compileErr.Kind, compileErr.Message
+		return compileErr.Kind, compileErr.Message, compileErr.Params
 	}
 	var loadErr *jsonschema.LoadURLError
 	if errors.As(err, &loadErr) {
-		return KindExternalRef, "输出契约引用了外部资源（不支持）: " + oneLine(err.Error())
+		return KindExternalRef, "输出契约引用了外部资源（不支持）: " + oneLine(err.Error()),
+			map[string]any{"detail": oneLine(err.Error())}
 	}
-	return KindInvalidSchema, "输出契约无效: " + oneLine(err.Error())
+	return KindInvalidSchema, "输出契约无效: " + oneLine(err.Error()),
+		map[string]any{"detail": oneLine(err.Error())}
 }
 
 // decodeInstance decodes one candidate JSON text the way the contract checks

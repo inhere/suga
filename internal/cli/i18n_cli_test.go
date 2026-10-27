@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/internal/personal/outschema"
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore/api"
@@ -53,6 +55,23 @@ func TestCLIEnglishUserFacingOutput(t *testing.T) {
 	t.Run("cwd mismatch", func(t *testing.T) {
 		err := cwdMismatchError("s-en", t.TempDir()+"/missing", t.TempDir())
 		assert.ErrMsgContains(t, err, "current working directory")
+	})
+
+	t.Run("output schema compile error", func(t *testing.T) {
+		// The real entry: a schema the compiler refuses is a usage error (exit 2)
+		// whose line a person reads, so it must not stay Chinese in an en UI.
+		verifyRunDir(t)
+		var out, diag bytes.Buffer
+		err := RunPersonalCLI(context.Background(), "run", []string{
+			"--prompt", "p", "--session-id", "schema-en",
+			"--output-schema", `{"$schema":"https://json-schema.org/draft/2030-01/schema","type":"object"}`,
+		}, strings.NewReader(""), &out, &diag)
+		assert.Require(t, assert.Err(t, err))
+		assert.Eq(t, 2, ExitCode(err))
+		assert.StrContains(t, err.Error(), "--output-schema is invalid")
+		assert.StrContains(t, err.Error(), "The output contract's $schema")
+		assert.StrContains(t, err.Error(), "is not supported (supported: draft-04/06/07/2019-09/2020-12)")
+		assert.StrNotContains(t, err.Error(), "输出契约")
 	})
 }
 
@@ -169,6 +188,50 @@ func TestCLIEnglishGovernanceOutput(t *testing.T) {
 		out, err := runCLI(t, ctx, "data", "vacuum")
 		assert.Require(t, assert.NoErr(t, err))
 		assertEnglishOutput(t, out, "VACUUM complete: sessions.db", "Overall database")
+	})
+}
+
+// TestCompileErrorText covers the display of a *outschema.CompileError: the zh
+// catalog value is the error's own Message (the migration changed nothing a
+// Chinese user reads), the en value is translated, and a kind the catalog does
+// not know falls back to Message.
+func TestCompileErrorText(t *testing.T) {
+	en, err := i18n.New(i18n.LanguageEN)
+	assert.Require(t, assert.NoErr(t, err))
+	zh, err := i18n.New(i18n.LanguageZH)
+	assert.Require(t, assert.NoErr(t, err))
+
+	schemas := map[string]string{
+		"empty":          "  \n",
+		"syntax":         `{"type":`,
+		"top level":      `[{"type":"object"}]`,
+		"size":           `{"description":"` + strings.Repeat("x", outschema.MaxSchemaBytes) + `"}`,
+		"external $ref":  `{"$ref":"https://example.com/s.json"}`,
+		"unknown draft":  `{"$schema":"https://json-schema.org/draft/2030-01/schema","type":"object"}`,
+		"invalid schema": `{"type":"object","required":"a"}`,
+	}
+	for name, raw := range schemas {
+		t.Run(name, func(t *testing.T) {
+			_, compileErr := outschema.Compile([]byte(raw))
+			assert.Require(t, assert.Err(t, compileErr))
+			var ce *outschema.CompileError
+			assert.Require(t, assert.True(t, errors.As(compileErr, &ce)))
+			assert.Eq(t, ce.Message, compileErrorText(zh, compileErr))
+			enText := compileErrorText(en, compileErr)
+			assert.NotEq(t, ce.Message, enText)
+			// The compiler library puts the sandbox's own refusal inside its
+			// sentence (failing loading ...), so that detail keeps its text; the line
+			// in front of it is the catalog's.
+			assert.StrContains(t, enText, "output contract")
+		})
+	}
+
+	t.Run("an unknown kind keeps the message", func(t *testing.T) {
+		ce := &outschema.CompileError{Kind: "future_kind", Message: "原始提示"}
+		assert.Eq(t, "原始提示", compileErrorText(en, ce))
+	})
+	t.Run("a non-compile error keeps its text", func(t *testing.T) {
+		assert.Eq(t, "boom", compileErrorText(en, errors.New("boom")))
 	})
 }
 
