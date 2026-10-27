@@ -11,9 +11,12 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/memory"
 )
 
-// The memory_meta side table keeps provenance, stable UUIDs and tombstones for
-// memory entries of every backend. Files remain the content source of truth;
-// SQLite owns the cross-backend identity and governance metadata.
+// The memory_meta side table keeps provenance and tombstones for memory
+// entries of every backend (design D4: files are the source of truth, SQLite
+// manages provenance). One row per (backend, scope, entry_id); a tombstone is
+// a row with deleted_at set and the fingerprint of the removed content. Each
+// row also carries a stable uuid: the entry_id is derived and can be reused or
+// archived, the uuid never changes (the link target of an embedding host).
 
 var _ memory.ProvenanceStore = (*Store)(nil)
 
@@ -41,7 +44,8 @@ func newMemoryUUID() (string, error) {
 // Ids are reused (an add may get the id of an entry removed earlier), but the
 // primary key holds one row per id. So before the live row replaces a tombstone,
 // the tombstone is archived under "<id>@<fingerprint prefix>" in the same
-// transaction; its UUID remains available for audit and migration checks.
+// transaction; IsTombstoned keeps matching it by fingerprint, and its UUID
+// remains available for audit and migration checks.
 func (s *Store) Record(ctx context.Context, backend string, sc memory.Scope, e memory.Entry, fingerprint string) error {
 	now := formatTime(time.Now())
 	scope := sc.String()
