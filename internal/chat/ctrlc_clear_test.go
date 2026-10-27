@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/suga/internal/chat/lineedit"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 )
 
 // Ctrl-C on a non-empty input line drops that line and nothing else

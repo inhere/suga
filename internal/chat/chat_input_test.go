@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/suga/internal/chat/lineedit"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 )
 
 // fakeTTY records raw/cooked transitions without touching a real terminal.

@@ -1,4 +1,4 @@
-package output
+package chatui
 
 import (
 	"fmt"
@@ -7,13 +7,39 @@ import (
 	"strings"
 
 	"github.com/gookit/color"
-	"github.com/inhere/suga/internal/i18n"
 )
 
-// Terminal markdown rendering, used by chat only. The model answers in
-// markdown; on a terminal that answer is shown as a plain-text approximation of
-// it instead of the raw markers. `suga run`, stream-json, ACP and the transcript
-// keep the exact text.
+// Translator is the minimal host translation contract used by chat rendering.
+type Translator interface {
+	T(key string, args ...map[string]any) string
+}
+
+type fallbackTranslator struct{}
+
+func (fallbackTranslator) T(key string, args ...map[string]any) string {
+	if key == "host.md.code_folded" {
+		lines := any(0)
+		if len(args) > 0 {
+			if value, ok := args[0]["lines"]; ok {
+				lines = value
+			}
+		}
+		return fmt.Sprintf("… 还有 %v 行（:code 查看全部）", lines)
+	}
+	return key
+}
+
+func translatorOrFallback(tr Translator) Translator {
+	if tr == nil {
+		return fallbackTranslator{}
+	}
+	return tr
+}
+
+// Terminal markdown rendering, used by chat only. The model answers in markdown;
+// on a terminal that answer is shown as a plain-text approximation of it instead
+// of the raw markers. `suga run`, stream-json, ACP and the transcript keep the
+// exact text.
 //
 // Rendering is line based: MDTerm buffers the text after the last newline and
 // renders it as soon as its newline (or the end of the message) arrives, so a
@@ -113,7 +139,7 @@ type MDTerm struct {
 	started bool // the current message already printed its prefix
 	// translator renders the notices the renderer writes itself (the folded-code
 	// line); nil keeps the historical Chinese text.
-	translator i18n.Translator
+	translator Translator
 }
 
 // NewMDTerm returns an MDTerm writing rendered lines to w; color styles them,
@@ -124,7 +150,7 @@ func NewMDTerm(w io.Writer, color bool) *MDTerm {
 
 // SetTranslator installs the host UI catalog of the lines the renderer writes
 // itself (the folded-code notice); nil keeps the historical Chinese text.
-func (t *MDTerm) SetTranslator(tr i18n.Translator) { t.translator = tr }
+func (t *MDTerm) SetTranslator(tr Translator) { t.translator = tr }
 
 // SetTheme switches the palette the elements are painted with (chat.theme,
 // "dark" or "light"); an unknown name keeps the previous one.
@@ -332,7 +358,7 @@ func (t *MDTerm) endCode() {
 	}
 	if t.codeFolded > 0 {
 		t.extra = append(t.extra, t.paint(t.theme.dim,
-			trOrFallback(t.translator).T("host.md.code_folded", map[string]any{"lines": t.codeFolded})))
+			translatorOrFallback(t.translator).T("host.md.code_folded", map[string]any{"lines": t.codeFolded})))
 	}
 	t.code, t.codeLang, t.codeText, t.codeLines, t.codeFolded = nil, "", nil, 0, 0
 }

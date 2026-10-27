@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inhere/suga/internal/chat/lineedit"
 	appconfig "github.com/inhere/suga/internal/config"
 	sugahooks "github.com/inhere/suga/internal/hooks"
 	"github.com/inhere/suga/internal/i18n"
@@ -22,6 +21,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 )
 
 const (

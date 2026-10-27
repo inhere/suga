@@ -14,7 +14,6 @@ import (
 
 	"github.com/gookit/cliui/show/symbols"
 	"github.com/gookit/color"
-	"github.com/inhere/suga/internal/chat/lineedit"
 	"github.com/inhere/suga/internal/diffview"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/output/termtext"
@@ -23,6 +22,8 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/chatui"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 	"golang.org/x/term"
 )
 
@@ -126,7 +127,7 @@ type rendererOptions struct {
 // tool lines, diff previews, plans, errors and the per-turn status line.
 type Renderer struct {
 	opts rendererOptions
-	live *output.LiveText
+	live *chatui.LiveText
 	// spin is the waiting line between a model request and its first output.
 	spin *thinkingSpinner
 	// memory collects this turn's successful memory writes, shown with the
@@ -241,7 +242,7 @@ func (r *Renderer) BeginTurn() {
 
 // resetLive resets the per-turn text streaming state.
 func (r *Renderer) resetLive() {
-	r.live = output.NewPrefixedLiveText(r.opts.Out, r.answerPrefix())
+	r.live = chatui.NewPrefixedLiveText(r.opts.Out, r.answerPrefix())
 	// The renderer's own lines (the retry notice, the folded-code line) use the
 	// language chat was started with.
 	r.live.SetTranslator(r.tr())
@@ -323,7 +324,7 @@ func (r *Renderer) Handle(event personal.Event) {
 	if !r.statusLine() && stopsWaiting(event) {
 		r.stopThinking()
 	}
-	if r.live.Handle(event) {
+	if r.live.Handle(chatui.StreamEvent{Kind: event.Kind, Text: event.Text}) {
 		return
 	}
 	switch event.Kind {

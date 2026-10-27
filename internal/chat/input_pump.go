@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/inhere/suga/internal/chat/lineedit"
+	"github.com/inhere/suga/pkg/chatui/lineedit"
 )
 
 // The reading side of the chat input: the mode one read is in, the event that read
