@@ -36,6 +36,7 @@ func writeCompare(out string, variants []*Variant, rs []Result) error {
 	}
 	fmt.Fprintln(&b)
 	writeCompareBuckets(&b, variants, rs)
+	writeCompareSegments(&b, variants, rs)
 
 	// One line per task, variants side by side.
 	fmt.Fprintf(&b, "## 逐任务对比\n\n")
@@ -163,6 +164,22 @@ func writeCompareReuse(b *strings.Builder, variants []*Variant, rs []Result) {
 		cells = append(cells, reuseCell(poolBuckets(variantResults(rs, v.Name)), "overall"))
 	}
 	fmt.Fprintf(b, "| overall | %s |\n\n", strings.Join(cells, " | "))
+}
+
+// writeCompareSegments appends the section breaks of every variant: which part
+// of the segment context message changed at a break and what that costs on the
+// first call of a segment, so a section that drives the misses is named.
+func writeCompareSegments(b *strings.Builder, variants []*Variant, rs []Result) {
+	groups := make([]segmentGroup, 0, len(variants))
+	for _, v := range variants {
+		groups = append(groups, segmentGroup{Label: v.Name, Rows: variantResults(rs, v.Name)})
+	}
+	section := segmentChangeSection(groups)
+	if section == "" {
+		return
+	}
+	fmt.Fprintf(b, "## 换段时变化的节（按节统计；segment_start 桶看换段后的首次调用）\n\n")
+	b.WriteString(section)
 }
 
 // bucketCellFor renders one pooled bucket of rs: the hit rate as a percentage,

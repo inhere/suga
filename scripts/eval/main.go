@@ -92,11 +92,16 @@ type Result struct {
 	// eval cannot read (the bucket columns then show "-").
 	CacheBuckets []cacheBucket `json:"cache_buckets,omitempty"`
 	SteadyLowHit []cacheLowHit `json:"steady_low_hit,omitempty"`
-	RawBytes     *int64        `json:"tool_raw_bytes"`
-	InlineBytes  *int64        `json:"tool_inline_bytes"`
-	Spilled      int           `json:"tool_spilled"`
-	Answer       string        `json:"answer"`
-	Checks       []CheckResult `json:"checks"`
+	// SegmentChanges are the segment breaks of this run, read from the same
+	// analyze call: which sections of the segment context message changed since
+	// the previous segment and how many bytes each section had then. nil for an
+	// agent whose trace the eval cannot read or a run that never broke a segment.
+	SegmentChanges []segmentChange `json:"segment_changes,omitempty"`
+	RawBytes       *int64          `json:"tool_raw_bytes"`
+	InlineBytes    *int64          `json:"tool_inline_bytes"`
+	Spilled        int             `json:"tool_spilled"`
+	Answer         string          `json:"answer"`
+	Checks         []CheckResult   `json:"checks"`
 	// Turns holds each turn of a multi-turn task in order: its answer, its
 	// duration and the forced compaction after it (compact_after).
 	Turns []TurnRun `json:"turns,omitempty"`
@@ -261,6 +266,7 @@ func runTaskSet(o *options, bin, runID string, tasks []*Task, variants []*Varian
 	}
 	printTable(os.Stdout, results, o.repeat > 1)
 	printCacheBuckets(os.Stdout, results)
+	printSegmentChanges(os.Stdout, results)
 	printTiming(os.Stdout, results, o.repeat > 1)
 	printTurnDetail(os.Stdout, results, o.repeat > 1)
 	printWebNote(os.Stdout, results)
@@ -403,6 +409,7 @@ func runTask(o *options, bin, runID string, t *Task, round int, v *Variant) (Res
 	// analyze view of the trace provides (the plain trace above is per event).
 	if aout, err := runCmd(context.Background(), bin, []string{"inspect", "trace", sid, "--analyze", "--json"}, ws, env); err == nil {
 		r.CacheBuckets, r.SteadyLowHit = parseCacheBuckets(aout)
+		r.SegmentChanges = parseSegmentChanges(aout)
 	}
 	return r, nil
 }

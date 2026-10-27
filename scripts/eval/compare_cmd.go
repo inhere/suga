@@ -357,6 +357,13 @@ func renderCompare(base, cand *compareGroup, diffs []taskDiff, overall []metricD
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", d.Task, splitCell(bt, ct), splitCell(bc, cc), faultCell(bf, cf))
 	}
 
+	fmt.Fprintf(&b, "\n## 换段时变化的节（segment_start 桶看换段后的首次调用）\n\n")
+	if section := segmentChangeSection([]segmentGroup{{Label: "基线", Rows: base.Rows}, {Label: "候选", Rows: cand.Rows}}); section != "" {
+		b.WriteString(section)
+	} else {
+		fmt.Fprintln(&b, "- 结果里没有换段记录（旧版二进制的 results.jsonl，或会话从未换段）")
+	}
+
 	fmt.Fprintf(&b, "\n## 工具调用差异（每轮均值；**%s** 为 |Δ|≥%.1f 且 ≥%s 的变化）\n\n",
 		"显著", toolCountMin, formatGate(toolCountGate))
 	fmt.Fprintln(&b, "| 工具 | 基线 | 候选 | 差异 |")
