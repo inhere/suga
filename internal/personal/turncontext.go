@@ -22,6 +22,13 @@ const (
 // snapshot hash (see memory.go; "" without a memory source).
 const metaMemoryIndexHash = "memory_index_hash"
 
+// MetaRunMode is the session meta key of the run mode the session last ran a
+// turn in (ModeReadOnly / ModeAllowWrite). The mode decides which tools a turn
+// declares, so it is part of the request head: a segment break between turns in
+// another process (`suga session compact`) reads it to declare the same tool
+// table as the turn whose request the handoff package continues (H4).
+const MetaRunMode = "run_mode"
+
 // toolSetHashLen is how many hex digits of the tool set hash are kept.
 const toolSetHashLen = 12
 
@@ -81,6 +88,13 @@ func (r *Runner) recordTurnContext(ctx context.Context, model Session, seg, eff 
 		}
 	}
 	r.rec.record(ctx, e)
+	// Remember the mode for a between-turn break of another process (H4): the
+	// tools of a turn depend on it, and the break rebuilds that turn's request.
+	if mode := r.cfg.Mode; mode != "" && metaString(model.Meta, MetaRunMode) != mode {
+		if err := r.cfg.Repository.PatchSessionMeta(ctx, model.ID, map[string]any{MetaRunMode: mode}); err != nil {
+			slog.Warn("store the run mode", "session_id", model.ID, "err", err)
+		}
+	}
 }
 
 // toolSetHash is the first toolSetHashLen hex digits of sha256 over the

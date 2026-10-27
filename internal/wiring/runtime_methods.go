@@ -11,6 +11,7 @@ import (
 
 	"github.com/inhere/suga/internal/clipboardimage"
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -154,6 +155,28 @@ func (rt *Runtime) PasteImageCallback() func() (agentcore.ImagePart, string, err
 		}
 		return native.PrepareImage(data, name, maxSide)
 	}
+}
+
+// SessionRunMode reads the run mode the session last ran a turn in ("" when it
+// never recorded one). `suga session compact` assembles its runtime with it: the
+// tools of a turn depend on the mode, and the break rebuilds the last turn's
+// request, which only a matching tool table can continue (H4).
+func SessionRunMode(ctx context.Context, sessionID string) (string, error) {
+	dbPath, err := appconfig.ResolveCoreStorePath()
+	if err != nil {
+		return "", err
+	}
+	repo, err := store.Open(dbPath)
+	if err != nil {
+		return "", err
+	}
+	defer repo.Close()
+	session, err := repo.GetSession(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
+	mode, _ := session.Meta[personal.MetaRunMode].(string)
+	return mode, nil
 }
 
 // SessionModelReference reads the last main model of a persisted session before

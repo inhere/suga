@@ -356,6 +356,49 @@ func rebuildRunner(t *testing.T, repo *store.Store, prov agentcore.Provider) *Ru
 	})
 }
 
+// TestRebuildDiffNamesTheDifference covers the diagnostic of H4: a rebuild that
+// does not reproduce the persisted request says which part differs, so a
+// fallback:prefix_changed attr tells system, tools and message apart.
+func TestRebuildDiffNamesTheDifference(t *testing.T) {
+	req := &agentcore.GenerateRequest{System: "PROMPT",
+		Tools:    []agentcore.ToolSchema{{Name: "file_read"}},
+		Messages: []agentcore.Message{{Role: "user", Content: "one"}, {Role: "assistant", Content: "two"}}}
+	rec := printRequest(req)
+
+	t.Run("same request", func(t *testing.T) {
+		assert.Eq(t, "", rebuildDiff(rec, req))
+		assert.True(t, rebuildMatches(rec, req))
+	})
+	t.Run("system prompt", func(t *testing.T) {
+		other := *req
+		other.System = "OTHER"
+		assert.Eq(t, diffSystem, rebuildDiff(rec, &other))
+	})
+	t.Run("tool table", func(t *testing.T) {
+		other := *req
+		other.Tools = []agentcore.ToolSchema{{Name: "file_read"}, {Name: "task"}}
+		assert.Eq(t, diffTools, rebuildDiff(rec, &other))
+	})
+	t.Run("first differing message", func(t *testing.T) {
+		other := *req
+		other.Messages = append([]agentcore.Message{{Role: "user", Content: "zero"}}, req.Messages...)
+		assert.Eq(t, "msg:0", rebuildDiff(rec, &other))
+	})
+	t.Run("second differing message", func(t *testing.T) {
+		other := *req
+		other.Messages = []agentcore.Message{{Role: "user", Content: "one"}, {Role: "assistant", Content: "CHANGED"}}
+		assert.Eq(t, "msg:1", rebuildDiff(rec, &other))
+	})
+	t.Run("shorter rebuild", func(t *testing.T) {
+		other := *req
+		other.Messages = req.Messages[:1]
+		assert.Eq(t, diffLength, rebuildDiff(rec, &other))
+	})
+	t.Run("no fingerprint", func(t *testing.T) {
+		assert.Eq(t, "", rebuildDiff(nil, req))
+	})
+}
+
 // A process that resumed the session breaks the segment before it sends any
 // request of its own, so no request exists in memory (H2): the handoff call
 // continues the prefix through the request the main loop is about to send - the
@@ -617,7 +660,11 @@ func TestHandoffReuseBetweenTurnsRefusesUnstoredMessages(t *testing.T) {
 	reuse, old := prov.handoffCalls()
 	assert.Eq(t, 0, len(reuse))
 	assert.Eq(t, 1, len(old))
-	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged}, handoffReuseAttrs(t, repo, res.SessionID))
+	// The attr names where the rebuild differs: the hook context message of the
+	// turn is not in the persisted view, so a message differs (H4).
+	attrs := handoffReuseAttrs(t, repo, res.SessionID)
+	assert.Eq(t, 1, len(attrs))
+	assert.True(t, strings.HasPrefix(attrs[0], handoffReuseFallbackPrefix+handoffFallbackPrefixChanged+":msg:"))
 }
 
 // A rebuilt base that does not reproduce what the last turn sent keeps the old
@@ -638,7 +685,8 @@ func TestHandoffReuseBetweenTurnsRefusesChangedPrefix(t *testing.T) {
 	reuse, old := prov.handoffCalls()
 	assert.Eq(t, 0, len(reuse))
 	assert.Eq(t, 1, len(old))
-	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged}, handoffReuseAttrs(t, repo, sid))
+	// The attr names the system prompt as the part the rebuild cannot reproduce.
+	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged + ":" + diffSystem}, handoffReuseAttrs(t, repo, sid))
 }
 
 // the cross-session handoff and the idle consolidation.

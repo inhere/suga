@@ -15,6 +15,7 @@
 ### 修复
 
 - 轮间换段也沿用会话前缀（设计 2026-10-27-handoff-prefix-reuse-design，H3）：`suga session compact`、chat 的 `:compact` 这类在两轮之间换段的调用此前拿不到主循环请求（新进程里内存中没有请求，换段用的构建器也没有提示组装器），每次都记 `fallback:no_request`；现在轮间换段改用与主循环同一个提示组装器与工具注册表重建会话最后一次请求（折叠基线与图片处理也与主循环对齐，使消息就是那次请求的只追加延伸），并用上一轮写进会话元数据的请求指纹核对：系统提示、工具表或已记录的消息与上一进程实际发出的不一致时回退，记 `fallback:prompt_state`（提示组装器读取运行状态）或 `fallback:prefix_changed`（重建结果与指纹不符，例如宿主 hook 上下文、每次请求的临时上下文、被截断的工具结果这类没存进会话的内容）。开关、其余回退规则与交接包格式不变。
+- 轮间换段的工具表与上一轮一致（设计 2026-10-27-handoff-prefix-reuse-design，H4）：上一版修好轮间重建后，真实评测里 24 次换段仍全部记 `fallback:prefix_changed`，原因是 `suga session compact` 这个新进程按自己的默认装配运行时（只读模式、且没有后台任务管理器），声明给模型的工具表少了写入类工具和 `task` 工具，与上一轮实际发出的表不同；现在换段进程按会话记下的运行模式（新增会话元数据 `run_mode`，每轮开始时写入）装配同样的工具表，并注册 `task` 工具。回退原因带不一致的位置（`prefix_changed:system` / `:tools` / `:msg:<序号>` / `:length`，debug 日志记下那两条消息的摘要），`inspect trace --analyze` 与 `scripts/eval` 汇总按原因前缀聚合，兼容带后缀的值。
 - 缓存分桶排除失败或未报告用量的 provider 尝试，单独计为 `failed_attempts`（`inspect stats` 文本表在 total 下一行、`--json` 字段 `failed_attempts`，`inspect trace --analyze` 的 `failed attempts` 行，`scripts/eval` 汇总的一行；为 0 时不显示），避免降级前的空用量尝试把 `provider_switch` 的调用数与命中率算歪；降级后的那次仍归 `provider_switch`。
 
 ## [0.50.0] - 2026-10-27

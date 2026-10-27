@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gookit/goutil/cflag/capp"
+	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/wiring"
 )
 
@@ -40,8 +41,23 @@ func newCompactCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 			}
 		}
 		// The runtime is needed for the model that writes the handoff summary;
-		// no turn runs, so no tool of the session is called.
-		runtime, err := wiring.OpenCLI(ctx, wiring.Options{Model: model, Thinking: thinking})
+		// no turn runs, so no tool of the session is called. The tool table is
+		// part of the request the handoff package continues, so this process
+		// declares the same tools a turn does: the mode the session last ran in
+		// (write tools) and the background-task tool every turn process registers:
+		// a table that differs from the last turn's falls back to
+		// handoff_reuse=fallback:prefix_changed:tools (H4).
+		wopts := wiring.Options{Model: model, Thinking: thinking}
+		if mode, err := wiring.SessionRunMode(ctx, sessionID); err == nil && mode == personal.ModeAllowWrite {
+			wopts.AllowWrite = true
+		}
+		taskManager, _, err := wiring.NewTaskManager(nil)
+		if err != nil {
+			return err
+		}
+		defer taskManager.Close()
+		wopts.Tasks = taskManager
+		runtime, err := wiring.OpenCLI(ctx, wopts)
 		if err != nil {
 			return err
 		}
