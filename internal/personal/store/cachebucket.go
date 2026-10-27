@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Cache buckets: one class per model call, decided by what happened to the
@@ -150,6 +151,23 @@ type CacheBucketStat struct {
 	// were made (prefix, fallback:<reason>): whether the reuse of the segment
 	// prefix held up (design 2026-10-27).
 	HandoffReuse map[string]int `json:"handoff_reuse,omitempty"`
+}
+
+// HandoffReuseKey is the aggregation key of a handoff_reuse value: the value
+// itself, or its reason when it carries a detail suffix (fallback:prefix_changed
+// :msg:12 names where the rebuilt request differs, which the aggregate counts
+// with the plain reason).
+func HandoffReuseKey(value string) string {
+	parts := strings.Split(value, ":")
+	if len(parts) < 2 {
+		return value
+	}
+	// prefix has no reason behind it; a fallback value keeps its reason and
+	// drops the detail after it.
+	if parts[0] == "prefix" {
+		return value
+	}
+	return strings.Join(parts[:2], ":")
 }
 
 // CacheLowHit is one steady call whose hit rate stayed below SteadyLowHitBelow:
@@ -452,7 +470,7 @@ func AggregateCacheBuckets(calls []CacheCall, lowHitLimit int) CacheBuckets {
 			if st.HandoffReuse == nil {
 				st.HandoffReuse = map[string]int{}
 			}
-			st.HandoffReuse[c.HandoffReuse]++
+			st.HandoffReuse[HandoffReuseKey(c.HandoffReuse)]++
 		}
 		if c.CacheRead+c.CacheWrite > 0 {
 			st.CacheReported = true

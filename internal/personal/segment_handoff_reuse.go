@@ -2,6 +2,7 @@ package personal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -42,7 +43,7 @@ const (
 	handoffFallbackHostHook        = "host_hook"        // a host hook may rewrite the request head: no byte-identical rebuild
 	handoffFallbackNoRequest       = "no_request"       // the segment request could not be rebuilt either
 	handoffFallbackPromptState     = "prompt_state"     // the system prompt reads the run state: a break between turns cannot reproduce it
-	handoffFallbackPrefixChanged   = "prefix_changed"   // the rebuilt request differs from what the last turn sent
+	handoffFallbackPrefixChanged   = "prefix_changed"   // the rebuilt request differs from what the last turn sent (the attr names where: prefix_changed:<position>)
 	handoffFallbackWindow          = "window"           // the request would not fit the model window
 	handoffFallbackToolCall        = "tool_call"        // the answer asked for tools instead of writing the package
 	handoffFallbackEmpty           = "empty"            // the answer had no text
@@ -211,8 +212,10 @@ func (b *contextBuilder) requestBaseBetweenTurns(ctx context.Context, view []age
 	if req == nil {
 		return nil, handoffFallbackNoRequest
 	}
-	if !rebuildMatches(printOf(rec), req) {
-		return nil, handoffFallbackPrefixChanged
+	if where := rebuildDiff(printOf(rec), req); where != "" {
+		// The attr names the part that differs (H4): which side of the request
+		// the between-turn rebuild cannot reproduce.
+		return nil, handoffFallbackPrefixChanged + ":" + where
 	}
 	return req, ""
 }
@@ -238,31 +241,70 @@ func (b *contextBuilder) promptIgnoresState(ctx context.Context) bool {
 	return err == nil && plain == other
 }
 
+// Positions a rebuilt request can differ from the persisted one at (the reason
+// suffix of handoffFallbackPrefixChanged): the system prompt, the tool schemas,
+// the first message whose cumulative hash differs (msg:<n>), or a rebuilt view
+// shorter than the persisted print covered.
+const (
+	diffSystem = "system"
+	diffTools  = "tools"
+	diffLength = "length"
+)
+
 // rebuildMatches reports whether req reproduces the request whose fingerprint a
-// previous turn persisted: the same System and Tools, and the persisted
-// messages as a prefix of req's (the view of this break continues them). A
-// session without a fingerprint (an older binary, a turn that sent no request)
-// cannot be checked and is accepted: the prompt builder and the tool registry
-// are the same configuration that process ran with.
+// previous turn persisted (rebuildDiff empty).
 func rebuildMatches(rec *requestPrint, req *agentcore.GenerateRequest) bool {
+	return rebuildDiff(rec, req) == ""
+}
+
+// rebuildDiff reports where req differs from the request whose fingerprint a
+// previous turn persisted: the same System and Tools, and the persisted
+// messages as a prefix of req's (the view of this break continues them). ""
+// means req reproduces it. A session without a fingerprint (an older binary, a
+// turn that sent no request) cannot be checked and is accepted: the prompt
+// builder and the tool registry are the same configuration that process ran
+// with.
+func rebuildDiff(rec *requestPrint, req *agentcore.GenerateRequest) string {
 	if rec == nil {
-		return true
+		return ""
 	}
 	cur := printRequest(req)
-	if rec.system != cur.system || rec.tools != cur.tools {
-		return false
+	if rec.system != cur.system {
+		return diffSystem
+	}
+	if rec.tools != cur.tools {
+		return diffTools
 	}
 	// rec covers the tail of its request (offset messages were dropped when it
 	// was persisted): the same window has to sit at the same place here.
 	if rec.offset+len(rec.msgs) > len(cur.msgs) {
-		return false
+		return diffLength
 	}
 	for i, m := range rec.msgs {
 		if cur.msgs[rec.offset+i].sum != m.sum {
-			return false
+			logRebuildDiff(rec.offset+i, m, cur.msgs[rec.offset+i], req)
+			return fmt.Sprintf("msg:%d", rec.offset+i)
 		}
 	}
-	return true
+	return ""
+}
+
+// logRebuildDiff records what the two sides of a message that differs look
+// like: the persisted print keeps only hashes and sizes, so its side names the
+// role/tool call and the size; the rebuilt side also shows the head of the
+// message (the request is the process's own, no secret is added here).
+func logRebuildDiff(i int, old, cur messagePrint, req *agentcore.GenerateRequest) {
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		return
+	}
+	head := ""
+	if i < len(req.Messages) {
+		raw, _ := json.Marshal(req.Messages[i])
+		head = truncateMiddle(string(raw), 200)
+	}
+	slog.Debug("rebuilt segment request differs from the persisted one", "index", i,
+		"persisted_id", old.id, "persisted_bytes", old.size,
+		"rebuilt_id", cur.id, "rebuilt_bytes", cur.size, "rebuilt_head", head)
 }
 
 // handoffBodyComplete reports whether body carries every section compactTemplate
