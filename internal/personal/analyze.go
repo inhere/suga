@@ -553,6 +553,28 @@ func cacheBucketSummary(buckets []store.CacheBucketStat) string {
 	return strings.Join(parts, "; ")
 }
 
+// handoffReuseSummary renders how the handoff-package calls of segment breaks
+// were made: how many continued the segment's main-loop prefix and how many fell
+// back, by reason (design 2026-10-27). "" when the session had no segment break.
+func handoffReuseSummary(buckets []store.CacheBucketStat) string {
+	for _, b := range buckets {
+		if b.Bucket != store.BucketHandoff || len(b.HandoffReuse) == 0 {
+			continue
+		}
+		names := make([]string, 0, len(b.HandoffReuse))
+		for name := range b.HandoffReuse {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, name := range names {
+			parts = append(parts, fmt.Sprintf("%s %d", name, b.HandoffReuse[name]))
+		}
+		return strings.Join(parts, ", ")
+	}
+	return ""
+}
+
 // cacheLowHitSummary renders the steady calls under the target hit rate: the
 // step, its uncached input and what happened between the previous call and it.
 func cacheLowHitSummary(hits []store.CacheLowHit) string {
@@ -629,6 +651,9 @@ func WriteTraceAnalysis(w io.Writer, a TraceAnalysis, asJSON bool) error {
 	if a.PrefixTokens > 0 {
 		row("prefix reuse", "%s of %s cacheable prefix served from cache (%.1f%%; unaffected by what a call added)",
 			human(a.PrefixReuseRead), human(a.PrefixTokens), a.PrefixReuse*100)
+	}
+	if reuse := handoffReuseSummary(a.CacheBuckets); reuse != "" {
+		row("handoff reuse", "%s", reuse)
 	}
 	if len(a.Segments) > 0 {
 		row("segment sections", "%s", segmentSectionsSummary(a.Segments))
