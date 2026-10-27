@@ -323,9 +323,9 @@ func logRebuildDiff(i int, old, cur messagePrint, req *agentcore.GenerateRequest
 //
 // The fallback reason spells the missing names out, so a discarded answer says
 // which sections the model dropped (H5).
-func handoffMissingSections(body string) []string {
+func handoffMissingSections(body string, h handoffHeadings) []string {
 	seen := make(map[string]bool, 8)
-	for _, s := range splitHandoffSections(canonicalHandoffHeadings(body)) {
+	for _, s := range splitHandoffSections(canonicalHandoffHeadings(body, h)) {
 		if name, ok := handoffSectionName(s.heading); ok {
 			seen[name] = true
 		}
@@ -347,14 +347,14 @@ func handoffMissingSections(body string) []string {
 // instead of writing the package, an empty reply says nothing, and a body
 // without the template's sections is no package - then the reason names the
 // missing sections (missing_sections:<名,名>).
-func handoffAnswerReason(body string, toolCalls int) string {
+func handoffAnswerReason(body string, toolCalls int, h handoffHeadings) string {
 	switch {
 	case toolCalls > 0:
 		return handoffFallbackToolCall
 	case strings.TrimSpace(body) == "":
 		return handoffFallbackEmpty
 	}
-	if missing := handoffMissingSections(body); len(missing) > 0 {
+	if missing := handoffMissingSections(body, h); len(missing) > 0 {
 		return handoffFallbackMissingSections + ":" + strings.Join(missing, ",")
 	}
 	return ""
@@ -373,6 +373,13 @@ func handoffAnswerHead(body string) string {
 	return string(r[:limit]) + "…"
 }
 
+// handoffHeadings is the heading-name set of this run's model catalog: the
+// canonical names plus the spellings written in the conversation's language
+// (H6), so a package whose headings are translated is still a package.
+func (r *Runner) handoffHeadings() handoffHeadings {
+	return handoffHeadingsFor(r.cfg.Translator)
+}
+
 // reuseCall sends one handoff request on top of the segment's main-loop prefix
 // and reports why the answer is unusable ("" = usable).
 func (r *Runner) reuseCall(ctx context.Context, ru *handoffReuse, instruction string, maxTokens int) (body string, truncated bool, reason string) {
@@ -387,7 +394,7 @@ func (r *Runner) reuseCall(ctx context.Context, ru *handoffReuse, instruction st
 		slog.Warn("handoff package on the segment prefix failed; asking the old way", "err", err)
 		return "", false, handoffFallbackError
 	}
-	if why := handoffAnswerReason(text, calls); why != "" {
+	if why := handoffAnswerReason(text, calls, r.handoffHeadings()); why != "" {
 		slog.Warn("handoff package on the segment prefix unusable; asking the old way", "reason", why)
 		slog.Debug("discarded handoff answer", "reason", why, "head", handoffAnswerHead(text))
 		return "", false, why

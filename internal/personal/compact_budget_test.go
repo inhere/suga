@@ -265,27 +265,27 @@ func TestCanonicalHandoffHeadings(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Eq(t, tc.want, canonicalHandoffHeadings(tc.in))
+			assert.Eq(t, tc.want, canonicalHandoffHeadings(tc.in, handoffHeadings{}))
 		})
 	}
 
 	t.Run("rewritten headings reach the section budgets", func(t *testing.T) {
 		body := "### " + handoffSectionProgress + "\n" + strings.Repeat("- 很长的进展\n", 600)
-		out := normalizeHandoffBody(canonicalHandoffHeadings(body))
+		out := normalizeHandoffBody(canonicalHandoffHeadings(body, handoffHeadings{}))
 		assert.StrContains(t, out, "## "+handoffSectionProgress)
 		assert.Eq(t, true, len(packageSectionBody(out, handoffSectionProgress)) <= handoffSectionBudgets[handoffSectionProgress])
 	})
 
 	t.Run("deeper headings satisfy the shape check", func(t *testing.T) {
 		deep := strings.ReplaceAll(reuseBody, "## ", "### ")
-		assert.Eq(t, 0, len(handoffMissingSections(deep)))
+		assert.Eq(t, 0, len(handoffMissingSections(deep, handoffHeadings{})))
 	})
 
 	t.Run("prose does not satisfy the shape check", func(t *testing.T) {
 		body := "当前任务：修解析器\n坐标：src/a.go\n" + handoffSectionProgress + "\n无"
 		assert.Eq(t, []string{handoffSectionTask, handoffSectionCoords, handoffSectionVerified,
 			handoffSectionProgress, handoffSectionNext, handoffSectionRefs},
-			handoffMissingSections(body))
+			handoffMissingSections(body, handoffHeadings{}))
 	})
 }
 
