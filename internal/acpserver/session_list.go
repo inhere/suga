@@ -147,7 +147,7 @@ func (a *Agent) ListSessions(ctx context.Context, req acp.ListSessionsRequest) (
 	if len(infos) == 0 {
 		var hints []string
 		if !all && otherDirs > 0 {
-			hints = append(hints, personal.EmptyScopeHint(scope, otherDirs))
+			hints = append(hints, personal.EmptyScopeHintWithTranslator(a.tr(), scope, otherDirs))
 		}
 		if hiddenXhen > 0 {
 			hints = append(hints, a.tr().T("host.acp.sessions_hidden_xhen", map[string]any{

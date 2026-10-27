@@ -86,9 +86,10 @@ func TestGroupHelpListsLeaves(t *testing.T) {
 }
 
 // TestRemovedTopLevelSessionCommands pins that `suga sessions`, `suga compact`
-// and `suga undo` are gone from the top level: they moved into the `session`
-// group without a compatibility alias (user 2026-10-27), so they fail as
-// unknown commands instead of still running.
+// and `suga undo` are gone from the command tree: they moved into the `session`
+// group (user 2026-10-27). The old spellings still run because NormalizeArgs
+// forwards them before the tree sees them (TestNormalizeArgsForwardsSession);
+// the tree itself must not register them again.
 func TestRemovedTopLevelSessionCommands(t *testing.T) {
 	for _, old := range []string{"sessions", "compact", "undo"} {
 		t.Run(old, func(t *testing.T) {
@@ -108,4 +109,33 @@ func TestConfigLeafHelpKeepsItsPositionalContract(t *testing.T) {
 	assert.StrContains(t, stderr.String(), "key")
 	assert.StrContains(t, stderr.String(), "value")
 	assert.StrNotContains(t, stderr.String(), "SUBCOMMAND")
+}
+
+// TestNormalizeArgsForwardsSession covers the forwarding of the session
+// commands that left the top level: the rewritten arguments and the one-line
+// notice in the configured language.
+func TestNormalizeArgsForwardsSession(t *testing.T) {
+	var notice bytes.Buffer
+	prev := normalizeNotice
+	normalizeNotice = &notice
+	t.Cleanup(func() { normalizeNotice = prev })
+
+	t.Run("rewrites to the session group", func(t *testing.T) {
+		notice.Reset()
+		assert.Eq(t, []string{"session", "list", "--all"}, NormalizeArgs([]string{"sessions", "--all"}))
+		assert.Eq(t, []string{"session", "compact", "sid"}, NormalizeArgs([]string{"compact", "sid"}))
+		assert.Eq(t, []string{"session", "undo", "sid", "2"}, NormalizeArgs([]string{"undo", "sid", "2"}))
+		assert.StrContains(t, notice.String(), "suga sessions 已移到 suga session list")
+	})
+	t.Run("english notice", func(t *testing.T) {
+		notice.Reset()
+		t.Setenv("SUGA_LANGUAGE", "en")
+		NormalizeArgs([]string{"undo"})
+		assert.StrContains(t, notice.String(), "suga undo moved to suga session undo")
+	})
+	t.Run("other commands are untouched", func(t *testing.T) {
+		notice.Reset()
+		assert.Eq(t, []string{"send", "x"}, NormalizeArgs([]string{"send", "x"}))
+		assert.Eq(t, "", notice.String())
+	})
 }

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/gookit/goutil/cflag/capp"
@@ -21,6 +23,20 @@ import (
 //
 // NormalizeArgs lives in internal/cli (not in cmd/suga) so tests can call it,
 // and cmd/suga runs it before bootstrapExempt, which reads the first argument.
+
+// movedSessionCommands maps a top-level command that moved into the `session`
+// group (user 2026-10-27, issue suga-unw9) to its new path. Unlike the pre-v0.36
+// forms below, these still run: NormalizeArgs rewrites them and prints one line
+// on stderr naming the new spelling (the user asked for forwarding or a hint).
+var movedSessionCommands = map[string][]string{
+	"sessions": {"session", "list"},
+	"compact":  {"session", "compact"},
+	"undo":     {"session", "undo"},
+}
+
+// normalizeNotice receives the one-line notice of a forwarded command; tests
+// replace it to capture the text.
+var normalizeNotice io.Writer = os.Stderr
 
 // legacyCommandRemoval is the version the old top-level forms were dropped in.
 // It is part of the hint the user sees, so keep it in sync with the design.
@@ -84,6 +100,14 @@ func NormalizeArgs(args []string) []string {
 	// No subcommand: an option in front is a chat option (design D6).
 	if strings.HasPrefix(args[0], "-") && !rootOnlyFlags[args[0]] {
 		return append([]string{"chat"}, args...)
+	}
+	// A session command typed at the top level runs as its `session` form; the
+	// notice names the new spelling so scripts can be updated.
+	if moved, ok := movedSessionCommands[args[0]]; ok {
+		fmt.Fprintln(normalizeNotice, cliText(cliTranslator(), "cli.legacy.moved", map[string]any{
+			"old": args[0], "new": strings.Join(moved, " "),
+		}))
+		return append(append([]string{}, moved...), args[1:]...)
 	}
 	return args
 }

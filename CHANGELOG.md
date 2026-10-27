@@ -15,7 +15,7 @@
 
 ### 变更
 
-- `suga sessions`、`suga compact`、`suga undo` 收进命令组 `suga session`：改为 `suga session list`（别名 `ls`，参数、输出与退出码不变）、`suga session compact`、`suga session undo`；旧的顶层 `sessions`/`compact`/`undo` 已删除、不保留别名（按未知命令报错，提示里改用新写法）。`suga send`、`suga ps` 仍留在顶层，`suga session` 不带子命令时打印组帮助；空会话列表的 `--all` 提示、ACP `session/list` 的 hint 与文档同步为新命令。
+- `suga sessions`、`suga compact`、`suga undo` 收进命令组 `suga session`：改为 `suga session list`（别名 `ls`，参数、输出与退出码不变）、`suga session compact`、`suga session undo`；旧的顶层 `sessions`/`compact`/`undo` 仍可输入：会转发到对应的 `suga session` 子命令执行，并在 stderr 提示新写法。`suga send`、`suga ps` 仍留在顶层，`suga session` 不带子命令时打印组帮助；空会话列表的 `--all` 提示、ACP `session/list` 的 hint 与文档同步为新命令，且这两处提示改为按 `language` 显示。
 - 模型侧文案新增英文最小集（阶段 1b）：`language: en` 时，人工批准结果后的说明、长输出保存为 ref / 已整理输出的引导句、时间与截止提醒、预算收尾指令、记忆工具的只读与确认类错误、PreToolUse hook 的拒绝理由改用英文；`language: zh`（以及未注入语言时）发给 provider 的请求逐字节不变（词条在 `internal/i18n/catalog/*/model.ini`，agentcore 侧由宿主注入，默认值即中文原文）。工具名、参数名、`ref`/`out:` 标记等协议部分不翻译。
 - CLI 的配置、数据维护、回滚、发送、工作目录检查及相关展示文案支持按 `language` 设置显示中文或英文，机器可解析输出保持不变。
 - 非中文系统默认显示英文；中文用户可设置 `language: zh` 保持中文界面。部分给模型看的提示仍是中文，后续阶段再处理。

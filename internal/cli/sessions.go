@@ -238,9 +238,9 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 
 // emptyScopeHint is the stderr line of an empty result (design 2026-10-20):
 // it is the shared personal.EmptyScopeHint text, so the CLI and the ACP
-// session/list hint agree word for word.
+// session/list hint agree word for word, in the configured language.
 func emptyScopeHint(dir string, otherDirs int) string {
-	return personal.EmptyScopeHint(dir, otherDirs)
+	return personal.EmptyScopeHintWithTranslator(cliTranslator(), dir, otherDirs)
 }
 
 // writeEmptyHint prints the empty-scope hint on stderr — also for --json, so
