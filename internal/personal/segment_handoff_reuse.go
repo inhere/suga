@@ -41,6 +41,8 @@ const (
 	handoffFallbackModelDiffers    = "model_differs"    // the compact model is another model: no shared cache
 	handoffFallbackHostHook        = "host_hook"        // a host hook may rewrite the request head: no byte-identical rebuild
 	handoffFallbackNoRequest       = "no_request"       // the segment request could not be rebuilt either
+	handoffFallbackPromptState     = "prompt_state"     // the system prompt reads the run state: a break between turns cannot reproduce it
+	handoffFallbackPrefixChanged   = "prefix_changed"   // the rebuilt request differs from what the last turn sent
 	handoffFallbackWindow          = "window"           // the request would not fit the model window
 	handoffFallbackToolCall        = "tool_call"        // the answer asked for tools instead of writing the package
 	handoffFallbackEmpty           = "empty"            // the answer had no text
@@ -71,10 +73,12 @@ func (r *Runner) reuseScopeText(tail int) string {
 // continue the closing segment's last main-loop request. A nil reuse means the
 // old path; reason names why it was not taken ("" when this is not a segment
 // break at all: the cross-session handoff and the idle consolidation are out of
-// scope and record no attr). rebuilt is the request the main loop is about to
-// send for the step of the break (contextBuilder.requestBase), used when this
-// process has sent none.
-func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int, rebuilt *agentcore.GenerateRequest) (*handoffReuse, string) {
+// scope and record no attr). rebuilt is the request the break rebuilt from the
+// persisted view - the step the main loop is about to send (H2) or the last
+// turn's request of a break between turns (H3) - used when this process has
+// sent none; rebuiltWhy names why that rebuild was refused ("" = it worked or
+// was not attempted).
+func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int, rebuilt *agentcore.GenerateRequest, rebuiltWhy string) (*handoffReuse, string) {
 	if scenario != scenarioCompact {
 		return nil, ""
 	}
@@ -100,6 +104,9 @@ func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int, rebui
 		req = rebuilt
 	}
 	if req == nil || len(req.Messages) == 0 {
+		if rebuiltWhy != "" {
+			return nil, rebuiltWhy
+		}
 		return nil, handoffFallbackNoRequest
 	}
 	return &handoffReuse{req: req, provider: r.scenarioProvider(scenario), tail: tail}, ""
@@ -156,8 +163,9 @@ func (r *Runner) reuseFitsWindow(req *agentcore.GenerateRequest) bool {
 // hook rewrites the head, and a configured host hook - which may - refuses the
 // rebuilt base (prepareHandoffReuse). A process that resumed the session has
 // sent no request yet, so the handoff call continues the previous process's
-// prefix through this base. nil when there is nothing to rebuild from: a break
-// between turns has neither a run state nor a prompt builder.
+// prefix through this base. nil when there is no builder to render the head or
+// no view to send; a break between turns rebuilds through
+// requestBaseBetweenTurns, which checks the result first (H3).
 func (b *contextBuilder) requestBase(ctx context.Context, state *agentcore.RunState, view []agentcore.Message) *agentcore.GenerateRequest {
 	if b.prompt == nil || state == nil || len(view) == 0 {
 		return nil
@@ -176,6 +184,85 @@ func (b *contextBuilder) requestBase(ctx context.Context, state *agentcore.RunSt
 		}
 	}
 	return &agentcore.GenerateRequest{Model: b.r.cfg.Model, System: system, Tools: schemas, Messages: view}
+}
+
+// requestBaseBetweenTurns rebuilds the request the session's last main-loop call
+// sent, for a break between turns (chat :compact, `suga session compact`, and a
+// later topic switch; H3). The closing segment ended with a completed turn, so
+// the persisted view is that request's messages followed by what came after
+// them: the turn's answer, and the injected entries it stored. rec is the
+// request fingerprint the last turn persisted (meta cache_prefix_print): it
+// proves byte identity of System and Tools and of every message it covers, so a
+// view this process cannot reproduce - an un-stored hook context, an ephemeral
+// output contract, a truncated tool result - keeps the old path instead of
+// sending a request the provider cache cannot serve.
+func (b *contextBuilder) requestBaseBetweenTurns(ctx context.Context, view []agentcore.Message, rec *printRecord) (*agentcore.GenerateRequest, string) {
+	if len(view) == 0 {
+		return nil, handoffFallbackNoRequest
+	}
+	// The main loop renders the system prompt from the live run state; a break
+	// between turns has none. The stable prompt of a process ignores it (that is
+	// what makes it a cacheable prefix); a builder that reads it would render
+	// other bytes than the last turn sent, so such a setup keeps the old path.
+	if !b.promptIgnoresState(ctx) {
+		return nil, handoffFallbackPromptState
+	}
+	req := b.requestBase(ctx, &agentcore.RunState{}, view)
+	if req == nil {
+		return nil, handoffFallbackNoRequest
+	}
+	if !rebuildMatches(printOf(rec), req) {
+		return nil, handoffFallbackPrefixChanged
+	}
+	return req, ""
+}
+
+// promptIgnoresState reports whether the system prompt builder renders the same
+// text for two different run states. Two probes cannot prove the absence of a
+// state dependency in general, but every builder that reads a per-turn field
+// (messages, step, wrap-up, metadata) answers differently here, and the
+// fingerprint check of requestBaseBetweenTurns covers the rest for a session
+// whose last turn recorded one.
+func (b *contextBuilder) promptIgnoresState(ctx context.Context) bool {
+	if b.prompt == nil {
+		return true
+	}
+	const probe = "prompt-state-probe"
+	plain, err := b.prompt.BuildSystemPrompt(ctx, &agentcore.RunState{})
+	if err != nil {
+		slog.Warn("rebuild the system prompt of a between-turn break", "session_id", b.sessionID, "err", err)
+		return false
+	}
+	other, err := b.prompt.BuildSystemPrompt(ctx, &agentcore.RunState{Step: 1, WrappingUp: probe,
+		Messages: []agentcore.Message{{Role: "user", Content: probe}}, Metadata: map[string]any{"probe": probe}})
+	return err == nil && plain == other
+}
+
+// rebuildMatches reports whether req reproduces the request whose fingerprint a
+// previous turn persisted: the same System and Tools, and the persisted
+// messages as a prefix of req's (the view of this break continues them). A
+// session without a fingerprint (an older binary, a turn that sent no request)
+// cannot be checked and is accepted: the prompt builder and the tool registry
+// are the same configuration that process ran with.
+func rebuildMatches(rec *requestPrint, req *agentcore.GenerateRequest) bool {
+	if rec == nil {
+		return true
+	}
+	cur := printRequest(req)
+	if rec.system != cur.system || rec.tools != cur.tools {
+		return false
+	}
+	// rec covers the tail of its request (offset messages were dropped when it
+	// was persisted): the same window has to sit at the same place here.
+	if rec.offset+len(rec.msgs) > len(cur.msgs) {
+		return false
+	}
+	for i, m := range rec.msgs {
+		if cur.msgs[rec.offset+i].sum != m.sum {
+			return false
+		}
+	}
+	return true
 }
 
 // handoffBodyComplete reports whether body carries every section compactTemplate

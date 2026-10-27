@@ -3,6 +3,7 @@ package personal
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -237,19 +238,23 @@ func TestHandoffReuseConditionFallbacks(t *testing.T) {
 		assert.Eq(t, 1, len(old))
 		assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackModelDiffers}, handoffReuseAttrs(t, repo, sid))
 	})
-	t.Run("no request", func(t *testing.T) {
+	t.Run("prompt needs state", func(t *testing.T) {
 		repo := openObserveRepo(t)
 		prov := newProv()
-		runner := reusedRunner(t, repo, prov)
 		ctx := context.Background()
-		sid := oneTurn(t, runner)
-		// A new process resumes the session: its tracker holds no request.
-		other := reusedRunner(t, repo, prov)
+		sid := oneTurn(t, reusedRunner(t, repo, prov))
+		// A break between turns has no run state: a prompt builder that renders it
+		// cannot reproduce the head of the last request, so the old path is taken.
+		other := compactRunner(t, repo, prov, nil, func(c *Config) {
+			c.ContextWindow, c.CompactReserveTokens = 100000, 1000
+			c.HandoffReusePrefix = true
+			c.PromptBuilder = stateTestPrompt{}
+		})
 		_, err := other.Compact(ctx, sid)
 		assert.NoErr(t, err)
 		_, old := prov.handoffCalls()
 		assert.Eq(t, 1, len(old))
-		assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackNoRequest}, handoffReuseAttrs(t, repo, sid))
+		assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPromptState}, handoffReuseAttrs(t, repo, sid))
 	})
 	t.Run("window", func(t *testing.T) {
 		repo := openObserveRepo(t)
@@ -478,22 +483,162 @@ func TestHandoffReuseRebuildRefusedWithHostHook(t *testing.T) {
 	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackHostHook}, handoffReuseAttrs(t, repo, sid))
 }
 
-// A session that a second process cannot rebuild the request for (a break
-// between turns has no run state) keeps the old path and says why.
-func TestHandoffReuseNoRequestWithoutRebuild(t *testing.T) {
+// betweenTurnRunner is a process that runs turns and may break the segment
+// between them on the session prefix: a stable system prompt, the same tool
+// registry and a window wide enough for the small test views.
+func betweenTurnRunner(t *testing.T, repo *store.Store, prov agentcore.Provider, prompt string) *Runner {
+	t.Helper()
+	return compactRunner(t, repo, prov, nil, func(c *Config) {
+		c.ContextWindow, c.CompactReserveTokens = 100000, 1000
+		c.HandoffReusePrefix = true
+		c.PromptBuilder = staticTestPrompt(prompt)
+	})
+}
+
+// stateTestPrompt is a prompt builder that renders the run state (as a per-step
+// prompt would): its bytes exist only inside a turn.
+type stateTestPrompt struct{}
+
+func (stateTestPrompt) BuildSystemPrompt(_ context.Context, state *agentcore.RunState) (string, error) {
+	return fmt.Sprintf("STEP=%d", state.Step), nil
+}
+
+// finalMain answers every main-loop call with a final answer, so a turn is one
+// request.
+func finalMain(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+	return finalText("done")
+}
+
+// twoTurns runs two turns of one session and returns its id.
+func twoTurns(t *testing.T, runner *Runner) string {
+	t.Helper()
+	ctx := context.Background()
+	res, err := runner.Run(ctx, RunRequest{Prompt: "fix the parser in compact.go"})
+	assert.Require(t, assert.NoErr(t, err))
+	_, err = runner.Run(ctx, RunRequest{SessionID: res.SessionID, Prompt: "and its tests"})
+	assert.Require(t, assert.NoErr(t, err))
+	return res.SessionID
+}
+
+// A break between turns in a fresh process (suga session compact, chat :compact
+// after a restart): this process sent no request, so the handoff call rebuilds
+// the session's last main-loop request from the persisted view - the same prompt
+// builder and tool registry, the view as its messages - and continues it (H3).
+func TestHandoffReuseBetweenTurnsRebuildsPrefix(t *testing.T) {
 	repo := openObserveRepo(t)
-	prov := &reuseProv{main: reuseMain, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+	prov := &reuseProv{main: finalMain, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
 		return finalText(reuseBody)
 	}}
 	ctx := context.Background()
-	sid := oneTurn(t, reusedRunner(t, repo, prov))
-	// A new process resumes the session and breaks it between turns: there is no
-	// request and no step to rebuild one for.
-	_, err := reusedRunner(t, repo, prov).Compact(ctx, sid)
+	sid := twoTurns(t, betweenTurnRunner(t, repo, prov, "STABLE-SYSTEM-PROMPT"))
+	last := prov.lastMainReq()
+	assert.Require(t, assert.NotNil(t, last))
+
+	// The same store through a new runner: no request of this process exists.
+	other := betweenTurnRunner(t, repo, prov, "STABLE-SYSTEM-PROMPT")
+	assert.Eq(t, (*agentcore.GenerateRequest)(nil), other.rec.prefix.lastRequest(sid))
+	_, err := other.Compact(ctx, sid)
 	assert.NoErr(t, err)
-	_, old := prov.handoffCalls()
+
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(old))
+	assert.Require(t, assert.Eq(t, 1, len(reuse)))
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
+	got := reuse[0]
+	// System and Tools are exactly what the previous process last sent.
+	assert.Eq(t, last.System, got.System)
+	assert.Eq(t, toolsJSON(t, last.Tools), toolsJSON(t, got.Tools))
+	// Its messages are the request's prefix; the rest is the answer that turn
+	// produced and the instruction.
+	assert.Require(t, assert.True(t, len(got.Messages) > len(last.Messages)))
+	assert.Eq(t, messagesJSON(t, last.Messages), messagesJSON(t, got.Messages[:len(last.Messages)]))
+	rest := got.Messages[len(last.Messages):]
+	assert.Require(t, assert.Eq(t, 2, len(rest)))
+	assert.Eq(t, "assistant", rest[0].Role)
+	assert.Eq(t, "done", rest[0].Content)
+	instruction := rest[1]
+	assert.Eq(t, "user", instruction.Role)
+	assert.StrContains(t, instruction.Content, reuseMarker)
+	assert.StrContains(t, instruction.Content, compactTemplate)
+	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
+	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	// The package the answer produced is stored as usual.
+	assert.StrContains(t, latestSegment(t, repo, sid).Summary, "修解析器")
+}
+
+// The same process breaks the segment between turns (chat :compact): the request
+// it sent a moment ago is the base, exactly as sent.
+func TestHandoffReuseBetweenTurnsSameRunner(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: finalMain, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	ctx := context.Background()
+	runner := betweenTurnRunner(t, repo, prov, "STABLE-SYSTEM-PROMPT")
+	sid := twoTurns(t, runner)
+	last := prov.lastMainReq()
+	assert.Require(t, assert.NotNil(t, last))
+
+	_, err := runner.Compact(ctx, sid)
+	assert.NoErr(t, err)
+
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(old))
+	assert.Require(t, assert.Eq(t, 1, len(reuse)))
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
+	got := reuse[0]
+	assert.Eq(t, last.System, got.System)
+	assert.Eq(t, toolsJSON(t, last.Tools), toolsJSON(t, got.Tools))
+	assert.Require(t, assert.Eq(t, len(last.Messages)+1, len(got.Messages)))
+	assert.Eq(t, messagesJSON(t, last.Messages), messagesJSON(t, got.Messages[:len(last.Messages)]))
+	instruction := got.Messages[len(got.Messages)-1]
+	assert.Eq(t, "user", instruction.Role)
+	assert.StrContains(t, instruction.Content, reuseMarker)
+	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+}
+
+// A part of the last request that the store does not keep - the turn's hook
+// context is sent for that turn only - cannot be reproduced between turns, so
+// the old path is taken instead of sending a prefix the provider cache misses.
+func TestHandoffReuseBetweenTurnsRefusesUnstoredMessages(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: finalMain, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	ctx := context.Background()
+	res, err := betweenTurnRunner(t, repo, prov, "STABLE-SYSTEM-PROMPT").Run(ctx,
+		RunRequest{Prompt: "one", SystemContext: "hook: this turn only"})
+	assert.Require(t, assert.NoErr(t, err))
+
+	other := betweenTurnRunner(t, repo, prov, "STABLE-SYSTEM-PROMPT")
+	_, err = other.Compact(ctx, res.SessionID)
+	assert.NoErr(t, err)
+
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(reuse))
 	assert.Eq(t, 1, len(old))
-	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackNoRequest}, handoffReuseAttrs(t, repo, sid))
+	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged}, handoffReuseAttrs(t, repo, res.SessionID))
+}
+
+// A rebuilt base that does not reproduce what the last turn sent keeps the old
+// path: another system prompt (a different configuration or binary) means the
+// provider cache would miss most of the request anyway.
+func TestHandoffReuseBetweenTurnsRefusesChangedPrefix(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: finalMain, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	ctx := context.Background()
+	sid := twoTurns(t, betweenTurnRunner(t, repo, prov, "STABLE-SYSTEM-PROMPT"))
+
+	other := betweenTurnRunner(t, repo, prov, "OTHER-SYSTEM-PROMPT")
+	_, err := other.Compact(ctx, sid)
+	assert.NoErr(t, err)
+
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(reuse))
+	assert.Eq(t, 1, len(old))
+	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged}, handoffReuseAttrs(t, repo, sid))
 }
 
 // the cross-session handoff and the idle consolidation.

@@ -329,7 +329,7 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 		b.r.rec.record(ctx, e)
 		return nil, err
 	}
-	pkg, err := b.r.buildPackage(ctx, b.sessionID, b.turnID, b.summary, items, cut, b.threshold(), scenario, b.reuseBase)
+	pkg, err := b.r.buildPackage(ctx, b.sessionID, b.turnID, b.summary, items, cut, b.threshold(), scenario, b.reuseBase, b.reuseBaseWhy)
 	if err != nil {
 		return fail(err)
 	}
@@ -812,11 +812,24 @@ func (r *Runner) breakSegment(ctx context.Context, sessionID, reason string) (Co
 		return CompactResult{}, err
 	}
 	r.resolveSegment(&hist, model.Meta)
-	b := r.newContextBuilder(model.ID, "", hist, nil, nil, "")
+	// The same prompt builder and tool registry the main loop uses, so a break
+	// between turns can rebuild the head of the session's last request (H3).
+	b := r.newContextBuilder(model.ID, "", hist, stablePromptBuilder{base: r.cfg.PromptBuilder}, nil, "")
+	// Folding is part of the view: the baseline of the closing turn's builder
+	// keeps the rebuilt messages on the bytes that turn actually sent.
+	b.foldBase, b.foldActive = metaCount(model.Meta[metaFoldBoundary]), metaBool(model.Meta[metaFoldActive])
 	// Between turns there is no RunState, so the system prompt cannot be counted
 	// here (the tool schemas still are); estimate keeps the same unit as the
 	// mid-turn threshold check, which is what the figures are compared with.
-	before := b.estimate(ctx, nil, b.compose(nil))
+	view := b.prepareImages(b.compose(nil))
+	before := b.estimate(ctx, nil, view)
+	// The handoff call of this break may continue the last main-loop request of
+	// the session instead of re-rendering a transcript (H3): a fresh process (suga
+	// session compact) has no request in memory, so it is rebuilt from the
+	// persisted view and checked against the fingerprint the last turn left.
+	if r.cfg.HandoffReusePrefix && scenarioForReason(reason) == scenarioCompact {
+		b.reuseBase, b.reuseBaseWhy = b.requestBaseBetweenTurns(ctx, view, prefixPrintFromMeta(model.Meta))
+	}
 	out, err := b.startSegment(ctx, nil, reason, before)
 	if err != nil {
 		return CompactResult{}, err
