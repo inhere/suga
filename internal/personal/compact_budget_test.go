@@ -240,6 +240,55 @@ func TestFoldPreviousPackageDropsStaleCoordinates(t *testing.T) {
 	})
 }
 
+// TestCanonicalHandoffHeadings: an answer may name the template's sections one
+// level deeper, in bold or with the note kept; they are rewritten to the "## "
+// form so the shape check, the budgets and the fold read the same headings, while
+// prose that merely starts with a section name stays prose (H5).
+func TestCanonicalHandoffHeadings(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"canonical heading keeps its note": {
+			"## 坐标（文件 / 符号；≤2 KB）\n- src/a.go",
+			"## 坐标（文件 / 符号；≤2 KB）\n- src/a.go",
+		},
+		"third level":             {"### 当前任务\n修解析器", "## 当前任务\n修解析器"},
+		"fourth level":            {"#### 下一步\n无", "## 下一步\n无"},
+		"bold":                    {"**当前任务**\n修解析器", "## 当前任务\n修解析器"},
+		"bold with content":       {"**当前任务**：修解析器", "## 当前任务\n修解析器"},
+		"underscore bold":         {"__验证到哪__\n- go vet ./...", "## 验证到哪\n- go vet ./..."},
+		"bold with note":          {"**坐标**（文件 / 符号）\n- src/a.go", "## 坐标\n- src/a.go"},
+		"note on a deeper one":    {"### 进展与阻塞（≤2 KB）\n无", "## 进展与阻塞\n无"},
+		"prose is not a heading":  {"当前任务：修解析器", "当前任务：修解析器"},
+		"unknown heading is kept": {"### 其他\n无", "### 其他\n无"},
+		"top level heading is kept": {
+			"# 交接包\n## 当前任务\n无",
+			"# 交接包\n## 当前任务\n无",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Eq(t, tc.want, canonicalHandoffHeadings(tc.in))
+		})
+	}
+
+	t.Run("rewritten headings reach the section budgets", func(t *testing.T) {
+		body := "### " + handoffSectionProgress + "\n" + strings.Repeat("- 很长的进展\n", 600)
+		out := normalizeHandoffBody(canonicalHandoffHeadings(body))
+		assert.StrContains(t, out, "## "+handoffSectionProgress)
+		assert.Eq(t, true, len(packageSectionBody(out, handoffSectionProgress)) <= handoffSectionBudgets[handoffSectionProgress])
+	})
+
+	t.Run("deeper headings satisfy the shape check", func(t *testing.T) {
+		deep := strings.ReplaceAll(reuseBody, "## ", "### ")
+		assert.Eq(t, 0, len(handoffMissingSections(deep)))
+	})
+
+	t.Run("prose does not satisfy the shape check", func(t *testing.T) {
+		body := "当前任务：修解析器\n坐标：src/a.go\n" + handoffSectionProgress + "\n无"
+		assert.Eq(t, []string{handoffSectionTask, handoffSectionCoords, handoffSectionVerified,
+			handoffSectionProgress, handoffSectionNext, handoffSectionRefs},
+			handoffMissingSections(body))
+	})
+}
+
 // TestNormalizeHandoffBodyCutsOnlyBudgetedSections: the output side of the
 // budgets never touches the protected section.
 func TestNormalizeHandoffBodyCutsOnlyBudgetedSections(t *testing.T) {

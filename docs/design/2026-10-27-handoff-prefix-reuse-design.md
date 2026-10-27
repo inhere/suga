@@ -11,6 +11,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-27 | Claude（监督） | 初稿：第四十五批实测数据、方案、回退条件、验收与待确认事项 |
 | 0.2 | 2026-10-27 | Claude（监督） | 用户按推荐批准：待确认 1–3 取推荐（评测通过后默认开启、另配不同压缩模型时不沿用、3 任务 × 2 variant × 3 轮交替评测） |
+| 0.3 | 2026-10-27 | suga（H5） | 实测：`tool_choice: none` 会让网关渲染时丢掉工具定义，前缀缓存因此不命中 → 沿用调用不再发 ToolChoice；被丢的回答补记缺的小节名与前 400 字，标题归一化（`###`、粗体也认），沿用指令末尾新增“输出格式”一节（见“已确认事实”） |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -46,6 +47,7 @@
 - 交接包调用的 provider 是 `compactProvider()`：配置了 `CompactProvider` 时用它，否则用主 provider（`compact.go:467`）。
 - agentcore 已有 `GenerateRequest.ToolChoice = ToolChoiceNone`，并能判断 provider 是否支持（`pkg/agentcore/runtime_wrapup.go:95-110`、`supportsToolChoice`）。
 - 统计层会把交接包调用记为 `handoff` 桶（purpose compact），不影响主循环的前缀跟踪。
+- **`tool_choice: none` 会改变渲染出来的提示（H5，2026-10-27 实测）**：同一份请求（system + 24.6 KB 工具表 + 3 条消息）对 `opencode-go/deepseek-v4.1-flash` 依次发送——不带 tool_choice 两次：`prompt_tokens=8394`，第二次 `cached=8320`；同样内容加 `tool_choice: none`：`prompt_tokens=2204`（工具定义没进提示）、`cached=384`；只追加一条 user 消息、不带 tool_choice：`prompt_tokens=8402`、`cached=8320`。所以第四十五批预跑里沿用调用输入少约 4.5k、缓存读取为 0 的原因是 `ToolChoice=ToolChoiceNone`，不是网关不支持前缀缓存。结论：沿用调用只发 System/Tools/Messages，不发 ToolChoice，靠指令约束；回答带工具调用时按 `handoffFallbackToolCall` 回退。其他 provider 无法预先判断它们是否也这样渲染，统一不发。
 
 ## 方案
 
@@ -53,7 +55,7 @@
 
 ```
 System   = 本段主循环最后一次请求的 System（逐字节相同）
-Tools    = 同上（逐字节相同），ToolChoice = none（provider 支持时）
+Tools    = 同上（逐字节相同），ToolChoice 不发（H5：`none` 会让网关丢掉工具定义、前缀缓存不命中）
 Messages = 同上的全部消息（本段到此为止的对话，含将保留的尾部）
          + 1 条新的 user 消息：交接指令
 ```
@@ -81,7 +83,7 @@ Messages = 同上的全部消息（本段到此为止的对话，含将保留的
 - 输入成本：现在每次 6k–11k token 全价；改后请求变大（整段上下文约 11k–17k token），但绝大部分按缓存价计，未缓存的只有指令约 2k–3k token。缓存价按 provider 不同约为全价的 1/10 到 1/4（各 provider 未逐一核实），总体预计交接包这一步的输入花费降到一半以下。
 - 延迟：预填充命中缓存，预计更快；未实测。
 - 质量：模型看到的是完整对话（含完整工具输出）而不是截断后的文本，交接包可能更准，也可能更长。由预算与 `normalizeHandoffBody` 兜住长度；准确性靠下面的回归评测判断。
-- 风险：主系统提示下模型可能“继续干活”而不是写交接包 → ToolChoice none + 指令 + 必需小节校验 + 回退。
+- 风险：主系统提示下模型可能“继续干活”而不是写交接包 → 指令约束（不发 ToolChoice）+ 必需小节校验 + 回退。
 
 ## 验收
 

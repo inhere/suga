@@ -43,7 +43,11 @@ func TestCompactCommandStartsNewSegment(t *testing.T) {
 		n := calls.Add(1)
 		content := fmt.Sprintf("reply-%d", n)
 		if n == 2 {
-			content = "SUMMARY-of-segment"
+			// A complete handoff package: a break between turns continues the
+			// turn's prefix now, so an answer without the template's sections is
+			// discarded and asked for again (segment_handoff_reuse.go).
+			content = "## 当前任务\nSUMMARY-of-segment\n## 坐标\n无\n## 采纳与否决\n无\n## 验证到哪\n无\n" +
+				"## 进展与阻塞\n无\n## 下一步\n无\n## 与当前任务相关的引用\n无"
 			for _, message := range body.Messages {
 				summaryRequested += message.Content
 			}

@@ -62,6 +62,112 @@ type handoffSection struct {
 	body    string
 }
 
+// handoffSectionKnown reports whether name is one of the sections
+// compactTemplate declares (the protected section included).
+func handoffSectionKnown(name string) bool {
+	for _, known := range handoffSectionNames {
+		if name == known {
+			return true
+		}
+	}
+	return false
+}
+
+// handoffSectionNames lists every section compactTemplate declares in template
+// order, the protected section included: canonicalHandoffHeadings maps a heading
+// line back to one of these names.
+var handoffSectionNames = []string{handoffSectionTask, handoffSectionCoords, handoffProtectedSection,
+	handoffSectionVerified, handoffSectionProgress, handoffSectionNext, handoffSectionRefs}
+
+// canonicalHandoffHeadings rewrites the section headings of body to the "## "
+// form splitHandoffSections recognises, so the shape check, the budgets and the
+// fold see the same headings for an answer that wrote them another way.
+//
+// The template asks for "## 当前任务", but an answer generated on top of a
+// session's own system prompt may write them one level deeper ("### 当前任务"),
+// in bold ("**当前任务**", "**当前任务**：修解析器") or with the template's
+// parenthetical note kept. Only a line carrying a heading marker (2-4 '#') or a
+// bold wrapper is rewritten: a body line that merely begins with a section name
+// stays text, so prose cannot pass as a package.
+func canonicalHandoffHeadings(body string) string {
+	if !strings.Contains(body, "#") && !strings.Contains(body, "**") && !strings.Contains(body, "__") {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	changed := false
+	for i, line := range lines {
+		// An already canonical heading keeps its line (and any note after it).
+		if name, ok := handoffSectionName(line); ok && handoffSectionKnown(name) {
+			continue
+		}
+		name, text, ok := handoffHeadingName(line)
+		if !ok {
+			continue
+		}
+		lines[i] = "## " + name
+		if text != "" {
+			// Content that followed the name on the same line keeps a line of its
+			// own, so rewriting the heading loses nothing.
+			lines[i] += "\n" + text
+		}
+		changed = true
+	}
+	if !changed {
+		return body
+	}
+	return strings.Join(lines, "\n")
+}
+
+// handoffHeadingName returns the section a heading-shaped line names and the
+// text that followed the name on that line ("" = none). A heading of level 2-4
+// ("### 当前任务"), a bold name ("**当前任务**", "**当前任务**：修解析器") and
+// either with the template's parenthetical note ("坐标（文件 / 符号…）", the note
+// is dropped) are accepted; every other line is ok=false.
+func handoffHeadingName(line string) (name, text string, ok bool) {
+	t := strings.TrimSpace(line)
+	var rest string
+	switch {
+	case strings.HasPrefix(t, "#"):
+		n := 0
+		for n < len(t) && t[n] == '#' {
+			n++
+		}
+		// "# 需要概括的范围" is not a section heading, and a heading needs the
+		// space after its markers.
+		if n < 2 || n > 4 || n == len(t) || (t[n] != ' ' && t[n] != '\t') {
+			return "", "", false
+		}
+		rest = strings.TrimSpace(t[n:])
+	case strings.HasPrefix(t, "**"), strings.HasPrefix(t, "__"):
+		marker := t[:2]
+		end := strings.Index(t[2:], marker)
+		if end < 0 {
+			return "", "", false
+		}
+		// The name, then whatever followed the wrapper (":修解析器", "（注）").
+		rest = strings.TrimSpace(t[2:2+end] + t[2+end+2:])
+	default:
+		return "", "", false
+	}
+	// The name ends at the note or at the colon that starts the content.
+	tail := ""
+	if idx := strings.IndexAny(rest, "（(:："); idx >= 0 {
+		rest, tail = rest[:idx], rest[idx:]
+	}
+	name = strings.TrimSpace(rest)
+	if !handoffSectionKnown(name) {
+		return "", "", false
+	}
+	// Only a colon carries content; a parenthetical tail is the template's note.
+	tail = strings.TrimSpace(tail)
+	if strings.HasPrefix(tail, "：") {
+		text = strings.TrimSpace(strings.TrimPrefix(tail, "："))
+	} else if strings.HasPrefix(tail, ":") {
+		text = strings.TrimSpace(strings.TrimPrefix(tail, ":"))
+	}
+	return name, text, true
+}
+
 // handoffSectionName returns the name of a section heading line without its
 // parenthetical note ("## 坐标（…）" -> "坐标"); ok is false for a non-heading
 // line (including an indented sub-heading).

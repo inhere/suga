@@ -23,8 +23,10 @@ const reuseBody = "## 当前任务\n修解析器\n## 坐标\n- internal/personal
 	"## 验证到哪\n- go test ./internal/personal 通过\n## 进展与阻塞\n无\n## 下一步\n无\n" + refsHeading + "\n- 无\n"
 
 // reuseProv answers the main-loop calls through main and every handoff-package
-// call through handoff. It reports SupportsToolChoice, so the reuse request must
-// forbid tools. It keeps every request it was handed.
+// call through handoff. It reports SupportsToolChoice, so a reuse request that
+// forbade tools would show it - the reuse path must not (H5: tool_choice:none
+// changes the rendered prefix and the provider cache stops matching). It keeps
+// every request it was handed.
 type reuseProv struct {
 	mu      sync.Mutex
 	all     []*agentcore.GenerateRequest
@@ -207,7 +209,7 @@ func TestHandoffReuseContinuesSegmentPrefix(t *testing.T) {
 	assert.StrContains(t, instruction.Content, reuseMarker)
 	assert.StrContains(t, instruction.Content, compactTemplate)
 	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 	// The package the answer produced is stored as usual.
 	rec := latestSegment(t, repo, sid)
 	assert.StrContains(t, rec.Summary, "修解析器")
@@ -307,11 +309,82 @@ func TestHandoffReuseDiscardsBadAnswer(t *testing.T) {
 			reuse, old := prov.handoffCalls()
 			assert.Eq(t, 1, len(reuse))
 			assert.Eq(t, 1, len(old))
-			assert.Eq(t, []string{handoffReusePrefix, handoffReuseFallbackPrefix + reason}, handoffReuseAttrs(t, repo, sid))
+			want := handoffReuseFallbackPrefix + reason
+			if reason == handoffFallbackMissingSections {
+				// The reason names the sections the answer dropped, in template order
+				// (H5): this answer has the task and the next step only.
+				want += ":" + handoffSectionCoords + "," + handoffSectionVerified + "," +
+					handoffSectionProgress + "," + handoffSectionRefs
+			}
+			assert.Eq(t, []string{handoffReusePrefix, want}, handoffReuseAttrs(t, repo, sid))
 			// The stored package is the old path's good answer.
 			assert.StrContains(t, latestSegment(t, repo, sid).Summary, "修解析器")
 		})
 	}
+}
+
+// The model may write the package's headings one level deeper - what the answers
+// discarded in the pre-run looked like (H5): such an answer is a package, the
+// old path is not asked again, and the headings are stored in the "## " form the
+// store, the budgets and the fold read.
+func TestHandoffReuseAcceptsDeeperHeadings(t *testing.T) {
+	repo := openObserveRepo(t)
+	deep := strings.ReplaceAll(reuseBody, "## ", "### ")
+	prov := &reuseProv{main: reuseMain, handoff: func(_ int, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		if isReuseCall(req) {
+			return finalText(deep)
+		}
+		return finalText("old path answer")
+	}}
+	runner := reusedRunner(t, repo, prov)
+	ctx := context.Background()
+	sid := oneTurn(t, runner)
+	_, err := runner.Compact(ctx, sid)
+	assert.NoErr(t, err)
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 1, len(reuse))
+	assert.Eq(t, 0, len(old))
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
+	summary := latestSegment(t, repo, sid).Summary
+	assert.StrContains(t, summary, "## "+handoffSectionTask)
+	assert.StrContains(t, summary, "## "+handoffSectionRefs)
+	assert.Eq(t, false, strings.Contains(summary, "### "))
+}
+
+// A discarded answer is kept in the debug log, so the shape a model wrote can be
+// read after a run that fell back (the pre-run's answers were stored nowhere, H5).
+func TestHandoffReuseLogsDiscardedAnswer(t *testing.T) {
+	buf := captureDefaultLogger(t)
+	repo := openObserveRepo(t)
+	const bad = "## 当前任务\nHEAD-MARKER-abc\n## 下一步\n无"
+	prov := &reuseProv{main: reuseMain, handoff: func(_ int, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		if isReuseCall(req) {
+			return finalText(bad)
+		}
+		return finalText(reuseBody)
+	}}
+	runner := reusedRunner(t, repo, prov)
+	ctx := context.Background()
+	sid := oneTurn(t, runner)
+	_, err := runner.Compact(ctx, sid)
+	assert.NoErr(t, err)
+
+	line := buf.String()
+	assert.StrContains(t, line, "discarded handoff answer")
+	assert.StrContains(t, line, handoffFallbackMissingSections+":"+handoffSectionCoords)
+	assert.StrContains(t, line, "HEAD-MARKER-abc")
+}
+
+// The head of a discarded answer stops at 400 characters and stays valid UTF-8.
+func TestHandoffAnswerHeadCapsCharacters(t *testing.T) {
+	short := "## 当前任务\n无"
+	assert.Eq(t, short, handoffAnswerHead(short))
+
+	long := strings.Repeat("交", 401)
+	head := handoffAnswerHead(long)
+	assert.Eq(t, 401, len([]rune(head))) // 400 characters and the ellipsis
+	assert.Eq(t, true, strings.HasSuffix(head, "…"))
+	assert.Eq(t, strings.Repeat("交", 400), strings.TrimSuffix(head, "…"))
 }
 
 // A truncated reuse answer is asked for once more on the same path, with the
@@ -353,6 +426,49 @@ func rebuildRunner(t *testing.T, repo *store.Store, prov agentcore.Provider) *Ru
 		c.ContextWindow, c.CompactReserveTokens = 30000, 12000
 		c.HandoffReusePrefix = true
 		c.PromptBuilder = staticTestPrompt("STABLE-SYSTEM-PROMPT")
+	})
+}
+
+// TestRebuildDiffNamesTheDifference covers the diagnostic of H4: a rebuild that
+// does not reproduce the persisted request says which part differs, so a
+// fallback:prefix_changed attr tells system, tools and message apart.
+func TestRebuildDiffNamesTheDifference(t *testing.T) {
+	req := &agentcore.GenerateRequest{System: "PROMPT",
+		Tools:    []agentcore.ToolSchema{{Name: "file_read"}},
+		Messages: []agentcore.Message{{Role: "user", Content: "one"}, {Role: "assistant", Content: "two"}}}
+	rec := printRequest(req)
+
+	t.Run("same request", func(t *testing.T) {
+		assert.Eq(t, "", rebuildDiff(rec, req))
+		assert.True(t, rebuildMatches(rec, req))
+	})
+	t.Run("system prompt", func(t *testing.T) {
+		other := *req
+		other.System = "OTHER"
+		assert.Eq(t, diffSystem, rebuildDiff(rec, &other))
+	})
+	t.Run("tool table", func(t *testing.T) {
+		other := *req
+		other.Tools = []agentcore.ToolSchema{{Name: "file_read"}, {Name: "task"}}
+		assert.Eq(t, diffTools, rebuildDiff(rec, &other))
+	})
+	t.Run("first differing message", func(t *testing.T) {
+		other := *req
+		other.Messages = append([]agentcore.Message{{Role: "user", Content: "zero"}}, req.Messages...)
+		assert.Eq(t, "msg:0", rebuildDiff(rec, &other))
+	})
+	t.Run("second differing message", func(t *testing.T) {
+		other := *req
+		other.Messages = []agentcore.Message{{Role: "user", Content: "one"}, {Role: "assistant", Content: "CHANGED"}}
+		assert.Eq(t, "msg:1", rebuildDiff(rec, &other))
+	})
+	t.Run("shorter rebuild", func(t *testing.T) {
+		other := *req
+		other.Messages = req.Messages[:1]
+		assert.Eq(t, diffLength, rebuildDiff(rec, &other))
+	})
+	t.Run("no fingerprint", func(t *testing.T) {
+		assert.Eq(t, "", rebuildDiff(nil, req))
 	})
 }
 
@@ -408,7 +524,7 @@ func TestHandoffReuseRebuildsResumedPrefix(t *testing.T) {
 	assert.StrContains(t, instruction.Content, reuseMarker)
 	assert.StrContains(t, instruction.Content, compactTemplate)
 	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 }
 
 // The same process breaks the segment after it sent requests: the request in
@@ -450,7 +566,7 @@ func TestHandoffReuseContinuesSentRequestInProcess(t *testing.T) {
 	assert.Eq(t, false, strings.Contains(messagesJSON(t, got.Messages[:len(got.Messages)-1]), strings.Repeat("b", 64)))
 	instruction := got.Messages[len(got.Messages)-1]
 	assert.StrContains(t, instruction.Content, reuseMarker)
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 }
 
 // A host hook may rewrite the request head in a way a rebuilt request cannot
@@ -561,7 +677,11 @@ func TestHandoffReuseBetweenTurnsRebuildsPrefix(t *testing.T) {
 	assert.StrContains(t, instruction.Content, reuseMarker)
 	assert.StrContains(t, instruction.Content, compactTemplate)
 	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	// No ToolChoice even though the provider supports it: tool_choice:none makes
+	// the gateway render the prompt without the tool definitions, which breaks the
+	// cache prefix the reuse path continues (H5). The instruction forbids tools and
+	// a tool-asking answer falls back to the old path.
+	assert.Eq(t, "", got.ToolChoice)
 	// The package the answer produced is stored as usual.
 	assert.StrContains(t, latestSegment(t, repo, sid).Summary, "修解析器")
 }
@@ -594,7 +714,7 @@ func TestHandoffReuseBetweenTurnsSameRunner(t *testing.T) {
 	instruction := got.Messages[len(got.Messages)-1]
 	assert.Eq(t, "user", instruction.Role)
 	assert.StrContains(t, instruction.Content, reuseMarker)
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 }
 
 // A part of the last request that the store does not keep - the turn's hook
@@ -617,7 +737,11 @@ func TestHandoffReuseBetweenTurnsRefusesUnstoredMessages(t *testing.T) {
 	reuse, old := prov.handoffCalls()
 	assert.Eq(t, 0, len(reuse))
 	assert.Eq(t, 1, len(old))
-	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged}, handoffReuseAttrs(t, repo, res.SessionID))
+	// The attr names where the rebuild differs: the hook context message of the
+	// turn is not in the persisted view, so a message differs (H4).
+	attrs := handoffReuseAttrs(t, repo, res.SessionID)
+	assert.Eq(t, 1, len(attrs))
+	assert.True(t, strings.HasPrefix(attrs[0], handoffReuseFallbackPrefix+handoffFallbackPrefixChanged+":msg:"))
 }
 
 // A rebuilt base that does not reproduce what the last turn sent keeps the old
@@ -638,7 +762,8 @@ func TestHandoffReuseBetweenTurnsRefusesChangedPrefix(t *testing.T) {
 	reuse, old := prov.handoffCalls()
 	assert.Eq(t, 0, len(reuse))
 	assert.Eq(t, 1, len(old))
-	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged}, handoffReuseAttrs(t, repo, sid))
+	// The attr names the system prompt as the part the rebuild cannot reproduce.
+	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackPrefixChanged + ":" + diffSystem}, handoffReuseAttrs(t, repo, sid))
 }
 
 // the cross-session handoff and the idle consolidation.

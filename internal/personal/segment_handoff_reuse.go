@@ -2,6 +2,7 @@ package personal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -42,7 +43,7 @@ const (
 	handoffFallbackHostHook        = "host_hook"        // a host hook may rewrite the request head: no byte-identical rebuild
 	handoffFallbackNoRequest       = "no_request"       // the segment request could not be rebuilt either
 	handoffFallbackPromptState     = "prompt_state"     // the system prompt reads the run state: a break between turns cannot reproduce it
-	handoffFallbackPrefixChanged   = "prefix_changed"   // the rebuilt request differs from what the last turn sent
+	handoffFallbackPrefixChanged   = "prefix_changed"   // the rebuilt request differs from what the last turn sent (the attr names where: prefix_changed:<position>)
 	handoffFallbackWindow          = "window"           // the request would not fit the model window
 	handoffFallbackToolCall        = "tool_call"        // the answer asked for tools instead of writing the package
 	handoffFallbackEmpty           = "empty"            // the answer had no text
@@ -115,23 +116,29 @@ func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int, rebui
 // request builds the handoff request of the reuse path: the last main-loop
 // request (System, Tools and messages unchanged, so the provider cache still
 // matches) plus the instruction as one appended user message. Tools stay
-// declared - dropping them would change the prefix of every later request - and
-// tool use is forbidden through ToolChoice where the provider honours it.
+// declared - dropping them would change the prefix of every later request -
+// and the instruction alone forbids tool use.
+//
+// ToolChoice is deliberately left empty (H5, measured 2026-10-27 on
+// opencode-go/deepseek-v4.1-flash): a request carrying tool_choice:none is
+// rendered by the gateway without the tool definitions, so its prompt_tokens
+// fell from 8394 to 2204 and the cache built on the main-loop prefix no longer
+// matched (cached_tokens 384 instead of 8320) - exactly the 4.5k input drop and
+// the zero cache reads the pre-run showed. Sending the same messages without
+// tool_choice did hit the prefix (cached 8320), so the reuse call sends none; an
+// answer that ignores the instruction and asks for tools is thrown away
+// (handoffFallbackToolCall), which the fallback already covers.
 func (ru *handoffReuse) request(instruction string, maxTokens int) *agentcore.GenerateRequest {
 	msgs := make([]agentcore.Message, 0, len(ru.req.Messages)+1)
 	msgs = append(msgs, ru.req.Messages...)
 	msgs = append(msgs, agentcore.Message{Role: "user", Content: instruction})
-	req := &agentcore.GenerateRequest{
+	return &agentcore.GenerateRequest{
 		Model:     ru.req.Model,
 		System:    ru.req.System,
 		Tools:     ru.req.Tools,
 		Messages:  msgs,
 		MaxTokens: maxTokens,
 	}
-	if chooser, ok := ru.provider.(agentcore.ToolChooser); ok && chooser.SupportsToolChoice() {
-		req.ToolChoice = agentcore.ToolChoiceNone
-	}
-	return req
 }
 
 // reuseFitsWindow reports whether the reuse request fits the model's window. The
@@ -211,8 +218,10 @@ func (b *contextBuilder) requestBaseBetweenTurns(ctx context.Context, view []age
 	if req == nil {
 		return nil, handoffFallbackNoRequest
 	}
-	if !rebuildMatches(printOf(rec), req) {
-		return nil, handoffFallbackPrefixChanged
+	if where := rebuildDiff(printOf(rec), req); where != "" {
+		// The attr names the part that differs (H4): which side of the request
+		// the between-turn rebuild cannot reproduce.
+		return nil, handoffFallbackPrefixChanged + ":" + where
 	}
 	return req, ""
 }
@@ -238,67 +247,130 @@ func (b *contextBuilder) promptIgnoresState(ctx context.Context) bool {
 	return err == nil && plain == other
 }
 
+// Positions a rebuilt request can differ from the persisted one at (the reason
+// suffix of handoffFallbackPrefixChanged): the system prompt, the tool schemas,
+// the first message whose cumulative hash differs (msg:<n>), or a rebuilt view
+// shorter than the persisted print covered.
+const (
+	diffSystem = "system"
+	diffTools  = "tools"
+	diffLength = "length"
+)
+
 // rebuildMatches reports whether req reproduces the request whose fingerprint a
-// previous turn persisted: the same System and Tools, and the persisted
-// messages as a prefix of req's (the view of this break continues them). A
-// session without a fingerprint (an older binary, a turn that sent no request)
-// cannot be checked and is accepted: the prompt builder and the tool registry
-// are the same configuration that process ran with.
+// previous turn persisted (rebuildDiff empty).
 func rebuildMatches(rec *requestPrint, req *agentcore.GenerateRequest) bool {
+	return rebuildDiff(rec, req) == ""
+}
+
+// rebuildDiff reports where req differs from the request whose fingerprint a
+// previous turn persisted: the same System and Tools, and the persisted
+// messages as a prefix of req's (the view of this break continues them). ""
+// means req reproduces it. A session without a fingerprint (an older binary, a
+// turn that sent no request) cannot be checked and is accepted: the prompt
+// builder and the tool registry are the same configuration that process ran
+// with.
+func rebuildDiff(rec *requestPrint, req *agentcore.GenerateRequest) string {
 	if rec == nil {
-		return true
+		return ""
 	}
 	cur := printRequest(req)
-	if rec.system != cur.system || rec.tools != cur.tools {
-		return false
+	if rec.system != cur.system {
+		return diffSystem
+	}
+	if rec.tools != cur.tools {
+		return diffTools
 	}
 	// rec covers the tail of its request (offset messages were dropped when it
 	// was persisted): the same window has to sit at the same place here.
 	if rec.offset+len(rec.msgs) > len(cur.msgs) {
-		return false
+		return diffLength
 	}
 	for i, m := range rec.msgs {
 		if cur.msgs[rec.offset+i].sum != m.sum {
-			return false
+			logRebuildDiff(rec.offset+i, m, cur.msgs[rec.offset+i], req)
+			return fmt.Sprintf("msg:%d", rec.offset+i)
 		}
 	}
-	return true
+	return ""
 }
 
-// handoffBodyComplete reports whether body carries every section compactTemplate
-// asks for. It is the reuse path's shape check: a reply that only answers in
-// prose, or that stops after a few sections, is not a handoff package and the
-// old path asks again. A section present with "无" counts.
-func handoffBodyComplete(body string) bool {
+// logRebuildDiff records what the two sides of a message that differs look
+// like: the persisted print keeps only hashes and sizes, so its side names the
+// role/tool call and the size; the rebuilt side also shows the head of the
+// message (the request is the process's own, no secret is added here).
+func logRebuildDiff(i int, old, cur messagePrint, req *agentcore.GenerateRequest) {
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		return
+	}
+	head := ""
+	if i < len(req.Messages) {
+		raw, _ := json.Marshal(req.Messages[i])
+		head = truncateMiddle(string(raw), 200)
+	}
+	slog.Debug("rebuilt segment request differs from the persisted one", "index", i,
+		"persisted_id", old.id, "persisted_bytes", old.size,
+		"rebuilt_id", cur.id, "rebuilt_bytes", cur.size, "rebuilt_head", head)
+}
+
+// handoffMissingSections is the reuse path's shape check: it names the sections
+// compactTemplate asks for that body does not carry, and returns nil when it
+// carries all of them. A reply that only answers in prose, or that stops after a
+// few sections, is not a handoff package and the old path asks again; a section
+// present with "无" counts. The headings may come in the shapes
+// canonicalHandoffHeadings accepts (###, bold), so a package the model wrote one
+// level deeper is still a package.
+//
+// The fallback reason spells the missing names out, so a discarded answer says
+// which sections the model dropped (H5).
+func handoffMissingSections(body string) []string {
 	seen := make(map[string]bool, 8)
-	for _, s := range splitHandoffSections(body) {
+	for _, s := range splitHandoffSections(canonicalHandoffHeadings(body)) {
 		if name, ok := handoffSectionName(s.heading); ok {
 			seen[name] = true
 		}
 	}
-	for _, name := range []string{handoffSectionTask, handoffSectionCoords, handoffSectionVerified,
-		handoffSectionProgress, handoffSectionNext, handoffSectionRefs} {
-		if !seen[name] {
-			return false
+	var missing []string
+	for _, name := range handoffSectionNames {
+		// The protected section is not required here: a package that lost it still
+		// continues the task, and every other section has to be there.
+		if name == handoffProtectedSection || seen[name] {
+			continue
 		}
+		missing = append(missing, name)
 	}
-	return true
+	return missing
 }
 
 // handoffAnswerReason names why an answer of the reuse path cannot become the
 // handoff package ("" = it can): a reply that asks for tools went on working
 // instead of writing the package, an empty reply says nothing, and a body
-// without the template's sections is no package.
+// without the template's sections is no package - then the reason names the
+// missing sections (missing_sections:<名,名>).
 func handoffAnswerReason(body string, toolCalls int) string {
 	switch {
 	case toolCalls > 0:
 		return handoffFallbackToolCall
 	case strings.TrimSpace(body) == "":
 		return handoffFallbackEmpty
-	case !handoffBodyComplete(body):
-		return handoffFallbackMissingSections
+	}
+	if missing := handoffMissingSections(body); len(missing) > 0 {
+		return handoffFallbackMissingSections + ":" + strings.Join(missing, ",")
 	}
 	return ""
+}
+
+// handoffAnswerHead is the first 400 characters of a discarded answer, for the
+// debug log: the shape a model actually wrote (heading level, language, which
+// sections came first) is what the instruction and the heading forms are fixed
+// from, and the discarded answer is stored nowhere (H5).
+func handoffAnswerHead(body string) string {
+	const limit = 400
+	r := []rune(body)
+	if len(r) <= limit {
+		return body
+	}
+	return string(r[:limit]) + "…"
 }
 
 // reuseCall sends one handoff request on top of the segment's main-loop prefix
@@ -317,6 +389,7 @@ func (r *Runner) reuseCall(ctx context.Context, ru *handoffReuse, instruction st
 	}
 	if why := handoffAnswerReason(text, calls); why != "" {
 		slog.Warn("handoff package on the segment prefix unusable; asking the old way", "reason", why)
+		slog.Debug("discarded handoff answer", "reason", why, "head", handoffAnswerHead(text))
 		return "", false, why
 	}
 	return text, truncated, ""

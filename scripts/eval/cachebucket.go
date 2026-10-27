@@ -101,7 +101,7 @@ func poolBuckets(rs []Result) []cacheBucket {
 				if st.HandoffReuse == nil {
 					st.HandoffReuse = map[string]int{}
 				}
-				st.HandoffReuse[why] += n
+				st.HandoffReuse[handoffReuseKey(why)] += n
 			}
 		}
 	}
@@ -209,6 +209,19 @@ func printCacheBuckets(w io.Writer, rs []Result) {
 		fmt.Fprintf(w, "  failed attempts: %d (omitted from cache buckets)\n", failedAttempts)
 	}
 	printSteadyLowHits(w, rs)
+}
+
+// handoffReuseKey is the aggregation key of a handoff_reuse value, pooled over
+// runs: a value that carries a detail suffix (fallback:prefix_changed:msg:12
+// names where the rebuilt request differs) counts with its reason, so a run
+// whose detail differs does not look like another kind of fallback (store
+// HandoffReuseKey does the same when it builds the buckets).
+func handoffReuseKey(value string) string {
+	parts := strings.Split(value, ":")
+	if len(parts) < 2 || parts[0] == "prefix" {
+		return value
+	}
+	return strings.Join(parts[:2], ":")
 }
 
 // handoffReuseLine renders how the handoff-package calls of segment breaks were
