@@ -428,12 +428,12 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		if wsErr != nil {
 			return wsErr
 		}
-		result, verifyRep, err = verifyAfterTurn(ctx, runner, verifySettingsFrom(opts, workspace), sessionID, result, emit, live, encoder, stderr)
+		result, verifyRep, err = verifyAfterTurn(ctx, runner, verifySettingsFrom(opts, workspace), sessionID, result, emit, live, encoder, stderr, opts.translator)
 	}
 	if encoder == nil && verifyRep != nil && !verifyRep.Passed && err == nil && result.State == personal.RunCompleted {
 		// Text mode: the check that never passed is summarised on stderr, with the
 		// tail of its last output; stdout stays the answer only.
-		fmt.Fprintln(stderr, verifySummary(opts.Verify, verifyRep))
+		fmt.Fprintln(stderr, verifySummary(opts.translator, opts.Verify, verifyRep))
 	}
 	// The output contract is the pipeline's last step (design 2026-10-22 4.1): it
 	// judges the answer the caller finally gets, after nudge and --verify had their
@@ -513,8 +513,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		}
 	}
 	if failedVerify {
-		return processExitError{code: 5, err: fmt.Errorf("%w: %s → exit %d（已回灌 %d 轮）", ErrVerifyFailed,
-			oneLineText(termtext.Clean(opts.Verify)), verifyRep.Last.ExitCode, max(verifyRep.Rounds-1, 0))}
+		return processExitError{code: 5, err: newVerifyFailedError(opts.Verify, verifyRep.Last.ExitCode, max(verifyRep.Rounds-1, 0))}
 	}
 	if contractRep != nil && contractRep.Checked && !contractRep.Passed {
 		// Exit code 6: the turn finished, but its answer does not have the shape the

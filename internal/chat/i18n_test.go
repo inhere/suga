@@ -7,6 +7,16 @@ import (
 	"github.com/inhere/suga/internal/i18n"
 )
 
+// The zh catalog lines the tests expect: the production code takes them from the
+// catalog (trOf), so the expectation is read from the same place instead of a
+// second copy of the text that could drift from it.
+var (
+	zhInterruptNotice      = i18n.Fallback().T("approval.render.notice.interrupt_turn")
+	zhUndoBusyHint         = i18n.Fallback().T("status.undo.busy")
+	zhLocalCommandBusyHint = i18n.Fallback().T("status.local.command_busy")
+	zhSpinnerLabel         = i18n.Fallback().T("status.spinner.thinking")
+)
+
 // TestChatTranslator covers the one place chat code takes its translator from:
 // an injected catalog wins, a missing one falls back to Chinese.
 func TestChatTranslator(t *testing.T) {

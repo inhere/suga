@@ -92,7 +92,7 @@ func TestRunningTurnKeepsColonCommandOutOfSteering(t *testing.T) {
 	<-h.cast.started()
 
 	h.kb.Type(":undo\r")
-	waitUntil(t, "local command busy hint", func() bool { return strings.Contains(h.out.String(), undoBusyHint) })
+	waitUntil(t, "local command busy hint", func() bool { return strings.Contains(h.out.String(), zhUndoBusyHint) })
 	assert.Eq(t, ":undo", h.turnInputLine(t))
 
 	h.cast.letGo()

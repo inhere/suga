@@ -11,6 +11,7 @@ import (
 
 	gkconfig "github.com/gookit/config/v2"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
@@ -42,8 +43,44 @@ const (
 )
 
 // ErrVerifyFailed ends a run with exit code 5: the --verify command never
-// passed within --verify-rounds fix rounds.
+// passed within --verify-rounds fix rounds. Its value stays the sentinel text:
+// errors.Is answers it, machine lines keep reading it (verifyFailedError).
 var ErrVerifyFailed = errors.New("验证未通过")
+
+// verifyFailedError is the exit code 5 failure: what ran and how it ended, kept
+// as fields so the line can be rendered in the caller's language. Error() keeps
+// the historical Chinese sentence - it is also the error field of the stream-json
+// result line and what logs show, so it stays a stable fact - while the line a
+// person reads is LocalizedText (see ErrorText in errors.go).
+type verifyFailedError struct {
+	// command is the verify command as one cleaned line.
+	command string
+	// exit is the last run's exit code.
+	exit int
+	// rounds counts the fix rounds handed back to the model.
+	rounds int
+}
+
+// newVerifyFailedError builds the exit code 5 failure; command is cleaned to one
+// line so a multi-line command cannot look like several messages.
+func newVerifyFailedError(command string, exit, rounds int) *verifyFailedError {
+	return &verifyFailedError{command: oneLineText(termtext.Clean(command)), exit: exit, rounds: rounds}
+}
+
+// Error is the historical Chinese sentence: what ran, how it ended and how many
+// fix rounds it got.
+func (e *verifyFailedError) Error() string {
+	return fmt.Sprintf("%s: %s → exit %d（已回灌 %d 轮）", ErrVerifyFailed.Error(), e.command, e.exit, e.rounds)
+}
+
+// Unwrap keeps errors.Is(err, ErrVerifyFailed) true: the sentinel's value does
+// not change with the display language.
+func (e *verifyFailedError) Unwrap() error { return ErrVerifyFailed }
+
+// LocalizedText renders the human line of text mode in the process language.
+func (e *verifyFailedError) LocalizedText(tr i18n.Translator) string {
+	return cliText(tr, "cli.verify.failed", map[string]any{"command": e.command, "exit": e.exit, "rounds": e.rounds})
+}
 
 // verifySettings is one run's resolved --verify options.
 type verifySettings struct {
@@ -131,7 +168,7 @@ type verifyRunner interface {
 // could not be started or the context ended.
 func verifyAfterTurn(ctx context.Context, vr verifyRunner, set verifySettings, sessionID string,
 	result personal.RunResult, emit personal.EmitFunc, live *output.LiveText,
-	encoder *json.Encoder, stderr io.Writer) (personal.RunResult, *verifyReport, error) {
+	encoder *json.Encoder, stderr io.Writer, tr i18n.Translator) (personal.RunResult, *verifyReport, error) {
 	report := &verifyReport{}
 	round := 0
 	for {
@@ -141,7 +178,7 @@ func verifyAfterTurn(ctx context.Context, vr verifyRunner, set verifySettings, s
 		}
 		report.Rounds, report.Passed, report.Last = round+1, run.Passed, run
 		recordVerifyRun(ctx, vr, sessionID, run)
-		if err := emitVerifyRun(encoder, stderr, set.Command, run); err != nil {
+		if err := emitVerifyRun(encoder, stderr, tr, set.Command, run); err != nil {
 			return result, report, err
 		}
 		if run.Passed {
@@ -241,36 +278,45 @@ func verifyFailurePrompt(command string, run verifyRun) string {
 
 // emitVerifyRun prints one check: text mode writes its one stderr line, and
 // stream-json writes the "verify" line the caller reads.
-func emitVerifyRun(encoder *json.Encoder, stderr io.Writer, command string, run verifyRun) error {
+func emitVerifyRun(encoder *json.Encoder, stderr io.Writer, tr i18n.Translator, command string, run verifyRun) error {
 	if encoder == nil {
-		fmt.Fprintln(stderr, verifyTextLine(command, run))
+		fmt.Fprintln(stderr, verifyTextLine(tr, command, run))
 		return nil
 	}
 	return encoder.Encode(output.VerifyLine(run.Round, redact.Secrets(command), run.ExitCode, run.Passed, run.Duration))
 }
 
 // verifyTextLine renders text mode's one line: verify #2: go test ./... → exit 1 (12.3s)
-func verifyTextLine(command string, run verifyRun) string {
-	line := fmt.Sprintf("verify #%d: %s → exit %d (%s)", run.Round+1,
-		oneLineText(termtext.Clean(command)), run.ExitCode, formatVerifyDuration(run.Duration))
+func verifyTextLine(tr i18n.Translator, command string, run verifyRun) string {
+	line := cliText(tr, "cli.verify.check", map[string]any{
+		"round":    run.Round + 1,
+		"command":  oneLineText(termtext.Clean(command)),
+		"exit":     run.ExitCode,
+		"duration": formatVerifyDuration(run.Duration),
+	})
 	if run.TimedOut {
-		line += " 超时"
+		// The catalog value is trimmed, so the separating space stays here.
+		line += " " + cliText(tr, "cli.verify.timeout")
 	}
 	return line
 }
 
 // verifySummary is text mode's closing note of a check that never passed: what
 // ran, how it ended, and the tail of its last output. stdout stays the answer.
-func verifySummary(command string, report *verifyReport) string {
+func verifySummary(tr i18n.Translator, command string, report *verifyReport) string {
 	run := report.Last
 	var b strings.Builder
-	fmt.Fprintf(&b, "验证未通过：%s → exit %d（共验证 %d 次，含 %d 轮回灌）",
-		oneLineText(termtext.Clean(command)), run.ExitCode, report.Rounds, max(report.Rounds-1, 0))
+	b.WriteString(cliText(tr, "cli.verify.summary", map[string]any{
+		"command": oneLineText(termtext.Clean(command)),
+		"exit":    run.ExitCode,
+		"rounds":  report.Rounds,
+		"replays": max(report.Rounds-1, 0),
+	}))
 	if run.TimedOut {
-		b.WriteString(" · 最后一次超时")
+		b.WriteString(" " + cliText(tr, "cli.verify.summary.timeout"))
 	}
 	if run.Tail != "" {
-		b.WriteString("\n最后一次输出尾部:\n" + run.Tail)
+		b.WriteString("\n" + cliText(tr, "cli.verify.summary.tail") + "\n" + run.Tail)
 	}
 	return b.String()
 }

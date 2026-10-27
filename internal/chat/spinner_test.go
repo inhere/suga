@@ -122,12 +122,12 @@ func TestSpinnerWaitingLine(t *testing.T) {
 	assert.Eq(t, spinnerSpeed, clock.frameInterval())
 
 	clock.tick(3 * time.Second)
-	assert.Require(t, waitOutput(t, out, spinnerLabel))
+	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 	assert.Eq(t, spinnerClear+string(spinnerChars[0])+" 思考中… 3s", out.String())
 
 	clock.tick(time.Second)
 	assert.Require(t, waitOutput(t, out, "思考中… 4s"))
-	assert.Eq(t, 2, strings.Count(out.String(), spinnerLabel))
+	assert.Eq(t, 2, strings.Count(out.String(), zhSpinnerLabel))
 	assert.Eq(t, 2, strings.Count(out.String(), spinnerClear))
 
 	r.Finish()
@@ -141,14 +141,14 @@ func TestSpinnerStopsOnTextDelta(t *testing.T) {
 	r, out, clock := newSpinnerRenderer(t, enabledOptions())
 	r.BeginTurn()
 	clock.tick(3 * time.Second)
-	assert.Require(t, waitOutput(t, out, spinnerLabel))
+	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 
 	r.Handle(personal.Event{Kind: "text_delta", Text: "hi"})
 	got := out.String()
 	answer := strings.Index(got, "▣ ")
 	assert.Require(t, answer > 0)
 	assert.True(t, strings.HasSuffix(got[:answer], spinnerClear))
-	assert.StrNotContains(t, got[answer:], spinnerLabel)
+	assert.StrNotContains(t, got[answer:], zhSpinnerLabel)
 	assert.StrContains(t, got[answer:], "▣ hi")
 	assert.False(t, spinnerRunning(r.spin))
 
@@ -180,7 +180,7 @@ func TestSpinnerRestartsAfterToolResult(t *testing.T) {
 	got := out.String()
 	result := strings.Index(got, "⎿ ok: hi")
 	assert.Require(t, result > 0)
-	assert.Eq(t, 2, strings.Count(got, spinnerLabel))
+	assert.Eq(t, 2, strings.Count(got, zhSpinnerLabel))
 	assert.StrContains(t, got[result:], "思考中… 2s")
 }
 
@@ -192,7 +192,7 @@ func TestSpinnerAgentProgress(t *testing.T) {
 	r.opts.AgentProgress = "full"
 	r.BeginTurn()
 	clock.tick(3 * time.Second)
-	assert.Require(t, waitOutput(t, out, spinnerLabel))
+	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 
 	r.Handle(personal.Event{Kind: "tool_call", ToolName: "agent", CallID: "c1", Text: `{"description":"survey"}`})
 	r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "survey", ToolName: "file_grep", Text: `{"pattern":"x"}`})
@@ -211,7 +211,7 @@ func TestSpinnerPlanAndRetry(t *testing.T) {
 		r, out, clock := newSpinnerRenderer(t, enabledOptions())
 		r.BeginTurn()
 		clock.tick(time.Second)
-		assert.Require(t, waitOutput(t, out, spinnerLabel))
+		assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 
 		r.Handle(personal.Event{Kind: "plan", Plan: &native.Plan{
 			Steps: []native.PlanStep{{Step: "read", Status: "in_progress"}},
@@ -224,7 +224,7 @@ func TestSpinnerPlanAndRetry(t *testing.T) {
 		r, out, clock := newSpinnerRenderer(t, enabledOptions())
 		r.BeginTurn()
 		clock.tick(time.Second)
-		assert.Require(t, waitOutput(t, out, spinnerLabel))
+		assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 
 		r.Handle(personal.Event{Kind: string(agentcore.StreamEventRetry), Text: "HTTP 503"})
 		assert.StrContains(t, out.String(), "↻ 模型请求失败（HTTP 503）")
@@ -253,7 +253,7 @@ func TestSpinnerTurnEnd(t *testing.T) {
 	r, out, clock := newSpinnerRenderer(t, enabledOptions())
 	r.BeginTurn()
 	clock.tick(2 * time.Second)
-	assert.Require(t, waitOutput(t, out, spinnerLabel))
+	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 
 	r.Finish()
 	assert.False(t, spinnerRunning(r.spin))
@@ -263,7 +263,7 @@ func TestSpinnerTurnEnd(t *testing.T) {
 	clock.tick(time.Second) // a frame delivered late changes nothing
 	time.Sleep(20 * time.Millisecond)
 	assert.False(t, spinnerRunning(r.spin))
-	assert.Eq(t, 1, strings.Count(out.String(), spinnerLabel))
+	assert.Eq(t, 1, strings.Count(out.String(), zhSpinnerLabel))
 	assert.StrContains(t, out.String(), "in 0 / out 0 tokens")
 }
 
@@ -310,9 +310,9 @@ func TestSpinnerRealClock(t *testing.T) {
 	out := &syncOutput{}
 	r := newRenderer(rendererOptions{Out: out, Spinner: true, Color: true})
 	r.BeginTurn()
-	assert.Require(t, waitOutput(t, out, spinnerLabel))
+	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 	// The frame ends with the elapsed seconds ("… 0s", or more on a slow machine).
-	hint := out.String()[strings.Index(out.String(), spinnerLabel)+len(spinnerLabel):]
+	hint := out.String()[strings.Index(out.String(), zhSpinnerLabel)+len(zhSpinnerLabel):]
 	assert.True(t, len(hint) > 1 && hint[0] == ' ' && hint[1] >= '0' && hint[1] <= '9')
 
 	r.Handle(personal.Event{Kind: "text_delta", Text: "hi"})
@@ -339,7 +339,7 @@ func TestSpinnerPaintsTheLine(t *testing.T) {
 	})
 	s.Start()
 	clock.tick(time.Second)
-	assert.Require(t, waitOutput(t, out, spinnerLabel))
+	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 	s.Stop()
 
 	assert.StrContains(t, out.String(), "\x1b[90m"+string(spinnerChars[0])+" 思考中… 1s\x1b[0m")

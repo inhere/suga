@@ -8,6 +8,11 @@ import "github.com/inhere/suga/internal/i18n"
 // invisible in the text itself. limit is how many tokens were allowed; 0 means
 // neither the configuration nor the provider named one (an OpenAI-compatible
 // server's own default applied). tr is the startup-resolved host catalog.
+//
+// host.output.truncated* is this whole sentence with the remedy, not the chat
+// status line's short segment (status.turn.truncated*, internal/chat/layout.go):
+// the two are deliberately kept apart, since a status line shares its row with
+// the other turn fields.
 func OutputLimitNotice(tr i18n.Translator, limit int) string {
 	t := trOrFallback(tr)
 	fix := t.T("host.output.truncated_fix")

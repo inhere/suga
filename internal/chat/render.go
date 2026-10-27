@@ -34,12 +34,6 @@ const (
 
 	promptText = "❯ "
 
-	// interruptNotice is what chat shows when a turn was interrupted while it
-	// ran (Ctrl-C): never the runner's raw "context canceled". cmd/suga still
-	// reports the process-wide 已中断 with exit 130, and run, ACP and stream-json
-	// keep the raw error text.
-	interruptNotice = "已中断本轮"
-
 	// replyTailLines caps how much of a continued session's last reply chat shows
 	// above the first prompt: the tail is what the person goes on from, and the
 	// whole text stays readable with `suga inspect trace`.
@@ -621,7 +615,10 @@ func (r *Renderer) Hint(text string) {
 }
 
 // Interrupt reports a turn that was interrupted while it ran (Ctrl-C) on the
-// chat output, in place of the runner's cancellation error.
+// chat output, in place of the runner's cancellation error: the catalog's
+// notice, never the runner's raw "context canceled". cmd/suga still reports the
+// process-wide 已中断 with exit 130, and run, ACP and stream-json keep the raw
+// error text.
 func (r *Renderer) Interrupt() { r.Notice(r.tr().T("approval.render.notice.interrupt_turn")) }
 
 // Notice prints a plain informational line on the chat output.

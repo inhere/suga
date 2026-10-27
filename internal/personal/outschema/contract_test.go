@@ -28,12 +28,17 @@ func TestCompile(t *testing.T) {
 		var ce *CompileError
 		assert.True(t, errorsAs(err, &ce))
 		assert.Eq(t, KindSyntax, ce.Kind)
+		// The params a translated line needs travel with the kind.
+		assert.StrContains(t, ce.Message, ce.Params["detail"].(string))
 	})
 	t.Run("empty schema", func(t *testing.T) {
 		_, err := Compile([]byte("  \n"))
 		var ce *CompileError
 		assert.True(t, errorsAs(err, &ce))
 		assert.Eq(t, KindSyntax, ce.Kind)
+		// An empty schema has no decoder message to name.
+		_, hasDetail := ce.Params["detail"]
+		assert.False(t, hasDetail)
 	})
 	t.Run("array top level is refused", func(t *testing.T) {
 		_, err := Compile([]byte(`[{"type":"object"}]`))
@@ -58,6 +63,8 @@ func TestCompile(t *testing.T) {
 		var ce *CompileError
 		assert.True(t, errorsAs(err, &ce))
 		assert.Eq(t, KindSize, ce.Kind)
+		assert.Eq(t, MaxSchemaBytes, ce.Params["limit"])
+		assert.Eq(t, len(strings.TrimSpace(raw)), ce.Params["actual"])
 	})
 	t.Run("external $ref is refused by the deny loader", func(t *testing.T) {
 		_, err := Compile([]byte(`{"$ref":"https://example.com/s.json"}`))
@@ -67,6 +74,7 @@ func TestCompile(t *testing.T) {
 		// The sandbox's own sentence: without the deny loader the compiler would
 		// try to fetch the URL, and the message would not say this.
 		assert.StrContains(t, ce.Message, "请改用内联 $defs 引用")
+		assert.StrContains(t, ce.Message, ce.Params["detail"].(string))
 	})
 	t.Run("inline $defs reference compiles", func(t *testing.T) {
 		c := mustCompile(t, `{"type":"object","properties":{"item":{"$ref":"#/$defs/item"}},
@@ -80,6 +88,8 @@ func TestCompile(t *testing.T) {
 		assert.True(t, errorsAs(err, &ce))
 		assert.Eq(t, KindUnknownDraft, ce.Kind)
 		assert.StrContains(t, ce.Message, "不受支持")
+		// The quoted draft the message names, so both wordings stay identical.
+		assert.Eq(t, `"https://json-schema.org/draft/2030-01/schema"`, ce.Params["draft"])
 	})
 	t.Run("draft-07 and 2020-12 both apply", func(t *testing.T) {
 		c7 := mustCompile(t, `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","required":["a"]}`)

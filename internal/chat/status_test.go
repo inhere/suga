@@ -134,7 +134,7 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 		before := len(log.all())
 		r.Handle(personal.Event{Kind: "tool_result", ToolName: "shell_exec", Text: "hi"})
 		assert.Eq(t, "out:   ⎿ ok: hi\n", log.all()[before])
-		assert.StrContains(t, log.last(), spinnerLabel+" 0s")
+		assert.StrContains(t, log.last(), zhSpinnerLabel+" 0s")
 	})
 
 	t.Run("a sub-agent keeps the wording of a waiting turn", func(t *testing.T) {
@@ -175,9 +175,9 @@ func TestStatusLineSuspendedForAQuestion(t *testing.T) {
 	assert.Eq(t, before, len(log.all())) // the frames of the turn draw nothing
 
 	r.resumeStatus()
-	assert.Require(t, waitStatusContains(t, log, spinnerLabel+" 2s"))
+	assert.Require(t, waitStatusContains(t, log, zhSpinnerLabel+" 2s"))
 	clock.tick(time.Second)
-	assert.Require(t, waitStatusContains(t, log, spinnerLabel+" 3s"))
+	assert.Require(t, waitStatusContains(t, log, zhSpinnerLabel+" 3s"))
 
 	// Leaving chat (or any other write) ends the line for good.
 	r.endThinking()

@@ -129,11 +129,13 @@ func isInitCommand(args []string) bool {
 // exitReport turns the command error into the stderr line and exit code. An
 // error caused by Ctrl-C/SIGTERM (ctx canceled by the signal) reads "已中断"
 // instead of "context canceled" and exits 130, the shell convention for SIGINT.
+// The line goes through cli.ErrorText: an error that knows the process language
+// renders its human text there, while machine lines keep err.Error().
 func exitReport(ctx context.Context, err error) (string, int) {
 	if ctx.Err() != nil && errors.Is(err, context.Canceled) {
 		return "已中断", 130
 	}
-	return err.Error(), cli.ExitCode(err)
+	return cli.ErrorText(err, cli.Translator()), cli.ExitCode(err)
 }
 
 func formatVersion(version, commit string) string {

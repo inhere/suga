@@ -224,6 +224,10 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 	}
 	// An answer cut off at the output token limit: the person must not read it as
 	// a finished one, and the limit names the setting that can raise it.
+	// status.turn.truncated* stays a short status-line segment on purpose and is
+	// not merged with host.output.truncated* (internal/output): that one is the
+	// full sentence `suga run` prints on stderr, with the settings that raise the
+	// limit. The two share the fact, not the place on screen.
 	if s.Truncated {
 		if s.OutputLimit > 0 {
 			parts = append(parts, t.T("status.turn.truncated_limit", map[string]any{"limit": s.OutputLimit}))
