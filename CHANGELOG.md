@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+### 新增
+
+- 缓存命中率统计第二步（suga-jh7b，只加统计，发给 provider 的请求逐字节不变）：把会话最后一次请求的指纹（系统提示与工具表哈希、消息累计哈希与字节数，长会话只留最后 64 条）存进会话元数据 `cache_prefix_print`，新进程续接的第一次调用拿它比对，拆出 `resume_same`（只追加，token 缓存仍能复用）与 `resume_changed`（前缀被改写，事件里记原因 system/tools/fold/rewrite；旧数据无指纹仍记 `resume`）；新增 `provider_switch` 桶（实际服务的 model/provider 变了、pool 降级 `fallback`、或中间有 `model_switch` 事件）。
+- 前缀复用率：除原始命中率外，每个桶与总体再给「复用 = cache_read / 上一次请求的可缓存前缀（用请求各部分的指纹字节数折算 token，服务端多给了按 100% 算）」，不受本次新增内容多少影响；`suga inspect stats` 的 CACHE BUCKET 表新增 `REUSE%` 列，`inspect trace --analyze` 新增 `prefix reuse` 行与 `prefix_reused_tokens`/`prefix_reuse_rate`/`prefix_reuse_read_tokens` 字段，`scripts/eval` 的按桶汇总新增 `REUSE%` 列，`compare` 新增 `steady 复用%` 列与「按桶前缀复用率」小节。
+- 换段分节记录：换段事件（`compaction name=compact status=ok`）新增 `sections` 属性，记下新段上下文消息每一节（environment、rules、memory_index、skills、append_prompt、host_context、deferred_tools、handoff）的名字、字节数与短哈希；`inspect trace --analyze` 新增 `segment sections` 行与 `segment_sections` 字段，给出连续两段之间哪些节变了（被移除的节也算变了）。
+
 ## [0.50.0] - 2026-10-27
 
 本版加入中英文界面：新增 `language` 配置（默认 `auto`，非中文系统改为英文界面，中文用户可设 `language: zh`），`language: en` 时部分给模型看的提示也换成英文；`sessions`/`compact`/`undo` 收进 `suga session` 命令组（旧写法会转发并提示）；另含缓存命中率分桶统计、演示录屏与 MIT 许可证。

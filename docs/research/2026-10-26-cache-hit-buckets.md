@@ -88,3 +88,54 @@ steady 桶低于 90% 的 4 次调用（`inspect trace <sid> --analyze`，`step` 
 
 - steady 桶的低命中调用按 `events` 分组看：事件为空的那批才是前缀/缓存写回的问题（写回延迟、TTL、provider 侧 round 截断）；对空事件的那批，再用 `uncached_fresh` 与新增内容对比，把「新内容多」和「真漏」分开（见上面的实测）；
 - 请求前缀相关的改动（工具表、系统提示、段上下文、提醒、旧结果折叠）都要看 steady 桶的变化，而不只是总体命中率。
+
+## 第二步：续接指纹、新桶与前缀复用率（2026-10-27）
+
+第一步的实测暴露了两个口径问题：逐轮起进程时每次第一次调用都是 `prefix=first`（落进 `resume` 一桶），分不清「续接且前缀没变」和「续接但前缀被改写」；以及命中率把「本次新增了多少内容」也算进去，段内 83.3% 没法判断是缓存漏了还是新内容多。第二步只加统计，**发给 provider 的请求逐字节不变**（`observe_request_bytes_test.go` 锁住这一点）。
+
+### 持久化上次请求指纹
+
+回合结束时（`Runner.finish`）把本会话最后一次请求的指纹写进会话元数据 `cache_prefix_print`（`prefix.go` 的 `printRecord`）：系统提示与工具表的 sha256 与字节数、每条消息的累计 sha256（含角色与 call id，用于 fold/segment 判定）与 JSON 字节数。取舍：长会话只存最后 **64 条**消息与消息总数——累计哈希链住了整个请求，所以第一条被保留消息的累计哈希就代表了被丢掉的那一段，续接进程仍能区分「只追加」与「更早某条变了」；但若被保留窗口的第一条就对不上，就无法定位是哪条变的（只记 `rewrite` 原因、无位置）。
+
+新进程续接的第一次调用（`prefixTracker.seed`，在 `Runner.Run` 用 `markRunning` 后的元数据注入）与这条指纹比较，模型事件上写 `prefix_resume`（`same`/`changed`）与 `prefix_resume_reason`（`system`/`tools`/`fold`/`rewrite`）；进程内已有的请求优先于指纹。
+
+选「会话元数据」而不是「模型事件属性」的原因：指纹要在**下一次请求之前**读到（事件表只能事后读），而元数据随会话一起加载、已有 `PatchSessionMeta` 原子写入；代价是每次加载会话多带几 KB（64 条消息的哈希与字节数）。
+
+### 新桶
+
+| 桶 | 定义 |
+|---|---|
+| `resume_same` | 续接后的第一次调用，指纹是本次请求的前缀（只追加） |
+| `resume_changed` | 续接后的第一次调用，前缀有变（`reasons` 记原因） |
+| `provider_switch` | 与上一次主循环调用相比实际服务的 model/provider 变了、pool 降级（`attrs.fallback`）、或中间有 `model_switch` 会话事件 |
+| `resume` | 旧数据（没有指纹）的续接首调，字段名不变 |
+
+`attrs.model` 记的是**这次尝试实际服务的模型**：`attemptObserver` 取 `llm.Attempt.Model`（`pkg/agentcore/llm/observe.go:110` 的 `report`），Pool 每次降级都单独调用 `GenerateObserved/StreamObserved`（`pkg/agentcore/llm/pool.go:96`、`:160`），所以每个尝试事件的 `model` 是自己那次的服务模型，provider 不暴露模型时才回落到配置里的 model。
+
+判定优先级：会话首次调用 `cold` → 换段（`prefix=segment` 或其间有成功的 `compact`）`segment_start` → `provider_switch` → `resume_same`/`resume_changed` → `prefix=first` 的 `resume` → `fold`/`system`/`tools`/`rewrite` 的 `after_fold` → `append` 的 `steady`。换段优先：它才是那次低命中的结构性原因。
+
+### 前缀复用率
+
+```
+prefix_tokens = 本次 prompt token × reused 字节 / (reused+rebuilt+fresh 字节)
+复用率        = min(cache_read, prefix_tokens) / prefix_tokens
+```
+
+- 分子分母都是 token：`reused` 是本次请求中与上次完全一致的前缀（含系统提示与工具表）的字节数，按本次请求「报告 token / 请求总字节」折算，保守地假设缓存只在这段前缀里命中；
+- 分母只算「上次请求里可被缓存的前缀」，本次新增内容不进分母，所以复用率不受新内容多少影响；
+- 上限截到 100%：字节→token 只是推算，provider 报得更多不当作超过全部。
+
+稳态目标（95%+）改用复用率衡量：命中率低但复用率高，说明只是这次新增内容多；两者都低才是缓存没命中。
+
+### 换段分节哈希
+
+换段事件新增 `sections`：新段上下文消息每一节（`environment`、`rules`、`memory_index`、`skills`、`append_prompt`、`host_context`、`deferred_tools`，以及交接包 `handoff`）的名字、字节数与 16 位 sha256。`--analyze` 的 `segment sections` / `segment_sections` 给出连续两段之间**哪些节变了**（被移除的节也算），这是后面判断「段上下文是否要按变化频率重排」的数据；本轮不动顺序。
+
+### 在哪看
+
+- 事件：模型事件的 `prefix_resume`/`prefix_resume_reason`/`prefix_reused`/`prefix_rebuilt`/`prefix_fresh`，换段事件的 `sections`；
+- `suga inspect stats`：CACHE BUCKET 表新增 `REUSE%` 列（`prefix_reused_tokens`、`prefix_reuse_rate` 同时在 `--json` 里）；
+- `suga inspect trace --analyze`：`prefix reuse` 与 `segment sections` 行；JSON 新增 `prefix_reused_tokens`、`prefix_reuse_rate`、`prefix_reuse_read_tokens`、`segment_sections`；每个桶另有 `reasons`；
+- `scripts/eval`：按桶汇总表新增 `REUSE%`，`compare.md` 的总览新增 `steady 复用%` 列并追加「按桶前缀复用率」小节。
+
+本步**没有跑真实模型**（下一步做），也没有在任何真实会话上取数：新增的桶与复用率目前只有单元测试覆盖。
