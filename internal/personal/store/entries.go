@@ -213,6 +213,49 @@ func (s *Store) ListEntries(ctx context.Context, sessionID string, f EntryFilter
 	return out, nil
 }
 
+// EntriesAround returns the target entry and up to window entries on either
+// side, ordered by the stable session sequence. Entry rows are append-only:
+// AppendEntries assigns the next sequence, while session deletion is the only
+// production path that removes entries (through the sessions foreign-key
+// cascade); no path renumbers an existing sequence.
+func (s *Store) EntriesAround(ctx context.Context, sessionID string, seq int64, window int) ([]Entry, error) {
+	if seq <= 0 {
+		return nil, errors.New("entry sequence must be positive")
+	}
+	if window < 0 {
+		return nil, errors.New("entry window must not be negative")
+	}
+	lower := seq - int64(window)
+	if lower < 1 || lower > seq {
+		lower = 1
+	}
+	upper := seq + int64(window)
+	if upper < seq {
+		upper = int64(^uint64(0) >> 1)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+entryCols+` FROM entries
+		WHERE session_id = ? AND seq >= ? AND seq <= ? ORDER BY seq ASC`, sessionID, lower, upper)
+	if err != nil {
+		return nil, fmt.Errorf("read entries around %s/%d: %w", sessionID, seq, err)
+	}
+	defer rows.Close()
+	out := []Entry{}
+	for rows.Next() {
+		entry, err := scanEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.restoreToolBodies(sessionID, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ListEntryRefs returns the link fields of every entry of a session, oldest
 // first, with the bodies left in the store (see EntryRef).
 func (s *Store) ListEntryRefs(ctx context.Context, sessionID string) ([]EntryRef, error) {

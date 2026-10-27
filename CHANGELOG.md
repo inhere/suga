@@ -6,6 +6,7 @@
 
 ### 新增
 
+- sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。
 - 新增 `sugasdk.Engine.Pin` 会话 pin 契约；age GC 与 retention GC 均跳过被 pin 的会话（包括非 xhen 来源）。
 - 记忆条目新增跨 ID 复用保持不变的 UUID，并为 SDK 提供按 UUID 获取、更新、删除接口；旧元数据迁移会自动补齐 UUID。
 

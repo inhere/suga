@@ -24,9 +24,12 @@
 // Every session assembles its own runtime for its workspace (tools, provider,
 // project rules, memory scope), so sessions of different directories can run
 // side by side. A session runs one turn at a time: a second concurrent Send
-// returns ErrBusy instead of queueing, and Steer inserts text into a turn that
-// is already running (ErrNoRunningTurn when there is none). A panic inside a
+// returns ErrBusy instead of queueing, and Steer inserts text into a turn that is
+// already running (ErrNoRunningTurn when there is none), and Cancel stops the
+// in-flight turn so the session can continue with a later Send. A panic inside a
 // turn is recovered and returned as an error; it never propagates to the host.
+// Entry reads an immutable session record by its "<session>/<seq>" reference with
+// a window of neighboring records; record sequence numbers are append-only.
 //
 // # Idempotent sends
 //

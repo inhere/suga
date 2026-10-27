@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/outschema"
@@ -44,6 +45,7 @@ type Session struct {
 	// the slot ("" for a plain send without an id); it lets a second Send with
 	// the same id read as ErrRequestRunning instead of a bare ErrBusy.
 	runningRequest string
+	cancel         context.CancelFunc
 	closed         bool
 }
 
@@ -177,10 +179,15 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 			return s.dispatchRecord(ctx, repo, requestID, rec)
 		}
 	}
-	if err := s.claimRequest(requestID); err != nil {
+	runCtx, cancel := context.WithCancel(ctx)
+	if err := s.claimRequest(requestID, cancel); err != nil {
+		cancel()
 		return Result{}, err
 	}
-	defer s.endTurn()
+	defer func() {
+		cancel()
+		s.endTurn()
+	}()
 	if requestID != "" {
 		// Persist the claim (state running, no turn id yet) as a write-once key:
 		// from here on a crash leaves the id marked running (delivery uncertain)
@@ -225,7 +232,9 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		turn, request := turnID, requestID
 		turnMu.Unlock()
 		if request != "" && turn != "" {
-			if perr := s.requestTurnFinished(ctx, repo, request, turn, res, err); perr != nil {
+			finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(runCtx), 5*time.Second)
+			defer finishCancel()
+			if perr := s.requestTurnFinished(finishCtx, repo, request, turn, res, err); perr != nil {
 				s.engine.logger.Warn("sugasdk: record the request outcome", "session", s.id, "request", request, "err", perr)
 			}
 		}
@@ -267,7 +276,7 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		}
 		return nil
 	}
-	runResult, runErr := s.rt.Runner.Run(ctx, personal.RunRequest{SessionID: s.id, Prompt: prompt.Text, Images: images,
+	runResult, runErr := s.rt.Runner.Run(runCtx, personal.RunRequest{SessionID: s.id, Prompt: prompt.Text, Images: images,
 		EphemeralContext: ephemeral, Emit: events})
 	if runResult.TurnID != "" {
 		turnMu.Lock()
@@ -281,7 +290,7 @@ func (s *Session) Send(ctx context.Context, prompt Prompt, emit func(Event)) (re
 		// Judge the answer the caller finally gets; a failing one costs one
 		// correction round. The request ledger keeps pointing at the first turn.
 		var rep personal.ContractReport
-		runResult, rep, runErr = s.rt.Runner.RunWithContract(ctx, personal.RunRequest{SessionID: s.id},
+		runResult, rep, runErr = s.rt.Runner.RunWithContract(runCtx, personal.RunRequest{SessionID: s.id},
 			contract, schema, runResult, personal.ContractHooks{Emit: events})
 		res = convertResult(runResult)
 		res.OutputContract = convertContractReport(rep)
@@ -310,7 +319,8 @@ func (s *Session) outputContract(raw json.RawMessage) (*outschema.Contract, []by
 // claimRequest takes the session's single turn slot. requestID (empty for a
 // plain send) is recorded with the slot, so a second Send with the same id
 // reads as ErrRequestRunning while a different turn in flight stays ErrBusy.
-func (s *Session) claimRequest(requestID string) error {
+// cancel is installed as the cancellation hook used by Session.Cancel.
+func (s *Session) claimRequest(requestID string, cancel context.CancelFunc) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -324,6 +334,7 @@ func (s *Session) claimRequest(requestID string) error {
 	}
 	s.running = true
 	s.runningRequest = requestID
+	s.cancel = cancel
 	return nil
 }
 
@@ -332,7 +343,29 @@ func (s *Session) endTurn() {
 	s.mu.Lock()
 	s.running = false
 	s.runningRequest = ""
+	s.cancel = nil
 	s.mu.Unlock()
+}
+
+// Cancel stops the current turn. It is safe to call concurrently with Send;
+// after cancellation the session slot is released and a later Send can run.
+func (s *Session) Cancel() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return ErrSessionClosed
+	}
+	cancel := s.cancel
+	running := s.running
+	s.mu.Unlock()
+	if !running || cancel == nil {
+		return ErrNoRunningTurn
+	}
+	cancel()
+	return nil
 }
 
 // RequestStatus reports where the request requestID of this session stands:
