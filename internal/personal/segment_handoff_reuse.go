@@ -116,23 +116,29 @@ func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int, rebui
 // request builds the handoff request of the reuse path: the last main-loop
 // request (System, Tools and messages unchanged, so the provider cache still
 // matches) plus the instruction as one appended user message. Tools stay
-// declared - dropping them would change the prefix of every later request - and
-// tool use is forbidden through ToolChoice where the provider honours it.
+// declared - dropping them would change the prefix of every later request -
+// and the instruction alone forbids tool use.
+//
+// ToolChoice is deliberately left empty (H5, measured 2026-10-27 on
+// opencode-go/deepseek-v4.1-flash): a request carrying tool_choice:none is
+// rendered by the gateway without the tool definitions, so its prompt_tokens
+// fell from 8394 to 2204 and the cache built on the main-loop prefix no longer
+// matched (cached_tokens 384 instead of 8320) - exactly the 4.5k input drop and
+// the zero cache reads the pre-run showed. Sending the same messages without
+// tool_choice did hit the prefix (cached 8320), so the reuse call sends none; an
+// answer that ignores the instruction and asks for tools is thrown away
+// (handoffFallbackToolCall), which the fallback already covers.
 func (ru *handoffReuse) request(instruction string, maxTokens int) *agentcore.GenerateRequest {
 	msgs := make([]agentcore.Message, 0, len(ru.req.Messages)+1)
 	msgs = append(msgs, ru.req.Messages...)
 	msgs = append(msgs, agentcore.Message{Role: "user", Content: instruction})
-	req := &agentcore.GenerateRequest{
+	return &agentcore.GenerateRequest{
 		Model:     ru.req.Model,
 		System:    ru.req.System,
 		Tools:     ru.req.Tools,
 		Messages:  msgs,
 		MaxTokens: maxTokens,
 	}
-	if chooser, ok := ru.provider.(agentcore.ToolChooser); ok && chooser.SupportsToolChoice() {
-		req.ToolChoice = agentcore.ToolChoiceNone
-	}
-	return req
 }
 
 // reuseFitsWindow reports whether the reuse request fits the model's window. The

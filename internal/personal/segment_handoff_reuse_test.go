@@ -23,8 +23,10 @@ const reuseBody = "## 当前任务\n修解析器\n## 坐标\n- internal/personal
 	"## 验证到哪\n- go test ./internal/personal 通过\n## 进展与阻塞\n无\n## 下一步\n无\n" + refsHeading + "\n- 无\n"
 
 // reuseProv answers the main-loop calls through main and every handoff-package
-// call through handoff. It reports SupportsToolChoice, so the reuse request must
-// forbid tools. It keeps every request it was handed.
+// call through handoff. It reports SupportsToolChoice, so a reuse request that
+// forbade tools would show it - the reuse path must not (H5: tool_choice:none
+// changes the rendered prefix and the provider cache stops matching). It keeps
+// every request it was handed.
 type reuseProv struct {
 	mu      sync.Mutex
 	all     []*agentcore.GenerateRequest
@@ -207,7 +209,7 @@ func TestHandoffReuseContinuesSegmentPrefix(t *testing.T) {
 	assert.StrContains(t, instruction.Content, reuseMarker)
 	assert.StrContains(t, instruction.Content, compactTemplate)
 	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 	// The package the answer produced is stored as usual.
 	rec := latestSegment(t, repo, sid)
 	assert.StrContains(t, rec.Summary, "修解析器")
@@ -451,7 +453,7 @@ func TestHandoffReuseRebuildsResumedPrefix(t *testing.T) {
 	assert.StrContains(t, instruction.Content, reuseMarker)
 	assert.StrContains(t, instruction.Content, compactTemplate)
 	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 }
 
 // The same process breaks the segment after it sent requests: the request in
@@ -493,7 +495,7 @@ func TestHandoffReuseContinuesSentRequestInProcess(t *testing.T) {
 	assert.Eq(t, false, strings.Contains(messagesJSON(t, got.Messages[:len(got.Messages)-1]), strings.Repeat("b", 64)))
 	instruction := got.Messages[len(got.Messages)-1]
 	assert.StrContains(t, instruction.Content, reuseMarker)
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 }
 
 // A host hook may rewrite the request head in a way a rebuilt request cannot
@@ -604,7 +606,11 @@ func TestHandoffReuseBetweenTurnsRebuildsPrefix(t *testing.T) {
 	assert.StrContains(t, instruction.Content, reuseMarker)
 	assert.StrContains(t, instruction.Content, compactTemplate)
 	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	// No ToolChoice even though the provider supports it: tool_choice:none makes
+	// the gateway render the prompt without the tool definitions, which breaks the
+	// cache prefix the reuse path continues (H5). The instruction forbids tools and
+	// a tool-asking answer falls back to the old path.
+	assert.Eq(t, "", got.ToolChoice)
 	// The package the answer produced is stored as usual.
 	assert.StrContains(t, latestSegment(t, repo, sid).Summary, "修解析器")
 }
@@ -637,7 +643,7 @@ func TestHandoffReuseBetweenTurnsSameRunner(t *testing.T) {
 	instruction := got.Messages[len(got.Messages)-1]
 	assert.Eq(t, "user", instruction.Role)
 	assert.StrContains(t, instruction.Content, reuseMarker)
-	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+	assert.Eq(t, "", got.ToolChoice)
 }
 
 // A part of the last request that the store does not keep - the turn's hook
