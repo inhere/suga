@@ -6,7 +6,7 @@
 
 ```text
 suga inspect trace <session> [--turn <id>] [--json]                                          # 时间线：模型调用、工具、拒绝、计划
-suga sessions [关键词] [-n 10] [--since 7d] [--until 2026-10-01] [--all/--cwd .] [--agents] [--origin <name>] [--json]  # 会话列表，最新在前；默认只列当前目录的会话、且不列 origin=xhen 的宿主管理会话（空结果提示目录不对或用 --all 列出全部，并提示被隐藏的 xhen 数量），--cwd <路径> 按前缀过滤（与 --all 互斥）；--origin 只列某个入口（chat/run/acp/agent/xhen）创建的会话，--origin all 列出全部来源（--all 仍只表示所有目录）；关键词匹配标题、id、目录、模型或对话内容；--agents 连子会话一起列出；--json 行含 origin
+suga session list [关键词] [-n 10] [--since 7d] [--until 2026-10-01] [--all/--cwd .] [--agents] [--origin <name>] [--json]  # 会话列表，最新在前；默认只列当前目录的会话、且不列 origin=xhen 的宿主管理会话（空结果提示目录不对或用 --all 列出全部，并提示被隐藏的 xhen 数量），--cwd <路径> 按前缀过滤（与 --all 互斥）；--origin 只列某个入口（chat/run/acp/agent/xhen）创建的会话，--origin all 列出全部来源（--all 仍只表示所有目录）；关键词匹配标题、id、目录、模型或对话内容；--agents 连子会话一起列出；--json 行含 origin
 suga inspect trace <session> --analyze [--json]                                              # 循环分析：步数、并行调用、重复读、重复命令、首次通过后的测试、子 agent
 suga inspect trace <session> --transcript [--turn <id>] [--no-reasoning] [--max-observation <字节>] [-o <文件>]  # 给模型/人看的纯文本轨迹（见下）
 suga inspect trace <session> --web [--addr 127.0.0.1:0]                                      # 本机网页：时间线（后台任务横条、任务通知标注、子 agent 行及其子会话 trace 命令）、详情、上下文组成、分析、本机环境（Ctrl-C 结束）

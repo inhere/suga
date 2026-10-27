@@ -117,7 +117,7 @@ gofer job answer <job-id> <interaction-id> reject|allow
 suga inspect trace <session> [--turn <id>] [--json] [--analyze]    # 时间线、循环分析
 suga inspect trace <session> --web [--addr 127.0.0.1:0]            # 本机网页时间线
 suga inspect stats [--session <id>] [--since 7d] [--json]          # 用量与成本
-suga sessions [关键词] [--agents] [--json]                            # 会话列表
+suga session list [关键词] [--agents] [--json]                      # 会话列表
 suga inspect export <session> [--redact] [-o <file>]               # jsonl 导出
 suga inspect manifest --json                                       # 能力清单
 ```

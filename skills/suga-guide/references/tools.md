@@ -125,8 +125,8 @@ ACP 提供 `allow`、`allow_always`、`reject`、`reject_always` 四个选项。
 不依赖 provider 的 CLI 也可以执行：
 
 ```text
-suga undo <session> --list [--json]
-suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
+suga session undo <session> --list [--json]
+suga session undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 ```
 
 `<session>` 支持完整 ID 或唯一前缀。非终端执行破坏性操作必须带 `--yes`；`--force` 只覆盖内容冲突，不绕过 root、路径、文件类型、链接或保护路径校验。回滚按调用逆序执行，可删除写操作新建的文件，可恢复符合条件的 `file_remove` 回收区条目，并在回滚前建立独立快照。会话 cwd 变化或可写附加目录被移除后，旧快照会被标记为不可恢复，不会写入不可信 root。只读会话可以回滚自己可信的快照，但不能扩大允许的 root。没有 redo，也没有 ACP 内置 undo 命令；ACP 与 `run` 的文件写操作仍会创建快照。
@@ -268,4 +268,4 @@ suga undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [--json]
 - **报告尾行**：`[sub-agent <会话> · N steps · in … / out … · <耗时> · stop=<原因>]`，原因有 `final`、`max_steps`、`max_tokens`、`timeout`、`cancelled`、`failed`。
 - **模型与开关**：`agents.model` 可让子 agent 跑在更便宜的模型上；`agents.enabled: false` 则不注册该工具。
 - **用量与污染**：子 agent 的模型调用计入调用它的会话当前进行中的 run（stream-json 与 ACP 的 `usage_update` 都含它，ACP 在 prompt 进行中上报），也计入会话累计——会话累计 = 父会话加它的全部子会话（`suga inspect stats --session`）。子 agent 读过的外部内容会和其它外部读取一样把父会话标记为已污染：`research` 类型的子 agent（或读到了引用网页内容的文件）会让之后的写记忆需要确认。
-- **子会话**：每次调用都在一个自己的会话里运行——`kind: agent`，带 `parent_session_id`、`agent_type` 以及发起它的回合与工具调用，标题就是 description。`suga sessions` 与 `session_search` 默认不列出子会话；`suga sessions --agents` 会列出并标明各自的父会话。`suga inspect trace <会话>` 可以照常查看某一个子会话，`suga data gc` 随父会话一起删除它。
+- **子会话**：每次调用都在一个自己的会话里运行——`kind: agent`，带 `parent_session_id`、`agent_type` 以及发起它的回合与工具调用，标题就是 description。`suga session list` 与 `session_search` 默认不列出子会话；`suga session list --agents` 会列出并标明各自的父会话。`suga inspect trace <会话>` 可以照常查看某一个子会话，`suga data gc` 随父会话一起删除它。

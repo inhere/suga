@@ -354,7 +354,7 @@ suga models --json
 
 | 变量 | 含义 |
 |---|---|
-| `SUGA_SESSION_ID` | 当前会话 id（与 `suga sessions`、`suga inspect trace` 用的相同；子 agent 内部是子 agent 自己的会话 id） |
+| `SUGA_SESSION_ID` | 当前会话 id（与 `suga session list`、`suga inspect trace` 用的相同；子 agent 内部是子 agent 自己的会话 id） |
 | `SUGA_SESSION_NAME` | 会话短名称（`$SUGA_HOME/run/` 里登记的名字，如 `suga-k7`）；会话没有短名称时不设置（run/ACP 的会话通常没有） |
 | `SUGA_TURN_ID` | 当前回合 id（工具调用所在回合）；回合外（如 `SessionStart` hook、chat 本地命令）不设置 |
 
@@ -400,10 +400,10 @@ suga run --prompt "..."   # 单轮；[--allow-write] [--read-only] [--model] [--
 suga acp                                      # 以 ACP stdio 服务（供 gofer 等客户端接入）
 suga send --session <id|短名称|前缀> --text <文本>   # 给正在运行的 chat 送话（--wait 等真正开始）
 suga ps                                       # 正在运行的 chat 进程（第二列是短名称）
-suga sessions [关键词] [-n 10] [--since 7d] [--cwd .] [--agents] [--origin <name>] [--json]
+suga session list [关键词] [-n 10] [--since 7d] [--cwd .] [--agents] [--origin <name>] [--json]
 suga inspect trace <session> [--turn <id>] [--json] [--analyze] [--web]
-suga undo <session> --list [--json]
-suga undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]
+suga session undo <session> --list [--json]
+suga session undo <session> [--turn <id>|-n <count>] [--force] [--yes] [--json]
 suga inspect stats [--session <id>] [--since 7d] [--json]
 suga inspect export <session> [--redact] [-o <file>]
 suga data gc --older-than 30d [--apply]
@@ -417,4 +417,4 @@ suga version
 
 chat 里的命令：`:session`（会话 ID）、`:compact`（开启新段）、`:quit` / `:exit`（退出）。退出码：会话不存在 `4`、被中断 `130`、其它 `1`。
 
-`suga undo` 不依赖 provider，session 参数接受完整 ID 或唯一前缀。`--list` 只读；破坏性操作在非终端 stdin 下必须 `--yes`，`--force` 只覆盖内容冲突。退出码为：`0` 完整恢复或幂等无操作，`3` 无快照/部分恢复/不可恢复文件，`4` 会话不存在，`5` 会话忙，`1` 参数、取消或其它错误。`--json` 输出 checkpoint 清单或回滚结果。chat 的 `:checkpoints` 和 `:undo [N] [force]` 只认本地提示符输入；shell_exec 只列出不回滚，cwd 或可写附加目录变化会使旧快照不可恢复。
+`suga session undo` 不依赖 provider，session 参数接受完整 ID 或唯一前缀。`--list` 只读；破坏性操作在非终端 stdin 下必须 `--yes`，`--force` 只覆盖内容冲突。退出码为：`0` 完整恢复或幂等无操作，`3` 无快照/部分恢复/不可恢复文件，`4` 会话不存在，`5` 会话忙，`1` 参数、取消或其它错误。`--json` 输出 checkpoint 清单或回滚结果。chat 的 `:checkpoints` 和 `:undo [N] [force]` 只认本地提示符输入；shell_exec 只列出不回滚，cwd 或可写附加目录变化会使旧快照不可恢复。
