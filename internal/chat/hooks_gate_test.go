@@ -69,7 +69,7 @@ func TestToolGate(t *testing.T) {
 			return decide(c)
 		}))
 		recorder := &gateTestRecorder{}
-		approval.SetRewriter(newToolGate(gate, recorder))
+		approval.SetRewriter(newToolGate(gate, recorder, nil))
 		return approval, tool, recorder
 	}
 	ctx := agentcoreapi.WithSessionID(context.Background(), "sess-1")

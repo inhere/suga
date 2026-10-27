@@ -19,6 +19,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/memory"
 	"github.com/inhere/suga/pkg/agentcore/mock"
 	"github.com/inhere/suga/pkg/agentcore/tools"
+	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
 
 // memoryAsker answers memory questions from a list and records them.
@@ -60,7 +61,7 @@ func newMemEnv(t *testing.T, policy memoryWritePolicy, readOnly bool, confirm Me
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = repo.Close() })
 	host := &memoryHost{}
-	return &memEnv{mem: newMemoryRuntime(setup, policy, readOnly, confirm, host), host: host, repo: repo}
+	return &memEnv{mem: newMemoryRuntime(setup, policy, readOnly, confirm, host, native.MemoryTexts{}), host: host, repo: repo}
 }
 
 // session creates a session, tainted or not.

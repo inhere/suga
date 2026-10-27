@@ -45,6 +45,9 @@ type MemoryToolOptions struct {
 	// ProvenanceFrom returns the session/turn of the call from ctx (set by
 	// the host); nil leaves the provenance empty apart from Source.
 	ProvenanceFrom func(ctx context.Context) memory.Provenance
+	// Texts is the model-facing wording of the refusals and errors; the zero
+	// value is the historical Chinese text (see MemoryTexts).
+	Texts MemoryTexts
 }
 
 // MemoryTool reads and writes long-term memory through a memory.Store
@@ -58,6 +61,7 @@ type MemoryTool struct {
 
 // NewMemoryTool creates the memory tool over store.
 func NewMemoryTool(store memory.Store, opts MemoryToolOptions) *MemoryTool {
+	opts.Texts = opts.Texts.resolve()
 	return &MemoryTool{store: store, opts: opts}
 }
 
@@ -169,7 +173,7 @@ func (t *MemoryTool) Execute(ctx context.Context, call api.ToolCall) (*api.ToolR
 	// Writes. Read-only runs refuse before the store (and its taint gate,
 	// confirmation and events) is involved at all.
 	if !t.opts.Writable {
-		return nil, fmt.Errorf("memory: 只读模式下不能写入记忆（%s 被拒绝）；get/search 仍可使用", req.action)
+		return nil, fmt.Errorf(t.opts.Texts.ReadOnly, req.action)
 	}
 	op := req.op
 	if t.opts.ProvenanceFrom != nil {
@@ -337,21 +341,21 @@ func (t *MemoryTool) mapError(req memoryRequest, err error) error {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), errors.Is(err, tools.ErrAborted):
 		return fmt.Errorf("memory: %w: %w", tools.ErrAborted, err)
 	case errors.Is(err, memory.ErrNeedsConfirmation):
-		return errors.New("memory: 会话读过外部内容，非交互模式不能写记忆（需要用户确认的写入被拒绝）")
+		return errors.New(t.opts.Texts.NeedsConfirmation)
 	case errors.Is(err, memory.ErrDenied):
-		return fmt.Errorf("memory: 会话读过外部内容，写入需要确认，未获同意：%v", err)
+		return fmt.Errorf(t.opts.Texts.Denied, err)
 	case errors.Is(err, memory.ErrTombstoned):
-		return fmt.Errorf("memory: 该内容与之前删除的条目相同，重新写入前先征得用户确认（%v）", err)
+		return fmt.Errorf(t.opts.Texts.Tombstoned, err)
 	case errors.Is(err, memory.ErrOverBudget):
-		return fmt.Errorf("memory: %s 记忆索引超出上限，先用 replace 合并或用 remove 删除旧条目再写入（%v）", scope, err)
+		return fmt.Errorf(t.opts.Texts.OverBudget, scope, err)
 	case errors.Is(err, memory.ErrNotFound):
-		return fmt.Errorf("memory: %s 中没有条目 %q；用 action=search 查找 id", scope, req.op.ID)
+		return fmt.Errorf(t.opts.Texts.NotFound, scope, req.op.ID)
 	case errors.Is(err, memory.ErrNoBackend):
-		return fmt.Errorf("memory: 没有为 %s 配置记忆后端", scope)
+		return fmt.Errorf(t.opts.Texts.NoBackend, scope)
 	case errors.Is(err, memory.ErrInvalid):
-		return fmt.Errorf("memory: 参数无效：%v", err)
+		return fmt.Errorf(t.opts.Texts.Invalid, err)
 	}
-	return fmt.Errorf("memory: %s %s 失败：%w", req.action, scope, err)
+	return fmt.Errorf(t.opts.Texts.Failed, req.action, scope, err)
 }
 
 // MemoryChange is a successful memory write as reported in the tool result,

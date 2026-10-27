@@ -8,6 +8,7 @@ import (
 	"time"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -43,6 +44,10 @@ type subAgents struct {
 	// child copies it before building its approval layer, so later session-rule
 	// changes cannot alter an already-created child.
 	policySnapshot func() approvalPolicy
+	// translator is the parent's host catalog: a sub-agent request carries the
+	// model-facing wording in the same language as the parent's (i18n phase
+	// 1b); nil is the Chinese compatibility fallback.
+	translator i18n.Translator
 }
 
 var _ native.SubAgents = (*subAgents)(nil)
@@ -187,6 +192,10 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 		// The job deadline of the parent (run.deadline_env): the child tells
 		// the model the remaining time per request, like the parent does.
 		DeadlineEnv: s.deadlineEnv,
+		// A child request carries the model-facing wording of the parent's
+		// language (i18n phase 1b).
+		OutputTexts: resolveToolTexts(s.translator),
+		Translator:  s.translator,
 		// The sub-agent model's own output limit (agents.model); 0 leaves it to
 		// the provider's default.
 		MaxOutputTokens: appconfig.MaxOutputTokensFor(rs.models.Main),

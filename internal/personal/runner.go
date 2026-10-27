@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/inhere/suga/internal/diffview"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -175,6 +176,14 @@ type Config struct {
 	// MinimizeOutput tidies tool results before they enter the context
 	// (tools.minimize_output, see tools.OutputConfig.Minimize); nil = off.
 	MinimizeOutput func(call agentcore.ToolCall, content string) (string, bool)
+	// OutputTexts is the model-facing wording of the tool stack (the approved
+	// note and the ref/condensed headers) in the run's language (i18n phase
+	// 1b). The zero value is the historical Chinese text.
+	OutputTexts tools.ModelTexts
+	// Translator is the host catalog the model-facing wording of this package
+	// is read from (deadline hint, budget wrap-up instruction). nil keeps the
+	// Chinese compatibility fallback, byte-identical to the historical text.
+	Translator i18n.Translator
 	// PrefetchTools runs a reply's local read calls ahead concurrently
 	// (tools.parallel_reads, see agentcore.Config.PrefetchTools); nil = off.
 	PrefetchTools func(ctx context.Context, calls []agentcore.ToolCall)
@@ -428,7 +437,7 @@ func New(cfg Config) (*Runner, error) {
 		// result and its OutputInfo.
 		cfg.Tools = rec.observeTools(tools.NewOutput(cfg.Tools, tools.OutputConfig{
 			InlineBytes: cfg.InlineOutputBytes, Spiller: cfg.Spiller, Sanitize: redact.Secrets,
-			Minimize: cfg.MinimizeOutput,
+			Minimize: cfg.MinimizeOutput, Texts: cfg.OutputTexts,
 		}))
 	}
 	if cfg.CompactProvider != nil {
@@ -447,6 +456,7 @@ func New(cfg Config) (*Runner, error) {
 	runner := &Runner{cfg: cfg, heldLocks: make(map[string]*process.SessionLock),
 		steers: make(map[string]*steerInbox), rec: rec}
 	runner.deadline = newDeadlineState(cfg.DeadlineEnv, runner.clock())
+	runner.deadline.tr = cfg.Translator
 	runner.bindVisibility()
 	return runner, nil
 }
@@ -731,7 +741,7 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 			_, priceAvailable = r.cfg.Price(r.cfg.ProviderName, r.cfg.Model)
 		}
 		budget := &budgetHook{settings: settings, meter: meter, usage: usage, priceAvailable: priceAvailable,
-			sessionID: result.SessionID, turnID: result.TurnID}
+			sessionID: result.SessionID, turnID: result.TurnID, tr: r.cfg.Translator}
 		budget.onBudget = func(ctx context.Context, snapshot BudgetSnapshot, reason string) {
 			r.rec.record(ctx, budgetEvent(result.SessionID, result.TurnID, "exceeded", snapshot, reason))
 			if err := emit(ctx, sink, Event{Kind: "budget", SessionID: result.SessionID, TurnID: result.TurnID, RunID: result.RunID, Budget: &snapshot}); err != nil {

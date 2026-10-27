@@ -144,7 +144,7 @@ func memoryTaintedConfirm(mode string, ask MemoryConfirmFunc) MemoryConfirmFunc 
 // newMemoryRuntime wraps the router with the write policy (design "写入记忆")
 // and builds the memory tool. readOnly (--read-only, ACP read_only) and
 // memory.write: off make the tool refuse writes itself.
-func newMemoryRuntime(setup *MemorySetup, policy memoryWritePolicy, readOnly bool, confirm MemoryConfirmFunc, host *memoryHost) *memoryRuntime {
+func newMemoryRuntime(setup *MemorySetup, policy memoryWritePolicy, readOnly bool, confirm MemoryConfirmFunc, host *memoryHost, texts native.MemoryTexts) *memoryRuntime {
 	p := memory.Policy{
 		Tainted:    host.tainted,
 		Sanitize:   redact.Clean,
@@ -166,6 +166,7 @@ func newMemoryRuntime(setup *MemorySetup, policy memoryWritePolicy, readOnly boo
 			return memory.BackendName(b)
 		},
 		ProvenanceFrom: personal.MemoryProvenance,
+		Texts:          texts,
 	})
 	return &memoryRuntime{setup: setup, store: gov, tool: tool}
 }

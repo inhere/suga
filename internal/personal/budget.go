@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 )
@@ -85,6 +86,9 @@ type budgetHook struct {
 	warnedEstimate bool
 	onBudget       func(context.Context, BudgetSnapshot, string)
 	onWarning      func(context.Context, string)
+	// tr is Config.Translator, the catalog the wrap-up instruction is read
+	// from (i18n phase 1b); nil is the Chinese compatibility fallback.
+	tr i18n.Translator
 }
 
 // BeforeModel short-circuits only the first model request of a session turn.
@@ -141,7 +145,7 @@ func (h *budgetHook) AfterModel(ctx context.Context, event *agentcore.ModelEvent
 	if h.onBudget != nil {
 		h.onBudget(ctx, snapshot, reason)
 	}
-	ctrl.RequestWrapUp(reason, budgetWrapUpInstruction(snapshot, reason))
+	ctrl.RequestWrapUp(reason, budgetWrapUpInstruction(h.tr, snapshot, reason))
 	return nil
 }
 
@@ -174,7 +178,7 @@ func (h *budgetHook) afterForegroundChild(ctx context.Context, ctrl *agentcore.C
 	if h.onBudget != nil {
 		h.onBudget(ctx, snapshot, reason)
 	}
-	ctrl.RequestWrapUp(reason, budgetWrapUpInstruction(snapshot, reason))
+	ctrl.RequestWrapUp(reason, budgetWrapUpInstruction(h.tr, snapshot, reason))
 	return nil
 }
 
@@ -207,11 +211,12 @@ func (h *budgetHook) warn(ctx context.Context, message string) {
 	}
 }
 
-func budgetWrapUpInstruction(snapshot BudgetSnapshot, reason string) string {
+func budgetWrapUpInstruction(tr i18n.Translator, snapshot BudgetSnapshot, reason string) string {
+	t := modelTr(tr)
 	if reason == "max_cost_usd" {
-		return fmt.Sprintf("本回合已达到成本预算上限（$%.4f，已用 $%.4f）。不要再调用任何工具，直接根据目前已获得的信息给出报告。报告开头必须如实写明：本次是因成本预算用尽而收尾，不得写成超时或其它原因；然后给出结论、证据（文件:行号）、尚未查清的部分。", snapshot.CostUSD.Limit, snapshot.CostUSD.Used)
+		return fmt.Sprintf(t.T(modelBudgetCost), snapshot.CostUSD.Limit, snapshot.CostUSD.Used)
 	}
-	return fmt.Sprintf("本回合已达到 token 预算上限（%.0f，已用 %.0f）。不要再调用任何工具，直接根据目前已获得的信息给出报告。报告开头必须如实写明：本次是因 token 预算用尽而收尾，不得写成超时或其它原因；然后给出结论、证据（文件:行号）、尚未查清的部分。", snapshot.Tokens.Limit, snapshot.Tokens.Used)
+	return fmt.Sprintf(t.T(modelBudgetTokens), snapshot.Tokens.Limit, snapshot.Tokens.Used)
 }
 
 func (m *runUsageMeter) budgetSnapshot() BudgetSnapshot {

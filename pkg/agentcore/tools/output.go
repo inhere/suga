@@ -51,6 +51,10 @@ type OutputConfig struct {
 	// then spilled and the result carries the tidy text plus its ref, so
 	// nothing is lost; ok=false leaves the result alone.
 	Minimize func(call api.ToolCall, content string) (tidy string, ok bool)
+	// Texts is the model-facing wording of the layer (the approved note and
+	// the ref/condensed headers). The zero value is the historical Chinese
+	// text; a host injects another language's wording (see ModelTexts).
+	Texts ModelTexts
 }
 
 // OutputInfo describes the raw output behind a shortened result. Bytes, Lines
@@ -81,6 +85,7 @@ var _ Lookup = (*Output)(nil)
 
 // NewOutput wraps inner with output governance.
 func NewOutput(inner api.ToolRegistry, cfg OutputConfig) *Output {
+	cfg.Texts = cfg.Texts.resolve()
 	return &Output{inner: inner, cfg: cfg}
 }
 
@@ -125,7 +130,7 @@ func (o *Output) rereadable(name string) bool {
 func (o *Output) ExecuteTool(ctx context.Context, call api.ToolCall) (*api.ToolResult, error) {
 	res, err := o.execute(ctx, call)
 	if res != nil {
-		annotateApproved(ctx, res)
+		annotateApproved(ctx, res, o.cfg.Texts.ApprovedNote)
 	}
 	return res, err
 }
@@ -170,8 +175,7 @@ func (o *Output) execute(ctx context.Context, call api.ToolCall) (*api.ToolResul
 		// the context (which keeps the head) still shows it.
 		// Search first: paging a long output with recall costs one model
 		// call per window (seen in eval: 38 recalls over 4000 lines).
-		header = fmt.Sprintf("[输出 %d 字节 / %d 行已保存为 ref %s；先用 session_search(query, ref) 定位相关行，再用 recall(ref, offset, limit) 读附近窗口，不要逐页读完]",
-			info.Bytes, info.Lines, ref)
+		header = fmt.Sprintf(o.cfg.Texts.OutputSavedRef, info.Bytes, info.Lines, ref)
 	}
 	out.Content = header + "\n" + headTailSnippet(raw, snippet)
 	out.Metadata = withOutputInfo(res.Metadata, info)
@@ -186,11 +190,11 @@ func (o *Output) minimized(ctx context.Context, call api.ToolCall, res *api.Tool
 		raw = o.cfg.Sanitize(raw)
 	}
 	info := OutputInfo{Bytes: len(raw), Lines: countLines(raw), SHA256: sha256Hex(raw), Minimized: true}
-	note := fmt.Sprintf("[已整理输出：原文 %d 字节 / %d 行", info.Bytes, info.Lines)
+	note := fmt.Sprintf(o.cfg.Texts.OutputCondensed, info.Bytes, info.Lines)
 	if o.cfg.Spiller != nil {
 		if ref, err := o.cfg.Spiller.Spill(ctx, call, raw); err == nil {
 			info.Ref = ref
-			note += "已保存为 ref " + ref + "，需要细节时用 session_search(query, ref) 或 recall(ref, offset, limit)"
+			note += fmt.Sprintf(o.cfg.Texts.OutputCondensedRef, ref)
 		} else {
 			slog.Warn("spill tool output", "tool", call.Name, "call_id", call.CallID, "err", err)
 		}

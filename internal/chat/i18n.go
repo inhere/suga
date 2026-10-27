@@ -27,3 +27,12 @@ func (s *chatState) tr() i18n.Translator {
 	}
 	return trOf(s.translator)
 }
+
+// Catalog keys of the model-facing refusals of the PreToolUse hook
+// (catalog/*/model.ini, i18n phase 1b). The denial is a tool error the model
+// reads, so it follows the same language as the rest of the request.
+const (
+	modelHookPreToolError  = "model.hook.pretool_error"
+	modelHookPreToolDenied = "model.hook.pretool_denied"
+	modelHookDeniedDefault = "model.hook.pretool_denied_default"
+)
