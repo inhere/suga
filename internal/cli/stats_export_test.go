@@ -131,6 +131,10 @@ func TestStatsCommand(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.StrContains(t, out, "anthropic/m1")
 		assert.StrContains(t, out, "compactions: 0")
+		// That session has no failed attempt: the row stays hidden, so the table of
+		// an all-success session reads as before.
+		assert.StrNotContains(t, out, "failed_attempts")
+		assert.StrContains(t, out, "cold")
 	})
 	t.Run("bad args", func(t *testing.T) {
 		_, err := runCLI(t, ctx, "inspect", "stats", "--since", "abc")
