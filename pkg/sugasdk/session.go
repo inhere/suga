@@ -316,8 +316,10 @@ func (s *Session) outputContract(raw json.RawMessage) (*outschema.Contract, []by
 	return contract, contract.Raw(), nil
 }
 
-// claimRequest takes the session's single turn slot and installs cancel as
-// the cancellation hook used by Session.Cancel.
+// claimRequest takes the session's single turn slot. requestID (empty for a
+// plain send) is recorded with the slot, so a second Send with the same id
+// reads as ErrRequestRunning while a different turn in flight stays ErrBusy.
+// cancel is installed as the cancellation hook used by Session.Cancel.
 func (s *Session) claimRequest(requestID string, cancel context.CancelFunc) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
