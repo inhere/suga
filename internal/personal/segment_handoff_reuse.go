@@ -313,20 +313,16 @@ func logRebuildDiff(i int, old, cur messagePrint, req *agentcore.GenerateRequest
 		"rebuilt_id", cur.id, "rebuilt_bytes", cur.size, "rebuilt_head", head)
 }
 
-// handoffBodyComplete reports whether body carries every section compactTemplate
-// asks for. It is the reuse path's shape check: a reply that only answers in
-// prose, or that stops after a few sections, is not a handoff package and the
-// old path asks again. A section present with "无" counts. The headings may come
-// in the shapes canonicalHandoffHeadings accepts (###, bold), so a package the
-// model wrote one level deeper is still a package.
-func handoffBodyComplete(body string) bool {
-	return len(handoffMissingSections(body)) == 0
-}
-
-// handoffMissingSections names the sections compactTemplate asks for that body
-// does not carry (nil when it carries all of them): the reuse path's fallback
-// reason spells them out, so a discarded answer says which sections the model
-// dropped (H5).
+// handoffMissingSections is the reuse path's shape check: it names the sections
+// compactTemplate asks for that body does not carry, and returns nil when it
+// carries all of them. A reply that only answers in prose, or that stops after a
+// few sections, is not a handoff package and the old path asks again; a section
+// present with "无" counts. The headings may come in the shapes
+// canonicalHandoffHeadings accepts (###, bold), so a package the model wrote one
+// level deeper is still a package.
+//
+// The fallback reason spells the missing names out, so a discarded answer says
+// which sections the model dropped (H5).
 func handoffMissingSections(body string) []string {
 	seen := make(map[string]bool, 8)
 	for _, s := range splitHandoffSections(canonicalHandoffHeadings(body)) {

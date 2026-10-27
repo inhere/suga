@@ -278,13 +278,11 @@ func TestCanonicalHandoffHeadings(t *testing.T) {
 
 	t.Run("deeper headings satisfy the shape check", func(t *testing.T) {
 		deep := strings.ReplaceAll(reuseBody, "## ", "### ")
-		assert.Eq(t, true, handoffBodyComplete(deep))
 		assert.Eq(t, 0, len(handoffMissingSections(deep)))
 	})
 
 	t.Run("prose does not satisfy the shape check", func(t *testing.T) {
 		body := "当前任务：修解析器\n坐标：src/a.go\n" + handoffSectionProgress + "\n无"
-		assert.Eq(t, false, handoffBodyComplete(body))
 		assert.Eq(t, []string{handoffSectionTask, handoffSectionCoords, handoffSectionVerified,
 			handoffSectionProgress, handoffSectionNext, handoffSectionRefs},
 			handoffMissingSections(body))
