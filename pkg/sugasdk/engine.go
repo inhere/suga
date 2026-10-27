@@ -333,6 +333,61 @@ func (e *Engine) Sessions(ctx context.Context, filter SessionFilter) ([]SessionI
 	return out, nil
 }
 
+// Entry reads one session record and its surrounding window. ref is
+// "<session>/<seq>"; window includes that many records on either side.
+// The sequence is assigned by the append-only store and is never rewritten.
+func (e *Engine) Entry(ctx context.Context, ref string, window int) ([]Entry, error) {
+	if e == nil {
+		return nil, ErrEngineClosed
+	}
+	sessionID, seq, err := parseEntryRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	if window < 0 {
+		return nil, errors.New("sugasdk: entry window must not be negative")
+	}
+	repo, err := e.openStore()
+	if err != nil {
+		return nil, err
+	}
+	defer repo.Close()
+	entries, err := repo.EntriesAround(ctx, sessionID, seq, window)
+	if err != nil {
+		return nil, fmt.Errorf("sugasdk: read entry %q: %w", ref, err)
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.Seq == seq {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("sugasdk: entry %q was not found", ref)
+	}
+	out := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, convertEntry(entry))
+	}
+	return out, nil
+}
+
+// parseEntryRef validates the stable session/sequence reference used by
+// Engine.Entry. Session ids cannot contain '/', so the last separator is safe.
+func parseEntryRef(ref string) (string, int64, error) {
+	ref = strings.TrimSpace(ref)
+	slash := strings.LastIndexByte(ref, '/')
+	if slash <= 0 || slash == len(ref)-1 {
+		return "", 0, fmt.Errorf("sugasdk: invalid entry reference %q", ref)
+	}
+	seq, err := strconv.ParseInt(ref[slash+1:], 10, 64)
+	if err != nil || seq <= 0 {
+		return "", 0, fmt.Errorf("sugasdk: invalid entry sequence in %q", ref)
+	}
+	return ref[:slash], seq, nil
+}
+
 // sessionInDir reports whether cwd is dir or below it (path boundaries, case
 // folded on Windows).
 func sessionInDir(cwd, dir string) bool {
