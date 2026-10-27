@@ -86,6 +86,9 @@ func (s *Store) CollectGarbageByRetention(ctx context.Context, now time.Time, po
 		Interactive:    GCRetentionClassReport{Interactive: true, Retention: policy.Interactive},
 		NonInteractive: GCRetentionClassReport{Retention: policy.NonInteractive},
 	}
+	// Sessions of a host application (origin xhen) belong to that host: this
+	// pass neither removes nor counts them, so a topic the host put aside
+	// survives any retention period. A sub-agent of such a session follows it.
 	// Pinned sessions are explicit host-owned references, like live processes,
 	// and are excluded from both retention classes. Their agent descendants are
 	// protected by selectGCSessions through the same protection map.
