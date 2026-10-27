@@ -87,6 +87,14 @@ func (p *reuseProv) lastMainReq() *agentcore.GenerateRequest {
 	return nil
 }
 
+// toolsJSON encodes a tool list for a byte-for-byte comparison.
+func toolsJSON(t *testing.T, schemas []agentcore.ToolSchema) string {
+	t.Helper()
+	raw, err := json.Marshal(schemas)
+	assert.Require(t, assert.NoErr(t, err))
+	return string(raw)
+}
+
 // handoffReuseAttrs lists the handoff_reuse attr of the session's handoff-package
 // model events, oldest first.
 func handoffReuseAttrs(t *testing.T, repo *store.Store, sessionID string) []string {
@@ -330,7 +338,164 @@ func TestHandoffReuseTruncatedAsksAgain(t *testing.T) {
 	assert.Eq(t, []string{handoffReusePrefix, handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
 }
 
-// The paths outside the scope (H1) keep their request and record no reuse attr:
+// rebuildRunner is a runner whose threshold break needs a context of about the
+// given size: window 20000 with a reserve of 8000 means the break fires above
+// 12000 tokens, well above the small turn used to fill the context and well
+// below the window the reuse request has to fit (H2).
+func rebuildRunner(t *testing.T, repo *store.Store, prov agentcore.Provider) *Runner {
+	t.Helper()
+	return compactRunner(t, repo, prov, nil, func(c *Config) {
+		c.ContextWindow, c.CompactReserveTokens = 30000, 12000
+		c.HandoffReusePrefix = true
+		c.PromptBuilder = staticTestPrompt("STABLE-SYSTEM-PROMPT")
+	})
+}
+
+// A process that resumed the session breaks the segment before it sends any
+// request of its own, so no request exists in memory (H2): the handoff call
+// continues the prefix through the request the main loop is about to send - the
+// previous process's System and Tools byte for byte, its messages as a prefix,
+// then this turn's request and the instruction.
+func TestHandoffReuseRebuildsResumedPrefix(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText("done")
+	}, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	ctx := context.Background()
+	// The first process fills the context to ~12000 tokens: below the break
+	// threshold, so it breaks nothing and its last request is the segment prefix.
+	first := rebuildRunner(t, repo, prov)
+	res, err := first.Run(ctx, RunRequest{Prompt: strings.Repeat("a", 48000)})
+	assert.Require(t, assert.NoErr(t, err))
+	sid := res.SessionID
+	assert.Eq(t, 0, len(compactionEntries(t, repo, sid)))
+	last := prov.lastMainReq()
+	assert.Require(t, assert.NotNil(t, last))
+
+	// A second process resumes the session: this turn's request crosses the
+	// threshold, so the segment break happens before this process sent anything.
+	second := rebuildRunner(t, repo, prov)
+	prompt := strings.Repeat("b", 32000)
+	_, err = second.Run(ctx, RunRequest{SessionID: sid, Prompt: prompt})
+	assert.NoErr(t, err)
+
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(old))
+	assert.Require(t, assert.Eq(t, 1, len(reuse)))
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, sid))
+	got := reuse[0]
+	// System and Tools are exactly what the previous process last sent.
+	assert.Eq(t, last.System, got.System)
+	assert.Eq(t, toolsJSON(t, last.Tools), toolsJSON(t, got.Tools))
+	// Its messages are the request's prefix; the rest is only what came after it
+	// in this turn - the previous answer, this turn's request - and the
+	// instruction.
+	assert.Require(t, assert.True(t, len(got.Messages) > len(last.Messages)))
+	assert.Eq(t, messagesJSON(t, last.Messages), messagesJSON(t, got.Messages[:len(last.Messages)]))
+	rest := got.Messages[len(last.Messages):]
+	assert.Require(t, assert.Eq(t, 3, len(rest)))
+	assert.Eq(t, "assistant", rest[0].Role)
+	assert.Eq(t, agentcore.Message{Role: "user", Content: prompt}, rest[1])
+	instruction := rest[2]
+	assert.Eq(t, "user", instruction.Role)
+	assert.StrContains(t, instruction.Content, reuseMarker)
+	assert.StrContains(t, instruction.Content, compactTemplate)
+	assert.Eq(t, false, strings.Contains(instruction.Content, "# 待压缩的对话"))
+	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+}
+
+// The same process breaks the segment after it sent requests: the request in
+// memory is the base (it carries the hook changes of this turn, such as the
+// deadline hint), so the instruction continues exactly what was sent and not a
+// rebuild of a request this process never sent.
+func TestHandoffReuseContinuesSentRequestInProcess(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText("done")
+	}, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	runner := rebuildRunner(t, repo, prov)
+	ctx := context.Background()
+	// The first turn fills the context to ~12000 tokens: no break.
+	first, err := runner.Run(ctx, RunRequest{Prompt: strings.Repeat("a", 48000)})
+	assert.Require(t, assert.NoErr(t, err))
+	base := prov.lastMainReq()
+	assert.Require(t, assert.NotNil(t, base))
+
+	// The next turn of the same process crosses the threshold, so the segment
+	// breaks before this turn's request is sent.
+	prompt := strings.Repeat("b", 32000)
+	_, err = runner.Run(ctx, RunRequest{SessionID: first.SessionID, Prompt: prompt})
+	assert.NoErr(t, err)
+
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(old))
+	assert.Require(t, assert.Eq(t, 1, len(reuse)))
+	assert.Eq(t, []string{handoffReusePrefix}, handoffReuseAttrs(t, repo, first.SessionID))
+	got := reuse[0]
+	assert.Eq(t, base.System, got.System)
+	assert.Eq(t, toolsJSON(t, base.Tools), toolsJSON(t, got.Tools))
+	assert.Require(t, assert.Eq(t, len(base.Messages)+1, len(got.Messages)))
+	assert.Eq(t, messagesJSON(t, base.Messages), messagesJSON(t, got.Messages[:len(base.Messages)]))
+	// This turn's request is not in the base: the request in memory stops at what
+	// was sent, and the new request stays in the kept tail.
+	assert.Eq(t, false, strings.Contains(messagesJSON(t, got.Messages[:len(got.Messages)-1]), strings.Repeat("b", 64)))
+	instruction := got.Messages[len(got.Messages)-1]
+	assert.StrContains(t, instruction.Content, reuseMarker)
+	assert.Eq(t, agentcore.ToolChoiceNone, got.ToolChoice)
+}
+
+// A host hook may rewrite the request head in a way a rebuilt request cannot
+// reproduce (and the reuse call does not go through the hook chain), so a
+// session with a host hook keeps the old path when there is no request in
+// memory to continue.
+func TestHandoffReuseRebuildRefusedWithHostHook(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText("done")
+	}, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	ctx := context.Background()
+	res, err := rebuildRunner(t, repo, prov).Run(ctx, RunRequest{Prompt: strings.Repeat("a", 48000)})
+	assert.Require(t, assert.NoErr(t, err))
+	sid := res.SessionID
+	// The second process carries a host hook: no rebuild it could trust.
+	second := compactRunner(t, repo, prov, nil, func(c *Config) {
+		c.ContextWindow, c.CompactReserveTokens = 30000, 12000
+		c.HandoffReusePrefix = true
+		c.PromptBuilder = staticTestPrompt("STABLE-SYSTEM-PROMPT")
+		c.Hooks = []agentcore.Hook{agentcore.NopHook{}}
+	})
+	_, err = second.Run(ctx, RunRequest{SessionID: sid, Prompt: strings.Repeat("b", 32000)})
+	assert.NoErr(t, err)
+	reuse, old := prov.handoffCalls()
+	assert.Eq(t, 0, len(reuse))
+	assert.Eq(t, 1, len(old))
+	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackHostHook}, handoffReuseAttrs(t, repo, sid))
+}
+
+// A session that a second process cannot rebuild the request for (a break
+// between turns has no run state) keeps the old path and says why.
+func TestHandoffReuseNoRequestWithoutRebuild(t *testing.T) {
+	repo := openObserveRepo(t)
+	prov := &reuseProv{main: reuseMain, handoff: func(int, *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+		return finalText(reuseBody)
+	}}
+	ctx := context.Background()
+	sid := oneTurn(t, reusedRunner(t, repo, prov))
+	// A new process resumes the session and breaks it between turns: there is no
+	// request and no step to rebuild one for.
+	_, err := reusedRunner(t, repo, prov).Compact(ctx, sid)
+	assert.NoErr(t, err)
+	_, old := prov.handoffCalls()
+	assert.Eq(t, 1, len(old))
+	assert.Eq(t, []string{handoffReuseFallbackPrefix + handoffFallbackNoRequest}, handoffReuseAttrs(t, repo, sid))
+}
+
 // the cross-session handoff and the idle consolidation.
 func TestHandoffReuseOutOfScope(t *testing.T) {
 	repo := openObserveRepo(t)

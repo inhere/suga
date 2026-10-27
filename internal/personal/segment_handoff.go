@@ -60,7 +60,10 @@ type segmentPackage struct {
 // the current segment's package; turnID ("" between turns) lets the current
 // turn's request count before the turn completes - and lets the package name
 // the steering messages of that turn, which are not requests of it (D10).
-func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous string, items []ctxItem, cut, threshold int, scenario string) (segmentPackage, error) {
+// rebuilt is the request the main loop is about to send for the step of the
+// break (nil between turns): the reuse path continues it when this process has
+// sent no request yet.
+func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous string, items []ctxItem, cut, threshold int, scenario string, rebuilt *agentcore.GenerateRequest) (segmentPackage, error) {
 	requests, err := r.recentRequests(ctx, sessionID, turnID, recentRequestCount)
 	if err != nil {
 		return segmentPackage{}, err
@@ -74,7 +77,7 @@ func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous s
 	in := packageInput{previous: previous, dropped: items[:cut], plan: plan, requests: requests, candidates: cands}
 	// The handoff call may continue the segment's last main-loop request
 	// (segment_handoff_reuse.go): tail is what the new segment keeps verbatim.
-	in.reuse, in.reuseFallback = r.prepareHandoffReuse(sessionID, scenario, len(items)-cut)
+	in.reuse, in.reuseFallback = r.prepareHandoffReuse(sessionID, scenario, len(items)-cut, rebuilt)
 	body, err := r.summarize(ctx, scenario, in, threshold)
 	if err != nil {
 		return segmentPackage{}, err

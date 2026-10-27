@@ -329,7 +329,7 @@ func (b *contextBuilder) startSegment(ctx context.Context, state *agentcore.RunS
 		b.r.rec.record(ctx, e)
 		return nil, err
 	}
-	pkg, err := b.r.buildPackage(ctx, b.sessionID, b.turnID, b.summary, items, cut, b.threshold(), scenario)
+	pkg, err := b.r.buildPackage(ctx, b.sessionID, b.turnID, b.summary, items, cut, b.threshold(), scenario, b.reuseBase)
 	if err != nil {
 		return fail(err)
 	}

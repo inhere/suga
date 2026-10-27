@@ -39,7 +39,8 @@ const (
 const (
 	handoffFallbackDisabled        = "disabled"         // compact.handoff_reuse_prefix is off
 	handoffFallbackModelDiffers    = "model_differs"    // the compact model is another model: no shared cache
-	handoffFallbackNoRequest       = "no_request"       // the segment sent no request this process can continue
+	handoffFallbackHostHook        = "host_hook"        // a host hook may rewrite the request head: no byte-identical rebuild
+	handoffFallbackNoRequest       = "no_request"       // the segment request could not be rebuilt either
 	handoffFallbackWindow          = "window"           // the request would not fit the model window
 	handoffFallbackToolCall        = "tool_call"        // the answer asked for tools instead of writing the package
 	handoffFallbackEmpty           = "empty"            // the answer had no text
@@ -70,8 +71,10 @@ func (r *Runner) reuseScopeText(tail int) string {
 // continue the closing segment's last main-loop request. A nil reuse means the
 // old path; reason names why it was not taken ("" when this is not a segment
 // break at all: the cross-session handoff and the idle consolidation are out of
-// scope and record no attr).
-func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int) (*handoffReuse, string) {
+// scope and record no attr). rebuilt is the request the main loop is about to
+// send for the step of the break (contextBuilder.requestBase), used when this
+// process has sent none.
+func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int, rebuilt *agentcore.GenerateRequest) (*handoffReuse, string) {
 	if scenario != scenarioCompact {
 		return nil, ""
 	}
@@ -82,7 +85,20 @@ func (r *Runner) prepareHandoffReuse(sessionID, scenario string, tail int) (*han
 	if r.scenarioModelName(scenario) != r.cfg.Model {
 		return nil, handoffFallbackModelDiffers
 	}
+	// A request this process sent is the more precise base: every hook that may
+	// change the request (the deadline hint) already applied to it. A resumed run
+	// breaks its segment before sending any request, so it continues the prefix
+	// through the rebuilt one instead (H2). A host hook may rewrite the request
+	// head (System, Tools, earlier messages) in a way the rebuild cannot
+	// reproduce, and the reuse call does not go through the hook chain: such a
+	// setup keeps the old path.
 	req := r.rec.prefix.lastRequest(sessionID)
+	if req == nil || len(req.Messages) == 0 {
+		if len(r.cfg.Hooks) > 0 {
+			return nil, handoffFallbackHostHook
+		}
+		req = rebuilt
+	}
 	if req == nil || len(req.Messages) == 0 {
 		return nil, handoffFallbackNoRequest
 	}
@@ -111,14 +127,55 @@ func (ru *handoffReuse) request(instruction string, maxTokens int) *agentcore.Ge
 	return req
 }
 
-// reuseFitsWindow reports whether the reuse request plus the compaction reserve
-// (the room a reply and the next calls need) fits the model's window. The reuse
-// path sends the whole segment context instead of a size-capped transcript, so a
-// closing segment near the window takes the old path.
+// reuseFitsWindow reports whether the reuse request fits the model's window. The
+// reuse path sends the whole segment context instead of a size-capped transcript,
+// so a closing segment that would not fit keeps the old path.
+//
+// The request is the one the main loop is about to send plus the instruction, and
+// the break threshold already sized that one against the window: a break fires
+// above window-reserve, so the context at break time is what the main loop would
+// have sent anyway, and only the instruction (far smaller than the reserve) is
+// added. Asking for the reserve a second time (input + reserve <= window) was
+// false by construction at the very point a break fires, which left every
+// threshold break on the old path with "window" (H2). A provider that still
+// refuses the request fails it and the old path asks again
+// (handoffFallbackError), so the window itself is the limit checked here.
 func (r *Runner) reuseFitsWindow(req *agentcore.GenerateRequest) bool {
-	window, reserve := r.compactLimits()
-	need := tokensOfText(req.System) + tokensOfTools(req.Tools) + tokensOfMessages(req.Messages) + reserve
+	window, _ := r.compactLimits()
+	need := tokensOfText(req.System) + tokensOfTools(req.Tools) + tokensOfMessages(req.Messages)
 	return need <= window
+}
+
+// requestBase rebuilds the request the main loop is about to send for the step
+// of a segment break: System and Tools exactly as the runtime declares them for
+// this step (the same prompt builder and tool registry) and Messages as the
+// composed view before the break - the messages the next request would carry if
+// the segment did not break (H2). What the runtime adds after the builder (a
+// wrap-up instruction) and what a hook appends (the deadline hint) comes after
+// them, so the rebuilt request stays a prefix of what is sent; no production
+// hook rewrites the head, and a configured host hook - which may - refuses the
+// rebuilt base (prepareHandoffReuse). A process that resumed the session has
+// sent no request yet, so the handoff call continues the previous process's
+// prefix through this base. nil when there is nothing to rebuild from: a break
+// between turns has neither a run state nor a prompt builder.
+func (b *contextBuilder) requestBase(ctx context.Context, state *agentcore.RunState, view []agentcore.Message) *agentcore.GenerateRequest {
+	if b.prompt == nil || state == nil || len(view) == 0 {
+		return nil
+	}
+	system, err := b.prompt.BuildSystemPrompt(ctx, state)
+	if err != nil {
+		slog.Warn("rebuild the system prompt of the segment request", "session_id", b.sessionID, "err", err)
+		return nil
+	}
+	var schemas []agentcore.ToolSchema
+	if b.r.cfg.Tools != nil {
+		schemas, err = b.r.cfg.Tools.ListTools(ctx)
+		if err != nil {
+			slog.Warn("rebuild the tool schemas of the segment request", "session_id", b.sessionID, "err", err)
+			return nil
+		}
+	}
+	return &agentcore.GenerateRequest{Model: b.r.cfg.Model, System: system, Tools: schemas, Messages: view}
 }
 
 // handoffBodyComplete reports whether body carries every section compactTemplate
