@@ -61,10 +61,14 @@ type verifyFailedError struct {
 	rounds int
 }
 
+// newVerifyFailedError builds the exit code 5 failure; command is cleaned to one
+// line so a multi-line command cannot look like several messages.
 func newVerifyFailedError(command string, exit, rounds int) *verifyFailedError {
 	return &verifyFailedError{command: oneLineText(termtext.Clean(command)), exit: exit, rounds: rounds}
 }
 
+// Error is the historical Chinese sentence: what ran, how it ended and how many
+// fix rounds it got.
 func (e *verifyFailedError) Error() string {
 	return fmt.Sprintf("%s: %s → exit %d（已回灌 %d 轮）", ErrVerifyFailed.Error(), e.command, e.exit, e.rounds)
 }
