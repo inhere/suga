@@ -524,7 +524,7 @@ ACP 图片输入（图片第二期）：`initialize` 声明 `promptCapabilities.
 - `trace --web` 以只读方式打开会话库：不再创建文件、不再跑迁移，库不存在或未初始化时直接报错（`suga web` 可复用这套只读读层）。
 - `suga run` 文本收尾行与 stream-json `result` 事件补充最后一次模型请求的上下文使用比例；stream-json 同时提供 `context.used`、`context.window` 与可直接显示的 `context.share`。
 - 工具调用参数按工具声明的 JSON schema 校验（类型、枚举、数值/长度/项数范围、`additionalProperties: false` 下的未知字段），并在一次错误结果里列全所有问题（字段名与期望值），模型可以一次改对；可选字段的空占位（`""`、`[]`、`{}`）视为未提供并丢弃，schema 未声明或用了 `anyOf`/`oneOf`/`$ref` 等未建模写法的字段一律放行（MCP 等第三方 schema 写得不严不会被拒绝，只会拒绝 schema 明确说不合法的调用，被拒的调用不执行、该响应的其它调用照常执行）。
-- 长时间前台 `shell_exec` 超过 `tools.shell_background_after` 时转为现有后台任务，保留交接前输出并在任务完成时通知模型；配置为 `0` 可关闭，`tools.shell_timeout_max` 仍负责硬终止。
+- 长时间前台 `shell_exec` 超过 `tools.shell_background_after` 时转为现有后台任务，保留交接前输出并在任务完成时通知模型；前台上限 `tools.shell_timeout_max` 与后台任务上限 `tools.task_timeout_max` 分离（后台默认 1 小时）。
 
 ### 修复
 

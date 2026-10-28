@@ -46,6 +46,8 @@ type Env struct {
 	Interpreters []Interpreter
 	// ShellTimeoutMax caps a shell_exec timeout (tools.shell_timeout_max).
 	ShellTimeoutMax time.Duration
+	// TaskTimeoutMax caps a background shell task (tools.task_timeout_max).
+	TaskTimeoutMax time.Duration
 	// ShellBackgroundAfter is the foreground grace period before a shell is
 	// transferred to the task manager; zero disables transfer.
 	ShellBackgroundAfter time.Duration
@@ -163,6 +165,13 @@ func Catalog() []Spec {
 			if env.ShellTimeoutMax > 0 {
 				t.maxTimeout = env.ShellTimeoutMax
 				t.timeout = min(t.timeout, t.maxTimeout)
+			}
+			taskTimeoutMax := env.TaskTimeoutMax
+			if taskTimeoutMax < t.maxTimeout {
+				taskTimeoutMax = t.maxTimeout
+			}
+			if taskTimeoutMax > 0 {
+				t.taskTimeoutMax = taskTimeoutMax
 			}
 			t.limits = env.ShellLimits
 			t.extraEnv = env.ExtraEnv

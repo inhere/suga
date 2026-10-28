@@ -125,10 +125,13 @@ type Spec struct {
 	Run RunFunc
 	// NoEndNotice: the task reports what matters through Reporter.Notify,
 	// so its end leaves no notice (a Stop hook run).
-	NoEndNotice bool
+	// MaxDuration overrides the manager duration for this task (zero = manager limit).
+	MaxDuration time.Duration
+	// NoEndNotice
 	// Clean turns raw output into text for the file and the tail, one line
 	// at a time (no trailing newline); nil keeps the bytes as they are.
-	Clean func(line []byte) string
+	NoEndNotice bool
+	Clean       func(line []byte) string
 }
 
 // Info is a snapshot of a task.
@@ -299,7 +302,7 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (Info, error) {
 	if spec.Run != nil {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.cancel = cancel
-		m.register(s, t)
+		m.registerWithDuration(s, t, t.info.Started, spec.MaxDuration)
 		go m.runFunc(s, t, ctx, spec.Run)
 		return t.snapshot(), nil
 	}
@@ -324,7 +327,7 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (Info, error) {
 		_ = file.Close()
 		return Info{}, fmt.Errorf("start: %w", serr)
 	}
-	m.register(s, t)
+	m.registerWithDuration(s, t, t.info.Started, spec.MaxDuration)
 	go m.wait(s, t, cmd)
 	return t.snapshot(), nil
 }
@@ -393,11 +396,6 @@ func (m *Manager) Adopt(ctx context.Context, spec Spec, running RunningCommand) 
 	m.registerWithDuration(s, t, started, running.MaxDuration)
 	go m.waitResult(s, t, running.Cmd, running.Wait)
 	return t.snapshot(), nil
-}
-
-// register adds a started task to its session and arms its time limit.
-func (m *Manager) register(s *session, t *task) {
-	m.registerWithDuration(s, t, t.info.Started, 0)
 }
 
 // registerWithDuration uses the shorter of the manager limit and an adopted

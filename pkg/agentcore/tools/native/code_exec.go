@@ -33,6 +33,8 @@ const (
 	// DefaultShellTimeoutMax caps the timeout a call may ask for
 	// (tools.shell_timeout_max).
 	DefaultShellTimeoutMax = 600 * time.Second
+	// DefaultTaskTimeoutMax caps background shell tasks.
+	DefaultTaskTimeoutMax = time.Hour
 	// shellWaitDelay bounds how long Wait keeps reading pipes after the shell
 	// exited or was killed: a background child holding stdout must not hang
 	// the tool.
@@ -117,10 +119,11 @@ func ShellName(explicit string) string { return resolveShell(explicit).name() }
 // transfers a long-running process tree to the task manager without dropping
 // output; the configured maximum remains a hard kill deadline.
 type ShellExecTool struct {
-	workspace  string
-	shell      shellSpec
-	timeout    time.Duration // default per call
-	maxTimeout time.Duration
+	workspace      string
+	shell          shellSpec
+	timeout        time.Duration // default per call
+	maxTimeout     time.Duration
+	taskTimeoutMax time.Duration
 	// backgroundAfter hands a foreground command to tasks instead of killing it;
 	// zero disables the handoff.
 	backgroundAfter time.Duration
@@ -158,6 +161,7 @@ func NewShellExecTool(workspace string, timeout time.Duration) *ShellExecTool {
 		shell:           resolveShell(""),
 		timeout:         timeout,
 		maxTimeout:      DefaultShellTimeoutMax,
+		taskTimeoutMax:  DefaultTaskTimeoutMax,
 		backgroundAfter: DefaultShellBackgroundAfter,
 	}
 }
@@ -170,8 +174,8 @@ func (t *ShellExecTool) Description() string {
 	}
 	desc := fmt.Sprintf("Execute a command with %s in the workspace directory; write %s. "+
 		"Returns stdout, stderr and the exit code; output gathered before a timeout is kept. "+
-		"Default timeout %ds, max %ds. No interactive input: stdin is empty.",
-		t.shell.name(), syntax, int(t.timeout.Seconds()), int(t.maxTimeout.Seconds()))
+		"Default timeout %ds, max %ds; foreground handoff tasks max %s. No interactive input: stdin is empty.",
+		t.shell.name(), syntax, int(t.timeout.Seconds()), int(t.maxTimeout.Seconds()), t.taskTimeoutMax)
 	if t.shell.powershell {
 		desc += " " + PowerShellQuoteAdvice
 		// With an interpreter at hand a script file beats a long single line of
@@ -181,7 +185,7 @@ func (t *ShellExecTool) Description() string {
 		}
 	}
 	if t.tasks != nil && t.backgroundAfter > 0 {
-		desc += fmt.Sprintf(" Foreground commands running longer than %s are transferred to a background task instead of being killed; tools.shell_timeout_max (%s) remains the hard limit.", t.backgroundAfter, t.maxTimeout)
+		desc += fmt.Sprintf(" Foreground commands running longer than %s are transferred to a background task instead of being killed; tools.task_timeout_max (%s) is the hard limit.", t.backgroundAfter, t.taskTimeoutMax)
 	}
 	if !t.limits.Empty() {
 		desc += fmt.Sprintf(" Every run is capped (%s, tools.shell_limits): a process over the memory limit fails its allocation, "+
@@ -214,7 +218,7 @@ func (t *ShellExecTool) Schema() api.ToolSchema {
 				},
 				"timeout": map[string]any{
 					"type":        "integer",
-					"description": fmt.Sprintf("Timeout in seconds (default %d, max %d)", int(t.timeout.Seconds()), int(t.maxTimeout.Seconds())),
+					"description": fmt.Sprintf("Timeout in seconds (default %d, foreground max %d; background max %s)", int(t.timeout.Seconds()), int(t.maxTimeout.Seconds()), t.taskTimeoutMax),
 				},
 			},
 			"required": []any{"command"},
@@ -311,7 +315,7 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	}
 	var hardTimeout = timeout
 	if handoff != nil {
-		hardTimeout = t.maxTimeout
+		hardTimeout = t.taskTimeoutMax
 	}
 	hardTimer := time.NewTimer(hardTimeout)
 	defer hardTimer.Stop()
@@ -336,7 +340,7 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 		partial := foregroundOutput(output, t.maxOut)
 		info, err := t.tasks.Adopt(ctx, tasks.Spec{Kind: "shell", Summary: taskSummary(command),
 			Clean: cleanTaskLine}, tasks.RunningCommand{
-			Cmd: cmd, Tree: tree, Wait: done, Started: start, MaxDuration: t.maxTimeout,
+			Cmd: cmd, Tree: tree, Wait: done, Started: start, MaxDuration: t.taskTimeoutMax,
 			AttachOutput: func(dst io.Writer) { output.attach(dst) },
 		})
 		if err != nil {
@@ -487,7 +491,7 @@ func (t *ShellExecTool) startBackground(ctx context.Context, call api.ToolCall, 
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir, cmd.Env = t.workspace, shellEnv(ctx, t.extraEnv)
 	info, err := t.tasks.Start(ctx, tasks.Spec{Kind: "shell", Summary: taskSummary(command), Cmd: cmd, Clean: cleanTaskLine,
-		Limits: t.limits.tree(), LimitNotice: t.limits.taskLimitNotice})
+		MaxDuration: t.taskTimeoutMax, Limits: t.limits.tree(), LimitNotice: t.limits.taskLimitNotice})
 	if err != nil {
 		return nil, fmt.Errorf("shell_exec: background: %w", err)
 	}

@@ -261,7 +261,17 @@ func rawOutputBytes() int {
 	return gkconfig.Int("tools.max_spill_bytes", native.DefaultRawOutputBytes)
 }
 
-// shellBackgroundAfter is the foreground grace period before shell_exec
+// shellTaskTimeoutMax is tools.task_timeout_max, a bare number of seconds.
+// It is never below the foreground shell cap so a handoff cannot shorten a call.
+func shellTaskTimeoutMax(shellMax time.Duration) time.Duration {
+	n := gkconfig.Int("tools.task_timeout_max", int(native.DefaultTaskTimeoutMax/time.Second))
+	d := time.Duration(n) * time.Second
+	if d < shellMax {
+		return shellMax
+	}
+	return d
+}
+
 // transfers a command to tasks. A bare number is seconds, matching other
 // duration settings; zero deliberately disables the handoff.
 func shellBackgroundAfter() time.Duration {
@@ -468,6 +478,8 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		NetworkProxy:      configuredNetworkProxy(),
 		ShellTimeoutMax: time.Duration(gkconfig.Int("tools.shell_timeout_max",
 			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second,
+		TaskTimeoutMax: shellTaskTimeoutMax(time.Duration(gkconfig.Int("tools.shell_timeout_max",
+			int(native.DefaultShellTimeoutMax/time.Second))) * time.Second),
 		ShellBackgroundAfter: shellBackgroundAfter(),
 		ShellLimits:          shellLimits(),
 		ImageMaxSide:         imageMaxSide(),
