@@ -21,6 +21,10 @@ func TestMain(m *testing.M) {
 	// The tests assert the Chinese UI; auto would follow the machine locale
 	// (English in a bare container). Language tests override it with t.Setenv.
 	_ = os.Setenv("SUGA_LANGUAGE", "zh")
+	// The suite often runs inside a gofer job (gofer exec job ... go test); the job
+	// marker would drop session_message from the expected tool set. Tests that
+	// check the job behavior set it themselves with t.Setenv.
+	_ = os.Unsetenv("GOFER_JOB_ID")
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)

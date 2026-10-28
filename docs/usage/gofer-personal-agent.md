@@ -281,6 +281,16 @@ Suga 的预算是软阈值：普通回合在一次模型请求完成、观察到
 
 Gofer 的 `--max-tokens`/`--max-cost` 是进程外的硬熔断，可能在 Suga 软收尾前直接终止 job，终止时不保证有完整答复或 trace 收尾事件。运维应根据历史缓存命中比例，把 `SUGA_BUDGET_TOKENS`/`SUGA_BUDGET_COST_USD`（或对应 flag）设在 Gofer 硬上限之前，并持续复测；Gofer 的硬上限优先于 Suga 的软收尾。默认给 Gofer job 使用 `scope: turn`，需要限制整个会话生命周期时才选择 `session`。
 
+### gofer job 里默认没有 session_message（tools.session_message.in_gofer_jobs）
+
+Gofer 给 job 注入 `GOFER_JOB_ID`。suga 据此判断“本进程是 job，不是人开着的 chat”：只有 chat 会把自己的进程登记为本地消息端点（`suga send` 与 `session_message` 共用的 `SUGA_HOME/run` 目录），job 跑的是 `suga run`，不登记，所以 job 发给 chat 的消息回不来，模型却会以为能收到回复。因此：
+
+- 进程环境有非空 `GOFER_JOB_ID` 时，`session_message` 不进入 job 的工具表；模型调用它得到拒绝信息（“本次运行在 gofer job 内…”，带下面的开关名），而不是一个莫名的“工具不存在”。job 只跑 `run`，也就是非交互路径，不会弹出审批询问。
+- 设置 `tools.session_message.in_gofer_jobs: true` 后 job 才拿到该工具（仍然只单向：愿意接受“发了没人回”的语义时才打开）。
+- 优先级：`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off` 仍是全局关闭，优先于 `in_gofer_jobs`（即使 `in_gofer_jobs: true` 也不提供）；反过来 `SUGA_SESSION_MESSAGE` 只能关不能开，设为 `on` 等值也不会越过 `in_gofer_jobs`。
+- 不提供 session_message 时，模型若在 gofer job 里需要别人完成任务，正确做法是用 `gofer` 自己的手段（`gofer issue`/`gofer work report`）或把请求写进汇报，而不是让主机上的 chat 会话代办——那条链路本来就不通。
+- 判定只看进程环境，各入口一致：人行着的 chat 不属于 job（一般也没有该变量）；job 拉起的 ACP 服务端同样不登记端点，所以同样拿不到工具。用 gofer job 拉起 chat 做伪终端冒烟这类测试时，应在脚本里清掉 `GOFER_JOB_ID`，否则 chat 会以 job 身份跑、拿不到工具（`scripts/ptysmoke/chat_session_message.py` 即如此处理）。
+
 ### Gofer job 的截止时间提示（run.deadline_env）
 
 Gofer 给有时限的 job 注入环境变量 `GOFER_JOB_DEADLINE`（RFC3339，如 `2026-10-19T23:22:11+08:00`）。把配置键 `run.deadline_env` 设为该变量名（子 agent 也会沿用），每次请求模型前就在消息列表末尾临时附一条时间提示：当前时间与剩余约多少分钟；剩余不足 10%（相对本次运行观察到的最早请求时刻）或不足 5 分钟时改为“即将到达时限：请尽快提交已完成的工作并汇报未完成项”；已过截止时间则说明已超时。该提示只进本次请求（不写库、不进稳定系统提示前缀，前缀缓存不受影响）。配置为空（默认）时不附任何提示；变量不存在或无法按 RFC3339 解析时不报错，只在调试日志记一行。`run`、`chat`、ACP 都读进程环境，主机配置示例：

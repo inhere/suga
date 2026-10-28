@@ -123,6 +123,10 @@ def main():
     write_home(home, args.port, tools_extra="", extra="")
     env = dict(os.environ, SUGA_HOME=home, TERM="xterm", NO_COLOR="1")
     env.pop("SUGA_CONFIG", None)
+    # The two chats stand in for a person's terminals: they are not gofer jobs, so
+    # the job marker of the process that started this smoke must not take
+    # session_message (GOFER_JOB_ID) away from them.
+    env.pop("GOFER_JOB_ID", None)
 
     here = os.path.dirname(os.path.abspath(__file__))
     fake = subprocess.Popen([sys.executable, "-I", os.path.join(here, "fakellm.py"),
