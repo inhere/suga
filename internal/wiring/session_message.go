@@ -33,9 +33,11 @@ type sessionMessenger struct {
 
 // newSessionMessenger returns the messenger tools.session_message needs, or nil
 // when the tool is turned off (tools.session_message.enabled,
-// SUGA_SESSION_MESSAGE=off) or SUGA_HOME cannot be resolved.
+// SUGA_SESSION_MESSAGE=off), when this process runs inside a gofer job without
+// tools.session_message.in_gofer_jobs (a job has no local message endpoint to
+// reply to), or when SUGA_HOME cannot be resolved.
 func newSessionMessenger() native.SessionMessenger {
-	if !axconfig.SessionMessageEnabled() {
+	if !axconfig.SessionMessageAvailable() {
 		return nil
 	}
 	home, err := axconfig.ResolveSugaHome()

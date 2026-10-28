@@ -187,6 +187,9 @@ var configKeyDescriptors = []ConfigKey{
 	// session_message: the tool that lets a model message the other chat sessions
 	// of this SUGA_HOME, and how deep their automatic replies may go.
 	{Pattern: "tools.session_message.enabled", Type: ConfigTypeBool, Writable: true},
+	// in_gofer_jobs: a gofer job registers no local message endpoint, so the tool
+	// stays out of its catalog unless the job asks for it (default false).
+	{Pattern: "tools.session_message.in_gofer_jobs", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.session_message.max_hops", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.approval", Type: ConfigTypeEnum, Writable: true},
 	{Pattern: "tools.max_output_bytes", Type: ConfigTypeInt64, Writable: true},

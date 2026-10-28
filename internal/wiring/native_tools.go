@@ -1,8 +1,11 @@
 package wiring
 
 import (
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+
+	axconfig "github.com/inhere/suga/internal/config"
 )
 
 // writeToolHint says why write tools are off in this runtime and how the
@@ -22,8 +25,8 @@ func writeToolHint(opts Options) string {
 
 // disabledToolHints lists the catalog tools that registry lacks with the hint
 // for each: write tools get the per-entry hint, web_search the missing key,
-// session_message its config switch. Names outside the catalog are not listed:
-// calling them is a plain
+// session_message its config switch (see sessionMessageHint). Names outside the
+// catalog are not listed: calling them is a plain
 // "not found" that does not count as a denial.
 func disabledToolHints(registry *tools.Registry, opts Options) map[string]string {
 	hints := map[string]string{}
@@ -36,7 +39,7 @@ func disabledToolHints(registry *tools.Registry, opts Options) map[string]string
 			continue
 		}
 		if spec.Name == "session_message" {
-			hints[spec.Name] = "该工具已在配置中关闭（tools.session_message.enabled / SUGA_SESSION_MESSAGE）"
+			hints[spec.Name] = sessionMessageHint(opts.Translator)
 			continue
 		}
 		// Building with an empty Env only reads the tool's own metadata.
@@ -45,4 +48,21 @@ func disabledToolHints(registry *tools.Registry, opts Options) map[string]string
 		}
 	}
 	return hints
+}
+
+// sessionMessageHint tells the model why session_message is not registered, in
+// the order the switches apply (config.SessionMessageAvailable): the global
+// switch first, then the gofer job default; the remaining case is a run without
+// a usable SUGA_HOME. The text is model-facing, so it comes from
+// catalog/*/model.ini; zh keeps the historical wording.
+func sessionMessageHint(tr i18n.Translator) string {
+	t := approvalTr(tr)
+	switch {
+	case !axconfig.SessionMessageEnabled():
+		return t.T("model.tool.session_message.disabled")
+	case axconfig.InGoferJob():
+		return t.T("model.tool.session_message.in_gofer_job")
+	default:
+		return t.T("model.tool.session_message.unavailable")
+	}
 }
