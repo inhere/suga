@@ -18,6 +18,8 @@
 
 ### 变更
 
+- sugasdk 默认会话来源改为 `sdk`，SDK 会话按非交互期限参与 retention；不再隐藏或豁免 `origin=xhen` 会话，宿主需长期保留会话时使用 `Engine.Pin`。
+
 - gofer job（进程环境有 `GOFER_JOB_ID`）默认不再向模型提供 `session_message`：job 只跑 `suga run`、不登记本地消息端点，发给 chat 的消息回不来。新增 `tools.session_message.in_gofer_jobs`（默认 `false`）供 job 显式打开；`tools.session_message.enabled: false` 与 `SUGA_SESSION_MESSAGE=off` 仍是全局关闭且优先，`SUGA_SESSION_MESSAGE` 打开也不越过该开关。未提供时调用得到说明原因与开关的拒绝信息（词条在 `internal/i18n/catalog/*/model.ini`，`session_message` 的拒绝文案首次支持英文）。
 
 - 后台 `shell_exec` 任务新增独立上限 `tools.task_timeout_max`（秒数，默认 3600）：自动转后台与显式 `background: true` 均使用它，前台 `timeout` 仍受 `tools.shell_timeout_max` 限制；后台上限小于前台上限时运行时取较大者，配置校验拒绝该组合。
