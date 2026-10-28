@@ -31,6 +31,10 @@ type EngineOptions struct {
 	Model string
 	// Logger receives the engine's own diagnostics (nil = slog.Default()).
 	Logger *slog.Logger
+	// Origin is the session origin recorded by default on sessions this engine
+	// creates; empty uses OriginSDK. Hosts that need longer retention should pin
+	// sessions with Engine.Pin.
+	Origin string
 }
 
 // SessionOptions configures one conversation.
@@ -62,8 +66,8 @@ type SessionOptions struct {
 	// content. nil refuses such writes.
 	MemoryConfirm func(ctx context.Context, req MemoryConfirmRequest) bool
 	// Origin is the session origin recorded on the sessions this engine
-	// creates; empty is "xhen". `suga session list` hides origin xhen sessions by
-	// default (the host lists and keeps them on its own terms).
+	// creates; empty uses the engine origin, then OriginSDK. Hosts that need
+	// longer retention should pin sessions with Engine.Pin.
 	Origin string
 }
 
@@ -252,7 +256,7 @@ type SessionInfo struct {
 
 // SessionFilter narrows Engine.Sessions.
 type SessionFilter struct {
-	// Origin keeps one origin ("xhen", "chat", ...); "all" or empty keeps
+	// Origin keeps one origin ("sdk", "chat", ...); "all" or empty keeps
 	// every one.
 	Origin string
 	// Cwd keeps sessions of this directory and its descendants; empty keeps

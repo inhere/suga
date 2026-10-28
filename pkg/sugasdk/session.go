@@ -22,10 +22,12 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/memory"
 )
 
-// DefaultOrigin is the session origin the SDK records when SessionOptions.Origin
-// is empty: the host application's sessions stay out of the default
-// `suga session list` list.
-const DefaultOrigin = "xhen"
+// OriginSDK is the session origin the SDK records when no origin is configured.
+// Hosts that need longer retention should pin sessions with Engine.Pin.
+const OriginSDK = store.OriginSDK
+
+// DefaultOrigin is kept as a compatibility alias for OriginSDK.
+const DefaultOrigin = OriginSDK
 
 // steerSource is the source recorded on the steers this SDK sends; the trace
 // then shows which front end inserted the message.
@@ -81,7 +83,10 @@ func (e *Engine) OpenSession(ctx context.Context, id string, opts SessionOptions
 	}
 	origin := strings.TrimSpace(opts.Origin)
 	if origin == "" {
-		origin = DefaultOrigin
+		origin = strings.TrimSpace(e.opts.Origin)
+	}
+	if origin == "" {
+		origin = OriginSDK
 	}
 	rt, err := wiring.Open(ctx, wiring.Options{
 		Workspace: abs, RuleCWD: abs, Model: model, AllowWrite: opts.AllowWrite,
@@ -140,7 +145,7 @@ func memoryConfirmAdapter(confirm func(ctx context.Context, req MemoryConfirmReq
 	}
 }
 
-// ID is the persisted session id; `suga session list --origin xhen` lists it.
+// ID is the persisted session id.
 func (s *Session) ID() string { return s.id }
 
 // Workspace is the directory the session's tools work in.

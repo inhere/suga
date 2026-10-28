@@ -19,7 +19,6 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	appconfig "github.com/inhere/suga/internal/config"
-	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -215,7 +214,7 @@ func TestEngineEndToEnd(t *testing.T) {
 		for _, info := range list {
 			if info.ID == session.ID() {
 				found = true
-				assert.Eq(t, store.OriginXhen, info.Origin)
+				assert.Eq(t, OriginSDK, info.Origin)
 				assert.Eq(t, workspace, info.Cwd)
 			}
 		}
@@ -232,16 +231,6 @@ func TestEngineEndToEnd(t *testing.T) {
 		elsewhere, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: t.TempDir()})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, elsewhere, 0)
-	})
-	t.Run("suga's default session list hides it", func(t *testing.T) {
-		dbPath, err := appconfig.ResolveCoreStorePath()
-		assert.Require(t, assert.NoErr(t, err))
-		repo, err := store.Open(dbPath)
-		assert.Require(t, assert.NoErr(t, err))
-		defer repo.Close()
-		model, err := repo.GetSession(ctx, session.ID())
-		assert.Require(t, assert.NoErr(t, err))
-		assert.True(t, store.HostManagedSession(model), "origin xhen sessions are host managed")
 	})
 	t.Run("the transcript is searchable", func(t *testing.T) {
 		hits, err := engine.Search(ctx, "echo", 10)
@@ -277,16 +266,16 @@ func TestOpenSessionNewID(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	defer engine.Close()
 
-	session, err := engine.OpenSession(ctx, "xhen-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
+	session, err := engine.OpenSession(ctx, "sdk-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
 	assert.Require(t, assert.NoErr(t, err))
 	defer session.Close()
-	assert.Eq(t, "xhen-topic-1", session.ID())
+	assert.Eq(t, "sdk-topic-1", session.ID())
 	_, err = session.Send(ctx, Prompt{Text: "hi"}, nil)
 	assert.Require(t, assert.NoErr(t, err))
 
 	// A second OpenSession with the same id continues it instead of failing.
-	again, err := engine.OpenSession(ctx, "xhen-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
+	again, err := engine.OpenSession(ctx, "sdk-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
 	assert.Require(t, assert.NoErr(t, err))
 	defer again.Close()
-	assert.Eq(t, "xhen-topic-1", again.ID())
+	assert.Eq(t, "sdk-topic-1", again.ID())
 }
