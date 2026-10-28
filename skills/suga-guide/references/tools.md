@@ -135,7 +135,7 @@ suga session undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [-
 
 ## 附加目录（`--add-dir`）
 
-- `run` 与 `chat` 支持可重复参数 `--add-dir <绝对目录>[:ro|:rw]`（默认 `:ro`）；环境变量 `SUGA_ADD_DIRS` 可再加（各项用系统的路径列表分隔符分隔，Windows 是 `;`，适合 job runner 透传）。
+- `run` 与 `chat` 支持可重复参数 `--add-dir <绝对目录>[:ro|:rw]`（默认 `:ro`）；环境变量 `SUGA_ADD_DIRS` 可再加，条目在所有平台都用逗号分隔（路径含逗号时请使用可重复的 `--add-dir` 参数），例如 `/path/a:ro,/path/b:rw`。
 - `:ro` 目录加入本会话的只读根（与 `tools.read_roots` 并列），适合 `cwd` 落在某个子仓、却要读项目根或兄弟模块文档的场景。
 - `:rw` 目录同时允许 `file_write`、`file_edit`、`file_remove` 写入，审批、危险删除拦截、拒绝工作区根/自带 `.git`/主目录等规则与工作区完全一致；`shell_exec` 的 cwd 仍是工作区。
 - 目录写入会话元数据（`add_dirs`），`--resume` / `--session-id` 续接沿用，同路径重给时以本次的权限为准。

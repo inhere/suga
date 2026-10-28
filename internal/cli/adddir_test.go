@@ -144,7 +144,7 @@ func TestRunAddDirs(t *testing.T) {
 		}, sessionAddDirs(t, "adddir-cli-1"))
 	})
 	t.Run("SUGA_ADD_DIRS adds directories and warns about a bad entry", func(t *testing.T) {
-		t.Setenv("SUGA_ADD_DIRS", strings.Join([]string{rw, filepath.Join(ro, "missing")}, string(filepath.ListSeparator)))
+		t.Setenv("SUGA_ADD_DIRS", strings.Join([]string{rw, filepath.Join(ro, "missing")}, ","))
 		_, stderr, err := runAddDirs(t, "--session-id", "adddir-cli-2", "--allow-write")
 		assert.NoErr(t, err)
 		assert.StrContains(t, stderr, "warning: SUGA_ADD_DIRS: skipping")
