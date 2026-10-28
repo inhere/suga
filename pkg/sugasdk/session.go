@@ -26,9 +26,6 @@ import (
 // Hosts that need longer retention should pin sessions with Engine.Pin.
 const OriginSDK = store.OriginSDK
 
-// DefaultOrigin is kept as a compatibility alias for OriginSDK.
-const DefaultOrigin = OriginSDK
-
 // steerSource is the source recorded on the steers this SDK sends; the trace
 // then shows which front end inserted the message.
 const steerSource = "sdk"

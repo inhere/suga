@@ -152,8 +152,7 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		return true
 	}
 	// otherDirs counts the sessions the default scope hides: an empty result
-	// names their number, so a person notices the directory may be wrong. The
-	// host-managed ones are named separately instead of twice.
+	// names their number, so a person notices the directory may be wrong.
 	otherDirs := 0
 	if sameDirScope {
 		for _, s := range all {

@@ -188,7 +188,7 @@ func TestEngineEndToEnd(t *testing.T) {
 		card, err := session.Card(ctx)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, session.ID(), card.SessionID)
-		assert.Eq(t, DefaultOrigin, card.Origin)
+		assert.Eq(t, OriginSDK, card.Origin)
 		assert.Eq(t, 1, card.Turns)
 		assert.True(t, card.Usage.InputTokens > 0)
 		assert.StrNotContains(t, card.State, "running")
@@ -208,7 +208,7 @@ func TestEngineEndToEnd(t *testing.T) {
 	})
 
 	t.Run("Sessions lists the host's session by origin", func(t *testing.T) {
-		list, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin})
+		list, err := engine.Sessions(ctx, SessionFilter{Origin: OriginSDK})
 		assert.Require(t, assert.NoErr(t, err))
 		var found bool
 		for _, info := range list {
@@ -224,11 +224,11 @@ func TestEngineEndToEnd(t *testing.T) {
 		assert.Len(t, other, 0)
 	})
 	t.Run("Sessions filters by directory", func(t *testing.T) {
-		here, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: workspace})
+		here, err := engine.Sessions(ctx, SessionFilter{Origin: OriginSDK, Cwd: workspace})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, here, 1)
 		assert.Eq(t, session.ID(), here[0].ID)
-		elsewhere, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: t.TempDir()})
+		elsewhere, err := engine.Sessions(ctx, SessionFilter{Origin: OriginSDK, Cwd: t.TempDir()})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, elsewhere, 0)
 	})
