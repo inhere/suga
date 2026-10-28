@@ -247,9 +247,9 @@ func (t *ShellExecTool) callTimeout(args map[string]any) time.Duration {
 	if !ok || secs <= 0 {
 		return t.timeout
 	}
-	d := time.Duration(secs * float64(time.Second))
-	if d > t.maxTimeout {
-		return t.maxTimeout
+	d, ok := api.DurationFromSeconds(secs, t.maxTimeout)
+	if !ok {
+		return t.timeout
 	}
 	return d
 }

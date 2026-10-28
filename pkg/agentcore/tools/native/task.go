@@ -161,7 +161,9 @@ func (t *TaskTool) output(sid, id string, args map[string]any) (string, error) {
 func (t *TaskTool) wait(ctx context.Context, sid, id string, args map[string]any) (string, error) {
 	timeout := defaultTaskWait
 	if n, ok := numberArg(args["timeout"]); ok && n > 0 {
-		timeout = min(time.Duration(n*float64(time.Second)), t.maxWait)
+		if d, valid := api.DurationFromSeconds(n, t.maxWait); valid {
+			timeout = d
+		}
 	}
 	info, how, err := t.m.Wait(ctx, sid, id, timeout)
 	if err != nil {

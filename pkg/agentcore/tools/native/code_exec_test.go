@@ -35,6 +35,9 @@ func TestShellExecCallTimeout(t *testing.T) {
 	t.Run("clamped to max", func(t *testing.T) {
 		assert.Eq(t, 10*time.Second, tool.callTimeout(map[string]any{"timeout": float64(9999)}))
 	})
+	t.Run("huge value is clamped without overflow", func(t *testing.T) {
+		assert.Eq(t, 10*time.Second, tool.callTimeout(map[string]any{"timeout": float64(12000000031)}))
+	})
 }
 
 func TestShellExecRequiresCommand(t *testing.T) {
