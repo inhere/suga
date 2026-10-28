@@ -47,8 +47,8 @@ func (t *hostStubTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 	return &api.ToolResult{CallID: call.CallID, Name: t.name, Content: "host-ok:" + t.name}, nil
 }
 
-// openWithExtraTools opens a runtime with the given host tools the way a host
-// (e.g. xhen) does: one provider from the configuration, a fresh workspace.
+// openWithExtraTools opens a runtime with the given host tools: one provider
+// from the configuration and a fresh workspace.
 func openWithExtraTools(t *testing.T, extra ...api.Tool) (*Runtime, error) {
 	t.Helper()
 	setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k"}})

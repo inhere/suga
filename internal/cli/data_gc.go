@@ -49,7 +49,7 @@ func newDataGCCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	cmd.SetOutput(stderr)
 	cmd.StringVar(&olderThan, "older-than", "", "remove sessions not updated within this age, e.g. 30d or 12h")
 	cmd.BoolVar(&apply, "apply", false, "delete for real (default: only list what would be removed)")
-	cmd.BoolVar(&retention, "retention", false, "remove by origin class: gc.retention.interactive for chats, gc.retention.noninteractive for run/ACP sessions (sessions of a host application keep their own lifecycle)")
+	cmd.BoolVar(&retention, "retention", false, "remove by origin class: gc.retention.interactive for chats, gc.retention.noninteractive for run/ACP/SDK sessions")
 	return cmd
 }
 
@@ -313,11 +313,6 @@ func writeRetentionReport(out io.Writer, report store.GCRetentionReport) {
 			name = cliText(tr, "cli.data.retention.interactive")
 		}
 		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.class", map[string]any{"name": name, "retention": humanDuration(class.Retention), "sessions": len(class.Sessions), "entries": class.Entries, "bytes": humanBytes(class.EstimatedBytes)}))
-	}
-	if n := len(report.HostManaged); n > 0 {
-		// Host-managed sessions (origin xhen) are not cleaned by period: the host
-		// decides how long a topic lives. An explicit --older-than still removes one.
-		fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.host", map[string]any{"count": n}))
 	}
 	fmt.Fprintf(out, "%s\n", cliText(tr, "cli.data.retention.summary", map[string]any{
 		"verb":     gcRemovalVerb(tr, report.Applied),

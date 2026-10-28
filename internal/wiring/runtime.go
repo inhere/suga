@@ -32,9 +32,7 @@ type Options struct {
 	RuleCWD   string
 	Model     string
 	// SessionOrigin is the meta.origin an embedded host records on the sessions
-	// it creates (e.g. personal.OriginXhen for xhen): its sessions then stay out
-	// of the default `suga session list` list and of gc --retention. Empty keeps the
-	// entry point's own origin (chat, run, ACP).
+	// it creates; empty keeps the entry point's own origin (chat, run, ACP).
 	SessionOrigin string
 	// Thinking overrides the main model's thinking level (--thinking).
 	Thinking string
@@ -49,8 +47,7 @@ type Options struct {
 	PreferredTools []PreferredToolStatus
 	// MCPConfigs are Claude-style config files read by OpenCLI into Servers.
 	MCPConfigs []string
-	// ExtraTools are the host's in-process tools (a program embedding suga, e.g.
-	// xhen): Open registers them next to the built-in ones of the main session,
+	// ExtraTools are the host's in-process tools (a program embedding suga): Open
 	// so they are in the tool table, the manifest and tool_search, and
 	// tools.disabled removes them like any other tool. A name a built-in or MCP
 	// tool already has (or one the runtime registers itself, see

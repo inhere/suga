@@ -9,9 +9,8 @@ import (
 	"github.com/inhere/suga/internal/personal"
 )
 
-// TestOptionsSessionOrigin: an embedded host declares the origin its sessions
-// get through wiring.Options.SessionOrigin (xhen uses OriginXhen). Without one,
-// each entry point keeps its own origin.
+// TestOptionsSessionOrigin: an embedding host can declare a session origin through
+// wiring.Options.SessionOrigin. Without one, each entry point keeps its own origin.
 func TestOptionsSessionOrigin(t *testing.T) {
 	resetConfig(t)
 	setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k"}})
@@ -26,9 +25,9 @@ func TestOptionsSessionOrigin(t *testing.T) {
 	}
 
 	t.Run("the host origin overrides the entry point default", func(t *testing.T) {
-		rt := openCLI(t, Options{SessionOrigin: personal.OriginXhen})
-		assert.Eq(t, personal.OriginXhen, rt.Runner.SessionOrigin(personal.OriginRun))
-		assert.Eq(t, personal.OriginXhen, rt.Runner.SessionOrigin(personal.OriginChat))
+		rt := openCLI(t, Options{SessionOrigin: personal.OriginSDK})
+		assert.Eq(t, personal.OriginSDK, rt.Runner.SessionOrigin(personal.OriginRun))
+		assert.Eq(t, personal.OriginSDK, rt.Runner.SessionOrigin(personal.OriginChat))
 	})
 	t.Run("without one the entry point keeps its own", func(t *testing.T) {
 		rt := openCLI(t, Options{})

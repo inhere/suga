@@ -11,9 +11,9 @@ import (
 )
 
 // Session card: a read-only snapshot of where one session stands. A host that
-// keeps one session per topic (xhen's topic cards) needs the latest handoff or
-// compaction summary, the open steps of the plan, the cumulative usage and the
-// activity times without opening - let alone continuing - the session.
+// keeps one session per topic needs the latest handoff or compaction summary, the
+// open steps of the plan, the cumulative usage and the activity times without opening
+// - let alone continuing - the session.
 
 // The kinds of summary SessionCard.LatestSummary can come from.
 const (

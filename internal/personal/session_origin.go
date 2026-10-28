@@ -17,9 +17,7 @@ const (
 	OriginRun   = store.OriginRun
 	OriginACP   = store.OriginACP
 	OriginAgent = store.OriginAgent
-	// OriginXhen is the origin of a session a host application (xhen) created
-	// in the shared home: the host owns its lifecycle.
-	OriginXhen = store.OriginXhen
+	OriginSDK   = store.OriginSDK
 )
 
 // SessionOrigin returns the origin to record on a session this runner creates:
