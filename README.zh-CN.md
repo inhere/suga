@@ -131,7 +131,7 @@ providers:
 - **审批**：`tools.approval: ask` 时写/shell 前询问：`y` 一次，`a`/`d` 对同一范围（命令前缀、目录、路径）本会话允许或拒绝，可选写回规则文件；递归删除根目录、工作区等危险命令总要手动输入 `yes`。
 - **回滚改动**：`file_write`/`file_edit`/`file_remove` 改文件前自动快照；chat 里 `:checkpoints` 查看、`:undo [N] [force]` 回滚，CLI 用 `suga session undo <session>`；`shell_exec` 的改动只列出、不回滚（`tools.snapshots.*`）。
 - **审批规则**：`tools.approval_rules` 从 `$SUGA_HOME/approval-rules.yaml` 与 `<workspace>/.suga/approval-rules.yaml` 读取 `allow`/`ask`/`deny` 规则（工具、命令与路径 glob）；取最强命中，项目级 `allow` 需 `project_trust`，规则不会放开受保护路径（`$SUGA_HOME`、`.suga/`、`.git/`）。
-- **目录**：`--add-dir <绝对目录>[:ro|:rw]` / `SUGA_ADD_DIRS` 追加授权目录；chat 中越界访问会询问 `[r]/[w]/[n]`。
+- **目录**：`--add-dir <绝对目录>[:ro|:rw]` / `SUGA_ADD_DIRS` 追加授权目录；`SUGA_ADD_DIRS` 在所有平台都用逗号分隔（路径含逗号时请改用可重复的 `--add-dir` 参数）；chat 中越界访问会询问 `[r]/[w]/[n]`。
 - **只读根**：自动识别依赖源码缓存与 idev-std 目录（`tools.dependency_roots`、`tools.standards_roots`），也可用 `tools.read_roots` 显式配置。
 - **后台与监听任务**：`shell_exec` 带 `background: true` 后台运行；加 `every` / `watch_paths` 变成监听，结果变化时通知模型。
 - **大输出**：超过 `tools.max_output_bytes` 的结果外置为 ref；shell 测试/构建输出先按输出规则精简（可在 `output-rules.yaml` 定制）。

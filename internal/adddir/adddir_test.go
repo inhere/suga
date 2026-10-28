@@ -82,13 +82,13 @@ func TestParseEnv(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 
 	t.Run("entries are separated and keep their modes", func(t *testing.T) {
-		value := strings.Join([]string{a, b + ":rw"}, string(os.PathListSeparator))
+		value := strings.Join([]string{a, b + ":rw"}, ",")
 		dirs, warnings := ParseEnv(value)
 		assert.Empty(t, warnings)
 		assert.Eq(t, []Dir{{Path: a, Source: SourceEnv}, {Path: b, Writable: true, Source: SourceEnv}}, dirs)
 	})
 	t.Run("a bad entry warns and is skipped", func(t *testing.T) {
-		value := strings.Join([]string{a, "relative", filepath.Join(b, "missing"), b + ":rw"}, string(os.PathListSeparator))
+		value := strings.Join([]string{a, "relative", filepath.Join(b, "missing"), b + ":rw"}, ",")
 		dirs, warnings := ParseEnv(value)
 		assert.Eq(t, []Dir{{Path: a, Source: SourceEnv}, {Path: b, Writable: true, Source: SourceEnv}}, dirs)
 		assert.Eq(t, 2, len(warnings))
@@ -101,17 +101,22 @@ func TestParseEnv(t *testing.T) {
 		assert.Empty(t, dirs)
 		assert.Empty(t, warnings)
 	})
-}
-
-func TestSplitEnvList(t *testing.T) {
-	t.Run("a colon separator keeps a :ro/:rw suffix", func(t *testing.T) {
-		assert.Eq(t, []string{"/a:ro", "/b", "/c:rw"}, splitEnvList("/a:ro:/b:/c:rw", ":"))
+	t.Run("empty entries and surrounding whitespace are ignored", func(t *testing.T) {
+		dirs, warnings := ParseEnv(" ,  " + a + " :ro , , " + b + ":rw  ")
+		assert.Empty(t, warnings)
+		assert.Eq(t, []Dir{{Path: a, Source: SourceEnv}, {Path: b, Writable: true, Source: SourceEnv}}, dirs)
 	})
-	t.Run("a semicolon separator keeps Windows drives", func(t *testing.T) {
-		assert.Eq(t, []string{`D:\x`, `C:\y:rw`}, splitEnvList(`D:\x;C:\y:rw`, ";"))
+	t.Run("a single entry is accepted", func(t *testing.T) {
+		dirs, warnings := ParseEnv("  " + a + "  ")
+		assert.Empty(t, warnings)
+		assert.Eq(t, []Dir{{Path: a, Source: SourceEnv}}, dirs)
 	})
-	t.Run("a directory named ro is not glued", func(t *testing.T) {
-		assert.Eq(t, []string{"ro", "/a"}, splitEnvList("ro:/a", ":"))
+	t.Run("Windows drive colons stay inside comma-separated entries", func(t *testing.T) {
+		dirs, warnings := ParseEnv(`C:\a:rw,D:\b`)
+		assert.Empty(t, dirs)
+		assert.Eq(t, 2, len(warnings))
+		assert.StrContains(t, warnings[0], `C:\\a:rw`)
+		assert.StrContains(t, warnings[1], `D:\\b`)
 	})
 }
 
