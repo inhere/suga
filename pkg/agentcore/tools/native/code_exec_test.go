@@ -132,6 +132,37 @@ func TestForegroundShellTransfersOutputToTask(t *testing.T) {
 	assert.StrContains(t, string(data), "before")
 	assert.StrContains(t, string(data), "after")
 }
+
+func TestShellBackgroundUsesTaskTimeout(t *testing.T) {
+	dir := t.TempDir()
+	m := tasks.NewManager(tasks.Config{Limits: tasks.Limits{MaxDuration: 5 * time.Second}, Output: func(sid, id string) (string, string, error) {
+		return filepath.Join(dir, id+".txt"), "out:" + sid + ":" + id, nil
+	}})
+	t.Cleanup(m.Close)
+	shell := NewShellExecTool(t.TempDir(), 100*time.Millisecond)
+	shell.SetTasks(m)
+	shell.maxTimeout = 100 * time.Millisecond
+	shell.taskTimeoutMax = 250 * time.Millisecond
+	shell.backgroundAfter = 20 * time.Millisecond
+	command := "sleep 2"
+	if runtime.GOOS == "windows" {
+		command = "Start-Sleep -Seconds 2"
+	}
+	ctx := api.WithSessionID(context.Background(), "s1")
+	res, err := shell.Execute(ctx, api.ToolCall{CallID: "c", Name: shell.Name(), Arguments: map[string]any{"command": command}})
+	assert.Require(t, assert.NoErr(t, err))
+	info, outcome, err := m.Wait(ctx, "s1", res.Metadata["task_id"].(string), 2*time.Second)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, tasks.WaitEnded, outcome)
+	assert.Eq(t, tasks.TimedOut, info.Status)
+
+	res, err = shell.Execute(ctx, api.ToolCall{CallID: "c2", Name: shell.Name(), Arguments: map[string]any{"command": command, "background": true}})
+	assert.Require(t, assert.NoErr(t, err))
+	info, outcome, err = m.Wait(ctx, "s1", res.Metadata["task_id"].(string), 2*time.Second)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, tasks.WaitEnded, outcome)
+	assert.Eq(t, tasks.TimedOut, info.Status)
+}
 func TestCommandEnv(t *testing.T) {
 	got := commandEnv([]string{"PATH=/bin", "SUGA_HOME=/h", "suga_config=/c", "SUGA_MODEL=m", "SUGA_HOOKS=off", "SUGA_HOMEX=1"})
 	assert.Eq(t, []string{"PATH=/bin", "SUGA_HOOKS=off", "SUGA_HOMEX=1"}, got)

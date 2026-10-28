@@ -158,8 +158,9 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `agents.nudge` | `on` | 收工检查（作用于主 agent 的回合）：`on`/`off`。回合正常结束后按规则的种类判断是否提前收工——`unverified_write`：改动后没有验证（本回合最后一次成功的 `file_edit`/`file_write`/`file_remove` 之后，没有 check 工具的命令命中规则 `check_command` 的调用）；`plan_open`：会话计划还有 pending/in_progress 项；`promise`：结尾承诺继续却停下（最后一条消息无工具调用，末尾约 300 字符命中承诺句式，以问句结尾不算）。规则能用 `nudge-rules.yaml` 调整（见下方「收工检查规则」）。`run` 注入 `[收工检查]` 回合推回（按种类限额：promise 最多 2 次，`unverified_write` 与 `plan_open` 合计最多 1 次，`--verify` 时这两种跳过），`chat` 只显示一行灰色提示，ACP 只写 trace（`nudge` 事件带规则名与 kind）。回合出错/yield/取消/收尾时不检查 |
 | `tools.shell` | `""`（Windows：pwsh 优先，否则 powershell；其它：sh） | `shell_exec` 使用的 shell（命令名或路径） |
 | `tools.interpreters` | 自动探测 | 启动时探测 PATH 上的脚本解释器（默认候选 `python3`、`python`、`node`）：每进程探测一次并缓存（`--version`，2 秒超时），命中的写进环境段（可写模式）并提示优先写脚本执行。`false`（或 `off`）关闭；也可给名称或绝对路径列表，如 `[python, C:\Python312\python.exe]`（绝对路径按你的选择只校验 `--version`）。Windows 上自动探测会跳过 `%LOCALAPPDATA%\Microsoft\WindowsApps` 下的应用商店别名（运行只会跳商店或不出输出版本），商店包自身的安装目录（`C:\Program Files\WindowsApps\...`）不受影响 |
-| `tools.shell_timeout_max` | `600` | `shell_exec` 单次 `timeout` 的上限秒数（单次默认 120） |
-| `tools.shell_background_after` | `120s` | 前台 `shell_exec` 超过此时长后转为后台任务并保留已输出；`0` 关闭转后台；`tools.shell_timeout_max` 仍是硬上限 |
+| `tools.shell_timeout_max` | `600` | `shell_exec` 前台单次 `timeout` 的上限秒数（单次默认 120） |
+| `tools.task_timeout_max` | `3600` | 后台 `shell_exec` 任务的硬上限秒数；不能小于 `tools.shell_timeout_max` |
+| `tools.shell_background_after` | `120s` | 前台 `shell_exec` 超过 `tools.shell_background_after` 后转为后台任务；前台硬上限是 `tools.shell_timeout_max`，后台硬上限是 `tools.task_timeout_max`。 |
 | `tools.shell_limits.memory` | `4GiB` | 一次 `shell_exec` 与它整棵进程树的内存上限（`2GiB`、`512MiB` 或字节数）；`0`/`off` 不限。Windows 为 Job Object 的单进程与整树提交上限，Unix 为 `RLIMIT_DATA` |
 | `tools.shell_limits.processes` | `256` | 进程树同时可有的进程数（Windows `ActiveProcessLimit`）；`0` 不限。Unix 为 `RLIMIT_NPROC`，按用户计数，suga 取「当前用户进程数 + 该值」，无 `/proc` 的 Unix 不生效 |
 | `tools.shell_limits.cpu_time` | 不限 | 单进程 CPU 时间上限（如 `10m` 或秒数，Windows `PerProcessUserTimeLimit`、Unix `RLIMIT_CPU`）；`0` 不限。Unix 上被它杀死时通常没有输出痕迹，结果里可能只有退出码（见 `references/tools.md`） |

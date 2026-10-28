@@ -206,6 +206,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.shell", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.shell_timeout_max", Type: ConfigTypeInt, Writable: true},
+	{Pattern: "tools.task_timeout_max", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.shell_background_after", Type: ConfigTypeDuration, Writable: true},
 	// tools.shell_limits: the memory, process count and CPU time a shell_exec run
 	// and its process tree may use (0 = that limit off, off = all off).
@@ -541,6 +542,27 @@ func ValidateConfigKey(key string) error {
 	if err != nil {
 		return err
 	}
+	if key == "tools.shell_timeout_max" || key == "tools.task_timeout_max" {
+		if raw := gkconfig.Get(key); raw != nil {
+			n, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(raw)), 10, 64)
+			if err != nil || n < 1 {
+				return fmt.Errorf("%s must be a whole number >= 1", key)
+			}
+			front := int64(gkconfig.Int("tools.shell_timeout_max", 600))
+			if key == "tools.task_timeout_max" && n < front {
+				return fmt.Errorf("%s must be at least tools.shell_timeout_max (%d seconds)", key, front)
+			}
+			if key == "tools.shell_timeout_max" {
+				if taskRaw := gkconfig.Get("tools.task_timeout_max"); taskRaw != nil {
+					task, taskErr := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(taskRaw)), 10, 64)
+					if taskErr == nil && task < n {
+						return fmt.Errorf("tools.task_timeout_max must be at least %s (%d seconds)", key, n)
+					}
+				}
+			}
+		}
+	}
+
 	if descriptor.Reader == "" {
 		if !IsSimpleConfigType(descriptor.Type) {
 			return fmt.Errorf("%s has no typed reader; semantic validation is not available", key)
