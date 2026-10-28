@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -162,7 +161,7 @@ func (t *TaskTool) output(sid, id string, args map[string]any) (string, error) {
 func (t *TaskTool) wait(ctx context.Context, sid, id string, args map[string]any) (string, error) {
 	timeout := defaultTaskWait
 	if n, ok := numberArg(args["timeout"]); ok && n > 0 {
-		if d, valid := agentcore.DurationFromSeconds(n, t.maxWait); valid {
+		if d, valid := api.DurationFromSeconds(n, t.maxWait); valid {
 			timeout = d
 		}
 	}

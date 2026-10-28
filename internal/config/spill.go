@@ -7,7 +7,7 @@ import (
 	"time"
 
 	gkconfig "github.com/gookit/config/v2"
-	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 )
 
 // Spill policy defaults and the accepted values (design: Spill 配额、压缩与透明
@@ -167,7 +167,7 @@ func parseSpillDuration(raw any) (time.Duration, error) {
 		if err != nil {
 			return 0, fmt.Errorf("want a duration like \"7d\" or \"36h\", got %q", text)
 		}
-		if d, ok := agentcore.DurationFromSeconds(value*24*60*60, 0); ok {
+		if d, ok := api.DurationFromSeconds(value*24*60*60, 0); ok {
 			return d, nil
 		}
 		return 0, fmt.Errorf("duration exceeds maximum")

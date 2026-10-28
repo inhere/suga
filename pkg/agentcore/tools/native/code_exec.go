@@ -21,7 +21,6 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"golang.org/x/text/encoding/simplifiedchinese"
 
-	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
 )
 
@@ -248,7 +247,7 @@ func (t *ShellExecTool) callTimeout(args map[string]any) time.Duration {
 	if !ok || secs <= 0 {
 		return t.timeout
 	}
-	d, ok := agentcore.DurationFromSeconds(secs, t.maxTimeout)
+	d, ok := api.DurationFromSeconds(secs, t.maxTimeout)
 	if !ok {
 		return t.timeout
 	}

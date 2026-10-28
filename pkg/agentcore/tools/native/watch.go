@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/internal/proctree"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
@@ -56,7 +55,7 @@ type watchSpec struct {
 // parseWatch reads every and watch_paths; ok is false when neither is set.
 func parseWatch(args map[string]any) (spec watchSpec, ok bool, err error) {
 	if secs, set := numberArg(args["every"]); set && secs != 0 {
-		if d, valid := agentcore.DurationFromSeconds(secs, 0); valid {
+		if d, valid := api.DurationFromSeconds(secs, 0); valid {
 			spec.every = d
 		}
 		if spec.every < minWatchEvery {

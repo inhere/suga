@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 )
 
 type RetryPolicy struct {
@@ -207,12 +207,12 @@ func retryAfterMessage(text string) time.Duration {
 	}
 	unit := strings.ToLower(m[2])
 	if strings.HasPrefix(unit, "ms") || strings.HasPrefix(unit, "millisecond") {
-		if d, ok := agentcore.DurationFromSeconds(value/1000, 0); ok {
+		if d, ok := api.DurationFromSeconds(value/1000, 0); ok {
 			return d
 		}
 		return 0
 	}
-	if d, ok := agentcore.DurationFromSeconds(value, 0); ok {
+	if d, ok := api.DurationFromSeconds(value, 0); ok {
 		return d
 	}
 	return 0

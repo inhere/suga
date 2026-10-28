@@ -7,7 +7,7 @@ import (
 	"time"
 
 	gkconfig "github.com/gookit/config/v2"
-	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 )
 
 // Chat idle consolidation defaults (design D6/Q1).
@@ -63,7 +63,7 @@ func parseIdleDuration(raw string) (time.Duration, error) {
 		if secs == 0 {
 			return 0, nil
 		}
-		if d, ok := agentcore.DurationFromSeconds(secs, 0); ok {
+		if d, ok := api.DurationFromSeconds(secs, 0); ok {
 			return d, nil
 		}
 		return 0, fmt.Errorf("invalid seconds %q", raw)
@@ -73,7 +73,7 @@ func parseIdleDuration(raw string) (time.Duration, error) {
 			return 0, fmt.Errorf("must not be negative, got %q", raw)
 		}
 		// A day count such as "30d": retention periods are documented in days.
-		if d, ok := agentcore.DurationFromSeconds(days*24*60*60, 0); ok {
+		if d, ok := api.DurationFromSeconds(days*24*60*60, 0); ok {
 			return d, nil
 		}
 		return 0, fmt.Errorf("invalid days %q", raw)
