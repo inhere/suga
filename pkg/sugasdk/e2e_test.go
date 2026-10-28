@@ -19,7 +19,6 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	appconfig "github.com/inhere/suga/internal/config"
-	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
@@ -189,7 +188,7 @@ func TestEngineEndToEnd(t *testing.T) {
 		card, err := session.Card(ctx)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, session.ID(), card.SessionID)
-		assert.Eq(t, DefaultOrigin, card.Origin)
+		assert.Eq(t, OriginSDK, card.Origin)
 		assert.Eq(t, 1, card.Turns)
 		assert.True(t, card.Usage.InputTokens > 0)
 		assert.StrNotContains(t, card.State, "running")
@@ -209,13 +208,13 @@ func TestEngineEndToEnd(t *testing.T) {
 	})
 
 	t.Run("Sessions lists the host's session by origin", func(t *testing.T) {
-		list, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin})
+		list, err := engine.Sessions(ctx, SessionFilter{Origin: OriginSDK})
 		assert.Require(t, assert.NoErr(t, err))
 		var found bool
 		for _, info := range list {
 			if info.ID == session.ID() {
 				found = true
-				assert.Eq(t, store.OriginXhen, info.Origin)
+				assert.Eq(t, OriginSDK, info.Origin)
 				assert.Eq(t, workspace, info.Cwd)
 			}
 		}
@@ -225,23 +224,13 @@ func TestEngineEndToEnd(t *testing.T) {
 		assert.Len(t, other, 0)
 	})
 	t.Run("Sessions filters by directory", func(t *testing.T) {
-		here, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: workspace})
+		here, err := engine.Sessions(ctx, SessionFilter{Origin: OriginSDK, Cwd: workspace})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, here, 1)
 		assert.Eq(t, session.ID(), here[0].ID)
-		elsewhere, err := engine.Sessions(ctx, SessionFilter{Origin: DefaultOrigin, Cwd: t.TempDir()})
+		elsewhere, err := engine.Sessions(ctx, SessionFilter{Origin: OriginSDK, Cwd: t.TempDir()})
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, elsewhere, 0)
-	})
-	t.Run("suga's default session list hides it", func(t *testing.T) {
-		dbPath, err := appconfig.ResolveCoreStorePath()
-		assert.Require(t, assert.NoErr(t, err))
-		repo, err := store.Open(dbPath)
-		assert.Require(t, assert.NoErr(t, err))
-		defer repo.Close()
-		model, err := repo.GetSession(ctx, session.ID())
-		assert.Require(t, assert.NoErr(t, err))
-		assert.True(t, store.HostManagedSession(model), "origin xhen sessions are host managed")
 	})
 	t.Run("the transcript is searchable", func(t *testing.T) {
 		hits, err := engine.Search(ctx, "echo", 10)
@@ -277,16 +266,16 @@ func TestOpenSessionNewID(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	defer engine.Close()
 
-	session, err := engine.OpenSession(ctx, "xhen-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
+	session, err := engine.OpenSession(ctx, "sdk-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
 	assert.Require(t, assert.NoErr(t, err))
 	defer session.Close()
-	assert.Eq(t, "xhen-topic-1", session.ID())
+	assert.Eq(t, "sdk-topic-1", session.ID())
 	_, err = session.Send(ctx, Prompt{Text: "hi"}, nil)
 	assert.Require(t, assert.NoErr(t, err))
 
 	// A second OpenSession with the same id continues it instead of failing.
-	again, err := engine.OpenSession(ctx, "xhen-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
+	again, err := engine.OpenSession(ctx, "sdk-topic-1", SessionOptions{Workspace: t.TempDir(), Approver: allowAll{}})
 	assert.Require(t, assert.NoErr(t, err))
 	defer again.Close()
-	assert.Eq(t, "xhen-topic-1", again.ID())
+	assert.Eq(t, "sdk-topic-1", again.ID())
 }

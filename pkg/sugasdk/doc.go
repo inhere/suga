@@ -55,13 +55,12 @@
 // behaviour. Missing or blank ids in place of RequestID (a Prompt with a
 // whitespace-only id) are refused.
 //
-// Sessions opened without SessionOptions.Origin record origin "xhen" and are
-// hidden by the default `suga session list` list, which the host then filters with
-// Engine.Sessions(SessionFilter{Origin: "xhen"}).
+// Sessions opened without SessionOptions.Origin record origin "sdk" (or the
+// EngineOptions.Origin value) and are retained as non-interactive sessions.
+// Hosts that need longer retention should use Engine.Pin.
 //
 // Engine.Pin keeps a session and its history out of both automatic garbage
-// collection modes until the host clears the marker; it works for xhen and
-// non-xhen origins alike.
+// collection modes until the host clears the marker, regardless of origin.
 //
 // # Tool invocations
 //

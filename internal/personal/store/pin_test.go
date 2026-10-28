@@ -20,10 +20,10 @@ func TestPinnedSessionsSurviveGarbageCollection(t *testing.T) {
 		})))
 	}
 
-	t.Run("age gc protects pinned xhen and non-xhen sessions", func(t *testing.T) {
+	t.Run("age gc protects pinned sdk and non-sdk sessions", func(t *testing.T) {
 		s := openTemp(t)
 		defer s.Close()
-		newOldSession(t, s, "pinned-xhen", map[string]any{MetaOrigin: OriginXhen, MetaPinned: true})
+		newOldSession(t, s, "pinned-sdk", map[string]any{MetaOrigin: OriginSDK, MetaPinned: true})
 		newOldSession(t, s, "pinned-run", map[string]any{MetaOrigin: OriginRun, MetaPinned: true})
 		newOldSession(t, s, "unpinned", map[string]any{MetaOrigin: OriginRun})
 
@@ -31,23 +31,23 @@ func TestPinnedSessionsSurviveGarbageCollection(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, report.Sessions, 1)
 		assert.Eq(t, "unpinned", report.Sessions[0].ID)
-		for _, id := range []string{"pinned-xhen", "pinned-run"} {
+		for _, id := range []string{"pinned-sdk", "pinned-run"} {
 			_, err := s.GetSession(ctx, id)
 			assert.NoErr(t, err)
 		}
 	})
 
-	t.Run("retention protects a pinned non-xhen session", func(t *testing.T) {
+	t.Run("retention protects a pinned sdk session", func(t *testing.T) {
 		s := openTemp(t)
 		defer s.Close()
-		newOldSession(t, s, "pinned-run", map[string]any{MetaOrigin: OriginRun, MetaPinned: true})
+		newOldSession(t, s, "pinned-sdk", map[string]any{MetaOrigin: OriginSDK, MetaPinned: true})
 		newOldSession(t, s, "unpinned", map[string]any{MetaOrigin: OriginRun})
 
 		report, err := s.CollectGarbageByRetention(ctx, now, GCRetentionPolicy{NonInteractive: 24 * time.Hour}, nil, true)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Len(t, report.NonInteractive.Sessions, 1)
 		assert.Eq(t, "unpinned", report.NonInteractive.Sessions[0].ID)
-		_, err = s.GetSession(ctx, "pinned-run")
+		_, err = s.GetSession(ctx, "pinned-sdk")
 		assert.NoErr(t, err)
 	})
 }

@@ -9,16 +9,12 @@ const (
 	MetaOrigin = "origin"
 	// OriginChat is an interactive `suga chat`, OriginRun a one-shot
 	// `suga run`, OriginACP a session an editor created over ACP,
-	// OriginAgent a sub-agent session and OriginXhen a topic session a host
-	// application (xhen) created in the shared home.
+	// OriginAgent a sub-agent session and OriginSDK an embedded SDK session.
 	OriginChat  = "chat"
 	OriginRun   = "run"
 	OriginACP   = "acp"
 	OriginAgent = "agent"
-	// OriginXhen names a session of a host application that embeds suga
-	// (xhen). Its lifecycle belongs to the host: the default `suga session list`
-	// listing leaves it out and `suga data gc --retention` never removes it.
-	OriginXhen = "xhen"
+	OriginSDK   = "sdk"
 	// MetaPinned marks a session that an embedding host still references. GC
 	// treats a JSON boolean true as a keep-forever marker until it is cleared.
 	MetaPinned = "pinned"
@@ -51,7 +47,7 @@ func InteractiveSession(sess Session) bool {
 		return true
 	}
 	switch SessionOrigin(sess) {
-	case OriginRun, OriginACP, OriginAgent, OriginXhen:
+	case OriginRun, OriginACP, OriginAgent, OriginSDK:
 		return false
 	default:
 		return true // chat, and any session from before the key existed
@@ -59,18 +55,8 @@ func InteractiveSession(sess Session) bool {
 }
 
 // PinnedSession reports whether an embedding host has kept a durable reference
-// to the session. It is deliberately independent of the session origin: a
-// non-xhen session can be pinned too.
+// to the session. It is deliberately independent of the session origin.
 func PinnedSession(sess Session) bool {
 	pinned, _ := sess.Meta[MetaPinned].(bool)
 	return pinned
-}
-
-// HostManagedSession reports whether a session belongs to a host application
-// that embeds suga (origin xhen). Such a session is kept out of the default
-// `suga session list` listing and out of the age-based retention pass of
-// `suga data gc --retention`: the host decides how long it lives, while an
-// explicit `--older-than` still removes it.
-func HostManagedSession(sess Session) bool {
-	return SessionOrigin(sess) == OriginXhen
 }

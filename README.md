@@ -193,9 +193,9 @@ Details: [references/sessions.md](skills/suga-guide/references/sessions.md) (Chi
 ## Embedding (pkg/sugasdk, experimental)
 
 - `pkg/sugasdk` lets another Go program drive suga in its own process: `Open` an engine, `OpenSession` per conversation, `Send` a turn and receive `Event`s, then `Card`, `Compact`, `Steer`, `Search`, `Sessions` and `Memory`.
-- Experimental: the API may change in a minor release until the embedding host (xhen) has settled. The exported surface names no `internal` package; `extra tools`, `host context`, the approver and the memory confirmation are the same extension points `wiring` offers.
+- Experimental: the API may change in a minor release while embedding hosts settle. The exported surface names no `internal` package; `extra tools`, `host context`, the approver and the memory confirmation are the same extension points `wiring` offers.
 - suga's configuration is process global: one engine per process (`ErrEngineOpen` on a second `Open`, an `Open` after `Close` is fine), and the data root is guarded (`Open` sets and loads `SUGA_HOME`, reuses the same root, returns `ErrSugaHomeMismatch` for another one).
-- Sessions record origin `xhen` by default, so `suga session list` hides them; list them with `Engine.Sessions(SessionFilter{Origin: "xhen"})`. A session runs one turn at a time (`ErrBusy` instead of queueing), `Steer` inserts into the running turn, and a panic inside a turn comes back as an error.
+- Sessions record origin `sdk` by default (or `EngineOptions.Origin` / `SessionOptions.Origin`), so SDK sessions follow the non-interactive retention period. Hosts that need long-lived sessions should use `Engine.Pin`.
 
 ## Using with Gofer
 
@@ -212,11 +212,11 @@ Details: [references/observability.md](skills/suga-guide/references/observabilit
 suga inspect trace <session> [--turn <id>] [--json]            # timeline: model calls, tools, denials, plans
 suga inspect trace <session> --analyze | --web                 # loop analysis / local web page
 suga inspect trace <session> --transcript [--turn <id>] [-o <file>]  # model-readable transcript (see below)
-suga session list [keywords] [--since 7d] [--agents] [--all | --cwd <path>] [--origin <name>]  # session list; default: the current directory only, without origin=xhen sessions (empty result -> stderr hint naming --all and the hidden xhen count); --origin all lists every origin
+suga session list [keywords] [--since 7d] [--agents] [--all | --cwd <path>] [--origin <name>]  # session list; default: the current directory only; --origin all lists every origin
 suga inspect stats [--session <id>] [--json]                   # calls, latency, tokens, cache, cost
 suga session compact <session> [--json]                        # start a new segment now (the CLI form of chat :compact)
 suga inspect export <session> | suga data gc --older-than 30d  # export / clean up
-suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP; origin=xhen sessions follow their host and are only reported
+suga data gc --retention [--apply]                             # remove by origin class: 180d chat / 30d run+ACP+SDK; hosts use Engine.Pin for long-lived SDK sessions
 suga data bodies [--status|--move|--undo|--check|--remove-files]  # move tool results and assistant replies to sessions/<id>/bodies.jsonl (the v0.36 name tool-bodies, --slim, --rename-files and the one-time migrations shrink-fts / dedupe-tool-results were removed in v0.41.0: a pre-v0.36 ledger needs suga v0.40 for them)
 suga data vacuum                                               # rewrite the db file, truncate the WAL
 suga data usage [--json] [--top N]                             # read-only: where the db file, entries, events, FTS and session dirs hold their bytes

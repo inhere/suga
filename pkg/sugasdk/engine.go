@@ -404,9 +404,8 @@ func parseEntryRef(ref string) (string, int64, error) {
 }
 
 // Pin changes the persistent keep marker of a session. A pin protects the
-// session from both age-based and origin-retention garbage collection, including
-// sessions that do not use the xhen origin. Explicit DeleteSession remains a
-// deliberate manual deletion and is not blocked by a pin.
+// session from both age-based and origin-retention garbage collection. Explicit
+// DeleteSession remains a deliberate manual deletion and is not blocked by a pin.
 func (e *Engine) Pin(ctx context.Context, sessionID string, pinned bool) error {
 	if e == nil {
 		return ErrEngineClosed
