@@ -155,6 +155,13 @@ func TestShellBackgroundUsesTaskTimeout(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, tasks.WaitEnded, outcome)
 	assert.Eq(t, tasks.TimedOut, info.Status)
+
+	res, err = shell.Execute(ctx, api.ToolCall{CallID: "c2", Name: shell.Name(), Arguments: map[string]any{"command": command, "background": true}})
+	assert.Require(t, assert.NoErr(t, err))
+	info, outcome, err = m.Wait(ctx, "s1", res.Metadata["task_id"].(string), 2*time.Second)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, tasks.WaitEnded, outcome)
+	assert.Eq(t, tasks.TimedOut, info.Status)
 }
 func TestCommandEnv(t *testing.T) {
 	got := commandEnv([]string{"PATH=/bin", "SUGA_HOME=/h", "suga_config=/c", "SUGA_MODEL=m", "SUGA_HOOKS=off", "SUGA_HOMEX=1"})
