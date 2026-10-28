@@ -125,13 +125,12 @@ type Spec struct {
 	Run RunFunc
 	// NoEndNotice: the task reports what matters through Reporter.Notify,
 	// so its end leaves no notice (a Stop hook run).
-	// MaxDuration overrides the manager duration for this task (zero = manager limit).
+	NoEndNotice bool
+	// MaxDuration caps this task in addition to the manager limit (zero = manager limit).
 	MaxDuration time.Duration
-	// NoEndNotice
 	// Clean turns raw output into text for the file and the tail, one line
 	// at a time (no trailing newline); nil keeps the bytes as they are.
-	NoEndNotice bool
-	Clean       func(line []byte) string
+	Clean func(line []byte) string
 }
 
 // Info is a snapshot of a task.

@@ -166,13 +166,10 @@ func Catalog() []Spec {
 				t.maxTimeout = env.ShellTimeoutMax
 				t.timeout = min(t.timeout, t.maxTimeout)
 			}
-			taskTimeoutMax := env.TaskTimeoutMax
-			if taskTimeoutMax < t.maxTimeout {
-				taskTimeoutMax = t.maxTimeout
+			if env.TaskTimeoutMax > 0 {
+				t.taskTimeoutMax = env.TaskTimeoutMax
 			}
-			if taskTimeoutMax > 0 {
-				t.taskTimeoutMax = taskTimeoutMax
-			}
+			t.taskTimeoutMax = max(t.taskTimeoutMax, t.maxTimeout)
 			t.limits = env.ShellLimits
 			t.extraEnv = env.ExtraEnv
 			return t

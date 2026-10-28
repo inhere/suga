@@ -265,13 +265,13 @@ func rawOutputBytes() int {
 // It is never below the foreground shell cap so a handoff cannot shorten a call.
 func shellTaskTimeoutMax(shellMax time.Duration) time.Duration {
 	n := gkconfig.Int("tools.task_timeout_max", int(native.DefaultTaskTimeoutMax/time.Second))
-	d := time.Duration(n) * time.Second
-	if d < shellMax {
-		return shellMax
+	if d, ok := api.DurationFromSeconds(float64(n), 0); ok && d > 0 {
+		return max(d, shellMax)
 	}
-	return d
+	return max(native.DefaultTaskTimeoutMax, shellMax)
 }
 
+// shellBackgroundAfter is the foreground grace period before shell_exec
 // transfers a command to tasks. A bare number is seconds, matching other
 // duration settings; zero deliberately disables the handoff.
 func shellBackgroundAfter() time.Duration {
