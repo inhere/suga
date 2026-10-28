@@ -15,8 +15,9 @@ import (
 )
 
 // EnvVar is the environment variable an outer tool (a job runner) uses instead
-// of the flag: os.PathListSeparator separated entries in the value form of
-// --add-dir.
+// of the flag: comma-separated entries in the value form of --add-dir. Each
+// entry is "<absolute directory>[:ro|:rw]"; paths containing commas are not
+// supported here and should use repeated --add-dir flags instead.
 const EnvVar = "SUGA_ADD_DIRS"
 
 // MetaKey is the session metadata key holding the session's added directories:
@@ -140,13 +141,14 @@ func Parse(values []string) ([]Dir, error) {
 	return dirs, nil
 }
 
-// ParseEnv parses SUGA_ADD_DIRS: entries separated by os.PathListSeparator.
-// A bad entry cannot be fixed by the user of this process, so it is reported
-// as a warning and skipped instead of failing the start.
+// ParseEnv parses SUGA_ADD_DIRS: entries separated by commas. A bad entry
+// cannot be fixed by the user of this process, so it is reported as a warning
+// and skipped instead of failing the start. Paths containing commas are not
+// supported; use repeated --add-dir flags for those paths.
 func ParseEnv(value string) ([]Dir, []string) {
 	var dirs []Dir
 	var warnings []string
-	for _, item := range splitEnvList(value, string(os.PathListSeparator)) {
+	for _, item := range strings.Split(value, ",") {
 		if strings.TrimSpace(item) == "" {
 			continue
 		}
@@ -159,22 +161,6 @@ func ParseEnv(value string) ([]Dir, []string) {
 		dirs = append(dirs, dir)
 	}
 	return dirs, warnings
-}
-
-// splitEnvList splits an environment list. On Unix the separator is ":" and
-// collides with the ":ro"/":rw" suffix ("/a:ro:/b"), so a bare "ro"/"rw"
-// segment glues back onto the entry before it; on Windows the separator is ";"
-// and the suffix never splits.
-func splitEnvList(value, sep string) []string {
-	var out []string
-	for _, item := range strings.Split(value, sep) {
-		if (item == "ro" || item == "rw") && len(out) > 0 {
-			out[len(out)-1] += ":" + item
-			continue
-		}
-		out = append(out, item)
-	}
-	return out
 }
 
 // Resolve parses the --add-dir values and SUGA_ADD_DIRS of this invocation
