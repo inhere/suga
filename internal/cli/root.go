@@ -43,6 +43,11 @@ func New(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, build B
   suga session undo <session> --list   List file checkpoints
   suga inspect trace <session> --json  Show the event timeline of a session
   suga data gc --older-than 30d        Remove idle sessions (dry run)
+
+<info>ENV for run/chat</>:
+  SUGA_MAX_STEPS=number
+  SUGA_ADD_DIRS=dirpath1,dirpath2:rw
+  // more see suga <ylw>run --help</>
 `
 
 	// 绑定 chat/run 的公共参数到 app
