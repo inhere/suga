@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/inhere/suga/pkg/agentcore"
 )
 
 type RetryPolicy struct {
@@ -205,9 +207,15 @@ func retryAfterMessage(text string) time.Duration {
 	}
 	unit := strings.ToLower(m[2])
 	if strings.HasPrefix(unit, "ms") || strings.HasPrefix(unit, "millisecond") {
-		return time.Duration(value * float64(time.Millisecond))
+		if d, ok := agentcore.DurationFromSeconds(value/1000, 0); ok {
+			return d
+		}
+		return 0
 	}
-	return time.Duration(value * float64(time.Second))
+	if d, ok := agentcore.DurationFromSeconds(value, 0); ok {
+		return d
+	}
+	return 0
 }
 
 // requestIDOf returns the first supported provider correlation header.

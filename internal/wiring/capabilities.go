@@ -244,7 +244,10 @@ func shellLimitCPUTime() time.Duration {
 		return 0
 	}
 	if secs, err := strconv.ParseFloat(raw, 64); err == nil && secs > 0 {
-		return time.Duration(secs * float64(time.Second))
+		if d, ok := agentcore.DurationFromSeconds(secs, 0); ok {
+			return d
+		}
+		return 0
 	}
 	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 		return d
@@ -267,7 +270,10 @@ func shellBackgroundAfter() time.Duration {
 		return native.DefaultShellBackgroundAfter
 	}
 	if seconds, err := strconv.ParseInt(raw, 10, 64); err == nil && seconds >= 0 {
-		return time.Duration(seconds) * time.Second
+		if d, ok := agentcore.DurationFromSeconds(float64(seconds), 0); ok {
+			return d
+		}
+		return native.DefaultShellBackgroundAfter
 	}
 	if d, err := time.ParseDuration(raw); err == nil && d >= 0 {
 		return d
