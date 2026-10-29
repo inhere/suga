@@ -26,6 +26,11 @@ const reasoningPlaceholder = "reasoning unavailable"
 type ResponsesProvider struct {
 	*OpenAIProvider
 	compat Compat
+	// promptCacheRetention is providers.<id>.prompt_cache_retention ("24h" or
+	// "in_memory"): how long the upstream keeps this prompt's cache. Empty sends
+	// nothing and leaves the API default (a few minutes), which an idle session
+	// outlives between turns.
+	promptCacheRetention string
 }
 
 // ResponsesConfig configures a ResponsesProvider.
@@ -34,12 +39,15 @@ type ResponsesConfig struct {
 	// Compat names extra adapters (providers.<id>.compat) on top of the ones
 	// matched by base URL and model.
 	Compat []string
+	// PromptCacheRetention is sent as prompt_cache_retention when set.
+	PromptCacheRetention string
 }
 
 // NewResponsesProvider creates a ResponsesProvider from cfg.
 func NewResponsesProvider(cfg ResponsesConfig) *ResponsesProvider {
 	base := NewOpenAIProvider(cfg.OpenAIConfig)
-	return &ResponsesProvider{OpenAIProvider: base, compat: ResolveCompat(base.baseURL, base.model, cfg.Compat...)}
+	return &ResponsesProvider{OpenAIProvider: base, compat: ResolveCompat(base.baseURL, base.model, cfg.Compat...),
+		promptCacheRetention: strings.TrimSpace(cfg.PromptCacheRetention)}
 }
 
 // Compat returns the adapters this provider applies.
@@ -51,6 +59,25 @@ func (p *ResponsesProvider) Compat() Compat { return p.compat }
 func (p *ResponsesProvider) SupportsToolChoice() bool { return !p.compat.NoToolChoice }
 
 const responsesPath = "/responses"
+
+// promptCacheKey is the upstream prompt cache key of one request: the session
+// id, plus the scope of a request that is not the conversation itself
+// (api.PromptCacheScopeCompact / ScopeHandoff). A compaction prompt differs from
+// the conversation's, so sharing the key would evict the conversation's cache
+// entry on every summary; the API caps the key at 64 characters.
+func promptCacheKey(ctx context.Context) string {
+	key := agentcoreapi.SessionIDFrom(ctx)
+	if key == "" {
+		return ""
+	}
+	if scope := agentcoreapi.PromptCacheScopeFrom(ctx); scope != "" {
+		key += "-" + scope
+	}
+	if len(key) > 64 {
+		key = key[:64]
+	}
+	return key
+}
 
 // Generate implements Provider.
 func (p *ResponsesProvider) Generate(ctx context.Context, req *agentcoreapi.GenerateRequest) (*agentcoreapi.GenerateResult, error) {
@@ -135,8 +162,13 @@ func (p *ResponsesProvider) buildResponsesBody(ctx context.Context, req *agentco
 	}
 	// The session id keeps one conversation on one cache (the API caps the
 	// key at 64 characters).
-	if key := agentcoreapi.SessionIDFrom(ctx); key != "" && len(key) <= 64 {
+	if key := promptCacheKey(ctx); key != "" {
 		body["prompt_cache_key"] = key
+	}
+	// providers.<id>.prompt_cache_retention: how long the upstream keeps that
+	// cache. Left out, the API default applies and an idle session outlives it.
+	if p.promptCacheRetention != "" {
+		body["prompt_cache_retention"] = p.promptCacheRetention
 	}
 	return body
 }

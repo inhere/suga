@@ -379,6 +379,36 @@ providers:
 	assert.False(t, ps["openai"].PromptCache)
 }
 
+// TestReadProvidersPromptCacheRetention: providers.<id>.prompt_cache_retention
+// reaches the provider config and refuses an unknown value (the API would answer
+// with a 4xx that names neither the key nor the config file).
+func TestReadProvidersPromptCacheRetention(t *testing.T) {
+	loadYAML(t, `
+providers:
+  codex:
+    type: openai-responses
+    base_url: https://gw.example/v1
+    prompt_cache_retention: 24h
+  plain:
+    type: openai-responses
+    base_url: https://gw2.example/v1
+`)
+	ps, err := ReadProviders()
+	assert.NoErr(t, err)
+	assert.Eq(t, PromptCacheRetention24h, ps["codex"].PromptCacheRetention)
+	assert.Eq(t, "", ps["plain"].PromptCacheRetention) // default: the API's own
+
+	loadYAML(t, `
+providers:
+  codex:
+    type: openai-responses
+    base_url: https://gw.example/v1
+    prompt_cache_retention: forever
+`)
+	_, err = ReadProviders()
+	assert.ErrMsgContains(t, err, "prompt_cache_retention must be in_memory or 24h")
+}
+
 func TestModelID(t *testing.T) {
 	doc := `
 model: cc/deepseek-v4.1-flash

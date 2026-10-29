@@ -112,6 +112,10 @@ type ProviderConfig struct {
 	// Compat (providers.<id>.compat) names gateway adapters applied on top
 	// of the ones matched by base URL and model (llm.ResolveCompat).
 	Compat []string
+	// PromptCacheRetention (providers.<id>.prompt_cache_retention) is how long an
+	// OpenAI Responses backend keeps this prompt's cache: "24h" or "in_memory".
+	// Empty leaves the API default, which an idle session outlives between turns.
+	PromptCacheRetention string
 	// Retry is the retry policy: the global retry: section (ReadRetryPolicy),
 	// overridden by providers.<id>.retry.
 	Retry llm.RetryPolicy
@@ -220,6 +224,8 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 			MaxOutputTokens: intValue(entry["max_output_tokens"]),
 			Thinking:        stringValue(entry["thinking"]),
 			ThinkingStyle:   stringValue(entry["thinking_style"]),
+
+			PromptCacheRetention: normalizeConfigToken(stringValue(entry["prompt_cache_retention"])),
 		}
 		promptCache, promptCacheSet := entry["prompt_cache"].(bool)
 		streamRequired, streamRequiredSet := entry["stream_required"].(bool)
@@ -227,6 +233,9 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 		user.Compat = normalizeStringList(entry["compat"])
 
 		if err := normalizeThinking(id, &user); err != nil {
+			return nil, err
+		}
+		if err := validatePromptCacheRetention(id, user.PromptCacheRetention); err != nil {
 			return nil, err
 		}
 		merged, isPreset := providers[id]
@@ -262,6 +271,7 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 		if len(user.Compat) > 0 {
 			merged.Compat = user.Compat
 		}
+		merged.PromptCacheRetention = firstNonEmpty(user.PromptCacheRetention, merged.PromptCacheRetention)
 		// The global retry: policy is the default; providers.<id>.retry changes
 		// only the fields it names.
 		merged.Retry = retry
@@ -293,6 +303,26 @@ func ReadProviders() (map[string]ProviderConfig, error) {
 
 func validProviderType(t string) bool {
 	return t == ProviderTypeOpenAI || t == ProviderTypeOpenAIResponses || t == ProviderTypeAnthropic
+}
+
+// PromptCacheRetention* are the values providers.<id>.prompt_cache_retention
+// accepts: how long an OpenAI Responses backend keeps a prompt's cache. The
+// default ("") leaves the API's own, a few minutes; "24h" keeps an idle
+// session's cache across a long break between turns.
+const (
+	PromptCacheRetentionInMemory = "in_memory"
+	PromptCacheRetention24h      = "24h"
+)
+
+// validatePromptCacheRetention rejects an unknown retention instead of sending
+// it upstream: the API would answer with a 4xx that names neither the key nor
+// the config file.
+func validatePromptCacheRetention(id, value string) error {
+	switch value {
+	case "", PromptCacheRetentionInMemory, PromptCacheRetention24h:
+		return nil
+	}
+	return fmt.Errorf("providers.%s.prompt_cache_retention must be in_memory or 24h, got %q", id, value)
 }
 
 // normalizeThinking validates the provider's and its models' thinking levels

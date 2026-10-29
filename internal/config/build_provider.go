@@ -69,6 +69,9 @@ func BuildProviderWithProxy(spec ModelSpec, proxy netproxy.ProxyFunc) (llm.Provi
 				Proxy:             proxy,
 			},
 			Compat: p.Compat,
+			// How long the backend keeps this model's prompt cache
+			// (providers.<id>.prompt_cache_retention; empty = the API default).
+			PromptCacheRetention: p.PromptCacheRetention,
 		}), nil
 	case ProviderTypeOpenAI:
 		return llm.NewOpenAIProvider(llm.OpenAIConfig{

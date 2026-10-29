@@ -69,6 +69,10 @@ providers:
   #   # Claude type only, default off: add cache_control breakpoints (system
   #   # becomes a block array). Some gateways reject cache_control.
   #   prompt_cache: true
+  # openai-responses type only, default unset (the API's own, a few minutes): how
+  # long the upstream keeps this prompt's cache. "24h" keeps an idle session's
+  # cache across a long break between turns, "in_memory" states the default.
+  #   prompt_cache_retention: 24h
 
 # Optional cheaper model for context summaries (same reference rules as model;
 # a bare id uses the main model's provider). Unset: the turn's own model.

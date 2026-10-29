@@ -299,7 +299,10 @@ var providerKeyDescriptors = map[string]ConfigKey{
 	"stream_required":   {Pattern: "providers.<id>.stream_required", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"vision":            {Pattern: "providers.<id>.vision", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
 	"prompt_cache":      {Pattern: "providers.<id>.prompt_cache", Type: ConfigTypeBool, Writable: true, Reader: "providers"},
-	"compat":            {Pattern: "providers.<id>.compat", Type: ConfigTypeStringList, Writable: true, Reader: "providers"},
+	// prompt_cache_retention: how long an OpenAI Responses backend keeps a
+	// prompt's cache (in_memory | 24h); empty leaves the API default.
+	"prompt_cache_retention": {Pattern: "providers.<id>.prompt_cache_retention", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
+	"compat":                 {Pattern: "providers.<id>.compat", Type: ConfigTypeStringList, Writable: true, Reader: "providers"},
 }
 
 var providerModelKeyDescriptors = map[string]ConfigKey{
@@ -504,6 +507,8 @@ func parseConfigEnum(key, raw string) (string, error) {
 		allowed = []string{"auto", "on", "off"}
 	case key == "chat.theme":
 		allowed = []string{ChatThemeAuto, ChatThemeDark, ChatThemeLight}
+	case strings.HasSuffix(key, ".prompt_cache_retention"):
+		allowed = []string{PromptCacheRetentionInMemory, PromptCacheRetention24h}
 	case key == "tools.deferred":
 		allowed = []string{string(tools.DeferredAuto), string(tools.DeferredAlways), string(tools.DeferredNever)}
 	case key == "tools.deferred_apply":

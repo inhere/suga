@@ -114,13 +114,16 @@ providers:
     base_url: "http://<网关>/v1"
     api_key: "${AXONHUB_API_KEY}"
     context_window: 500000
+    prompt_cache_retention: 24h         # 空闲很久再回来仍能复用缓存（默认只有几分钟）
     headers:
       Session-Id: "{{session_id}}"
       Thread-Id: "{{session_id}}"
       Originator: "codex_exec"          # 可选：让网关按 Codex 客户端处理
 ```
 
-自检效果：`suga inspect trace <session> --json` 里每次模型调用的 `cache_read_tokens` 应接近 `input_tokens`（首条冷启动除外）；不补头时多数请求为 0。
+自检效果：`suga inspect trace <session> --json` 里每次模型调用的 `cache_read_tokens` 应接近 `input_tokens`（首条冷启动除外）；不补头时多数请求为 0。空闲超过几分钟的会话再加 `prompt_cache_retention: 24h`，否则缓存按 API 默认的短 TTL 过期。
+
+压缩、空闲整理与 `--from` 交接包的摘要请求自带一个独立的缓存键（`<会话>-compact`），不会把主对话的缓存条目冲掉；这是 suga 自动的行为，无需配置。
 
 注意：`providers.<id>.prompt_cache` 只对 `anthropic` 类型生效（`cache_control` 断点）；OpenAI/Responses 的缓存由上游自动管理，客户端能做的是**让会话与前缀稳定**——suga 自己发的 `prompt_cache_key`（会话 id）和上面的会话头都属于这一类。网关不认识这两个头时通常直接忽略，无副作用。
 

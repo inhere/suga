@@ -12,6 +12,7 @@ import (
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
+	api "github.com/inhere/suga/pkg/agentcore/api"
 )
 
 // Compaction defaults (tokens). Config can override them (mainly for tests).
@@ -461,6 +462,12 @@ func scenarioForReason(reason string) string {
 // front of a subscription model) accept only stream=true requests, so a plain
 // Generate failed every compaction and --from handoff on them.
 func generateQuietly(ctx context.Context, p agentcore.Provider, req *agentcore.GenerateRequest) (*agentcore.GenerateResult, error) {
+	// A summary prompt is not the conversation itself, so it gets its own upstream
+	// prompt-cache key: sharing the session's key made every compaction evict the
+	// conversation's cached prefix (api.PromptCacheScopeCompact).
+	if api.PromptCacheScopeFrom(ctx) == "" {
+		ctx = api.WithPromptCacheScope(ctx, api.PromptCacheScopeCompact)
+	}
 	if sp, ok := p.(agentcore.StreamingProvider); ok {
 		return sp.Stream(ctx, req, func(context.Context, agentcore.StreamEvent) error { return nil })
 	}
