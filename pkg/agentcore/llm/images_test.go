@@ -55,7 +55,7 @@ func TestClaudeImageMapping(t *testing.T) {
 		raw, err := json.Marshal(body)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.False(t, strings.Contains(string(raw), "cG5nLWJ5dGVz"))
-		assert.True(t, strings.Contains(string(raw), "当前模型不支持看图"))
+		assert.True(t, strings.Contains(string(raw), "the current model cannot read images"))
 	})
 }
 
@@ -86,7 +86,7 @@ func TestOpenAIImageMapping(t *testing.T) {
 		raw, err := json.Marshal(body)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.False(t, strings.Contains(string(raw), "data:image/png;base64"))
-		assert.True(t, strings.Contains(string(raw), "当前模型不支持看图"))
+		assert.True(t, strings.Contains(string(raw), "the current model cannot read images"))
 	})
 }
 
@@ -122,7 +122,7 @@ func TestResponsesImageMapping(t *testing.T) {
 		raw, err := json.Marshal(items)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.False(t, strings.Contains(string(raw), "data:image/png;base64"))
-		assert.True(t, strings.Contains(string(raw), "当前模型不支持看图"))
+		assert.True(t, strings.Contains(string(raw), "the current model cannot read images"))
 	})
 	t.Run("the official endpoint carries the pictures in the tool output", func(t *testing.T) {
 		// The OpenAI OpenAPI spec allows function_call_output.output to be an array

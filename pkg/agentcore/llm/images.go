@@ -77,7 +77,10 @@ func responsesImageBlock(part agentcoreapi.ImagePart) map[string]any {
 	return map[string]any{"type": "input_image", "image_url": imageDataURL(part)}
 }
 
-// imageNote is the text that stands in for an image the model cannot see.
+// imageNote is the text that stands in for an image the model cannot see. It is
+// English on purpose: pkg/agentcore is the embeddable runtime and imports no host
+// catalog (internal/i18n), and the note only ever goes into the request the model
+// reads.
 func imageNote(part agentcoreapi.ImagePart) string {
 	name := filepath.Base(part.Ref)
 	if part.Ref == "" {
@@ -87,7 +90,7 @@ func imageNote(part agentcoreapi.ImagePart) string {
 	if part.Width > 0 && part.Height > 0 {
 		size = fmt.Sprintf(" %d×%d", part.Width, part.Height)
 	}
-	return fmt.Sprintf("[图片 %s%s：当前模型不支持看图，未发送；可切换到支持看图的模型", name, size)
+	return fmt.Sprintf("[image %s%s: not sent (the current model cannot read images); use a vision-capable model to view it]", name, size)
 }
 
 // imageNotes renders the notes of a message's images ("" when there are none).
