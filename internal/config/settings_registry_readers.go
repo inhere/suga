@@ -25,6 +25,9 @@ type ChatSettings struct {
 	NotifyAfter                                time.Duration
 	Win32InputMode                             string
 	Theme                                      string
+	// Colors is the chat.colors block itself (a mapping of element to color): chat
+	// resolves the values, so this reader only carries them.
+	Colors map[string]string
 }
 
 func ReadChatSettings() (ChatSettings, error) {
@@ -64,6 +67,10 @@ func ReadChatSettings() (ChatSettings, error) {
 	if err != nil {
 		return ChatSettings{}, err
 	}
+	colors, err := ChatColors()
+	if err != nil {
+		return ChatSettings{}, err
+	}
 	return ChatSettings{
 		History: ChatHistoryEnabled(), Markdown: ChatMarkdownEnabled(), Spinner: ChatSpinnerEnabled(),
 		HighlightInput: ChatHighlightInputEnabled(), Steering: ChatSteeringEnabled(),
@@ -74,6 +81,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		HistoryScope:  historyScope,
 		CodeHighlight: ChatCodeHighlightEnabled(), CodeMaxLines: codeMaxLines,
 		Win32InputMode: win32InputMode, Theme: theme,
+		Colors: colors,
 	}, nil
 }
 
@@ -240,7 +248,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.At, true, nil
 		}
 		return settings.Keep, true, nil
-	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme":
+	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme", "chat.colors":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -438,6 +446,8 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.Win32InputMode
 	case "chat.theme":
 		return settings.Theme
+	case "chat.colors":
+		return settings.Colors
 	default:
 		return settings.NotifyAfter
 	}

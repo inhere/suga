@@ -161,6 +161,13 @@ var configKeyDescriptors = []ConfigKey{
 	// rendering (auto reads the terminal background from $COLORFGBG; SUGA_THEME
 	// overrides the config, see ChatTheme).
 	{Pattern: "chat.theme", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
+	// chat.colors: the styles of chat's own lines - "style" (symbol|name|line),
+	// "mode" (auto|ansi|256|truecolor|off) and one color per element (read, write,
+	// shell, net, agent, meta, ok, error, dim), e.g. {read: blue, shell: 256:170}.
+	// chat resolves the block (internal/chat/colors.go); the chat reader only
+	// carries it, so `config get/set chat.colors` goes through the same reader as
+	// the other chat.* keys.
+	{Pattern: "chat.colors", Type: ConfigTypeStringMap, Writable: true, Reader: "chat"},
 	{Pattern: "rules.file", Type: ConfigTypeString, Writable: true, Reader: "rules"},
 	{Pattern: "transcripts", Type: ConfigTypeSwitch, Writable: true},
 	{Pattern: "tasks.max_running", Type: ConfigTypeInt, Writable: true, Reader: "tasks"},

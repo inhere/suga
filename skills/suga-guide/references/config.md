@@ -117,6 +117,7 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `chat.code_highlight` | `true` | 代码块按围栏语言逐行着色（注译、字符串、数字、关键字四类，16 色 ANSI）；`false`、未知语言、非终端或 `NO_COLOR` 时按原文显示 |
 | `chat.code_max_lines` | `40` | 单个代码块最多显示的行数，超出部分折叠并提示 `… 还有 N 行（:code 查看全部）`；`0` 不折叠 |
 | `chat.theme` | `auto` | chat 里 Markdown 与代码着色用的调色板：`auto` 按环境变量 `COLORFGBG` 最后一段的背景色判断（`7` 或 `15` 即浅色背景 → light，其余或未设置 → dark），`dark`/`light` 直接指定；环境变量 `SUGA_THEME`（dark/light）优先于配置，配置值非法时启动报错 |
+| `chat.colors` | 见下 | chat 自己那几行的配色（工具调用、工具结果、计划、提示）：`style` 取 `symbol`（只染标记）/`name`（默认，标记与工具名）/`line`（整行），`mode` 取 `auto`/`ansi`/`256`/`truecolor`/`off`；其余键每项一个颜色：`read`（file_read/file_grep/... 读类）、`write`（file_write/file_edit/file_remove）、`shell`（shell_exec）、`net`（web_fetch/web_search）、`agent`、`meta`（session/memory/skill/计划）、`ok`（`⎿ ok:` 标签）、`error`（失败结果）、`dim`（参数与提示）。颜色写法：16 色名（`blue`、`bright-cyan`、`purple`、`gray`）、`256:NNN`、`#rrggbb`、`default`（终端自身前景色）。每个工具族另有固定符号（`⏺` 读、`✎` 写、`$` 命令、`⇄` 网络、`◆` 子 agent、`✦` 会话/计划），`NO_COLOR` 或 `mode: off` 时靠符号区分。未知键、未知颜色、非法 style/mode 时启动报错，不会静默保留原色 |
 | `chat.ask_outside_dirs` | `true` | 文件工具越出工作区、只读根与附加目录时询问 `[r] 只读 [w] 读写 [n] 拒绝`，答应后把目录写进会话；关闭时越界调用直接拒绝 |
 | `chat.win32_input_mode` | `auto` | Windows Terminal 下原生的 `Ctrl+Enter` 换行：`auto` 只在 `WT_SESSION` 存在时请求 win32-input-mode（`ESC[?9001h`），`on` 总是请求，`off` 关闭（仍可用 `Ctrl+J`/`Alt+Enter` 换行）。退出行编辑、Ctrl-C、退出 chat 与 `!` 本地命令前后都恢复 `ESC[?9001l`；终端不认识该序列时按键仍按原字节解析 |
 

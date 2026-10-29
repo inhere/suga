@@ -106,6 +106,10 @@ type Options struct {
 	// resolved to "dark" or "light"; empty keeps the dark default). Like the code
 	// options it only applies to a colored terminal.
 	Theme string
+	// Colors is chat.colors: the styles of chat's own lines - the tool families, the
+	// ok/error labels and the dim arguments. Its theme-dependent defaults come from
+	// Theme, and an unknown key, style, mode or color stops chat (see newPalette).
+	Colors map[string]string
 	// terminalTitleOut is where the title sequences go (nil: the chat output);
 	// tests point it at a buffer to check when the title changes without a
 	// terminal.
@@ -199,6 +203,13 @@ func markInteractivelyUsed(stderr io.Writer, runner *personal.Runner, sessionID 
 func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Reader, stdout, stderr io.Writer, hooks sugahooks.Client) error {
 	if opts.Translator == nil {
 		opts.Translator = i18n.Fallback()
+	}
+	// chat.colors: the styling of chat's own lines, resolved once for this terminal.
+	// A bad key, style, mode or color stops chat before it prints anything, instead
+	// of leaving the line it meant to paint as it was.
+	pal, err := newPalette(opts.Theme, opts.Colors)
+	if err != nil {
+		return err
 	}
 	// The PreToolUse hook gates tool calls through the approval layer, which runs
 	// it before its own decision (see hooks_gate.go). Take the gate from the
@@ -402,6 +413,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		Diff:          opts.Diff, DiffLines: opts.DiffLines,
 		CodeHighlight: opts.CodeHighlight, CodeMaxLines: opts.CodeMaxLines,
 		Theme:          opts.Theme,
+		Palette:        pal,
 		HighlightInput: opts.HighlightInput, HighlightWidth: inputSource.highlightWidth,
 		// The input line stays on screen while a turn runs: the streamed text then
 		// leaves only complete lines, and the waiting line becomes a status line above

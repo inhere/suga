@@ -415,6 +415,41 @@ func chatConfigLoader(t *testing.T) func(t *testing.T, body string) {
 	}
 }
 
+// TestChatColors: chat.colors is a mapping of element to color. A scalar where the
+// block belongs is an error rather than a silently ignored setting; the values
+// themselves are resolved by chat (internal/chat/colors.go), so this reader only
+// hands them over. An empty value counts as unset and keeps the built-in default.
+func TestChatColors(t *testing.T) {
+	load := chatConfigLoader(t)
+	t.Run("no block", func(t *testing.T) {
+		load(t, "chat:\n  markdown: true\n")
+		colors, err := ChatColors()
+		assert.NoErr(t, err)
+		assert.Empty(t, colors)
+	})
+	t.Run("a mapping of element to color", func(t *testing.T) {
+		load(t, "chat:\n  colors:\n    style: line\n    mode: \"256\"\n    read: blue\n    shell: \"256:170\"\n")
+		colors, err := ChatColors()
+		assert.NoErr(t, err)
+		assert.Eq(t, "line", colors["style"])
+		assert.Eq(t, "256", colors["mode"])
+		assert.Eq(t, "blue", colors["read"])
+		assert.Eq(t, "256:170", colors["shell"])
+	})
+	t.Run("an empty value is unset", func(t *testing.T) {
+		load(t, "chat:\n  colors:\n    read: \"\"\n")
+		colors, err := ChatColors()
+		assert.NoErr(t, err)
+		_, shown := colors["read"]
+		assert.False(t, shown)
+	})
+	t.Run("a scalar where the block belongs", func(t *testing.T) {
+		load(t, "chat:\n  colors: blue\n")
+		_, err := ChatColors()
+		assert.Err(t, err)
+	})
+}
+
 // TestChatHistoryScope: chat.history_scope 默认 project，接收 project/all，
 // 其他值报错而不是静默改默认行为。
 func TestChatHistoryScope(t *testing.T) {

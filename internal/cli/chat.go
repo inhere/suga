@@ -54,6 +54,12 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 	if err != nil {
 		return err
 	}
+	// chat.colors: the styles of chat's own lines (tool calls, results, plans). The
+	// block is validated by chat, which knows the elements and the color syntax.
+	colors, err := appconfig.ChatColors()
+	if err != nil {
+		return err
+	}
 	modelOptions := make([]chat.ModelOption, 0, len(runtime.ModelOptions()))
 	for _, option := range runtime.ModelOptions() {
 		modelOptions = append(modelOptions, chat.ModelOption{Provider: option.Provider, Model: option.Model,
@@ -95,8 +101,10 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		// asks for win32-input-mode in Windows Terminal only.
 		Win32InputMode: win32InputMode,
 		// The palette of the markdown rendering (chat.theme/SUGA_THEME): auto picks
-		// light for a light terminal background, dark otherwise.
+		// light for a light terminal background, dark otherwise. Colors styles chat's
+		// own lines (chat.colors) on that palette.
 		Theme:         theme,
+		Colors:        colors,
 		TerminalTitle: appconfig.ChatTerminalTitleEnabled(),
 		// What a file tool changed (chat.diff / chat.diff_lines): the diff under the
 		// tool result, before an approval question and with :diff. The change itself

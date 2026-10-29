@@ -115,7 +115,7 @@ func TestRendererToolArgsAreReadable(t *testing.T) {
 		var out bytes.Buffer
 		newRenderer(rendererOptions{Out: &out}).Handle(personal.Event{
 			Kind: "tool_call", ToolName: "shell_exec", Text: args})
-		assert.Eq(t, "⏺ shell_exec gofer issue ready 2>&1 | Select-Object -First 40 < in > out (timeout 120s)\n", out.String())
+		assert.Eq(t, "$ shell_exec gofer issue ready 2>&1 | Select-Object -First 40 < in > out (timeout 120s)\n", out.String())
 		assert.StrNotContains(t, out.String(), `\u00`)
 	})
 
@@ -131,14 +131,14 @@ func TestRendererToolArgsAreReadable(t *testing.T) {
 		newRenderer(rendererOptions{Out: &out}).Handle(personal.Event{Kind: "tool_call", ToolName: "t",
 			Text: `{"timeout":120,"big":9007199254740993,"ratio":1.50}`})
 		// Keys are encoded sorted, like the summary itself was (a map).
-		assert.Eq(t, `⏺ t {"big":9007199254740993,"ratio":1.50,"timeout":120}`+"\n", out.String())
+		assert.Eq(t, `✦ t {"big":9007199254740993,"ratio":1.50,"timeout":120}`+"\n", out.String())
 	})
 
 	t.Run("anything that is not one JSON value is shown as it is", func(t *testing.T) {
 		for _, text := range []string{"not json 2>&1", `{"a":1} {"b":"<x>"}`, ""} {
 			var out bytes.Buffer
 			newRenderer(rendererOptions{Out: &out}).Handle(personal.Event{Kind: "tool_call", ToolName: "t", Text: text})
-			want := "⏺ t" + map[bool]string{true: " " + text, false: ""}[text != ""] + "\n"
+			want := "✦ t" + map[bool]string{true: " " + text, false: ""}[text != ""] + "\n"
 			assert.Eq(t, want, out.String())
 		}
 	})
@@ -154,9 +154,9 @@ func TestRendererPlainTurn(t *testing.T) {
 		"▣ looking",
 		`⏺ file_read a.go`,
 		"  ⎿ ok: package a func A() {}",
-		`⏺ shell {"cmd":"false"}`,
+		`✦ shell {"cmd":"false"}`,
 		"  ⎿ error: exit status 1",
-		"⏺ plan two steps",
+		"✦ plan two steps",
 		"  ✔ read",
 		"  ▶ edit",
 		"  ○ test",
@@ -233,14 +233,24 @@ func TestRendererColoredTurn(t *testing.T) {
 	t.Cleanup(func() { color.RevertColorLevel() })
 
 	var out, errOut bytes.Buffer
-	r := newRenderer(rendererOptions{Out: &out, Err: &errOut, Color: true, ErrColor: true, Provider: "p", Model: "m", now: testClock})
+	// A 256 color palette, so the assertions do not depend on the color level the
+	// test environment reports (chat.colors.mode auto asks the terminal).
+	pal, err := newPalette("", map[string]string{colorsKeyMode: colorMode256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRenderer(rendererOptions{Out: &out, Err: &errOut, Color: true, ErrColor: true, Provider: "p", Model: "m", now: testClock, Palette: pal})
 	runTurn(r, time.Second)
 	got := out.String()
 
 	assert.StrContains(t, got, "\x1b[")
-	// Tool line and status line are grey (90), failed results red (31).
-	assert.StrContains(t, got, "\x1b[90m⏺ file_read a.go\x1b[0m")
-	assert.StrContains(t, got, "\x1b[31m  ⎿ error: exit status 1\x1b[0m")
+	// A read tool line carries its family color on the symbol and the name, its
+	// arguments are dim; the ok label is the status color and its summary the
+	// terminal's own foreground; a failed result is red and the status line grey.
+	assert.StrContains(t, got, "\x1b[38;5;111m⏺ file_read\x1b[0m \x1b[38;5;245ma.go\x1b[0m")
+	assert.StrContains(t, got, "\x1b[38;5;71m  ⎿ ok:\x1b[0m package a func A() {}")
+	assert.StrContains(t, got, "\x1b[38;5;203m  ⎿ error: exit status 1\x1b[0m")
+	assert.StrContains(t, got, "\x1b[38;5;114m✦ shell\x1b[0m \x1b[38;5;245m{\"cmd\":\"false\"}\x1b[0m")
 	assert.StrContains(t, got, "\x1b[90mp/m · in 1200 / out 34 tokens · 1.0s · 12:34\x1b[0m")
 	assert.StrContains(t, got, "\x1b[32m  ✔ read\x1b[0m")
 	assert.Eq(t, "\x1b[36m❯ \x1b[0m", r.Prompt(false))
@@ -457,7 +467,7 @@ func TestRendererAgentProgress(t *testing.T) {
 	r.Handle(personal.Event{Kind: "agent_progress", CallID: "c1", Agent: "find Foo", ToolName: "file_grep", Text: `{"pattern":"Foo"}`})
 	r.Handle(personal.Event{Kind: "tool_result", ToolName: "agent", CallID: "c1", Text: "Foo is in a.go:3"})
 	assert.Eq(t, strings.Join([]string{
-		`⏺ agent explore find Foo`,
+		`◆ agent explore find Foo`,
 		`  · file_grep "Foo"`,
 		"  ⎿ ok: Foo is in a.go:3",
 		"",

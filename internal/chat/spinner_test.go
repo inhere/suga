@@ -216,7 +216,7 @@ func TestSpinnerPlanAndRetry(t *testing.T) {
 		r.Handle(personal.Event{Kind: "plan", Plan: &native.Plan{
 			Steps: []native.PlanStep{{Step: "read", Status: "in_progress"}},
 		}})
-		assert.StrContains(t, out.String(), "⏺ plan")
+		assert.StrContains(t, out.String(), "✦ plan")
 		assert.True(t, spinnerRunning(r.spin))
 	})
 	t.Run("retry", func(t *testing.T) {

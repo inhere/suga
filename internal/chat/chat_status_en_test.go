@@ -175,14 +175,14 @@ func TestChatENToolSummary(t *testing.T) {
 		name, tool, args, want string
 	}{
 		{name: "file_write", tool: "file_write", args: `{"path":"a.go","content":"one\ntwo"}`,
-			want: "⏺ file_write a.go (7 bytes, 2 lines)"},
+			want: "✎ file_write a.go (7 bytes, 2 lines)"},
 		{name: "file_edit", tool: "file_edit", args: `{"path":"a.go","old_string":"a","new_string":"b"}`,
-			want: "⏺ file_edit a.go (1 replacements)"},
+			want: "✎ file_edit a.go (1 replacements)"},
 		{name: "web_fetch urls", tool: "web_fetch", args: `{"urls":["https://example.com/a","https://example.com/b"]}`,
-			want: "⏺ web_fetch 2 URLs: https://example.com/a, …"},
+			want: "⇄ web_fetch 2 URLs: https://example.com/a, …"},
 		{name: "shell_exec watch", tool: "shell_exec",
 			args: `{"command":"go test ./x","watch_paths":["**/*.go","./docs"]}`,
-			want: "⏺ shell_exec go test ./x (watch 2 paths)"},
+			want: "$ shell_exec go test ./x (watch 2 paths)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer

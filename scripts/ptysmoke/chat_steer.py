@@ -439,7 +439,7 @@ def same_turn_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     c.check("the prompt becomes ↳ while the turn runs", s.until(STEER_PROMPT, m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
@@ -482,7 +482,7 @@ def paste_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     c.check("the prompt becomes ↳ while the turn runs", s.until(STEER_PROMPT, m))
     # The turn keeps its line editable and bracketed: the prompt read asked for
     # the paste markers and turned them off when it ended, so the marker after
@@ -608,7 +608,7 @@ def abort_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
         return
@@ -630,7 +630,7 @@ def abort_scenario(c):
     s.send("\r")
     requests = c.log.wait(2)
     c.check("Enter runs the message", len(requests) >= 2 and last_user(requests[1]) == "别改了")
-    c.check("the next turn calls the tool again", s.until(r"⏺ shell_exec", m))
+    c.check("the next turn calls the tool again", s.until(r"\$ shell_exec", m))
     time.sleep(0.5)
     s.send(CTRL_C)
     c.check("one ctrl-c ends this turn only", s.until(r"已中断本轮", m, timeout=15))
@@ -653,7 +653,7 @@ def send_scenario(c):
     # --- steered into the turn running right now ---------------------------
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     c.check("the prompt becomes ↳ while the turn runs", s.until(STEER_PROMPT, m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
@@ -686,7 +686,7 @@ def send_scenario(c):
         os.remove(marker)
     m = s.mark()
     s.line("再跑一个长命令")
-    c.check("tool call shown again", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown again", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("the second tool started", False)
         return
@@ -716,7 +716,7 @@ def send_scenario(c):
         os.remove(marker)
     m = s.mark()
     s.line("再跑一个长命令")
-    c.check("tool call shown (third turn)", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown (third turn)", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("the third tool started", False)
         return
@@ -737,7 +737,7 @@ def send_scenario(c):
         os.remove(marker)
     m = s.mark()
     s.line("再跑一个长命令")
-    c.check("tool call shown (fourth turn)", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown (fourth turn)", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("the fourth tool started", False)
         return
@@ -777,7 +777,7 @@ def clear_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     c.check("the prompt becomes ↳ while the turn runs", s.until(STEER_PROMPT, m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
@@ -825,7 +825,7 @@ def clear_scenario(c):
         os.remove(marker)
     m = s.mark()
     s.line("再跑一个长命令")
-    c.check("tool call shown again", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown again", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("the second tool started", False)
         return
@@ -848,7 +848,7 @@ def withdraw_scenario(c):
 
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     c.check("the prompt becomes ↳ while the turn runs", s.until(STEER_PROMPT, m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
@@ -1003,7 +1003,7 @@ def status_scenario(c):
     # on the row above the input line, while nothing of the turn is on screen yet.
     c.check("the status line says the model is asked", s.until(frame("思考中…"), m))
     c.check("the input line stays the ↳ prompt", s.until(STEER_PROMPT, m))
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
         return
@@ -1067,7 +1067,7 @@ def status_off_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
         return
@@ -1096,7 +1096,7 @@ def hook_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一下")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     # Type while the hook runs (PostToolUse fires right after the tool result).
     for part in ["插", "一句"]:
         s.send(part)
@@ -1170,7 +1170,7 @@ def off_scenario(c):
     c.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("跑一个长命令")
-    c.check("tool call shown", s.until(r"⏺ shell_exec", m))
+    c.check("tool call shown", s.until(r"\$ shell_exec", m))
     if not c.wait_file(STARTED, 30):
         c.check("tool started (marker file)", False)
         return

@@ -203,6 +203,33 @@ func ChatNotifyMode() (string, error) {
 	return "", fmt.Errorf("chat.notify must be auto, bell, osc9 or off, got %q", value)
 }
 
+// ChatColors reads chat.colors: the styles of chat's own lines (a tool call, its
+// result, a plan, a hint), as a mapping of element to color - style and mode, plus
+// one color per tool family and for ok/error/dim. The values are resolved by chat
+// itself (internal/chat/colors.go), which knows the element names and the color
+// syntax and refuses an unknown one: this reader only makes sure the block is a
+// mapping, so a scalar written where the block belongs is an error rather than a
+// silently ignored setting.
+func ChatColors() (map[string]string, error) {
+	raw := gkconfig.Get("chat.colors")
+	if raw == nil {
+		return nil, nil
+	}
+	fields, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("chat.colors must be a mapping of element to color, like {style: name, read: blue}")
+	}
+	colors := make(map[string]string, len(fields))
+	for key, value := range fields {
+		key = strings.TrimSpace(key)
+		colors[key] = strings.TrimSpace(stringValue(value))
+		if colors[key] == "" {
+			delete(colors, key)
+		}
+	}
+	return colors, nil
+}
+
 // ChatTheme resolves chat.theme to the actual terminal palette chat paints its
 // markdown and code with: "dark" or "light". A theme in the config file is the
 // default; the environment variable SUGA_THEME (dark|light) overrides it, which

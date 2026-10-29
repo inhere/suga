@@ -154,7 +154,7 @@ def main():
         m = a.mark()
         a.line("发给 %s：%s" % (b_name, ASK))
         checks.append(("A calls session_message",
-                       a.until(r"⏺ session_message", m, timeout=EXCHANGE_TIMEOUT)))
+                       a.until(r"✦ session_message", m, timeout=EXCHANGE_TIMEOUT)))
         # B receives it as a tagged user message and starts a turn of its own.
         mb = b.mark()
         checks.append(("B reads the message as A's",

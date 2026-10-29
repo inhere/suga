@@ -75,7 +75,7 @@ def sync_scenario(s, binary, env, full=False):
     m = s.mark()
     s.check("sync: ❯ prompt", s.until(r"❯ ", m))
     m = s.mark(); s.line("调研一下")
-    s.check("sync: agent call shown", s.until(r"⏺ agent", m))
+    s.check("sync: agent call shown", s.until(r"◆ agent", m))
     if full:
         s.check("sync full: sub-agent progress line", s.until(r"  · file_grep", m))
     if not full:
@@ -155,7 +155,7 @@ def error_scenario(s):
     m = s.mark()
     s.check("error: ❯ prompt", s.until(r"❯ ", m))
     m = s.mark(); s.line("调研一下")
-    s.check("error: agent call shown", s.until(r"⏺ agent", m))
+    s.check("error: agent call shown", s.until(r"◆ agent", m))
     s.check("error: failed sub-agent result", s.until(r"⎿ error: sub-agent failed", m, timeout=20))
     # The model is asked again after the result: its waiting line must no longer
     # count the failed sub-agent. Without the cleanup the label stays

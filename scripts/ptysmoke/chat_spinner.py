@@ -97,7 +97,7 @@ def scenario(s):
             s.until_raw(INPUT_BG + r"[\s\S]*?❯ (?:\x1b\[[0-9;]*m)*" + INPUT_BG + r"(?:\x1b\[[0-9;]*m)*你好", m))
     s.check("input line: the background reaches the row end",
             s.until_raw(INPUT_BG + r"[\s\S]*?你好 +\x1b\[0m", m))
-    s.check("tool call line", s.until(r"⏺ shell_exec", m))
+    s.check("tool call line", s.until(r"\$ shell_exec", m))
     s.check("tool result line", s.until(OK, m))
 
     m = s.mark()
