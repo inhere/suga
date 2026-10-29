@@ -103,10 +103,13 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		}
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.True(t, strings.Contains(out[0].Content, "已省略"))
-		// The note points at the tool that reads pictures now (design 2026-10-23
-		// section 6); view_image is only a hidden alias.
-		assert.Contains(t, out[0].Content, "需要时 file_read images/")
+		assert.Contains(t, out[0].Content, "超出历史图片窗口")
+		// The note says the file is still there and how to look at it: a bare
+		// "omitted" reads as lost (design 2026-10-23 section 6: file_read reads
+		// pictures; view_image is only a hidden alias).
+		assert.Contains(t, out[0].Content, "file_read")
+		assert.Contains(t, out[0].Content, part.Ref)
+		assert.Contains(t, out[0].Content, "返回的就是图片本身")
 		assert.Eq(t, 1, len(out[4].Images), "the newest image stays")
 	})
 
@@ -158,7 +161,7 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		b.r.cfg.ImageHistoryTurns = 2
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.Contains(t, out[0].Content, "已省略")
+		assert.Contains(t, out[0].Content, "超出历史图片窗口")
 		assert.Eq(t, 1, len(out[5].Images))
 	})
 }

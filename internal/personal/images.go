@@ -107,21 +107,39 @@ func imageDigest(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// imageNote is the text that replaces an image left out of the request.
+// imageNote is the text that replaces an image left out of the request: what it is
+// and why it is not sent, and - for a picture whose file is still on disk, the
+// usual case - that file_read returns the picture itself. That last part is the
+// point of the note: a bare "omitted" reads as lost, and a model that believes the
+// picture is gone asks the person to describe it instead of looking at it.
 func imageNote(part agentcore.ImagePart, reason string) string {
+	label := imageLabel(part)
+	if part.Ref == "" {
+		return fmt.Sprintf("[%s：%s]", label, reason)
+	}
+	return fmt.Sprintf("[%s：%s；图片文件仍在 %s，要看这张图就调用 file_read 读这个路径，返回的就是图片本身]",
+		label, reason, part.Ref)
+}
+
+// imageLostNote is imageNote for a picture that cannot be read at all (the file is
+// gone or the session stored no bytes): there is nothing to call file_read for.
+func imageLostNote(part agentcore.ImagePart, reason string) string {
+	if part.Ref == "" {
+		return fmt.Sprintf("[%s：%s]", imageLabel(part), reason)
+	}
+	return fmt.Sprintf("[%s：%s，文件 %s 读不到]", imageLabel(part), reason, part.Ref)
+}
+
+// imageLabel names a picture: its media type and its pixel size when known.
+func imageLabel(part agentcore.ImagePart) string {
 	kind := part.MediaType
 	if kind == "" {
 		kind = "image"
 	}
-	size := ""
 	if part.Width > 0 && part.Height > 0 {
-		size = fmt.Sprintf(" %d×%d", part.Width, part.Height)
+		return fmt.Sprintf("%s %d×%d", kind, part.Width, part.Height)
 	}
-	ref := part.Ref
-	if ref == "" {
-		ref = "(unknown)"
-	}
-	return fmt.Sprintf("[%s (%s%s)：%s；需要时 file_read %s]", kind, filepath.Base(ref), size, reason, ref)
+	return kind
 }
 
 // prepareImages returns a copy of view whose images carry their bytes, with the
@@ -229,7 +247,7 @@ func (b *contextBuilder) resolveImages(images []agentcore.ImagePart, loader *ima
 	var notes []string
 	for _, part := range images {
 		if trimmed {
-			notes = append(notes, imageNote(part, "已省略"))
+			notes = append(notes, imageNote(part, "超出历史图片窗口"))
 			continue
 		}
 		if len(part.Data) > 0 {
@@ -237,12 +255,12 @@ func (b *contextBuilder) resolveImages(images []agentcore.ImagePart, loader *ima
 			continue
 		}
 		if loader == nil {
-			notes = append(notes, imageNote(part, "图片不可用"))
+			notes = append(notes, imageLostNote(part, "图片不可用"))
 			continue
 		}
 		data, ok := loader.data(part)
 		if !ok {
-			notes = append(notes, imageNote(part, "图片缺失"))
+			notes = append(notes, imageLostNote(part, "图片缺失"))
 			continue
 		}
 		filled := part
@@ -322,7 +340,7 @@ func capImages(images []agentcore.ImagePart, keep func(agentcore.ImagePart) bool
 			out = append(out, part)
 			continue
 		}
-		notes = append(notes, imageNote(part, "超出单请求图片上限，已省略"))
+		notes = append(notes, imageNote(part, "超出单请求图片上限"))
 	}
 	return out, notes
 }
