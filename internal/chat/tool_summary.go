@@ -45,7 +45,7 @@ var toolSummaries = map[string]toolSummaryFunc{
 	"memory":          summaryMemory,
 }
 
-// toolCallArgs returns what a tool line shows after "⏺ <name>": the tool's own
+// toolCallArgs returns what a tool line shows after "▸ <name>": the tool's own
 // summary when there is one, the compact JSON of the call arguments otherwise.
 // The workspace makes the paths inside it relative, and secrets are redacted
 // like everywhere else in chat.

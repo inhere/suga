@@ -107,10 +107,10 @@ func TestTerminal_WriteWithStatusLine(t *testing.T) {
 	waitRead(t, feed.waiting)
 
 	before := len(feed.out.String())
-	_, err := tm.Write([]byte("⏺ shell_exec\n"))
+	_, err := tm.Write([]byte("$ shell_exec\n"))
 	assert.NoErr(t, err)
 	assert.Eq(t, "\x1b[4D\x1b[K\x1b[A\x1b[K"+
-		"⏺ shell_exec\r\n"+
+		"$ shell_exec\r\n"+
 		"⠋ 执行 shell_exec… 3s\r\n"+
 		"↳ ab", feed.out.String()[before:])
 	assert.Eq(t, 4, tm.cursorX)

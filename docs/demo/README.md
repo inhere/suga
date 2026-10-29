@@ -12,7 +12,7 @@ asciinema cat docs/demo/suga-chat.cast    # 只要文字输出
 | 时间轴 | 画面 |
 |---|---|
 | 启动 | 横幅：模型、会话短名称、工具是否可写 |
-| 提问 | 「先看下这个项目是做什么的？」→ 两行工具调用 `⏺ file_read README.md`、`⏺ file_read todo.py`，然后回答 |
+| 提问 | 「先看下这个项目是做什么的？」→ 两行工具调用 `▸ file_read README.md`、`▸ file_read todo.py`，然后回答 |
 | 回合中排队 | 模型作答期间输入「顺便说下怎么运行」并按 `Tab`：`[排队] …（本轮结束后发送）`，本轮结束后自动发出去并显示 `（已发送）` |
 | 写文件审批 | 「把 todo.py 里 added: 改成中文提示」→ `允许执行 file_edit`，显示原文/改为，输入 `y` 后 `⎿ ok: edited …` |
 | 上下文 | `:context` 列出系统提示、工具 schema、常驻段上下文、历史消息与估算 token |

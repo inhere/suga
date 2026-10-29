@@ -5,7 +5,7 @@ fakellm.py (display mode) makes one turn with three calls and chat prints one
 line for each:
 
 - file_read target.txt with offset 1 and limit 2 -> the path and its line window
-  (`⏺ file_read target.txt:1-2`), a summary of the tool's own;
+  (`▸ file_read target.txt:1-2`), a summary of the tool's own;
 - shell_exec of a two-line command -> the command itself, first line only, the
   rest marked with `…` (`$ shell_exec echo SMOKE_DISPLAY …`);
 - update_plan -> no summary of the tool, so the compact JSON of the arguments
@@ -49,7 +49,7 @@ REPLY = "SMOKE_TOOL_LINES_REPLY"
 # window of the call.
 TARGET = "SMOKE_TARGET first\nSMOKE_TARGET second\nSMOKE_TARGET third\n"
 # The lines chat prints for the three calls of the turn.
-FILE_READ_LINE = r"⏺ file_read target\.txt:1-2"
+FILE_READ_LINE = r"▸ file_read target\.txt:1-2"
 SHELL_LINE = r"$ shell_exec echo SMOKE_DISPLAY …"
 PLAN_LINE = r'✦ update_plan \{"plan":\[\{"status":"in_progress","step":"read"\}\]\}'
 

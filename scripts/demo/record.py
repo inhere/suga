@@ -151,8 +151,8 @@ STEPS = [
     ("sleep", 1.2),
     ("type", SURVEY_LINE),
     ("enter",),
-    ("wait", r"⏺ file_read README\.md", "first tool line"),
-    ("wait", r"⏺ file_read todo\.py", "second tool line"),
+    ("wait", r"▸ file_read README\.md", "first tool line"),
+    ("wait", r"▸ file_read todo\.py", "second tool line"),
     # The model is answering now: the line typed here is queued, not sent, so the
     # answer in flight is not disturbed (chat.steering: Tab queues, Enter steers).
     ("type", QUEUED_LINE),

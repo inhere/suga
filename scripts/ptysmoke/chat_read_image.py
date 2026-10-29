@@ -72,7 +72,7 @@ def scenario(s, reply, log):
     s.check("❯ prompt", s.until(r"❯ ", m))
     m = s.mark()
     s.line("读一下这张图说说是什么")
-    s.check("tool line names file_read and the picture", s.until(r"⏺ file_read shot\.png", m))
+    s.check("tool line names file_read and the picture", s.until(r"▸ file_read shot\.png", m))
     s.check("the turn answers", s.until(r"▣ " + reply, m) and s.until(r"tokens · ", m))
     s.check("the model received the message text", log.wait_user("读一下这张图"))
 

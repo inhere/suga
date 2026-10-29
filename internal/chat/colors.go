@@ -31,8 +31,11 @@ const (
 // familySymbols are the markers of the tool lines, one per family, in familyRead..
 // familyMeta order. They carry the distinction without colors too: a NO_COLOR
 // terminal, a log file, a recording or a person who cannot tell these hues apart
-// still reads a write apart from a read.
-var familySymbols = [familyCount]string{"⏺", "✎", "$", "⇄", "◆", "✦"}
+// still reads a write apart from a read. A read tool keeps a triangle and not the
+// record symbol ⏺ a call used to be marked with: many terminal fonts draw that one
+// as a filled square, which is the answer's own marker ▣, so a tool line and an
+// answer were told apart by their color alone.
+var familySymbols = [familyCount]string{"▸", "✎", "$", "⇄", "◆", "✦"}
 
 // familyNames are the chat.colors keys of the families, in the same order.
 var familyNames = [familyCount]string{"read", "write", "shell", "net", "agent", "meta"}

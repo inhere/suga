@@ -152,7 +152,7 @@ func TestRendererPlainTurn(t *testing.T) {
 	// Each model message starts with the ▣ marker; tool and plan lines do not.
 	want := strings.Join([]string{
 		"▣ looking",
-		`⏺ file_read a.go`,
+		`▸ file_read a.go`,
 		"  ⎿ ok: package a func A() {}",
 		`✦ shell {"cmd":"false"}`,
 		"  ⎿ error: exit status 1",
@@ -247,7 +247,7 @@ func TestRendererColoredTurn(t *testing.T) {
 	// A read tool line carries its family color on the symbol and the name, its
 	// arguments are dim; the ok label is the status color and its summary the
 	// terminal's own foreground; a failed result is red and the status line grey.
-	assert.StrContains(t, got, "\x1b[38;5;111m⏺ file_read\x1b[0m \x1b[38;5;245ma.go\x1b[0m")
+	assert.StrContains(t, got, "\x1b[38;5;111m▸ file_read\x1b[0m \x1b[38;5;245ma.go\x1b[0m")
 	assert.StrContains(t, got, "\x1b[38;5;71m  ⎿ ok:\x1b[0m package a func A() {}")
 	assert.StrContains(t, got, "\x1b[38;5;203m  ⎿ error: exit status 1\x1b[0m")
 	assert.StrContains(t, got, "\x1b[38;5;114m✦ shell\x1b[0m \x1b[38;5;245m{\"cmd\":\"false\"}\x1b[0m")

@@ -200,7 +200,7 @@ providers:
 #   undo_confirm: true # :undo asks before changing files (default true)
 #   # The colors of chat's own lines - a tool call, its result, a plan, a hint. The
 #   # model's answer keeps the terminal's default foreground, so the two never look
-#   # alike. Every tool family has a symbol of its own as well (⏺ read, ✎ write,
+#   # alike. Every tool family has a symbol of its own as well (▸ read, ✎ write,
 #   # $ command, ⇄ network, ◆ sub-agent, ✦ session/plan), which survives NO_COLOR.
 #   colors:
 #     style: name       # symbol: the marker only; name (default): marker and tool

@@ -25,8 +25,8 @@ func colorRenderer(t *testing.T, theme string, settings map[string]string) *Rend
 // the families stay apart without colors too (a NO_COLOR terminal, a log file).
 func TestToolFamilySymbols(t *testing.T) {
 	for _, tc := range []struct{ tool, symbol string }{
-		{"file_read", "⏺"}, {"file_list", "⏺"}, {"file_grep", "⏺"}, {"file_refs", "⏺"},
-		{"file_symbols", "⏺"}, {"file_find", "⏺"}, {"view_image", "⏺"},
+		{"file_read", "▸"}, {"file_list", "▸"}, {"file_grep", "▸"}, {"file_refs", "▸"},
+		{"file_symbols", "▸"}, {"file_find", "▸"}, {"view_image", "▸"},
 		{"file_write", "✎"}, {"file_edit", "✎"}, {"file_remove", "✎"},
 		{"shell_exec", "$"},
 		{"web_fetch", "⇄"}, {"web_search", "⇄"},
@@ -45,7 +45,7 @@ func TestToolFamilySymbols(t *testing.T) {
 // TestToolCallLineStyles: chat.colors.style picks how much of a tool line the
 // family color covers; the arguments are always dim, the symbol always shows.
 func TestToolCallLineStyles(t *testing.T) {
-	read := "\x1b[38;5;111m⏺ file_read\x1b[0m"
+	read := "\x1b[38;5;111m▸ file_read\x1b[0m"
 	dim := "\x1b[38;5;245m"
 	t.Run("name is the default", func(t *testing.T) {
 		r := colorRenderer(t, "", map[string]string{colorsKeyMode: colorMode256})
@@ -54,11 +54,11 @@ func TestToolCallLineStyles(t *testing.T) {
 	})
 	t.Run("symbol paints the marker only", func(t *testing.T) {
 		r := colorRenderer(t, "", map[string]string{colorsKeyMode: colorMode256, colorsKeyStyle: colorStyleSymbol})
-		assert.Eq(t, "\x1b[38;5;111m⏺\x1b[0m "+dim+"file_read\x1b[0m "+dim+"a.go\x1b[0m", r.toolCallLine("file_read", "a.go"))
+		assert.Eq(t, "\x1b[38;5;111m▸\x1b[0m "+dim+"file_read\x1b[0m "+dim+"a.go\x1b[0m", r.toolCallLine("file_read", "a.go"))
 	})
 	t.Run("line paints the whole call", func(t *testing.T) {
 		r := colorRenderer(t, "", map[string]string{colorsKeyMode: colorMode256, colorsKeyStyle: colorStyleLine})
-		assert.Eq(t, "\x1b[38;5;111m⏺ file_read a.go\x1b[0m", r.toolCallLine("file_read", "a.go"))
+		assert.Eq(t, "\x1b[38;5;111m▸ file_read a.go\x1b[0m", r.toolCallLine("file_read", "a.go"))
 	})
 	t.Run("a terminal without colors keeps the symbols", func(t *testing.T) {
 		r := &Renderer{opts: rendererOptions{}, pal: mustPalette(t, "", nil)}
