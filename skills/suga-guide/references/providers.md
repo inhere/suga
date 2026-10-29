@@ -101,6 +101,29 @@ providers:
 
 之后可用 `--model opencode-go-claude/<model>` 临时切到 Anthropic 端点。
 
+## 示例：Codex 渠道（会话头决定上游 prompt 缓存）
+
+走 ChatGPT/Codex 后端的网关（如 [AxonHub](https://github.com/looplj/axonhub) 的 `codex` 渠道）用**入站请求头**判断一次请求属于哪个上游会话：`Session_id` → `Session-Id` → `X-Codex-Turn-Metadata` → 服务端派生的 session，全都没有就**给每个请求生成一个随机 uuid**（`llm/transformer/openai/codex/outbound.go`，写进上游的 `Session-Id`/`X-Codex-Window-Id`）。上游按会话做 prompt 缓存，因此缺会话头的客户端每个请求都是“新会话”，`cached_tokens` 恒为 0：同一个 key、同一个渠道，Codex CLI 有命中而 suga 没有，就是这个原因。
+
+suga 不伪造客户端身份，所以要在 `providers.<id>.headers` 里补上会话头（`{{session_id}}` 解析成当前会话 id，一个会话内稳定）：
+
+```yaml
+providers:
+  axonhub-codex:
+    type: openai-responses              # /responses
+    base_url: "http://<网关>/v1"
+    api_key: "${AXONHUB_API_KEY}"
+    context_window: 500000
+    headers:
+      Session-Id: "{{session_id}}"
+      Thread-Id: "{{session_id}}"
+      Originator: "codex_exec"          # 可选：让网关按 Codex 客户端处理
+```
+
+自检效果：`suga inspect trace <session> --json` 里每次模型调用的 `cache_read_tokens` 应接近 `input_tokens`（首条冷启动除外）；不补头时多数请求为 0。
+
+注意：`providers.<id>.prompt_cache` 只对 `anthropic` 类型生效（`cache_control` 断点）；OpenAI/Responses 的缓存由上游自动管理，客户端能做的是**让会话与前缀稳定**——suga 自己发的 `prompt_cache_key`（会话 id）和上面的会话头都属于这一类。网关不认识这两个头时通常直接忽略，无副作用。
+
 ## 示例：短模型名与同一网关的两种协议
 
 ```yaml
