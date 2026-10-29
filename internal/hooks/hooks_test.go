@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -267,7 +268,17 @@ func TestHookTimeouts(t *testing.T) {
 		start := time.Now()
 		result := <-mustNew(t).StartStop(context.Background(), Event{Name: "Stop"}).Done()
 		assert.Err(t, result.Err)
+		// Reaching the bound is a timeout, not a failure: the trace and the log show
+		// it apart from a hook command that broke (issue my-tools-4x8a).
+		assert.True(t, errors.Is(result.Err, ErrTimedOut), result.Err.Error())
 		assert.True(t, time.Since(start) < 1200*time.Millisecond)
+	})
+	t.Run("a failing command is not a timeout", func(t *testing.T) {
+		assert.NoErr(t, gkconfig.Set("hooks.timeout_ms", 2000))
+		result := <-mustNew(t).StartStop(context.Background(), Event{Name: "Stop"}).Done()
+		if result.Err != nil {
+			assert.False(t, errors.Is(result.Err, ErrTimedOut), "a non-zero exit is a failure, not a timeout")
+		}
 	})
 	t.Run("stop_wait_sec outlasts timeout_ms for Stop only", func(t *testing.T) {
 		assert.NoErr(t, gkconfig.Set("hooks.timeout_ms", 200))

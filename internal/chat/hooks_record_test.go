@@ -2,6 +2,8 @@ package chat
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -66,5 +68,19 @@ func TestRecordingHooks(t *testing.T) {
 		w := h.StartStop(context.Background(), sugahooks.Event{Name: "Stop", SessionID: "s1"})
 		time.Sleep(20 * time.Millisecond) // the forwarder took it
 		assert.Eq(t, "pending", w.Interrupt(context.Background()))
+	})
+
+	// A Stop wait that reaches its configured bound is not a failure: the trace
+	// records it as cancelled, while a hook command that broke stays an error.
+	t.Run("a timeout is recorded as cancelled", func(t *testing.T) {
+		sink := &eventSink{}
+		recordHookRun(sink, sugahooks.Event{Name: "Stop", SessionID: "s1"},
+			sugahooks.Result{Err: fmt.Errorf("hook command timed out after 60s: %w", sugahooks.ErrTimedOut)}, time.Second, nil)
+		recordHookRun(sink, sugahooks.Event{Name: "Stop", SessionID: "s1"},
+			sugahooks.Result{Err: errors.New("exit status 1")}, time.Second, nil)
+		events := sink.all()
+		assert.Require(t, assert.Len(t, events, 2))
+		assert.Eq(t, "cancelled", events[0].Status)
+		assert.Eq(t, "error", events[1].Status)
 	})
 }

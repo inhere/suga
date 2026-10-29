@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	sugahooks "github.com/inhere/suga/internal/hooks"
@@ -87,6 +88,12 @@ func recordHookRun(recorder eventRecorder, ev sugahooks.Event, r sugahooks.Resul
 	status, errText := "ok", ""
 	if r.Err != nil {
 		status, errText = "error", r.Err.Error()
+		// A hook that reached its own bound, or was cancelled with the turn, did not
+		// fail: a Stop wait ends that way by configuration (hooks.stop_wait_sec),
+		// so the trace must not show it as an error (issue my-tools-4x8a).
+		if errors.Is(r.Err, sugahooks.ErrTimedOut) || errors.Is(r.Err, context.Canceled) || errors.Is(r.Err, context.DeadlineExceeded) {
+			status = "cancelled"
+		}
 	}
 	recorder.RecordEvent(context.Background(), ev.SessionID, personal.HostEvent{
 		Kind: store.EventHook, Name: ev.Name, Status: status, Duration: d, Error: errText, Attrs: attrs})

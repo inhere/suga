@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -101,6 +102,26 @@ func GateOf(client Client) ToolGate {
 }
 
 const defaultTimeoutMS = 3000
+
+// ErrTimedOut marks a hook that ran into its own bound (hooks.timeout_ms, or
+// stop_wait_sec+2 for Stop) instead of failing: a long Stop wait that reaches its
+// configured end is the normal way such a wait ends, so callers record it apart
+// from a hook command that failed (issue my-tools-4x8a).
+var ErrTimedOut = errors.New("hook timed out")
+
+// timeoutError is the hook's own bound running out. It unwraps to ErrTimedOut and
+// to the context error (a cancel is what the parent usually reports), so a caller
+// can tell a timeout from a failure and still see the cause.
+type timeoutError struct {
+	after time.Duration
+	cause error
+}
+
+func (e *timeoutError) Error() string {
+	return fmt.Sprintf("hook command timed out after %s: %v", e.after, e.cause)
+}
+
+func (e *timeoutError) Unwrap() []error { return []error{ErrTimedOut, e.cause} }
 
 // backgroundStopTimeout is the hook's own bound on a background Stop: longer
 // than any tasks.max_duration, which ends it first.
@@ -294,11 +315,12 @@ func (h *commandClient) StartStop(ctx context.Context, event Event) Wait {
 		response, err := h.call(waitCtx, event, true)
 		switch {
 		case err == nil:
-		case waitCtx.Err() != nil:
-			// Cancelled on purpose (the user typed, or chat is exiting): the
-			// kill error is expected and, on Windows, often "Access is denied"
-			// for a child that already exited. Not worth a warning on the prompt.
-			slog.Debug("stop hook cancelled", "event", event.Name, "err", err)
+		case waitCtx.Err() != nil, errors.Is(err, ErrTimedOut):
+			// Cancelled on purpose (the user typed, or chat is exiting) or ended by
+			// its own stop_wait_sec bound: the kill error is expected and, on
+			// Windows, often "Access is denied" for a child that already exited.
+			// Neither is worth a warning on the prompt.
+			slog.Debug("stop hook ended without a reply", "event", event.Name, "err", err)
 		default:
 			slog.Warn("hook command failed", "event", event.Name, "err", err)
 		}
@@ -339,7 +361,7 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 			// The command outlived its bound (hooks.timeout_ms or the caller's own):
 			// a PreToolUse answer that never arrives has to be named as a timeout,
 			// because the caller refuses the call on it.
-			return Response{}, fmt.Errorf("hook command timed out after %s: %w", timeout, ctx.Err())
+			return Response{}, &timeoutError{after: timeout, cause: ctx.Err()}
 		}
 		return Response{}, err
 	}
