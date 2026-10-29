@@ -9,6 +9,8 @@
 ### 修复
 
 - 修复模型或配置提供超大秒数时转换为负 `time.Duration`，导致命令、任务等待或重试立即结束的问题。
+- `file_grep` 的 `exclude` 写成文件通配符（`*_test.go`）时不再让整次搜索失败：它按文件排除处理（等同 `glob: ["!*_test.go"]`）并在结果里说明；既不是正则也不是通配符时，错误信息改为指向 `glob` 的 `!` 排除写法（原来提示的 `literal: true` 对 `exclude` 无效）。
+- Stop hook 等满 `hooks.stop_wait_sec` 或被取消时不再记为 error：trace 状态为 `cancelled`，日志降为 debug；真正失败的 hook 命令仍记 error。
 
 ### 新增
 
