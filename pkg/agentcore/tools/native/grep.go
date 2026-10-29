@@ -57,7 +57,7 @@ func (t *FileGrepTool) Schema() api.ToolSchema {
 				"pattern":     map[string]any{"type": "string", "description": "RE2 regular expression; lookaround/backreferences may use a backtracking fallback"},
 				"path":        map[string]any{"type": "string", "description": "File or directory to search (default: workspace root); may be absolute under a read-only dependency root"},
 				"glob":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only matching files; accepts a string for compatibility or a list with ! exclusions, e.g. [\"*.go\", \"!*_test.go\"]"},
-				"exclude":     map[string]any{"type": "string", "description": "Leave out matching lines (RE2 regexp, like grep -v); a pattern that is not a valid regexp but a file wildcard such as *_test.go leaves those files out instead (same as glob: [\"!*_test.go\"])"},
+				"exclude":     map[string]any{"type": "string", "description": "Drop matching lines (RE2 regexp); a non-regexp file wildcard such as *_test.go drops those files (glob: [\"!*_test.go\"])"},
 				"context":     map[string]any{"type": "integer", "minimum": 0, "maximum": 5, "description": "Include this many lines before and after each match"},
 				"literal":     map[string]any{"type": "boolean", "description": "Match pattern as plain text"},
 				"ignore_case": map[string]any{"type": "boolean", "description": "Case-insensitive match"},

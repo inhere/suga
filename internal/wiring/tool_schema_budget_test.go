@@ -27,13 +27,16 @@ import (
 // directories in no_ignore again (node_modules, vendor, dist) - with only
 // "ignored paths" the model listed vendor/ through shell_exec instead (naming
 // run, shell_exec 9.3 -> 17.3 calls per run).
+// 2026-10-29: file_grep says exclude takes a file wildcard too: a `*_test.go`
+// written there failed the whole search and cost a model round trip each time
+// (24 of 101 file_grep calls in one session, issue my-tools-2s5k).
 var toolSchemaBudget = map[string]int{
 	"memory":          2600,
 	"session_search":  1950,
 	"shell_exec":      1750,
 	"file_read":       1700,
 	"file_refs":       1700,
-	"file_grep":       1600,
+	"file_grep":       1700,
 	"agent":           1600,
 	"file_edit":       1350,
 	"file_symbols":    1350,
