@@ -125,6 +125,8 @@ providers:
 
 压缩、空闲整理与 `--from` 交接包的摘要请求自带一个独立的缓存键（`<会话>-compact`），不会把主对话的缓存条目冲掉；这是 suga 自动的行为，无需配置。
 
+`headers` 的值还可以用 `{{turn_id}}`、`{{model}}`、`{{provider}}`（例如 `X-Session: "{{session_id}}/{{turn_id}}"` 或按模型分流的 `X-Model: "{{model}}"`）；某个占位符取不到值时整个头不发送，网关不会收到空的路由值。
+
 注意：`providers.<id>.prompt_cache` 只对 `anthropic` 类型生效（`cache_control` 断点）；OpenAI/Responses 的缓存由上游自动管理，客户端能做的是**让会话与前缀稳定**——suga 自己发的 `prompt_cache_key`（会话 id）和上面的会话头都属于这一类。网关不认识这两个头时通常直接忽略，无副作用。
 
 ## 示例：短模型名与同一网关的两种协议

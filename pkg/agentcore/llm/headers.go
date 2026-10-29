@@ -11,9 +11,27 @@ import (
 // DefaultUserAgent identifies suga to model APIs; llm.headers can override it.
 const DefaultUserAgent = "suga"
 
-// SessionIDPlaceholder in an llm.headers value is replaced with the current
-// suga session id, e.g. a gateway's per-conversation routing header.
-const SessionIDPlaceholder = "{{session_id}}"
+// Placeholders of an llm.headers value (providers.<id>.headers). A header whose
+// value uses a placeholder with no value (a request outside a session or a turn)
+// is left out, so a gateway never receives an empty routing value.
+const (
+	// SessionIDPlaceholder is the suga session id, e.g. a gateway's
+	// per-conversation routing header.
+	SessionIDPlaceholder = "{{session_id}}"
+	// TurnIDPlaceholder is the current turn id ("" outside a turn).
+	TurnIDPlaceholder = "{{turn_id}}"
+	// ModelPlaceholder is the model id the request is sent with.
+	ModelPlaceholder = "{{model}}"
+	// ProviderPlaceholder is the configured provider id.
+	ProviderPlaceholder = "{{provider}}"
+)
+
+// headerVars are the placeholder values that do not come from ctx: the provider
+// knows its own model and id.
+type headerVars struct {
+	Model    string
+	Provider string
+}
 
 // WithSessionID marks ctx with the suga session the model call belongs to.
 //
@@ -31,18 +49,36 @@ func WithSessionID(ctx context.Context, id string) context.Context {
 func SessionIDFrom(ctx context.Context) string { return agentcoreapi.SessionIDFrom(ctx) }
 
 // applyHeaders sets the default User-Agent and then the configured extra
-// headers. A value using SessionIDPlaceholder is skipped when ctx carries no
-// session id, so a gateway never receives an empty conversation id.
-func applyHeaders(ctx context.Context, req *http.Request, headers map[string]string) {
+// headers, expanding the placeholders of each value. A header that needs a
+// placeholder this request cannot fill is skipped.
+func applyHeaders(ctx context.Context, req *http.Request, headers map[string]string, vars headerVars) {
 	req.Header.Set("User-Agent", DefaultUserAgent)
-	sessionID := agentcoreapi.SessionIDFrom(ctx)
-	for name, value := range headers {
-		if strings.Contains(value, SessionIDPlaceholder) {
-			if sessionID == "" {
-				continue
-			}
-			value = strings.ReplaceAll(value, SessionIDPlaceholder, sessionID)
-		}
-		req.Header.Set(name, value)
+	values := map[string]string{
+		SessionIDPlaceholder: agentcoreapi.SessionIDFrom(ctx),
+		TurnIDPlaceholder:    agentcoreapi.TurnIDFrom(ctx),
+		ModelPlaceholder:     vars.Model,
+		ProviderPlaceholder:  vars.Provider,
 	}
+	for name, value := range headers {
+		expanded, ok := expandHeaderValue(value, values)
+		if !ok {
+			continue
+		}
+		req.Header.Set(name, expanded)
+	}
+}
+
+// expandHeaderValue replaces every placeholder in value; ok is false when one of
+// them has no value for this request.
+func expandHeaderValue(value string, values map[string]string) (string, bool) {
+	for placeholder, replacement := range values {
+		if !strings.Contains(value, placeholder) {
+			continue
+		}
+		if replacement == "" {
+			return "", false
+		}
+		value = strings.ReplaceAll(value, placeholder, replacement)
+	}
+	return value, true
 }

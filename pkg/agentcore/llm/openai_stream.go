@@ -97,7 +97,7 @@ func (p *OpenAIProvider) openStream(ctx context.Context, path string, body map[s
 		if err != nil {
 			return nil, fmt.Errorf("build request: %w", err)
 		}
-		applyHeaders(ctx, req, p.headers)
+		applyHeaders(ctx, req, p.headers, headerVars{Model: p.model, Provider: p.name})
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)

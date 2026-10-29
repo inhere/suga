@@ -497,7 +497,7 @@ func (p *ClaudeProvider) doRequest(ctx context.Context, body map[string]any) ([]
 		if err != nil {
 			return nil, err
 		}
-		applyHeaders(ctx, req, p.headers)
+		applyHeaders(ctx, req, p.headers, headerVars{Model: p.model, Provider: p.name})
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-api-key", p.apiKey)
 		req.Header.Set("anthropic-version", claudeAPIVersion)

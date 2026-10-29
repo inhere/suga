@@ -38,7 +38,7 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `providers.<id>.compat` | 按 base_url/模型 id 自动匹配 | 网关适配名列表，自动匹配不上时在此追加 |
 | `providers.<id>.base_url` | 预设自带 | 地址，支持 `${VAR}` |
 | `providers.<id>.api_key` | 预设读对应环境变量 | 密钥，支持 `${VAR}` |
-| `providers.<id>.headers` | `User-Agent: suga` | 附加请求头，值支持 `${VAR}` 与 `{{session_id}}`；有的网关（Codex 渠道）靠它分上游会话、决定 prompt 缓存能否命中，见 `references/providers.md` 的 Codex 示例 |
+| `providers.<id>.headers` | `User-Agent: suga` | 附加请求头，值支持 `${VAR}` 与占位符 `{{session_id}}`、`{{turn_id}}`、`{{model}}`、`{{provider}}`（取不到值时该头不发送）；有的网关（Codex 渠道）靠会话头分上游会话、决定 prompt 缓存能否命中，见 `references/providers.md` 的 Codex 示例 |
 | `providers.<id>.prompt_cache` | `false` | 仅 `anthropic` 类型：加 `cache_control` 断点（system 变块数组），部分网关不接受 |
 | `providers.<id>.prompt_cache_retention` | 不设（用 API 默认，约几分钟） | 仅 `openai-responses` 类型：`in_memory` / `24h`，上游保留该 prompt 缓存多久；空闲超过默认 TTL 的会话写 `24h` 才能跨回合复用（见 `references/providers.md` 的 Codex 示例） |
 | `providers.<id>.context_window` | 按模型名推断 | 该 provider 所有模型的默认上下文窗口 |

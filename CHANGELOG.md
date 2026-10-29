@@ -17,6 +17,7 @@
 - sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。
 - chat 的工具输出按工具族着色并各带一个符号（`▸` 读、`✎` 写、`$` 命令、`⇄` 网络、`◆` 子 agent、`✦` 会话/计划），参数变暗、`⎿ ok:` 与失败结果各自成色；新增 `chat.colors`（`style`/`mode` 加每元素一个颜色）覆盖默认配色，未知键或颜色启动报错。
 - 新增 `providers.<id>.prompt_cache_retention`（`in_memory` / `24h`，仅 `openai-responses`）：设置上游保留 prompt 缓存多久，空闲很久的会话写 `24h` 才能跨回合复用缓存。压缩/空闲整理/交接包的摘要请求改用独立的缓存键（`<会话>-compact`），不再冲掉主对话的缓存条目。
+- `providers.<id>.headers` 的值新增 `{{turn_id}}`、`{{model}}`、`{{provider}}` 占位符（原来只有 `{{session_id}}`），取不到值时该头不发送；便于按模型/回合分流的网关。
 - 新增 `sugasdk.Engine.Pin` 会话 pin 契约；age GC 与 retention GC 均跳过被 pin 的会话（包括非 xhen 来源）。
 - 记忆条目新增跨 ID 复用保持不变的 UUID，并为 SDK 提供按 UUID 获取、更新、删除接口；旧元数据迁移会自动补齐 UUID。
 

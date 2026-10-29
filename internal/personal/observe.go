@@ -46,6 +46,7 @@ type observeScope struct{ sessionID, turnID string }
 // that use the {{session_id}} placeholder.
 func withObserveScope(ctx context.Context, sessionID, turnID string) context.Context {
 	ctx = api.WithSessionID(ctx, sessionID)
+	ctx = api.WithTurnID(ctx, turnID)
 	return context.WithValue(ctx, scopeKey{}, observeScope{sessionID: sessionID, turnID: turnID})
 }
 

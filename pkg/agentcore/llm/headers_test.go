@@ -56,3 +56,50 @@ func TestDeprecatedSessionIDHelpers(t *testing.T) {
 	assert.Eq(t, "s1", SessionIDFrom(agentcoreapi.WithSessionID(context.Background(), "s1")))
 	assert.Eq(t, "s1", agentcoreapi.SessionIDFrom(WithSessionID(context.Background(), "s1")))
 }
+
+// TestHeaderPlaceholders: providers.<id>.headers expands the session, turn,
+// model and provider placeholders; a header that needs a value this request
+// cannot fill is left out, while a value without placeholders always goes.
+func TestHeaderPlaceholders(t *testing.T) {
+	vars := headerVars{Model: "gpt-6.1-sol", Provider: "openai-codex"}
+
+	t.Run("every placeholder", func(t *testing.T) {
+		ctx := agentcoreapi.WithSessionID(context.Background(), "sg_1")
+		ctx = agentcoreapi.WithTurnID(ctx, "t_9")
+		req, _ := http.NewRequest(http.MethodPost, "https://gw.example/v1/responses", nil)
+		applyHeaders(ctx, req, map[string]string{
+			"Session-Id": SessionIDPlaceholder,
+			"X-Turn":     "turn-" + TurnIDPlaceholder,
+			"X-Model":    ModelPlaceholder,
+			"x-provider": ProviderPlaceholder,
+			"X-Combined": ProviderPlaceholder + "/" + ModelPlaceholder,
+			"X-Static":   "v",
+		}, vars)
+		assert.Eq(t, "sg_1", req.Header.Get("Session-Id"))
+		assert.Eq(t, "turn-t_9", req.Header.Get("X-Turn"))
+		assert.Eq(t, "gpt-6.1-sol", req.Header.Get("X-Model"))
+		assert.Eq(t, "openai-codex", req.Header.Get("X-Provider"))
+		assert.Eq(t, "openai-codex/gpt-6.1-sol", req.Header.Get("X-Combined"))
+		assert.Eq(t, "v", req.Header.Get("X-Static"))
+	})
+
+	t.Run("a placeholder without a value skips its header", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, "https://gw.example/v1/responses", nil)
+		applyHeaders(context.Background(), req, map[string]string{
+			"Session-Id": SessionIDPlaceholder,
+			"X-Turn":     TurnIDPlaceholder,
+			"X-Model":    ModelPlaceholder,
+			"X-Static":   "v",
+		}, vars)
+		assert.Eq(t, "", req.Header.Get("Session-Id"), "no session, no header")
+		assert.Eq(t, "", req.Header.Get("X-Turn"), "no turn, no header")
+		assert.Eq(t, "gpt-6.1-sol", req.Header.Get("X-Model"))
+		assert.Eq(t, "v", req.Header.Get("X-Static"))
+	})
+
+	t.Run("a provider without a model id leaves the model header out", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, "https://gw.example/v1/responses", nil)
+		applyHeaders(context.Background(), req, map[string]string{"X-Model": ModelPlaceholder}, headerVars{Provider: "p"})
+		assert.Eq(t, "", req.Header.Get("X-Model"))
+	})
+}

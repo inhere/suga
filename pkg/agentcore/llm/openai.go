@@ -437,7 +437,7 @@ func (p *OpenAIProvider) doRequest(ctx context.Context, path string, body map[st
 		if err != nil {
 			return nil, fmt.Errorf("build request: %w", err)
 		}
-		applyHeaders(ctx, req, p.headers)
+		applyHeaders(ctx, req, p.headers, headerVars{Model: p.model, Provider: p.name})
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 		return req, nil
