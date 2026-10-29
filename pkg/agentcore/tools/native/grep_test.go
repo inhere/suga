@@ -177,6 +177,30 @@ func TestGrepOptions(t *testing.T) {
 		_, err = tool.Execute(t.Context(), callWith(map[string]any{"pattern": `(?<bad`}))
 		assert.ErrMsgContains(t, err, "RE2 syntax")
 	})
+
+	// exclude is a line regexp; a value that is not one but a file wildcard (the
+	// shape a model writes for "leave the tests out") is applied to file names
+	// instead of failing the whole search.
+	t.Run("an exclude wildcard leaves files out", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": "Hello", "exclude": "*_test.go", "output": "files", "no_ignore": true})
+		assert.StrContains(t, out, "main.go")
+		assert.NotContains(t, out, "a_test.go")
+		assert.StrContains(t, out, "read as a file wildcard")
+		// The lines of the remaining files still come back.
+		lines := execTool(t, tool, map[string]any{"pattern": "Hello", "exclude": "*_test.go"})
+		assert.StrContains(t, lines, "main.go:3: func main() { Hello() }")
+		assert.NotContains(t, lines, "a_test.go")
+	})
+	t.Run("an exclude that compiles as a regexp still filters lines", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"pattern": "Hello", "exclude": `.*_test\.go`, "output": "files", "no_ignore": true})
+		assert.StrContains(t, out, "a_test.go", "a regexp is never read as a wildcard")
+		assert.NotContains(t, out, "read as a file wildcard")
+	})
+	t.Run("an exclude that is neither says what to pass instead", func(t *testing.T) {
+		_, err := tool.Execute(t.Context(), callWith(map[string]any{"pattern": "Hello", "exclude": "([{"}))
+		assert.ErrMsgContains(t, err, `glob: ["!*_test.go"]`)
+		assert.ErrMsgContains(t, err, "literal does not apply")
+	})
 }
 
 func TestFindFiles(t *testing.T) {

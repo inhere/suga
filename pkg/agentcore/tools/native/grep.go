@@ -57,7 +57,7 @@ func (t *FileGrepTool) Schema() api.ToolSchema {
 				"pattern":     map[string]any{"type": "string", "description": "RE2 regular expression; lookaround/backreferences may use a backtracking fallback"},
 				"path":        map[string]any{"type": "string", "description": "File or directory to search (default: workspace root); may be absolute under a read-only dependency root"},
 				"glob":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Only matching files; accepts a string for compatibility or a list with ! exclusions, e.g. [\"*.go\", \"!*_test.go\"]"},
-				"exclude":     map[string]any{"type": "string", "description": "Drop matching lines like grep -v"},
+				"exclude":     map[string]any{"type": "string", "description": "Leave out matching lines (RE2 regexp, like grep -v); a pattern that is not a valid regexp but a file wildcard such as *_test.go leaves those files out instead (same as glob: [\"!*_test.go\"])"},
 				"context":     map[string]any{"type": "integer", "minimum": 0, "maximum": 5, "description": "Include this many lines before and after each match"},
 				"literal":     map[string]any{"type": "boolean", "description": "Match pattern as plain text"},
 				"ignore_case": map[string]any{"type": "boolean", "description": "Case-insensitive match"},
@@ -82,19 +82,27 @@ func (t *FileGrepTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	if err != nil {
 		return nil, err
 	}
+	glob := parseGrepGlobs(args["glob"])
 	var exclude grepMatcher
 	excludeFallback := false
+	excludeAsGlob := ""
 	if raw, ok := args["exclude"].(string); ok && raw != "" {
-		exclude, excludeFallback, err = compileGrepPattern(raw, ignoreCase, false)
-		if err != nil {
-			return nil, fmt.Errorf("file_grep exclude: %w", err)
+		if exclude, excludeFallback, err = compileGrepPattern(raw, ignoreCase, false); err != nil {
+			// A value RE2 rejects but that reads as a file wildcard is the common
+			// intent ("*_test.go" means leave the test files out). Only a value that
+			// does not compile gets here, so a line filter always keeps its meaning.
+			if fileGlob, isGlob := grepExcludeGlob(raw); isGlob {
+				glob.exclude = append(glob.exclude, fileGlob)
+				excludeAsGlob, exclude, err = raw, nil, nil
+			} else {
+				return nil, fmt.Errorf("file_grep exclude: %w; %s", err, grepExcludeHint)
+			}
 		}
 	}
 	start, err := searchStart(t.workspace, withAddDirs(t.readRoots, t.addDirs), args)
 	if err != nil {
 		return nil, err
 	}
-	glob := parseGrepGlobs(args["glob"])
 	filesOnly := args["output"] == "files"
 	limit := defaultGrepResults
 	if n, ok := numberArg(args["max_results"]); ok && n >= 1 {
@@ -149,6 +157,10 @@ func (t *FileGrepTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	if walk.ignoreNote != "" {
 		content += "\n" + walk.ignoreNote
+	}
+	if excludeAsGlob != "" {
+		content += fmt.Sprintf("\n[exclude %s does not compile as a regexp, so it was read as a file wildcard: those files are skipped (same as glob: [\"!%s\"])]",
+			excludeAsGlob, excludeAsGlob)
 	}
 	if fallback || excludeFallback {
 		content += "\n[used regexp2 (lookaround/backreference) because RE2 rejected the pattern]"

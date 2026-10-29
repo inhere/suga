@@ -75,6 +75,24 @@ func invalidGrepPattern(pattern string, err error) error {
 	return fmt.Errorf("file_grep: invalid pattern: %w; fix: %s", err, suggestion)
 }
 
+// grepExcludeHint is what a caller reads when an exclude value is neither a
+// regexp nor a file wildcard. It must not repeat the invalidGrepPattern advice:
+// literal only applies to pattern, so pointing exclude at it sends the model round
+// the same loop (sg_c26ak287eqpm: 24 calls, all the same wildcard).
+const grepExcludeHint = "exclude leaves lines out by a regular expression (literal does not apply to it); " +
+	"to leave whole files out use glob: [\"!*_test.go\"]"
+
+// grepExcludeGlob reports whether an exclude value RE2 rejected still reads as a
+// file wildcard, and returns that wildcard. It is only consulted after the regexp
+// compile failed, so an exclude that means lines (".*", "^Test") never changes
+// meaning, and regexp-only syntax is not taken for a wildcard either.
+func grepExcludeGlob(pattern string) (string, bool) {
+	if !strings.ContainsAny(pattern, "*?") || strings.ContainsAny(pattern, "([{|\\^$+ \t\r\n") {
+		return "", false
+	}
+	return strings.TrimSpace(pattern), true
+}
+
 type grepGlob struct {
 	include []string
 	exclude []string
