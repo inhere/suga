@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 )
@@ -107,39 +108,47 @@ func imageDigest(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// imageNote is the text that replaces an image left out of the request: what it is
-// and why it is not sent, and - for a picture whose file is still on disk, the
-// usual case - that file_read returns the picture itself. That last part is the
-// point of the note: a bare "omitted" reads as lost, and a model that believes the
-// picture is gone asks the person to describe it instead of looking at it.
-func imageNote(part agentcore.ImagePart, reason string) string {
-	label := imageLabel(part)
+// imageNote is the model-facing note that replaces an image left out of the
+// request although its file is still on disk: what it is, and that file_read
+// returns the picture itself. Both are needed - a bare "omitted" reads as lost and
+// a model that believes the picture is gone asks the person to describe it. The
+// wording lives in the model catalog (model.ini), because it goes into the request
+// the model reads.
+func imageNote(t i18n.Translator, part agentcore.ImagePart) string {
 	if part.Ref == "" {
-		return fmt.Sprintf("[%s：%s]", label, reason)
+		return imageTranslator(t).T("model.image.detached", imageLabelArgs(part))
 	}
-	return fmt.Sprintf("[%s：%s；图片文件仍在 %s，要看这张图就调用 file_read 读这个路径，返回的就是图片本身]",
-		label, reason, part.Ref)
+	return imageTranslator(t).T("model.image.elided", imageLabelArgs(part))
 }
 
-// imageLostNote is imageNote for a picture that cannot be read at all (the file is
-// gone or the session stored no bytes): there is nothing to call file_read for.
-func imageLostNote(part agentcore.ImagePart, reason string) string {
-	if part.Ref == "" {
-		return fmt.Sprintf("[%s：%s]", imageLabel(part), reason)
-	}
-	return fmt.Sprintf("[%s：%s，文件 %s 读不到]", imageLabel(part), reason, part.Ref)
+// imageLostNote is imageNote for a picture that cannot be read at all (the file
+// is gone or the session stored no bytes): there is nothing to call file_read for,
+// so the note must not promise that it would work.
+func imageLostNote(t i18n.Translator, part agentcore.ImagePart) string {
+	return imageTranslator(t).T("model.image.lost", imageLabelArgs(part))
 }
 
-// imageLabel names a picture: its media type and its pixel size when known.
-func imageLabel(part agentcore.ImagePart) string {
+// imageTranslator falls back to the Chinese catalog for a runner built without a
+// translator (tests, embeddings).
+func imageTranslator(t i18n.Translator) i18n.Translator {
+	if t == nil {
+		return i18n.Fallback()
+	}
+	return t
+}
+
+// imageLabelArgs fills the catalog placeholders of a note: the media type, the
+// pixel size with its own leading space (empty when unknown) and the ref.
+func imageLabelArgs(part agentcore.ImagePart) map[string]any {
 	kind := part.MediaType
 	if kind == "" {
 		kind = "image"
 	}
+	size := ""
 	if part.Width > 0 && part.Height > 0 {
-		return fmt.Sprintf("%s %d×%d", kind, part.Width, part.Height)
+		size = fmt.Sprintf(" %d×%d", part.Width, part.Height)
 	}
-	return kind
+	return map[string]any{"type": kind, "size": size, "ref": part.Ref}
 }
 
 // prepareImages returns a copy of view whose images carry their bytes, with the
@@ -173,7 +182,7 @@ func (b *contextBuilder) prepareImages(view []agentcore.Message) []agentcore.Mes
 		trimmed := i < cut
 		out[i] = b.resolveMessageImages(m, loader, trimmed)
 	}
-	return limitRequestImages(out, count, bytes)
+	return limitRequestImages(b.r.cfg.Translator, out, count, bytes)
 }
 
 // hasImages reports whether any message of msgs carries an image.
@@ -247,7 +256,7 @@ func (b *contextBuilder) resolveImages(images []agentcore.ImagePart, loader *ima
 	var notes []string
 	for _, part := range images {
 		if trimmed {
-			notes = append(notes, imageNote(part, "超出历史图片窗口"))
+			notes = append(notes, imageNote(b.r.cfg.Translator, part))
 			continue
 		}
 		if len(part.Data) > 0 {
@@ -255,12 +264,12 @@ func (b *contextBuilder) resolveImages(images []agentcore.ImagePart, loader *ima
 			continue
 		}
 		if loader == nil {
-			notes = append(notes, imageLostNote(part, "图片不可用"))
+			notes = append(notes, imageLostNote(b.r.cfg.Translator, part))
 			continue
 		}
 		data, ok := loader.data(part)
 		if !ok {
-			notes = append(notes, imageLostNote(part, "图片缺失"))
+			notes = append(notes, imageLostNote(b.r.cfg.Translator, part))
 			continue
 		}
 		filled := part
@@ -290,7 +299,7 @@ func appendNote(content string, notes []string) string {
 // message backwards it keeps at most maxCount images and maxBytes of encoded
 // bytes, and replaces the rest by a note. The caps are about the cost of one
 // request, so the newest pictures (the ones the turn is about) win.
-func limitRequestImages(msgs []agentcore.Message, maxCount int, maxBytes int) []agentcore.Message {
+func limitRequestImages(t i18n.Translator, msgs []agentcore.Message, maxCount int, maxBytes int) []agentcore.Message {
 	if maxCount <= 0 {
 		return msgs
 	}
@@ -308,10 +317,10 @@ func limitRequestImages(msgs []agentcore.Message, maxCount int, maxBytes int) []
 	}
 	for i := len(out) - 1; i >= 0; i-- {
 		m := out[i]
-		images, notes := capImages(m.Images, keep)
+		images, notes := capImages(t, m.Images, keep)
 		m.Images = images
 		if m.ToolResult != nil && len(m.ToolResult.Images) > 0 {
-			results, resultNotes := capImages(m.ToolResult.Images, keep)
+			results, resultNotes := capImages(t, m.ToolResult.Images, keep)
 			notes = append(notes, resultNotes...)
 			res := *m.ToolResult
 			res.Images = results
@@ -329,7 +338,7 @@ func limitRequestImages(msgs []agentcore.Message, maxCount int, maxBytes int) []
 }
 
 // capImages keeps the parts keep accepts and returns a note for the others.
-func capImages(images []agentcore.ImagePart, keep func(agentcore.ImagePart) bool) ([]agentcore.ImagePart, []string) {
+func capImages(t i18n.Translator, images []agentcore.ImagePart, keep func(agentcore.ImagePart) bool) ([]agentcore.ImagePart, []string) {
 	if len(images) == 0 {
 		return nil, nil
 	}
@@ -340,7 +349,7 @@ func capImages(images []agentcore.ImagePart, keep func(agentcore.ImagePart) bool
 			out = append(out, part)
 			continue
 		}
-		notes = append(notes, imageNote(part, "超出单请求图片上限"))
+		notes = append(notes, imageNote(t, part))
 	}
 	return out, notes
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore"
 )
 
@@ -61,8 +62,8 @@ func TestPrepareImagesReadsBytesBack(t *testing.T) {
 		view := []agentcore.Message{{Role: "user", Content: "look", Images: []agentcore.ImagePart{part}}}
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.True(t, strings.Contains(out[0].Content, "图片缺失"))
-		assert.True(t, strings.Contains(out[0].Content, part.Ref))
+		assert.Contains(t, out[0].Content, "读不到")
+		assert.Contains(t, out[0].Content, part.Ref)
 	})
 
 	t.Run("a sha mismatch becomes a note", func(t *testing.T) {
@@ -71,14 +72,14 @@ func TestPrepareImagesReadsBytesBack(t *testing.T) {
 		view := []agentcore.Message{{Role: "user", Content: "look", Images: []agentcore.ImagePart{part}}}
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.True(t, strings.Contains(out[0].Content, "图片缺失"))
+		assert.Contains(t, out[0].Content, "读不到")
 	})
 
 	t.Run("a reference outside the images directory is refused", func(t *testing.T) {
 		view := []agentcore.Message{{Role: "user", Images: []agentcore.ImagePart{{Ref: "../secrets.png", SHA256: "x"}}}}
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.True(t, strings.Contains(out[0].Content, "图片缺失"))
+		assert.Contains(t, out[0].Content, "读不到")
 	})
 }
 
@@ -103,14 +104,29 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		}
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.Contains(t, out[0].Content, "超出历史图片窗口")
-		// The note says the file is still there and how to look at it: a bare
-		// "omitted" reads as lost (design 2026-10-23 section 6: file_read reads
-		// pictures; view_image is only a hidden alias).
-		assert.Contains(t, out[0].Content, "file_read")
-		assert.Contains(t, out[0].Content, part.Ref)
-		assert.Contains(t, out[0].Content, "返回的就是图片本身")
+		// The note is the model-facing hint: it names the picture and says how to
+		// look at it, so a model that reads it calls file_read instead of asking the
+		// person to describe the picture (the wording lives in model.ini).
+		assert.Contains(t, out[0].Content, "[image/png 100×50：读取用 file_read "+part.Ref+"]")
 		assert.Eq(t, 1, len(out[4].Images), "the newest image stays")
+	})
+
+	t.Run("the note follows the language catalog", func(t *testing.T) {
+		sessionsDir := t.TempDir()
+		part := writeTestImage(t, sessionsDir, "s1", []byte("old"))
+		b := imageTestBuilder(sessionsDir, "s1", 2, 1)
+		b.r.cfg.Translator = testCatalog(t, i18n.LanguageEN)
+		view := []agentcore.Message{
+			{Role: "user", Content: "old", Images: []agentcore.ImagePart{part}},
+			{Role: "assistant", Content: "a1"},
+			{Role: "user", Content: "middle"},
+			{Role: "assistant", Content: "a2"},
+			{Role: "user", Content: "new"},
+			{Role: "assistant", Content: "a3"},
+			{Role: "assistant", Content: "a4"},
+		}
+		out := b.prepareImages(view)
+		assert.Contains(t, out[0].Content, "[image/png 100×50: read it with file_read "+part.Ref+"]")
 	})
 
 	t.Run("the count cap keeps the newest images", func(t *testing.T) {
@@ -127,7 +143,7 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 			kept += len(m.Images)
 		}
 		assert.Eq(t, appconfig.DefaultImageRequestCount, kept)
-		assert.True(t, strings.Contains(out[0].Content, "超出单请求图片上限"))
+		assert.Contains(t, out[0].Content, "读取用 file_read")
 		assert.Eq(t, 1, len(out[len(out)-1].Images), "the newest image stays")
 	})
 
@@ -139,7 +155,7 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 			{Role: "user", Images: []agentcore.ImagePart{part}},
 			{Role: "user", Images: []agentcore.ImagePart{part}},
 		}
-		out := limitRequestImages(view, 8, 3)
+		out := limitRequestImages(nil, view, 8, 3)
 		assert.Eq(t, 0, len(out[0].Images))
 		assert.Eq(t, 1, len(out[1].Images))
 	})
@@ -161,7 +177,7 @@ func TestPrepareImagesHistoryAndCaps(t *testing.T) {
 		b.r.cfg.ImageHistoryTurns = 2
 		out := b.prepareImages(view)
 		assert.Eq(t, 0, len(out[0].Images))
-		assert.Contains(t, out[0].Content, "超出历史图片窗口")
+		assert.Contains(t, out[0].Content, "读取用 file_read")
 		assert.Eq(t, 1, len(out[5].Images))
 	})
 }
