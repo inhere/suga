@@ -72,11 +72,12 @@ func TestDangerousDelete(t *testing.T) {
 	})
 	t.Run("sh: recursive delete outside the workspace", func(t *testing.T) {
 		for command, want := range map[string]string{
-			`rm -rf ~/.cache/go-build`:  "工作区外的路径",
-			`rm -rf "$HOME/.cache/x"`:   "工作区外的路径",
-			`rm -rf /tmp/x`:             "工作区外的路径 /tmp/x",
-			`rm -rf ../sibling`:         "工作区外的路径",
-			`rm -rf ` + root + `/other`: "工作区外的路径",
+			`rm -rf ~/.cache/go-build`: "工作区外的路径",
+			`rm -rf "$HOME/.cache/x"`:  "工作区外的路径",
+			// the reason prints the resolved path: C:\tmp\x on Windows
+			`rm -rf /tmp/x`:     "工作区外的路径 " + filepath.Clean(filepath.VolumeName(ws)+"/tmp/x"),
+			`rm -rf ../sibling`: "工作区外的路径",
+			`rm -rf ` + filepath.ToSlash(root) + `/other`: "工作区外的路径", // sh reads \ as an escape
 		} {
 			check(t, false, command, want)
 		}
@@ -188,19 +189,25 @@ func TestDangerousDeleteAddDirs(t *testing.T) {
 	dirs.Set([]AddDir{{Path: rw, Writable: true}, {Path: ro}})
 	tool.addDirs = dirs
 	slash := filepath.ToSlash
+	// shell_exec runs PowerShell on Windows, where rm -rf is no recursive
+	// switch; pick the recursive delete of the shell the tool really uses.
+	rm := "rm -rf "
+	if tool.shell.powershell {
+		rm = "Remove-Item -Recurse -Force "
+	}
 
 	t.Run("inside a writable add-dir is not hard", func(t *testing.T) {
-		reason, hard := tool.DangerousDeleteKind("rm -rf " + slash(rw) + "/build")
+		reason, hard := tool.DangerousDeleteKind(rm + slash(rw) + "/build")
 		assert.False(t, hard, reason)
 		assert.Eq(t, "", reason)
 	})
 	t.Run("inside a read-only add-dir is hard", func(t *testing.T) {
-		reason, hard := tool.DangerousDeleteKind("rm -rf " + slash(ro) + "/build")
+		reason, hard := tool.DangerousDeleteKind(rm + slash(ro) + "/build")
 		assert.True(t, hard, reason)
 	})
 	t.Run("the writable add-dir itself and its parent are hard", func(t *testing.T) {
 		for _, target := range []string{slash(rw), slash(rw) + "/", slash(filepath.Dir(rw))} {
-			reason, hard := tool.DangerousDeleteKind("rm -rf " + target)
+			reason, hard := tool.DangerousDeleteKind(rm + target)
 			assert.True(t, hard, target+": "+reason)
 		}
 	})
