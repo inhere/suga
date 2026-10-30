@@ -175,3 +175,33 @@ func TestDangerousDeleteKind(t *testing.T) {
 		}
 	})
 }
+
+func TestDangerousDeleteAddDirs(t *testing.T) {
+	root := t.TempDir()
+	ws := filepath.Join(root, "ws")
+	rw := filepath.Join(root, "shared", "rw")
+	ro := filepath.Join(root, "shared", "ro")
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(root, "home"))
+	tool := NewShellExecTool(ws, 0)
+	dirs := NewAddDirs()
+	dirs.Set([]AddDir{{Path: rw, Writable: true}, {Path: ro}})
+	tool.addDirs = dirs
+	slash := filepath.ToSlash
+
+	t.Run("inside a writable add-dir is not hard", func(t *testing.T) {
+		reason, hard := tool.DangerousDeleteKind("rm -rf " + slash(rw) + "/build")
+		assert.False(t, hard, reason)
+		assert.Eq(t, "", reason)
+	})
+	t.Run("inside a read-only add-dir is hard", func(t *testing.T) {
+		reason, hard := tool.DangerousDeleteKind("rm -rf " + slash(ro) + "/build")
+		assert.True(t, hard, reason)
+	})
+	t.Run("the writable add-dir itself and its parent are hard", func(t *testing.T) {
+		for _, target := range []string{slash(rw), slash(rw) + "/", slash(filepath.Dir(rw))} {
+			reason, hard := tool.DangerousDeleteKind("rm -rf " + target)
+			assert.True(t, hard, target+": "+reason)
+		}
+	})
+}

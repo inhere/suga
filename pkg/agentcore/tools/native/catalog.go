@@ -165,6 +165,7 @@ func Catalog() []Spec {
 			t := NewShellExecTool(env.Workspace, 0)
 			t.shell = resolveShell(env.Shell)
 			t.interpreters = env.Interpreters
+			t.addDirs = env.AddDirs
 			if env.ShellBackgroundAfter >= 0 {
 				t.backgroundAfter = env.ShellBackgroundAfter
 			}

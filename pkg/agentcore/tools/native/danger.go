@@ -41,15 +41,17 @@ func DangerousDelete(command string, powershell bool, workspace string) string {
 // system root (a drive root included), a parent directory of the workspace, or
 // a path outside the workspace. The outside check applies to recursive deletes
 // only and reads the path lexically (a symlink inside the workspace that points
-// out is not followed). The caller refuses a hard hit whatever the approval
+// out is not followed). rw lists the session's read-write --add-dir
+// directories: a path strictly inside one counts as inside the workspace (no
+// finding), while the directory itself and its parents stay hard. The caller refuses a hard hit whatever the approval
 // mode; other hits (the workspace itself, a variable-led path) may still be
 // confirmed by the person.
-func DangerousDeleteKind(command string, powershell bool, workspace string) (reason string, hard bool) {
+func DangerousDeleteKind(command string, powershell bool, workspace string, rw ...string) (reason string, hard bool) {
 	syntax := syntaxSh
 	if powershell {
 		syntax = syntaxPS
 	}
-	hit := dangerIn(command, syntax, workspace, workspace, 0)
+	hit := dangerIn(command, syntax, workspace, workspace, 0, rw)
 	return hit.reason, hit.hard
 }
 
@@ -60,7 +62,7 @@ func (t *ShellExecTool) DangerousDelete(command string) string {
 
 // DangerousDeleteKind is DangerousDeleteKind with this tool's shell and workspace.
 func (t *ShellExecTool) DangerousDeleteKind(command string) (reason string, hard bool) {
-	return DangerousDeleteKind(command, t.shell.powershell, t.workspace)
+	return DangerousDeleteKind(command, t.shell.powershell, t.workspace, t.addDirs.WritePaths()...)
 }
 
 // dangerHit is what the delete check found: why, and whether it is a hard
@@ -73,7 +75,7 @@ type dangerHit struct {
 // dangerIn checks each simple command of a command line. cwd follows the
 // line's cd commands ("" once a cd target cannot be resolved), so relative
 // targets resolve where they will run.
-func dangerIn(command string, syntax shellSyntax, workspace, cwd string, depth int) dangerHit {
+func dangerIn(command string, syntax shellSyntax, workspace, cwd string, depth int, rw []string) dangerHit {
 	if depth > maxShellNesting {
 		return dangerHit{}
 	}
@@ -82,7 +84,7 @@ func dangerIn(command string, syntax shellSyntax, workspace, cwd string, depth i
 			cwd = changeDir(words[1:], syntax, workspace, cwd)
 			continue
 		}
-		if hit := dangerInWords(words, syntax, workspace, cwd, depth); hit.reason != "" {
+		if hit := dangerInWords(words, syntax, workspace, cwd, depth, rw); hit.reason != "" {
 			return hit
 		}
 	}
@@ -120,7 +122,7 @@ func changeDir(args []string, syntax shellSyntax, workspace, cwd string) string 
 }
 
 // dangerInWords checks one simple command (its words, quotes removed).
-func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, depth int) dangerHit {
+func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, depth int, rw []string) dangerHit {
 	// Leading sudo / env / VAR=value do not change what runs.
 	for len(words) > 0 {
 		w := strings.ToLower(words[0])
@@ -140,21 +142,21 @@ func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, de
 	case "sh", "bash", "zsh", "dash", "ksh":
 		for i, a := range args {
 			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
-				return dangerIn(args[i+1], syntaxSh, workspace, cwd, depth+1)
+				return dangerIn(args[i+1], syntaxSh, workspace, cwd, depth+1, rw)
 			}
 		}
 		return dangerHit{}
 	case "cmd":
 		for i, a := range args {
 			if la := strings.ToLower(a); la == "/c" || la == "/k" {
-				return dangerIn(strings.Join(args[i+1:], " "), syntaxCmd, workspace, cwd, depth+1)
+				return dangerIn(strings.Join(args[i+1:], " "), syntaxCmd, workspace, cwd, depth+1, rw)
 			}
 		}
 		return dangerHit{}
 	case "pwsh", "powershell":
 		for i, a := range args {
 			if la := strings.ToLower(a); len(la) >= 2 && strings.HasPrefix("-command", la) {
-				return dangerIn(strings.Join(args[i+1:], " "), syntaxPS, workspace, cwd, depth+1)
+				return dangerIn(strings.Join(args[i+1:], " "), syntaxPS, workspace, cwd, depth+1, rw)
 			}
 		}
 		return dangerHit{}
@@ -172,7 +174,7 @@ func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, de
 		return dangerHit{}
 	}
 	for _, target := range targets {
-		if hit := dangerousTarget(target, syntax, workspace, cwd, recursive); hit.reason != "" {
+		if hit := dangerousTarget(target, syntax, workspace, cwd, recursive, rw); hit.reason != "" {
 			hit.reason = fmt.Sprintf("%s：%s", strings.Join(words, " "), hit.reason)
 			return hit
 		}
@@ -266,7 +268,7 @@ var homeAliases = map[string]bool{
 // a drive root, the workspace or a parent of it, or a path led by a variable
 // that may be empty. A non-recursive delete only counts when it globs one of
 // those directories (rm ~/*). Relative targets resolve against cwd.
-func dangerousTarget(target string, syntax shellSyntax, workspace, cwd string, recursive bool) dangerHit {
+func dangerousTarget(target string, syntax shellSyntax, workspace, cwd string, recursive bool, rw []string) dangerHit {
 	p := target
 	if syntax != syntaxSh {
 		p = strings.ReplaceAll(p, `\`, "/")
@@ -312,7 +314,7 @@ func dangerousTarget(target string, syntax shellSyntax, workspace, cwd string, r
 		return dangerHit{reason: what + "整个工作区"}
 	case workspace != "" && isParentDir(abs, ws):
 		return dangerHit{what + "工作区的上级目录 " + abs, true}
-	case workspace != "" && recursive && abs != "" && !isParentDir(ws, abs):
+	case workspace != "" && recursive && abs != "" && !isParentDir(ws, abs) && !insideWritableDir(abs, rw):
 		// Whatever is left is neither the workspace nor its parent: a recursive
 		// delete of a path that is not inside the workspace.
 		return dangerHit{"递归删除工作区外的路径 " + abs, true}
@@ -512,4 +514,15 @@ func splitCommands(s string, syntax shellSyntax) [][]string {
 	}
 	endCommand()
 	return commands
+}
+
+// insideWritableDir reports whether abs lies strictly inside one of the
+// read-write --add-dir directories; the directory itself does not count.
+func insideWritableDir(abs string, rw []string) bool {
+	for _, d := range rw {
+		if isParentDir(filepath.Clean(d), abs) {
+			return true
+		}
+	}
+	return false
 }
