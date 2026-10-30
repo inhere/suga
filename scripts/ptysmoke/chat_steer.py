@@ -163,7 +163,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fakellm  # noqa: E402
 from ptydrive import CTRL_C, PtySession, Screen, input_row, resolve_port  # noqa: E402
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
-from chat_observe import trace_events  # noqa: E402
+from chat_approval import trace_events  # noqa: E402
 
 STEER_PROMPT = r"↳ "
 # The prompt as the text it is (an exact row of the screen model).

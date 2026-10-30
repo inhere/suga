@@ -15,6 +15,7 @@
 
 ### 变更
 
+- 伪终端冒烟开始从 Python 迁到 Go（`test/ptye2e`，`github.com/gookit/gopty/ptytest`，Linux 与 Windows ConPTY 同一套）：新增共享的 Go 假模型 `fakellm_test.go`，第一批迁移 `chat_edit`、`chat_diff`、`chat_render`、`chat_theme`、`chat_idle`、`chat_retry`、`chat_observe`、`chat_commands`；入口 `make smoke-go`，`make smoke-chat` 先跑它再跑剩余 Python 场景。
 - `file_grep` 的 lookaround / 反向引用回退匹配器依赖升级到 `github.com/dlclark/regexp2/v2` v2.12.0（原 v1.12.0）；回退语法与单文件 200ms 超时语义不变。
 
 ## [0.52.0] - 2026-10-30
