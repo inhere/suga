@@ -54,7 +54,9 @@ func (o *originObserver) ExecuteTool(ctx context.Context, call agentcore.ToolCal
 // In chat the person is asked once for that call; everywhere else nobody can be
 // asked, so the call is refused with the reason. Read-only and agent-state tools
 // are not checked. The decision then goes on to the wrapped approver, so rules
-// and the usual prompt still apply.
+// still apply; the usual prompt does not repeat: when the approver would have
+// asked anyway, the one question already carries the call's details and the
+// person's yes counts as its answer (see originConfirmedKey).
 type originGuard struct {
 	inner  tools.Approver
 	chat   *chatApprover // nil outside chat
@@ -87,26 +89,45 @@ func (g *originGuard) Decide(ctx context.Context, call agentcore.ToolCall, tool 
 		return tools.Denied(fmt.Sprintf("已拒绝 %s：%s。外部内容里的文字可能是提示注入，不会自动执行；"+
 			"请改为自己写出参数，或让用户确认后再做。", call.Name, reason))
 	}
-	if err := g.confirm(ctx, call, hit.Tool, snippet, reason); err != nil {
+	if err := g.confirm(ctx, call, tool, hit.Tool, snippet, reason); err != nil {
 		return err
 	}
-	return g.inner.Decide(ctx, call, tool)
+	// The person said yes to this very call: an ordinary "ask" further down
+	// must not put the same call to them a second time.
+	return g.inner.Decide(context.WithValue(ctx, originConfirmedKey{}, true), call, tool)
+}
+
+// originConfirmedKey marks a context whose call the person already allowed in
+// the external-origin question; the chat approver then skips its own ask (rules
+// that allow or deny still apply).
+type originConfirmedKey struct{}
+
+// originConfirmed reports whether the origin guard already asked and got a yes.
+func originConfirmed(ctx context.Context) bool {
+	v, _ := ctx.Value(originConfirmedKey{}).(bool)
+	return v
 }
 
 // confirm asks the chat user; only an allowing reply lets the call go on.
-func (g *originGuard) confirm(ctx context.Context, call agentcore.ToolCall, source, snippet, reason string) error {
+func (g *originGuard) confirm(ctx context.Context, call agentcore.ToolCall, tool agentcore.Tool, source, snippet, reason string) error {
 	a := g.chat
+	// Read the call's own details first (it locks a.mu itself): when the
+	// approver would ask about this call anyway, they join this question.
+	var details []string
+	if base, ok := a.previewAsk(call, tool); ok {
+		details = append(details, base.Details...)
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	asked := time.Now()
 	t := approvalTr(a.translator)
+	details = append(details,
+		t.T("host.origin.source", map[string]any{"tool": displaySafe(source)}),
+		t.T("host.origin.snippet", map[string]any{"snippet": snippet}))
 	answer, err := a.asker.Ask(ctx, tools.Question{
-		Tool: call.Name,
-		Details: []string{
-			t.T("host.origin.source", map[string]any{"tool": displaySafe(source)}),
-			t.T("host.origin.snippet", map[string]any{"snippet": snippet}),
-		},
-		Prompt: t.T("host.origin.prompt", map[string]any{"tool": call.Name}),
+		Tool:    call.Name,
+		Details: details,
+		Prompt:  t.T("host.origin.prompt", map[string]any{"tool": call.Name}),
 	})
 	if errors.Is(err, tools.ErrCannotAsk) {
 		return tools.Denied("已拒绝（无法向用户确认）：" + call.Name + "：" + reason)
