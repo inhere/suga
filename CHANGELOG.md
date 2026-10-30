@@ -13,6 +13,10 @@
 - 同一进程里多个会话（sugasdk 嵌入）并发时不再出现 `database is locked (SQLITE_BUSY)`：根因是每个会话各开一个 SQLite 连接池，首次打开时并发切换 WAL、并发迁移互相争锁（还会报迁移重复）；现在同一进程内同一库文件共享一个连接池（引用计数，最后一个关闭才释放），迁移在写锁内复查账本，首个连接遇忙会退避重试，并发加载语言包也改为串行；宿主事件回调 panic 不再让工具调用失败（记 warn 日志）。
 - 危险删除守卫的测试不再依赖宿主 HOME 与临时目录布局，也不再假定 shell 是 POSIX sh：在 Windows（shell_exec 走 PowerShell）上通过；守卫实现本身无需改动。
 
+### 变更
+
+- `file_grep` 的 lookaround / 反向引用回退匹配器依赖升级到 `github.com/dlclark/regexp2/v2` v2.12.0（原 v1.12.0）；回退语法与单文件 200ms 超时语义不变。
+
 ## [0.52.0] - 2026-10-30
 
 本版面向嵌入与外部编排：`suga run --clear-ctx` 复用会话 ID 从空分段开始、stream-json 报告上下文占用；sugasdk 可按会话指定项目记忆作用域（`ProjectMemoryKey`）、默认来源改为 `sdk` 并去掉宿主专用来源；gofer job 内默认不提供 `session_message`；安全上新增写前变更守卫、危险递归删除对 home/根/工作区外目标硬拒、上游把推理通道原文混进工具参数时重试；另有上游缓存保留（`prompt_cache_retention`）、请求头占位符扩展、工具行按工具族着色等改进。
