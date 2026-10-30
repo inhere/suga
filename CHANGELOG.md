@@ -17,6 +17,7 @@
 
 ### 变更
 
+- 新增调研 `docs/research/2026-10-30-decision-models.md`：TypeSafe System One（jev）决策模型的用途、协议（`POST /v1/systemone`，非 OpenAI 兼容）与在 suga 的接入建议；结论为暂不接入。
 - `file_grep` 的 lookaround / 反向引用回退匹配器依赖升级到 `github.com/dlclark/regexp2/v2` v2.12.0（原 v1.12.0）；回退语法与单文件 200ms 超时语义不变。
 
 ## [0.52.0] - 2026-10-30
