@@ -127,35 +127,27 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 	zip ../release/$(APP)-windows-amd64.zip $(APP)-windows-amd64.exe;
 	@echo "Release archives created in release/"
 
-## smoke-chat: build to tmp/smoke and run the PTY end-to-end chat smoke test (Linux/macOS)
+## smoke-chat: run smoke-go, then build to tmp/smoke and run the remaining Python PTY chat smoke scripts (Linux/macOS)
 ## chat_tool_ctrlc covers Ctrl-C during a foreground shell_exec; the Windows
 ## twin is scripts/wincons (a Windows console cannot be driven from Python).
 # Every scenario pins its own UI language in the SUGA_HOME config it writes
 # (chat_i18n_en.py pins en); auto would follow the machine locale.
-smoke-chat:
+smoke-chat: smoke-go
 	@mkdir -p tmp/smoke
 	go build -o tmp/smoke/suga ./cmd/suga
 	python3 -I scripts/ptysmoke/chat_approval.py --bin tmp/smoke/suga --work tmp/smoke
 	python3 -I scripts/ptysmoke/chat_i18n_en.py --bin tmp/smoke/suga --work tmp/smoke-i18n
 	python3 -I scripts/ptysmoke/chat_rules.py --bin tmp/smoke/suga --work tmp/smoke-rules
-	python3 -I scripts/ptysmoke/chat_edit.py --bin tmp/smoke/suga --work tmp/smoke-edit
 	python3 -I scripts/ptysmoke/chat_undo.py --bin tmp/smoke/suga --work tmp/smoke-undo
-	python3 -I scripts/ptysmoke/chat_diff.py --bin tmp/smoke/suga --work tmp/smoke-diff
-	python3 -I scripts/ptysmoke/chat_render.py --bin tmp/smoke/suga --work tmp/smoke-render
-	python3 -I scripts/ptysmoke/chat_theme.py --bin tmp/smoke/suga --work tmp/smoke-theme
 	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
-	python3 -I scripts/ptysmoke/chat_idle.py --bin tmp/smoke/suga --work tmp/smoke-idle
-	python3 -I scripts/ptysmoke/chat_observe.py --bin tmp/smoke/suga --work tmp/smoke-observe
 	python3 -I scripts/ptysmoke/chat_deferred_native.py --bin tmp/smoke/suga --work tmp/smoke-deferred
 	python3 -I scripts/ptysmoke/chat_pretool.py --bin tmp/smoke/suga --work tmp/smoke-pretool
-	python3 -I scripts/ptysmoke/chat_retry.py --bin tmp/smoke/suga --work tmp/smoke-retry
 	python3 -I scripts/ptysmoke/chat_interrupt.py --bin tmp/smoke/suga --work tmp/smoke-interrupt
 	python3 -I scripts/ptysmoke/chat_danger.py --bin tmp/smoke/suga --work tmp/smoke-danger
 	python3 -I scripts/ptysmoke/chat_tasks.py --bin tmp/smoke/suga --work tmp/smoke-tasks
 	python3 -I scripts/ptysmoke/chat_images.py --bin tmp/smoke/suga --work tmp/smoke-images
 	python3 -I scripts/ptysmoke/chat_read_image.py --bin tmp/smoke/suga --work tmp/smoke-read-image
 	python3 -I scripts/ptysmoke/chat_send_image.py --bin tmp/smoke/suga --work tmp/smoke-send-image
-	python3 -I scripts/ptysmoke/chat_commands.py --bin tmp/smoke/suga --work tmp/smoke-commands
 	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
 	python3 -I scripts/ptysmoke/chat_model.py --bin tmp/smoke/suga --work tmp/smoke-model
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
@@ -189,12 +181,13 @@ demo-cast:
 	go build -o tmp/smoke/suga ./cmd/suga
 	python3 -I scripts/demo/record.py --bin tmp/smoke/suga
 
-## smoke-pty-go: run the Windows-capable Go ptytest chat smoke
-smoke-pty-go:
+## smoke-go: run the Go ptytest chat smoke (Linux pty and Windows ConPTY, one suite);
+## scenarios migrate here from scripts/ptysmoke batch by batch
+smoke-go:
 	go test -tags ptye2e -count=1 ./test/ptye2e/
 
-## smoke-go: compatibility alias for smoke-pty-go
-smoke-go: smoke-pty-go
+## smoke-pty-go: compatibility alias for smoke-go
+smoke-pty-go: smoke-go
 
 clean:
 	@rm -f $(BINARY)
