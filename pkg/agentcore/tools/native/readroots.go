@@ -100,6 +100,11 @@ func resolveRead(workspace string, roots []string, arg string) (readTarget, erro
 // session's read-write directories (--add-dir ...:rw). Such a directory is
 // treated exactly like the workspace: same approvals, same delete guards.
 func resolveWrite(workspace string, roots []string, arg string) (readTarget, error) {
+	// Same pre-check as the read side: name the character a path cannot carry
+	// instead of letting the OS answer opaquely (path_chars.go).
+	if err := checkPathChars(arg); err != nil {
+		return readTarget{}, err
+	}
 	return resolveRooted(workspace, roots, arg, "the added read-write directories")
 }
 

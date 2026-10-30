@@ -107,6 +107,12 @@ func (t *FileReadTool) probeImageItem(arg string) imageProbe {
 // always with a first-line hint, and every other file is read exactly as before
 // (byte for byte: the probe only looks, the ordinary read still answers).
 func (t *FileReadTool) readEntry(item readItem, offset, limit int, outline, single bool) (string, *api.ImagePart, error) {
+	// A path this platform cannot open is refused here, with the offending
+	// character named, before the OS answers with its own opaque text
+	// (path_chars.go).
+	if err := checkPathChars(item.path); err != nil {
+		return "", nil, fmt.Errorf("file_read: %w", err)
+	}
 	probe := t.probeImageItem(item.path)
 	if probe.image {
 		// One call attaches at most one picture: a line span, outline=true or a
