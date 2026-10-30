@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 )
 
 const regexp2FileTimeout = 200 * time.Millisecond
