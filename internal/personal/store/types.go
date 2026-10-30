@@ -68,6 +68,11 @@ const (
 	// of: chars per part (system prompt, tools, segment context parts,
 	// history, hook context, the turn's input) and the window.
 	EventContext = "context"
+	// EventContextCleared records a --clear-ctx segment break: the session
+	// started its next turn on an empty segment (attrs dropped_messages,
+	// est_tokens, first_kept_seq, segment). The old entries stay in the log and
+	// stay searchable; only the next turn's context stops at the new record.
+	EventContextCleared = "context_cleared"
 	// EventHook records a run of the user's hook command: name = hook event,
 	// attrs decision, additional_chars, notice.
 	EventHook = "hook"

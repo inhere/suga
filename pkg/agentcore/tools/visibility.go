@@ -338,6 +338,26 @@ func (v *Visibility) ListTools(ctx context.Context) ([]api.ToolSchema, error) {
 	return out, nil
 }
 
+// ClearLoaded forgets every loaded deferred tool of the session and empties
+// the segment tool table, so a later segment (a --clear-ctx break) starts from
+// the deferred set as if nothing had been loaded. The persisted set is saved
+// empty before the table follows it, so a resumed process sees the same cleared
+// state; a failed save is returned and leaves the table untouched.
+func (v *Visibility) ClearLoaded(ctx context.Context) error {
+	if v == nil {
+		return nil
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.store == nil {
+		v.mem = map[string]bool{}
+	} else if err := v.store.SaveLoadedTools(ctx, nil); err != nil {
+		return fmt.Errorf("clear loaded tools: %w", err)
+	}
+	v.foldLocked(nil)
+	return nil
+}
+
 // FoldLoaded folds the loaded deferred tools into the tool table (segment
 // boundary). The caller invokes it when a new segment snapshot is built: the
 // prompt prefix is rebuilt anyway, so adding the tools costs no extra cache

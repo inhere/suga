@@ -44,7 +44,11 @@ type personalOptions struct {
 	// --append-system-prompt keeps it instead: argv templates (job runners)
 	// often always pass the flag and render it empty when there is no prompt.
 	ClearAppendSystemPrompt bool
-	NoProjectRules          bool
+	// ClearCtx (run only) starts this turn on a new, empty segment of an existing
+	// session: no history, no handoff package, no plan, no loaded deferred tools
+	// (--clear-ctx). The session keeps its id, title, rules and model.
+	ClearCtx       bool
+	NoProjectRules bool
 	// Injected (run only) marks this turn's prompt as not typed by a person;
 	// the transcript records it as injected.
 	Injected bool
@@ -257,6 +261,9 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	cmd.StringVar(&opts.AppendSystemPrompt, "append-system-prompt", "", "append system instructions after rules, empty keeps the saved prompt")
 	cmd.BoolVar(&opts.ClearAppendSystemPrompt, "clear-append-system-prompt", false, "clear the session's saved append prompt (a non-empty --append-system-prompt still replaces it)")
 	cmd.BoolVar(&opts.NoProjectRules, "no-project-rules", false, "skip project rule files for debugging")
+	// Registered for both modes like --image, and refused by chat in
+	// validatePersonalOptions, so the error says why instead of "flag not defined".
+	cmd.BoolVar(&opts.ClearCtx, "clear-ctx", false, "start this turn on a new, empty segment of the --session-id/--resume session (no history, plan or loaded deferred tools; same session, rules and model)")
 	cmd.Var((*cflag.Strings)(&opts.MCPConfigs), "mcp-config", "Claude-style JSON MCP server config{[;mcp]}")
 	cmd.Var((*cflag.Strings)(&opts.AddDirs), "add-dir", "extra absolute directory for this session as \"<directory>[:ro|:rw]\" (default :ro), repeatable; SUGA_ADD_DIRS adds more")
 	cmd.BoolVar(&opts.AllowCwdChange, "allow-cwd-change", false, "continue a resumed session in the current directory even if it was created in another one")
@@ -325,6 +332,19 @@ func validatePersonalOptions(mode string, opts personalOptions) error {
 	if opts.MaxOutputTokens < 0 {
 		return fmt.Errorf("--max-output-tokens must be a whole number >= 1, got %d", opts.MaxOutputTokens)
 	}
+	// --clear-ctx reuses a session on purpose: it needs the session to continue and
+	// refuses --from, which starts a new one (exit code 2: a usage error).
+	if opts.ClearCtx {
+		if mode != "run" {
+			return fmt.Errorf("--clear-ctx is only supported in run mode")
+		}
+		if opts.FromID != "" {
+			return processExitError{code: 2, err: fmt.Errorf("--clear-ctx and --from cannot be combined: --from starts a new session, which has nothing to clear")}
+		}
+		if opts.SessionID == "" && opts.ResumeID == "" {
+			return processExitError{code: 2, err: fmt.Errorf("--clear-ctx requires --session-id or --resume: it clears the context of an existing session")}
+		}
+	}
 	if mode != "run" {
 		// The --verify* flags exist for run only; chat never checks a command.
 		if opts.Verify != "" || opts.VerifyRounds != 0 || opts.VerifyTimeout != 0 {
@@ -350,7 +370,7 @@ func validatePersonalOptions(mode string, opts personalOptions) error {
 }
 
 func executePersonalRun(ctx context.Context, runner *personal.Runner, opts personalOptions, stdout, stderr io.Writer) error {
-	sessionID, err := openRequestedSession(ctx, runner, opts)
+	sessionID, existed, err := openRequestedSession(ctx, runner, opts)
 	if err != nil {
 		return err
 	}
@@ -358,6 +378,15 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	// session is known and before the first turn.
 	if opts.setupSession != nil {
 		if err := opts.setupSession(ctx, sessionID); err != nil {
+			return err
+		}
+	}
+	// --clear-ctx: an existing session starts this turn on a fresh segment (the
+	// same id, title, rules and model). A session this run just created has
+	// nothing to clear, so it starts empty anyway and no context_cleared event or
+	// stream-json line is produced.
+	if opts.ClearCtx && existed {
+		if _, err := runner.ClearContext(ctx, sessionID); err != nil {
 			return err
 		}
 	}
@@ -380,11 +409,17 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	live := output.NewLiveText(stdout)
 	live.SetTranslator(opts.translator)
 	var budget *personal.BudgetSnapshot
+	// occupancy is the context object of the last turn_end: the result line
+	// carries the same figure for the same turn.
+	var occupancy *personal.ContextOccupancy
 	emit := func(_ context.Context, event personal.Event) error {
 		if event.Budget != nil {
 			budget = event.Budget
 		} else if event.Usage != nil && event.Usage.Budget != nil {
 			budget = event.Usage.Budget
+		}
+		if event.Usage != nil && event.Usage.Context != nil {
+			occupancy = event.Usage.Context
 		}
 		if event.Kind == personal.EventSessionRecovered {
 			// The session was left running by a process that died mid-turn and has
@@ -497,7 +532,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	// the result line; the run then ends with exit code 5 (design §5).
 	failedVerify := verifyRep != nil && !verifyRep.Passed
 	if encoder != nil {
-		line := output.ResultLineWithContext(sessionID, result, window, budget)
+		line := output.ResultLineWithContext(sessionID, result, window, occupancy, budget)
 		if verifyRep != nil {
 			line = output.WithVerify(line, verifyRep.Passed, verifyRep.Rounds)
 		}
@@ -523,41 +558,44 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 	return nil
 }
 
-func openRequestedSession(ctx context.Context, runner *personal.Runner, opts personalOptions) (string, error) {
+// openRequestedSession opens or creates the session the options name; existed
+// reports whether it was already there (a --clear-ctx of a fresh session has
+// nothing to clear).
+func openRequestedSession(ctx context.Context, runner *personal.Runner, opts personalOptions) (string, bool, error) {
 	if opts.FromID != "" {
 		// --session-id names the new session; an existing one is rejected by Handoff.
 		model, err := runner.Handoff(ctx, personal.HandoffRequest{SourceID: opts.FromID, NewID: opts.SessionID, Title: opts.Prompt, Origin: runner.SessionOrigin(personal.OriginRun)})
 		if err != nil {
-			return "", personal.SessionNotFound(err, opts.FromID)
+			return "", false, personal.SessionNotFound(err, opts.FromID)
 		}
-		return model.ID, nil
+		return model.ID, false, nil
 	}
 	if opts.ResumeID != "" {
 		model, err := runner.LoadSession(ctx, opts.ResumeID)
 		if err != nil {
-			return "", personal.SessionNotFound(err, opts.ResumeID)
+			return "", false, personal.SessionNotFound(err, opts.ResumeID)
 		}
-		return model.ID, nil
+		return model.ID, true, nil
 	}
 	if opts.SessionID != "" {
 		model, err := runner.LoadSession(ctx, opts.SessionID)
 		if err == nil {
-			return model.ID, nil
+			return model.ID, true, nil
 		}
 		if !errors.Is(err, personal.ErrSessionNotFound) {
-			return "", err
+			return "", false, err
 		}
 		model, err = runner.NewSessionFor(ctx, opts.SessionID, opts.Prompt, runner.SessionOrigin(personal.OriginRun))
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
-		return model.ID, nil
+		return model.ID, false, nil
 	}
 	model, err := runner.NewSessionFor(ctx, "", opts.Prompt, runner.SessionOrigin(personal.OriginRun))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return model.ID, nil
+	return model.ID, false, nil
 }
 
 // runSummary is the text-mode closing line: model, this turn's tokens, the
