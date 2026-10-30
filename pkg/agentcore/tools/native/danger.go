@@ -32,11 +32,25 @@ const maxShellNesting = 3
 // "" when it does not. powershell selects PowerShell syntax (else POSIX sh);
 // relative paths resolve against workspace.
 func DangerousDelete(command string, powershell bool, workspace string) string {
+	reason, _ := DangerousDeleteKind(command, powershell, workspace)
+	return reason
+}
+
+// DangerousDeleteKind is DangerousDelete that also says whether the target is
+// one nobody may confirm away (hard): the user's home directory, the file
+// system root (a drive root included), a parent directory of the workspace, or
+// a path outside the workspace. The outside check applies to recursive deletes
+// only and reads the path lexically (a symlink inside the workspace that points
+// out is not followed). The caller refuses a hard hit whatever the approval
+// mode; other hits (the workspace itself, a variable-led path) may still be
+// confirmed by the person.
+func DangerousDeleteKind(command string, powershell bool, workspace string) (reason string, hard bool) {
 	syntax := syntaxSh
 	if powershell {
 		syntax = syntaxPS
 	}
-	return dangerIn(command, syntax, workspace, workspace, 0)
+	hit := dangerIn(command, syntax, workspace, workspace, 0)
+	return hit.reason, hit.hard
 }
 
 // DangerousDelete is DangerousDelete with this tool's shell and workspace.
@@ -44,23 +58,35 @@ func (t *ShellExecTool) DangerousDelete(command string) string {
 	return DangerousDelete(command, t.shell.powershell, t.workspace)
 }
 
+// DangerousDeleteKind is DangerousDeleteKind with this tool's shell and workspace.
+func (t *ShellExecTool) DangerousDeleteKind(command string) (reason string, hard bool) {
+	return DangerousDeleteKind(command, t.shell.powershell, t.workspace)
+}
+
+// dangerHit is what the delete check found: why, and whether it is a hard
+// refusal (see DangerousDeleteKind). The zero value is no finding.
+type dangerHit struct {
+	reason string
+	hard   bool
+}
+
 // dangerIn checks each simple command of a command line. cwd follows the
 // line's cd commands ("" once a cd target cannot be resolved), so relative
 // targets resolve where they will run.
-func dangerIn(command string, syntax shellSyntax, workspace, cwd string, depth int) string {
+func dangerIn(command string, syntax shellSyntax, workspace, cwd string, depth int) dangerHit {
 	if depth > maxShellNesting {
-		return ""
+		return dangerHit{}
 	}
 	for _, words := range splitCommands(command, syntax) {
 		if len(words) > 0 && cdCommands[commandName(words[0])] {
 			cwd = changeDir(words[1:], syntax, workspace, cwd)
 			continue
 		}
-		if reason := dangerInWords(words, syntax, workspace, cwd, depth); reason != "" {
-			return reason
+		if hit := dangerInWords(words, syntax, workspace, cwd, depth); hit.reason != "" {
+			return hit
 		}
 	}
-	return ""
+	return dangerHit{}
 }
 
 // cdCommands change the directory later commands of the line run in.
@@ -94,7 +120,7 @@ func changeDir(args []string, syntax shellSyntax, workspace, cwd string) string 
 }
 
 // dangerInWords checks one simple command (its words, quotes removed).
-func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, depth int) string {
+func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, depth int) dangerHit {
 	// Leading sudo / env / VAR=value do not change what runs.
 	for len(words) > 0 {
 		w := strings.ToLower(words[0])
@@ -106,7 +132,7 @@ func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, de
 		break
 	}
 	if len(words) == 0 {
-		return ""
+		return dangerHit{}
 	}
 	name, args := commandName(words[0]), words[1:]
 	// A nested shell: check its script with that shell's syntax.
@@ -117,21 +143,21 @@ func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, de
 				return dangerIn(args[i+1], syntaxSh, workspace, cwd, depth+1)
 			}
 		}
-		return ""
+		return dangerHit{}
 	case "cmd":
 		for i, a := range args {
 			if la := strings.ToLower(a); la == "/c" || la == "/k" {
 				return dangerIn(strings.Join(args[i+1:], " "), syntaxCmd, workspace, cwd, depth+1)
 			}
 		}
-		return ""
+		return dangerHit{}
 	case "pwsh", "powershell":
 		for i, a := range args {
 			if la := strings.ToLower(a); len(la) >= 2 && strings.HasPrefix("-command", la) {
 				return dangerIn(strings.Join(args[i+1:], " "), syntaxPS, workspace, cwd, depth+1)
 			}
 		}
-		return ""
+		return dangerHit{}
 	}
 	var recursive bool
 	var targets []string
@@ -143,14 +169,15 @@ func dangerInWords(words []string, syntax shellSyntax, workspace, cwd string, de
 	case syntax == syntaxCmd && (name == "rd" || name == "rmdir" || name == "del" || name == "erase"):
 		recursive, targets = cmdDeleteArgs(args)
 	default:
-		return ""
+		return dangerHit{}
 	}
 	for _, target := range targets {
-		if reason := dangerousTarget(target, syntax, workspace, cwd, recursive); reason != "" {
-			return fmt.Sprintf("%s：%s", strings.Join(words, " "), reason)
+		if hit := dangerousTarget(target, syntax, workspace, cwd, recursive); hit.reason != "" {
+			hit.reason = fmt.Sprintf("%s：%s", strings.Join(words, " "), hit.reason)
+			return hit
 		}
 	}
-	return ""
+	return dangerHit{}
 }
 
 // psRemoveCommands are Remove-Item and its PowerShell aliases.
@@ -239,17 +266,17 @@ var homeAliases = map[string]bool{
 // a drive root, the workspace or a parent of it, or a path led by a variable
 // that may be empty. A non-recursive delete only counts when it globs one of
 // those directories (rm ~/*). Relative targets resolve against cwd.
-func dangerousTarget(target string, syntax shellSyntax, workspace, cwd string, recursive bool) string {
+func dangerousTarget(target string, syntax shellSyntax, workspace, cwd string, recursive bool) dangerHit {
 	p := target
 	if syntax != syntaxSh {
 		p = strings.ReplaceAll(p, `\`, "/")
 	}
 	if p == "" {
-		return ""
+		return dangerHit{}
 	}
 	glob := strings.HasSuffix(p, "*")
 	if !recursive && !glob {
-		return ""
+		return dangerHit{}
 	}
 	base := strings.TrimRight(strings.TrimSuffix(p, "*"), "/")
 	what := "删除"
@@ -258,35 +285,39 @@ func dangerousTarget(target string, syntax shellSyntax, workspace, cwd string, r
 	}
 	switch {
 	case strings.HasPrefix(p, "/") && base == "":
-		return what + "根目录"
+		return dangerHit{what + "根目录 " + p, true}
 	case homeAliases[strings.ToLower(base)]:
-		return what + "用户主目录"
+		return dangerHit{what + "用户主目录 " + target, true}
 	case len(base) == 2 && base[1] == ':' && isLetter(base[0]):
-		return what + "盘符根目录 " + base
+		return dangerHit{what + "盘符根目录 " + base, true}
 	}
 	if name, rest, ok := leadingVar(p, syntax); ok {
 		if _, known := knownVarDir(name, workspace); !known && strings.HasPrefix(rest, "/") {
-			return fmt.Sprintf("路径以变量 %s 开头，变量为空时会落到根目录", name)
+			return dangerHit{reason: fmt.Sprintf("路径以变量 %s 开头，变量为空时会落到根目录", name)}
 		}
 	}
 	expanded, ok := expandPath(base, syntax, workspace)
 	if !ok || cwd == "" && !filepath.IsAbs(expanded) && !strings.HasPrefix(expanded, "/") {
-		return "" // a variable or directory whose value cannot be told
+		return dangerHit{} // a variable or directory whose value cannot be told
 	}
 	abs := resolveTarget(expanded, cwd)
 	home, _ := os.UserHomeDir()
 	ws := filepath.Clean(workspace)
 	switch {
 	case filepath.Dir(abs) == abs:
-		return what + "根目录 " + abs
+		return dangerHit{what + "根目录 " + abs, true}
 	case home != "" && samePath(abs, filepath.Clean(home)):
-		return what + "用户主目录"
+		return dangerHit{what + "用户主目录 " + abs, true}
 	case workspace != "" && samePath(abs, ws):
-		return what + "整个工作区"
+		return dangerHit{reason: what + "整个工作区"}
 	case workspace != "" && isParentDir(abs, ws):
-		return what + "工作区的上级目录 " + abs
+		return dangerHit{what + "工作区的上级目录 " + abs, true}
+	case workspace != "" && recursive && abs != "" && !isParentDir(ws, abs):
+		// Whatever is left is neither the workspace nor its parent: a recursive
+		// delete of a path that is not inside the workspace.
+		return dangerHit{"递归删除工作区外的路径 " + abs, true}
 	}
-	return ""
+	return dangerHit{}
 }
 
 // expandPath replaces a leading ~ or always-set variable (home, current

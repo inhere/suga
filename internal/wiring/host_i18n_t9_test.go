@@ -41,9 +41,9 @@ func TestHostNoticesEnglish(t *testing.T) {
 	t.Run("danger guard asks in english", func(t *testing.T) {
 		ws := t.TempDir()
 		shell := native.NewShellExecTool(ws, 0)
-		danger := "rm -rf ~"
+		danger := "rm -rf ."
 		if runtime.GOOS == "windows" {
-			danger = "Remove-Item -Recurse -Force ~"
+			danger = "Remove-Item -Recurse -Force ."
 		}
 		asker := &scriptedAsker{answers: []string{"no"}}
 		chat := testChatApprover(nil, true, asker, ws, nil)

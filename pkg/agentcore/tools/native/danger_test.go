@@ -58,9 +58,6 @@ func TestDangerousDelete(t *testing.T) {
 		for _, command := range []string{
 			`rm -rf build dist node_modules`,
 			`rm -f ~/.cache/x.lock`,
-			`rm -rf ~/.cache/go-build`,
-			`rm -rf "$HOME/.cache/x"`,
-			`rm -rf /tmp/x`,
 			`rm -rf "$X"`, // an empty $X is no path at all
 			`rm ~`,        // not recursive, not a glob
 			`cd build && rm -rf *`,
@@ -71,6 +68,17 @@ func TestDangerousDelete(t *testing.T) {
 			`cd "$X" && rm -rf *`, // unknown directory: cannot tell
 		} {
 			check(t, false, command, "")
+		}
+	})
+	t.Run("sh: recursive delete outside the workspace", func(t *testing.T) {
+		for command, want := range map[string]string{
+			`rm -rf ~/.cache/go-build`:  "工作区外的路径",
+			`rm -rf "$HOME/.cache/x"`:   "工作区外的路径",
+			`rm -rf /tmp/x`:             "工作区外的路径 /tmp/x",
+			`rm -rf ../sibling`:         "工作区外的路径",
+			`rm -rf ` + root + `/other`: "工作区外的路径",
+		} {
+			check(t, false, command, want)
 		}
 	})
 	t.Run("PowerShell and cmd: dangerous", func(t *testing.T) {
@@ -108,5 +116,62 @@ func TestDangerousDelete(t *testing.T) {
 	t.Run("the reason names the command", func(t *testing.T) {
 		got := DangerousDelete(`ls; rm -rf ~`, false, ws)
 		assert.True(t, strings.HasPrefix(got, "rm -rf ~："), got)
+	})
+}
+
+func TestDangerousDeleteKind(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	ws := filepath.Join(home, "work", "proj")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	kind := func(command string, powershell bool) (string, bool) {
+		return DangerousDeleteKind(command, powershell, ws)
+	}
+
+	t.Run("hard: home, root, an ancestor of the workspace, an outside path", func(t *testing.T) {
+		for name, command := range map[string]string{
+			"home":           `rm -rf ~`,
+			"home env":       `rm -rf $HOME`,
+			"home glob":      `rm -rf ~/*`,
+			"root":           `rm -rf /`,
+			"ancestor":       `rm -rf ..`,
+			"ancestor named": `rm -rf ` + filepath.ToSlash(filepath.Join(home, "work")),
+			"outside abs":    `rm -rf /var/lib/x`,
+			"outside rel":    `rm -rf ../other`,
+			"outside home":   `rm -rf ~/.cache`,
+			"nested in sh":   `bash -c "rm -rf /var/lib/x"`,
+		} {
+			reason, hard := kind(command, false)
+			assert.True(t, hard, name+": "+reason)
+			assert.NotEq(t, "", reason, name)
+		}
+		for name, command := range map[string]string{
+			"drive root":  `rm -r -fo C:\`,
+			"userprofile": `Remove-Item -Recurse -Force $env:USERPROFILE`,
+			"percent":     `cmd /c rd /s /q %USERPROFILE%`,
+		} {
+			reason, hard := kind(command, true)
+			assert.True(t, hard, name+": "+reason)
+		}
+	})
+	t.Run("soft: still confirmable", func(t *testing.T) {
+		for name, command := range map[string]string{
+			"workspace dot":   `rm -rf .`,
+			"workspace glob":  `rm -rf *`,
+			"workspace named": `rm -rf ` + filepath.ToSlash(ws),
+			"variable led":    `rm -rf "$BUILD_DIR/"`,
+		} {
+			reason, hard := kind(command, false)
+			assert.NotEq(t, "", reason, name)
+			assert.False(t, hard, name+": "+reason)
+		}
+	})
+	t.Run("inside the workspace is not hard", func(t *testing.T) {
+		for _, command := range []string{`rm -rf ./build`, `rm -rf build dist`, `rm -rf sub/dir/`} {
+			reason, hard := kind(command, false)
+			assert.Eq(t, "", reason, command)
+			assert.False(t, hard, command)
+		}
 	})
 }
