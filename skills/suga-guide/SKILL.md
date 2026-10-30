@@ -67,6 +67,8 @@ suga inspect manifest                            # 生效的模型、工具、sk
 
 第一条能正常回话即配置完成。想确认发出去的模型 id、思考档位，用 `suga inspect manifest`（主模型一行显示实际发送的 id）。
 
+脚本里反复用同一个会话做短对话时，加 `--session-id <id> --clear-ctx`：本轮在该会话上新开一个空分段（不带历史与交接包，清空计划与已加载的延迟工具，规则、append prompt、模型不变，旧消息仍可检索）；stream-json 的 `turn_end`/`result` 带 `context.est_tokens`/`window`/`ratio`，可据此判断上下文有多满。
+
 ### 6. 常见报错怎么处理
 
 | 报错 / 现象 | 原因与处理 |

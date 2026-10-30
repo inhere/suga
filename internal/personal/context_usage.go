@@ -7,6 +7,16 @@ import (
 	"github.com/inhere/suga/pkg/agentcore"
 )
 
+// ContextOccupancy is the turn's context size as stream-json reports it on its
+// turn_end and result lines: the estimated input tokens of the turn's last
+// request and the window they are measured against. Both come from where the
+// context trace event reads them (the builder's estimate, compactLimits), so a
+// caller such as gofer sees the same figure as `suga trace`.
+type ContextOccupancy struct {
+	EstTokens int `json:"est_tokens"`
+	Window    int `json:"window"`
+}
+
 // ContextUsage is the persisted half of a session's context composition, for
 // chat's :context command. The handoff and history figures come from the same
 // view a turn assembles (loadHistory) and are measured by the same helpers the

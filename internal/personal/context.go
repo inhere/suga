@@ -397,6 +397,12 @@ func (b *contextBuilder) BuildMessages(ctx context.Context, state *agentcore.Run
 		}
 	}
 	b.lastViewTokens, b.haveView = tokensOfMessages(view), true
+	// The estimate of this request is also what the turn reports as its context
+	// occupancy once it ends (stream-json's context object, runner_finish.go):
+	// the last request of the turn is the fullest one.
+	if b.usage != nil {
+		b.usage.recordEstimate(est)
+	}
 	b.recordFold(ctx)
 	b.recordContext(ctx, state, est)
 	return view, nil

@@ -304,6 +304,16 @@ func (s *Store) LatestEntry(ctx context.Context, sessionID, typ string) (*Entry,
 	return &out[0], nil
 }
 
+// LastEntrySeq returns the highest entries seq of the session, 0 when it has
+// none. A segment record that keeps nothing starts after it (--clear-ctx).
+func (s *Store) LastEntrySeq(ctx context.Context, sessionID string) (int64, error) {
+	var seq int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) FROM entries WHERE session_id = ?`, sessionID).Scan(&seq); err != nil {
+		return 0, fmt.Errorf("read the last entry seq: %w", err)
+	}
+	return seq, nil
+}
+
 // RecentEntries returns the newest entries of the given types, newest first, at
 // most limit of them (nil when the session has none). It walks the
 // (session_id, seq) primary key backwards and stops after limit rows, so a

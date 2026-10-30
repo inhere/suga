@@ -15,23 +15,21 @@
 
 ### 新增
 
-- `sugasdk.SessionOptions` 新增 `ProjectMemoryKey`：宿主可将会话的项目记忆固定到 `$SUGA_HOME/projects/<key>/memory`，按主题隔离且不触碰工作区仓库的 `MEMORY.md` 或 `.gofer/tracker`。
-
+- `suga run` 新增 `--clear-ctx`：与 `--session-id`/`--resume` 同用时，本轮在该会话上开一个新分段，不带历史消息与交接包，并清空计划与已加载的延迟工具；系统提示、项目规则、会话保存的 append prompt、模型与会话身份保留，旧消息仍可被历史检索与 `suga trace` 看到（trace 记 `context_cleared` 事件，含清掉的消息数与估算 token）。与 `--from` 同用或两者都没给时报参数错误（退出码 2），会话不存在时按只给 `--session-id` 新建、不报错。
+- stream-json 的 `turn_end` 与 `result` 行新增 `context` 对象：`est_tokens`（本轮最后一次请求的估算输入 token）、`window`（上下文窗口）与 `ratio`（两者之比，保留 3 位小数），与 chat `:context` / trace 的 context 事件同一套计算；`result` 行原有的 `used`/`share` 仍在。没有请求时不输出该对象，`usage` 行不变。
 - sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。
 - chat 的工具输出按工具族着色并各带一个符号（`▸` 读、`✎` 写、`$` 命令、`⇄` 网络、`◆` 子 agent、`✦` 会话/计划），参数变暗、`⎿ ok:` 与失败结果各自成色；新增 `chat.colors`（`style`/`mode` 加每元素一个颜色）覆盖默认配色，未知键或颜色启动报错。
 - 新增 `providers.<id>.prompt_cache_retention`（`in_memory` / `24h`，仅 `openai-responses`）：设置上游保留 prompt 缓存多久，空闲很久的会话写 `24h` 才能跨回合复用缓存。压缩/空闲整理/交接包的摘要请求改用独立的缓存键（`<会话>-compact`），不再冲掉主对话的缓存条目。
 - `providers.<id>.headers` 的值新增 `{{turn_id}}`、`{{model}}`、`{{provider}}` 占位符（原来只有 `{{session_id}}`），取不到值时该头不发送；便于按模型/回合分流的网关。
 - 新增 `sugasdk.Engine.Pin` 会话 pin 契约；age GC 与 retention GC 均跳过被 pin 的会话（包括非 xhen 来源）。
 - 记忆条目新增跨 ID 复用保持不变的 UUID，并为 SDK 提供按 UUID 获取、更新、删除接口；旧元数据迁移会自动补齐 UUID。
+- `sugasdk.SessionOptions` 新增 `ProjectMemoryKey`：宿主可将会话的项目记忆固定到 `$SUGA_HOME/projects/<key>/memory`，按主题隔离且不触碰工作区仓库的 `MEMORY.md` 或 `.gofer/tracker`。
 
 ### 变更
 
 - sugasdk 默认会话来源改为 `sdk`，SDK 会话按非交互期限参与 retention；不再隐藏或豁免 `origin=xhen` 会话，宿主需长期保留会话时使用 `Engine.Pin`。
-
 - gofer job（进程环境有 `GOFER_JOB_ID`）默认不再向模型提供 `session_message`：job 只跑 `suga run`、不登记本地消息端点，发给 chat 的消息回不来。新增 `tools.session_message.in_gofer_jobs`（默认 `false`）供 job 显式打开；`tools.session_message.enabled: false` 与 `SUGA_SESSION_MESSAGE=off` 仍是全局关闭且优先，`SUGA_SESSION_MESSAGE` 打开也不越过该开关。未提供时调用得到说明原因与开关的拒绝信息（词条在 `internal/i18n/catalog/*/model.ini`，`session_message` 的拒绝文案首次支持英文）。
-
 - 后台 `shell_exec` 任务新增独立上限 `tools.task_timeout_max`（秒数，默认 3600）：自动转后台与显式 `background: true` 均使用它，前台 `timeout` 仍受 `tools.shell_timeout_max` 限制；后台上限小于前台上限时运行时取较大者，配置校验拒绝该组合。
-
 - `SUGA_ADD_DIRS` 改为所有平台统一使用逗号分隔条目（每项仍为 `<绝对目录>[:ro|:rw]`）；这是不兼容变更，原按系统路径分隔符的格式不再支持。路径含逗号时请使用可重复的 `--add-dir` 参数。
 
 ## [0.51.0] - 2026-10-27
