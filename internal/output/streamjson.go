@@ -40,6 +40,9 @@ func EventLine(event personal.Event) (line map[string]any, ok bool) {
 				data["estimated"] = true
 			}
 			addBudget(data, event.Usage.Budget)
+			// The context object comes with the turn's last request only; a turn
+			// that made none leaves it out.
+			addContextOccupancy(data, event.Usage.Context)
 		}
 	case "usage":
 		// Run-cumulative usage after each model call; the last one equals the
@@ -212,7 +215,8 @@ func ResultLine(sessionID string, result personal.RunResult, budget ...*personal
 }
 
 // ResultLineWithContext is ResultLine with the optional context usage object
-// used by the CLI's final result event.
-func ResultLineWithContext(sessionID string, result personal.RunResult, contextWindow int, budget ...*personal.BudgetSnapshot) map[string]any {
-	return WithContext(ResultLine(sessionID, result, budget...), result, contextWindow)
+// used by the CLI's final result event. occupancy is the turn's context
+// occupancy of its last request (the same figure turn_end carried).
+func ResultLineWithContext(sessionID string, result personal.RunResult, contextWindow int, occupancy *personal.ContextOccupancy, budget ...*personal.BudgetSnapshot) map[string]any {
+	return WithContext(ResultLine(sessionID, result, budget...), result, contextWindow, occupancy)
 }

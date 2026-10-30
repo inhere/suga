@@ -21,6 +21,12 @@ type usageCollector struct {
 	// lastInput is the input_tokens of the most recent model call; the context
 	// builder uses it to estimate the next request size.
 	lastInput int
+	// est is the context builder's estimate of the most recent request (it
+	// records it on every BuildMessages); haveEst is false before one.
+	// finish reports it as the turn's context occupancy, so stream-json carries
+	// the same figure the context trace event was written with.
+	est     int
+	haveEst bool
 	// cost prices a call whose provider reported no cost (nil: leave as is).
 	// It uses the turn's main model, so a fallback model's call is priced at
 	// the main rate here; the per-attempt model events price it exactly.
@@ -49,6 +55,25 @@ func (c *usageCollector) lastInputTokens() (int, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.lastInput, c.lastInput > 0
+}
+
+// recordEstimate keeps the context builder's estimate of the request it just
+// assembled (see contextBuilder.estimate).
+func (c *usageCollector) recordEstimate(est int) {
+	c.mu.Lock()
+	c.est, c.haveEst = est, true
+	c.mu.Unlock()
+}
+
+// lastEstimate returns the estimate of the most recent request; ok is false
+// when no request was assembled with this collector.
+func (c *usageCollector) lastEstimate() (int, bool) {
+	if c == nil {
+		return 0, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.est, c.haveEst
 }
 
 // snapshot returns the usage sum, the call count and the latest call's input tokens.
@@ -126,6 +151,10 @@ type UsageUpdate struct {
 	Estimated bool
 	// Budget is the optional budget snapshot at this usage point.
 	Budget *BudgetSnapshot
+	// Context is the turn's context occupancy (nil: no request was assembled).
+	// It is set on run_finished only, so stream-json can report it on the
+	// turn_end and result lines.
+	Context *ContextOccupancy
 }
 
 // ReportedRunUsage is the reported shape of RunUsage on the stream-json

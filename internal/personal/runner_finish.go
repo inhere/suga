@@ -221,6 +221,14 @@ func (r *Runner) finish(ctx context.Context, model Session, result RunResult, tu
 		finalUpdate.Budget.Reason = result.WrapUp
 	}
 	finalUpdate.Run, finalUpdate.Session = result.RunUsage, result.SessionUsage
+	// The turn's context occupancy: the estimate of its last request and the
+	// window compaction measures against, the pair the context trace event was
+	// written with. A turn that assembled no request (a failure before the first
+	// call) keeps it nil and stream-json omits the object.
+	if est, ok := usage.lastEstimate(); ok && est > 0 {
+		window, _ := r.compactLimits()
+		finalUpdate.Context = &ContextOccupancy{EstTokens: est, Window: window}
+	}
 	final := &finalUpdate
 	if err := emit(finishCtx, sink, Event{Kind: "run_finished", SessionID: result.SessionID, TurnID: result.TurnID, RunID: result.RunID, Status: result.Status, State: result.State, Text: result.Output, Usage: final}); err != nil {
 		persistErr = errors.Join(persistErr, err)
