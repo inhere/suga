@@ -6,6 +6,8 @@
 
 ### 新增
 
+- sugasdk 新增只读 `Engine.TraceEvents(ctx, sessionID, afterID, limit)`：按事件 ID 游标分页列出会话的 trace 事件（与 `suga inspect trace` 同源，返回公开的 `TraceEvent`，含种类、时间、回合、工具名、用量与原始 attrs JSON），供宿主并入自己的时间线。
+- sugasdk 新增只读 `Engine.Entries(ctx, sessionID, fromSeq, limit)`：按序号区间分页列出会话记录（`fromSeq` 含边界，limit 默认 100、上限 1000，会话不存在返回明确错误），供宿主读取会话历史。
 - 写类 / 执行类工具（`file_write`、`file_edit`、`shell_exec`、MCP 工具等）的参数里若逐字含有会话中 `web_fetch`、`web_search`、MCP 工具结果的 12 字节以上原文（空白折叠后比较），即使 `tools.approval: auto` 也再确认一次：chat 里弹出询问并注明来源工具与片段，run / ACP 等无人可问时拒绝并说明（提示注入的实用缓解）；只读工具不受影响。每个会话最多记住约 25 万个窗口，超出后先忘最旧的结果。`tools.ask_on_external_origin`（默认 `true`）可关闭。
 
 ### 修复
@@ -15,6 +17,7 @@
 
 ### 变更
 
+- 新增调研 `docs/research/2026-10-30-decision-models.md`：TypeSafe System One（jev）决策模型的用途、协议（`POST /v1/systemone`，非 OpenAI 兼容）与在 suga 的接入建议；结论为暂不接入。
 - `file_grep` 的 lookaround / 反向引用回退匹配器依赖升级到 `github.com/dlclark/regexp2/v2` v2.12.0（原 v1.12.0）；回退语法与单文件 200ms 超时语义不变。
 
 ## [0.52.0] - 2026-10-30

@@ -64,7 +64,15 @@ func (s *Store) ListEvents(ctx context.Context, f EventFilter) ([]Event, error) 
 	}
 	// id is the events rowid (INTEGER PRIMARY KEY AUTOINCREMENT), so a tie on
 	// started_at is ordered by creation, never by a random turn or session id.
-	q += ` ORDER BY started_at ASC, id ASC`
+	if f.AfterID > 0 {
+		q += ` AND id > ?`
+		args = append(args, f.AfterID)
+	}
+	if f.ByID || f.AfterID > 0 {
+		q += ` ORDER BY id ASC`
+	} else {
+		q += ` ORDER BY started_at ASC, id ASC`
+	}
 	if f.Limit > 0 {
 		q += fmt.Sprintf(` LIMIT %d`, f.Limit)
 	}

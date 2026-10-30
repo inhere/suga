@@ -245,6 +245,10 @@ type EventFilter struct {
 	Kinds      []string
 	Since      time.Time
 	Limit      int
+	// ByID orders by ID instead of started_at, and AfterID (when > 0) keeps only
+	// events with ID > AfterID: a stable cursor for paging.
+	ByID    bool
+	AfterID int64
 }
 
 // Usage is the token total returned by SumUsage.
