@@ -258,6 +258,10 @@ func (p *OpenAIProvider) readStream(ctx context.Context, r io.Reader, emit agent
 		}
 		res.ToolCalls = append(res.ToolCalls, newToolCall(call.id, call.name, json.RawMessage(raw)))
 	}
+	// Reasoning-channel text inside the arguments: retryStream requests it again.
+	if err := checkCorruptedToolCalls(res.ToolCalls); err != nil {
+		return nil, err
+	}
 	if finishReason == "length" {
 		res.Truncated = true
 		markTruncated(res.ToolCalls)

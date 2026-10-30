@@ -409,6 +409,9 @@ func (p *OpenAIProvider) parseResponse(data []byte) (*agentcoreapi.GenerateResul
 	for _, tc := range choice.Message.ToolCalls {
 		resp.ToolCalls = append(resp.ToolCalls, newToolCall(tc.ID, tc.Function.Name, tc.Function.Arguments))
 	}
+	if err := checkCorruptedToolCalls(resp.ToolCalls); err != nil {
+		return nil, err
+	}
 	if choice.FinishReason == "length" {
 		resp.Truncated = true
 		markTruncated(resp.ToolCalls)

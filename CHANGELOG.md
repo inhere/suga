@@ -12,6 +12,7 @@
 - 文件工具的路径现在先自查：含 Windows 不允许的字符（`<>:"|?*`）、尾随点/空格或控制字符时，直接告诉模型是哪个字符、并指向 `file_list`/`file_find` 的确切路径（`*`/`?` 另提示是通配符），不再只返回 OS 的 “The filename, directory name, or volume label syntax is incorrect”（`sg_31nv13n28jb8`：模型把自我叙述拼进 path，靠改后缀重试 16 次）。
 - `file_grep` 的 `exclude` 写成文件通配符（`*_test.go`）时不再让整次搜索失败：它按文件排除处理（等同 `glob: ["!*_test.go"]`）并在结果里说明；既不是正则也不是通配符时，错误信息改为指向 `glob` 的 `!` 排除写法（原来提示的 `literal: true` 对 `exclude` 无效）。
 - Stop hook 等满 `hooks.stop_wait_sec` 或被取消时不再记为 error：trace 状态为 `cancelled`，日志降为 debug；真正失败的 hook 命令仍记 error。
+- 工具参数里混入模型推理通道原文（`to=functions.`、`(commentary)`、`<|channel|>`、`<|message|>`、`assistant,analysis`、连续 `#+#+`）时，provider 层判为上游输出损坏：这次响应的工具调用不执行，按 `retry.*` 重发（trace 里有“tool arguments carry reasoning-channel text”的重试事件），仍损坏则以 `provider_bad_response` 错误结束；不清洗参数。覆盖 Responses 与 OpenAI 兼容渠道。
 
 ### 新增
 
