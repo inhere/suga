@@ -593,7 +593,7 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 	// handled downstream by normalizeHandoffBody (capped sections cut, protected
 	// section kept), and an answer the provider still truncated is asked for once
 	// more.
-	maxTokens := handoffOutputTokens()
+	maxTokens := r.summaryOutputTokens()
 	fallback := in.reuseFallback
 	if in.reuse != nil {
 		// The reuse path: the segment's own request plus one instruction, so the
@@ -604,7 +604,7 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 			if truncated {
 				slog.Warn("handoff summary hit the output cap; asking once more with the budgets restated",
 					"max_tokens", maxTokens, "summary_bytes", len(body))
-				if again, _, why := r.reuseCall(ctx, in.reuse, instruction+completeProtectedNote, maxTokens); why == "" && strings.TrimSpace(again) != "" {
+				if again, _, why := r.reuseCall(ctx, in.reuse, instruction+completeProtectedNote, retryOutputTokens(maxTokens)); why == "" && strings.TrimSpace(again) != "" {
 					body = again
 				}
 			}
@@ -623,7 +623,7 @@ func (r *Runner) summarize(ctx context.Context, scenario string, in packageInput
 	if truncated {
 		slog.Warn("handoff summary hit the output cap; asking once more with the budgets restated",
 			"max_tokens", maxTokens, "summary_bytes", len(body))
-		if again, _, aerr := r.summaryCall(ctx, scenario, handoffPrompt(in, transcript)+completeProtectedNote, maxTokens); aerr == nil && strings.TrimSpace(again) != "" {
+		if again, _, aerr := r.summaryCall(ctx, scenario, handoffPrompt(in, transcript)+completeProtectedNote, retryOutputTokens(maxTokens)); aerr == nil && strings.TrimSpace(again) != "" {
 			body = again
 		}
 	}

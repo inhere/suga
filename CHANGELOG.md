@@ -8,6 +8,7 @@
 
 - 写类 / 执行类工具（`file_write`、`file_edit`、`shell_exec`、MCP 工具等）的参数里若逐字含有会话中 `web_fetch`、`web_search`、MCP 工具结果的 12 字节以上原文（空白折叠后比较），即使 `tools.approval: auto` 也再确认一次：chat 里弹出询问并注明来源工具与片段，run / ACP 等无人可问时拒绝并说明（提示注入的实用缓解）；只读工具不受影响。每个会话最多记住约 25 万个窗口，超出后先忘最旧的结果。`tools.ask_on_external_origin`（默认 `true`）可关闭。
 - 子 agent（`agent` 工具）接入同一外部来源守卫（suga-up40）：子 agent 读到的 web / MCP 结果会被记录，其后写文件 / 执行命令的参数若逐字含这些原文，按 run 规则拒绝并说明来源（子 agent 没有终端可问，也不借用父会话的 chat 询问通道，因后台子 agent 的询问会脱离用户正在看的内容）；当前子 agent 只带只读工具，此守卫是纵深防御，为日后放开写类工具预留。
+- 压缩补三个旋钮（suga-m34w，键在 `context.*`，默认值保持原行为）：`context.pin_first_user`（默认 `false`）让每个换段交接包都带上本会话第一条用户请求原文；`context.keep_user_words_budget`（字节，默认 `0` = 原规则最近 3 条）给用户原话独立预算，大于 0 时从最新一条起往前保留到放不下为止；`context.summary_max_tokens`（默认 `0` = 不设上限）限制单次摘要输出，被截断时用 2 倍上限重问一次。已登记到设置 registry 与 `suga-guide` 配置文档。
 
 ### 修复
 

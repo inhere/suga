@@ -130,6 +130,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "context.fold_every", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
 	{Pattern: "context.fold_keep", Type: ConfigTypeInt, Writable: true, Reader: "fold"},
 	{Pattern: "context.fold_at", Type: ConfigTypeFloat, Writable: true, Reader: "fold"},
+	{Pattern: "context.pin_first_user", Type: ConfigTypeBool, Writable: true, Reader: "compact"},
+	{Pattern: "context.keep_user_words_budget", Type: ConfigTypeInt, Writable: true, Reader: "compact"},
+	{Pattern: "context.summary_max_tokens", Type: ConfigTypeInt, Writable: true, Reader: "compact"},
 	// context.handoff_reuse_prefix: the handoff package of a segment break is
 	// written on top of the segment's last main-loop request (same system, tools
 	// and messages plus one instruction), so the provider cache serves it; false
@@ -676,6 +679,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadIdleSettings()
 	case "fold":
 		_, err = ReadFoldSettings()
+	case "compact":
+		_, err = ReadCompactSettings()
 	case "images":
 		_, err = ReadImageSettings()
 	case "chat":

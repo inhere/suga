@@ -160,6 +160,12 @@ type Config struct {
 	// plus one instruction, so the provider cache serves it. Off keeps the old
 	// request byte for byte (the rollback switch, design 2026-10-27).
 	HandoffReusePrefix bool
+	// PinFirstUser, KeepUserWordsBudget and SummaryMaxTokens are the compaction
+	// knobs (context.pin_first_user / keep_user_words_budget / summary_max_tokens,
+	// see appconfig.CompactSettings); the zero values are the original behavior.
+	PinFirstUser        bool
+	KeepUserWordsBudget int
+	SummaryMaxTokens    int
 	// IdleProvider/IdleModel serve the idle consolidation (models.idle); nil
 	// means the compact provider is used. HandoffProvider/HandoffModel serve
 	// the --from handoff package (models.handoff) the same way.

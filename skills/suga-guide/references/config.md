@@ -64,6 +64,9 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `context.fold_keep` | `5`（≥1） | 最近多少步保持完整 |
 | `context.fold_at` | `0`（关；0..1，建议 `0.5`） | 折叠加前估算体积超过压缩阈值的这个比例时，本段开始折叠（之后本段保持）；`0` 时只按 `context.fold_every` 从第一步折叠 |
 | `context.handoff_reuse_prefix` | `false` | 换段写交接包时沿用本段最后一次主循环请求（系统提示、工具表、全部消息逐字节相同）再加一条指令，让 provider 的提示缓存服务大部分输入；默认关闭（2026-10-27 评测省得有限）；`false` 时请求与旧版逐字节相同 |
+| `context.pin_first_user` | `false` | 换段交接包里始终带上本会话的第一条用户请求（原文，单条上限同下；已在最近请求里时不重复），不占 `keep_user_words_budget`；默认只带最近请求 |
+| `context.keep_user_words_budget` | `0`（字节） | 交接包里用户原话的独立预算：`0` 为原规则（最近 3 条，每条最多 4000 字节）；大于 `0` 时从最新一条起往前保留，直到放不下为止（最新一条超出时截到预算内）。与各小节预算无关，不会被整理掉 |
+| `context.summary_max_tokens` | `0`（不设上限） | 一次摘要调用的输出 token 上限；`0` 沿用协议默认。摘要被上限截断时用 2 倍上限重问一次（并重申各小节预算），仍被截断则取较完整的一份 |
 | `context.idle_after` | `15m`（`0` 关） | 仅 chat：空闲这么久且上下文达到阈值比例时在后台开启新段 |
 | `context.idle_min_ratio` | `0.65` | 空闲整理要求的上下文占比（相对阈值 `窗口-预留`；0..1） |
 

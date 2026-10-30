@@ -146,6 +146,11 @@ providers:
 #   idle_min_ratio: 0.65 # share of the threshold (window - reserve), 0..1
 #   fold_every: 0       # history folding: fold older steps every N steps (e.g. 10); 0 (default) = off
 #   fold_keep: 5        # steps kept whole (>= 1)
+#   pin_first_user: false        # keep the session's first user request in every handoff package
+#   keep_user_words_budget: 0    # bytes for the user's own words in a package; 0 = the 3 latest requests,
+#                       # above 0 = newest first while they fit (the newest is always kept)
+#   summary_max_tokens: 0        # output cap of one summary call; 0 = no cap. A summary cut at the
+#                       # cap is asked for once more with twice the cap
 #   handoff_reuse_prefix: false # (default off) write a segment break's handoff package on top of
 #                       # the segment's last main-loop request (same system prompt,
 #                       # tools and messages plus one instruction), so the provider

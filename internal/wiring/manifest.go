@@ -665,6 +665,7 @@ type runtimeSettings struct {
 	sessionsDir              string
 	inlineBytes, spillBytes  int
 	fold                     appconfig.FoldSettings
+	compact                  appconfig.CompactSettings
 }
 
 // loadRuntimeSettings reads and validates the settings that need no I/O
@@ -681,6 +682,9 @@ func loadRuntimeSettings(workspace, model, thinking, projectMemoryKey string) (r
 		return s, fmt.Errorf("--thinking: %w", err)
 	}
 	if s.fold, err = appconfig.ReadFoldSettings(); err != nil {
+		return s, err
+	}
+	if s.compact, err = appconfig.ReadCompactSettings(); err != nil {
 		return s, err
 	}
 	// Folding rewrites earlier messages, which breaks Claude's signed
