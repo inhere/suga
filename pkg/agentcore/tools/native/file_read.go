@@ -51,6 +51,9 @@ type FileReadTool struct {
 	// image is the picture pipeline this tool shares with view_image (design
 	// 2026-10-23-file-read-images): nil = a default reader, which can see.
 	image *ViewImageTool
+	// guard records what this session read, for the changed-file write guard
+	// (tools.protect_changed_files); nil = off.
+	guard *FileGuard
 }
 
 func (t *FileReadTool) Name() string { return "file_read" }
@@ -130,7 +133,7 @@ func (t *FileReadTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 	if len(items) == 1 {
 		// A single path may attach one picture: readEntry answers a picture with an
 		// image part and everything else as before.
-		text, part, err := t.readEntry(items[0], offset, limit, outline, true)
+		text, part, err := t.readGuarded(items[0], offset, limit, outline, true)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +153,7 @@ func (t *FileReadTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 			if i > 0 {
 				sb.WriteString("\n\n")
 			}
-			text, _, err := t.readEntry(item, offset, limit, outline, false)
+			text, _, err := t.readGuarded(item, offset, limit, outline, false)
 			if err != nil {
 				text = "[error: " + err.Error() + "]"
 			}

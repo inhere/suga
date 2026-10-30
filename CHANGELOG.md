@@ -8,13 +8,17 @@
 
 ### 修复
 
+- 写前变更守卫（`tools.protect_changed_files`）不再把 suga 自己的 `:undo` 回滚当成外部修改：回滚过的文件会从守卫记录中清除，下一次 `file_edit` / `file_write` 不会被误拒；用户或其他进程的修改仍然拒绝。
+- 危险删除识别新增“工作区外的路径”（递归删除，按路径字面判断），并把四类目标改为不可越过的拒绝：用户主目录、文件系统根（含盘符根）、工作区的上级目录、工作区外的路径。run / ACP / chat 一律拒绝，chat 里输入 `yes` 也不再放行，错误里写明目标路径与原因并建议用户自己在终端执行；删除整个工作区、路径以变量开头等其余危险删除保留原有的 `yes` 确认。
 - 修复模型或配置提供超大秒数时转换为负 `time.Duration`，导致命令、任务等待或重试立即结束的问题。
 - 文件工具的路径现在先自查：含 Windows 不允许的字符（`<>:"|?*`）、尾随点/空格或控制字符时，直接告诉模型是哪个字符、并指向 `file_list`/`file_find` 的确切路径（`*`/`?` 另提示是通配符），不再只返回 OS 的 “The filename, directory name, or volume label syntax is incorrect”（`sg_31nv13n28jb8`：模型把自我叙述拼进 path，靠改后缀重试 16 次）。
 - `file_grep` 的 `exclude` 写成文件通配符（`*_test.go`）时不再让整次搜索失败：它按文件排除处理（等同 `glob: ["!*_test.go"]`）并在结果里说明；既不是正则也不是通配符时，错误信息改为指向 `glob` 的 `!` 排除写法（原来提示的 `literal: true` 对 `exclude` 无效）。
 - Stop hook 等满 `hooks.stop_wait_sec` 或被取消时不再记为 error：trace 状态为 `cancelled`，日志降为 debug；真正失败的 hook 命令仍记 error。
+- 工具参数里混入模型推理通道原文（`to=functions.`、`(commentary)`、`<|channel|>`、`<|message|>`、`assistant,analysis`、连续 `#+#+`）时，provider 层判为上游输出损坏：这次响应的工具调用不执行，按 `retry.*` 重发（trace 里有“tool arguments carry reasoning-channel text”的重试事件），仍损坏则以 `provider_bad_response` 错误结束；不清洗参数。覆盖 Responses 与 OpenAI 兼容渠道。
 
 ### 新增
 
+- `file_write` / `file_edit` 拒绝覆盖“自本会话上次 `file_read` / 写入之后被外部修改过”的文件（按大小 + 修改时间判断），错误提示先 `file_read` 再改；从未读过的文件与新建文件不受影响，每个会话（子 agent 也各自）有自己的记录。新增配置 `tools.protect_changed_files`（缺省 `true`），设为 `false` 关闭。
 - `suga run` 新增 `--clear-ctx`：与 `--session-id`/`--resume` 同用时，本轮在该会话上开一个新分段，不带历史消息与交接包，并清空计划与已加载的延迟工具；系统提示、项目规则、会话保存的 append prompt、模型与会话身份保留，旧消息仍可被历史检索与 `suga trace` 看到（trace 记 `context_cleared` 事件，含清掉的消息数与估算 token）。与 `--from` 同用或两者都没给时报参数错误（退出码 2），会话不存在时按只给 `--session-id` 新建、不报错。
 - stream-json 的 `turn_end` 与 `result` 行新增 `context` 对象：`est_tokens`（本轮最后一次请求的估算输入 token）、`window`（上下文窗口）与 `ratio`（两者之比，保留 3 位小数），与 chat `:context` / trace 的 context 事件同一套计算；`result` 行原有的 `used`/`share` 仍在。没有请求时不输出该对象，`usage` 行不变。
 - sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。

@@ -496,6 +496,10 @@ func (p *ResponsesProvider) resultOf(body responsesBody) (*agentcoreapi.Generate
 			res.ToolCalls = append(res.ToolCalls, newToolCall(callID, name, json.RawMessage(args)))
 		}
 	}
+	// Reasoning-channel text inside the arguments: the output is corrupt, not run.
+	if err := checkCorruptedToolCalls(res.ToolCalls); err != nil {
+		return nil, err
+	}
 	res.Reasoning = strings.Join(reasoningParts, "\n\n")
 	if len(reasoning) > 0 {
 		res.Metadata = map[string]any{ResponsesReasoningMetaKey: reasoning}

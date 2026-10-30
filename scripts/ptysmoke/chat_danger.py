@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """End-to-end smoke test: chat stops a dangerous delete (Linux/macOS).
 
-Starts scripts/ptysmoke/fakellm.py (tool mode, command `rm -rf ~`) and
-`suga chat` in a PTY with tools.approval: auto and HOME pointing at a scratch
-directory (the only thing the command could ever delete). Checks: the call
+Starts scripts/ptysmoke/fakellm.py (tool mode, command `rm -rf "$SCRATCH/"`) and
+`suga chat` in a PTY with tools.approval: auto and SCRATCH pointing at a scratch
+directory (the only thing the command could ever delete). A variable-led path is
+a danger the person may confirm; a delete of ~, / or an outside path is refused
+for good (internal/wiring/danger_guard_test.go covers that). Checks: the call
 is still confirmed, with the danger shown; "y" is not enough (refused, the
 scratch home survives); "yes" runs it (the scratch home is gone); the trace
 records both calls with danger and the approval source.
@@ -25,7 +27,7 @@ from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
 from chat_observe import trace_events  # noqa: E402
 
-DANGER = r"⚠ 危险删除：rm -rf ~：删除用户主目录"
+DANGER = r"⚠ 危险删除：rm -rf \$SCRATCH/：路径以变量 \$SCRATCH 开头"
 PROMPT = r"输入 yes 执行"
 
 
@@ -55,9 +57,9 @@ def check_trace(s, events):
         denied, ran = (c.get("attrs") or {} for c in calls)
         s.check("trace: refused call is a denial", calls[0].get("kind") == "denial")
         s.check("trace: refused call has danger and user_denied",
-                "用户主目录" in denied.get("danger", "") and denied.get("approval") == "user_denied")
+                "$SCRATCH" in denied.get("danger", "") and denied.get("approval") == "user_denied")
         s.check("trace: run call has danger and approval=user",
-                "用户主目录" in ran.get("danger", "") and ran.get("approval") == "user")
+                "$SCRATCH" in ran.get("danger", "") and ran.get("approval") == "user")
 
 
 def main():
@@ -78,14 +80,14 @@ def main():
     os.makedirs(ws, exist_ok=True)
     isolate_ws(ws)
     write_home(home, args.port, tools_extra="  approval: auto\n")
-    # HOME is the scratch dir: `rm -rf ~` can only ever delete it.
-    env = dict(os.environ, SUGA_HOME=home, HOME=fake_home, SUGA_HOOKS="off", TERM="xterm", NO_COLOR="1")
+    # SCRATCH is the scratch dir: `rm -rf "$SCRATCH/"` can only ever delete it.
+    env = dict(os.environ, SUGA_HOME=home, HOME=home, SCRATCH=fake_home, SUGA_HOOKS="off", TERM="xterm", NO_COLOR="1")
     env.pop("SUGA_CONFIG", None)  # the child reads its own SUGA_HOME config
 
     here = os.path.dirname(os.path.abspath(__file__))
     fake = subprocess.Popen([sys.executable, "-I", os.path.join(here, "fakellm.py"),
                              "--port", str(args.port), "--mode", "tool", "--delay", "0.2",
-                             "--command", "rm -rf ~"],
+                             "--command", 'rm -rf "$SCRATCH/"'],
                             stdout=subprocess.PIPE, text=True)
     s = None
     try:

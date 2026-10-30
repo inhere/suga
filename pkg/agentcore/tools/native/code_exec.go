@@ -120,6 +120,7 @@ func ShellName(explicit string) string { return resolveShell(explicit).name() }
 // output; the configured maximum remains a hard kill deadline.
 type ShellExecTool struct {
 	workspace      string
+	addDirs        *AddDirs // read at call time; its :rw directories count as inside for the delete guard
 	shell          shellSpec
 	timeout        time.Duration // default per call
 	maxTimeout     time.Duration

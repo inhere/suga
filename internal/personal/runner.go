@@ -105,7 +105,11 @@ type Config struct {
 	SessionsDir string
 	LockRoot    string
 	ProcessRoot string
-	MaxSteps    int
+	// OnFilesRestored is told the paths :undo restored or deleted, so the write
+	// guard of the file tools does not take suga's own restore for an outside
+	// change; nil = nobody to tell.
+	OnFilesRestored func(paths []string)
+	MaxSteps        int
 	// MaxOutputTokens is the output token limit of the model's requests
 	// (appconfig.ResolveMaxOutputTokens); 0 leaves it to the provider, which
 	// applies its own default then.

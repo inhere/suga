@@ -17,6 +17,7 @@ type FileEditTool struct {
 	workspace string
 	addDirs   *AddDirs
 	snapshots Snapshotter
+	guard     *FileGuard // refuses an edit over a file changed since it was read; nil = off
 }
 
 func (t *FileEditTool) Name() string { return "file_edit" }
@@ -71,6 +72,9 @@ func (t *FileEditTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	if err != nil {
 		return nil, err
 	}
+	if err := t.guard.check("file_edit", target); err != nil {
+		return nil, err
+	}
 	path := target.abs
 	data, err := readFileInRoot(target.base, path)
 	if err != nil {
@@ -121,6 +125,7 @@ func (t *FileEditTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 		ReportSnapshot(ctx, SnapshotReport{Kind: complete.Kind, Status: complete.Status,
 			Bytes: complete.Size, Unrecoverable: complete.Unrecoverable})
 	}
+	t.guard.rememberNow(target)
 	// The edited lines are the verification: the model sees the result and
 	// needs no re-read (suag-jz0l review; omp, pigo and Cline do the same).
 	out := fmt.Sprintf("edited %s: %d replacement(s)", path, len(spans))

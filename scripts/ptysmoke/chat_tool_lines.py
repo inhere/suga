@@ -50,7 +50,7 @@ REPLY = "SMOKE_TOOL_LINES_REPLY"
 TARGET = "SMOKE_TARGET first\nSMOKE_TARGET second\nSMOKE_TARGET third\n"
 # The lines chat prints for the three calls of the turn.
 FILE_READ_LINE = r"▸ file_read target\.txt:1-2"
-SHELL_LINE = r"$ shell_exec echo SMOKE_DISPLAY …"
+SHELL_LINE = r"\$ shell_exec echo SMOKE_DISPLAY …"
 PLAN_LINE = r'✦ update_plan \{"plan":\[\{"status":"in_progress","step":"read"\}\]\}'
 
 

@@ -487,6 +487,8 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 		// SUGA_HOME; nil when it is turned off.
 		SessionMessenger: newSessionMessenger(),
 		TurnID:           currentTurnID,
+		// tools.protect_changed_files: on unless turned off.
+		ProtectChangedFiles: gkconfig.Bool("tools.protect_changed_files", true),
 	}
 }
 
