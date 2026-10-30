@@ -72,7 +72,8 @@ func TestChatCommands(t *testing.T) {
 		step(":tasks", `t1 · killed`)
 		step(":tasks -k t1", `任务 t1 已结束（killed），无需终止`)
 		mark = step(":skills", `已加载 \d+ 个 skill`)
-		expect(t, s, `suga-guide — .* · 内置`, mark)
+		// (?s): a long description wraps at the terminal width, so the line may break.
+		expect(t, s, `(?s)suga-guide — .*· 内置`, mark)
 		step(":skills --only-names", `suga-guide`)
 		step(":skills -h", `用法：:skills`)
 		mark = step(":context", `上下文构成`)

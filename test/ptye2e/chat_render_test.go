@@ -40,7 +40,7 @@ func TestChatRender(t *testing.T) {
 	expect(t, s, `─{10,}`, mark)
 	// A go block is colored while it streams: keywords cyan, strings green (16
 	// color ANSI); Text strips escapes, so this reads the raw output.
-	expectRaw(t, s, `\x1b\[36mfunc`, rawMark)
+	expectRaw(t, s, `\x1b\[36m(?:\x1b\[K)?(?:\r\n)?func`, rawMark)
 	expectRaw(t, s, `\x1b\[32m"step 1"`, rawMark)
 	// Past chat.code_max_lines the block folds and names :code.
 	expect(t, s, fmt.Sprintf(`… 还有 %d 行（:code 查看全部）`, codeLines+2-40), mark)
@@ -58,6 +58,19 @@ func TestChatRender(t *testing.T) {
 	expect(t, s, `上一条回答只有 1 个代码块`, mark)
 	ctrlCTwice(t, s)
 }
+
+// The SGR a heading, a keyword and an inline code span get. ConPTY re-encodes the
+// stream: bold cyan arrives as "ESC[36m ESC[1m" instead of "ESC[1;36m", and a color
+// set before a line break may come before the CR LF, so the patterns accept both.
+const (
+	boldCyanHeading = `\x1b\[(?:1;36m|36m\x1b\[1m)主题测试`
+	boldBlueHeading = `\x1b\[(?:1;34m|34m\x1b\[1m)主题测试`
+	cyanKeyword     = `\x1b\[36m(?:\x1b\[K)?(?:\r\n)?func`
+	blueKeyword     = `\x1b\[34m(?:\x1b\[K)?(?:\r\n)?func`
+	// The other theme's heading or inline code must not appear.
+	darkPalette  = boldCyanHeading + `|\x1b\[93mmake smoke`
+	lightPalette = boldBlueHeading + `|\x1b\[35mmake smoke`
+)
 
 // TestChatTheme ports scripts/ptysmoke/chat_theme.py (suga-exbd): run A (theme
 // auto, no COLORFGBG: dark) and run B (SUGA_THEME=light) paint a heading, an
@@ -89,14 +102,14 @@ func TestChatTheme(t *testing.T) {
 	}
 	t.Run("dark", func(t *testing.T) {
 		run(t, nil, "渲染一下",
-			[3]string{`\x1b\[1;36m主题测试`, `\x1b\[93mmake smoke`, `\x1b\[36mfunc`},
+			[3]string{boldCyanHeading, `\x1b\[93mmake smoke`, cyanKeyword},
 			[3]string{"dark heading keeps bold cyan", "dark inline code keeps bright yellow", "dark keyword keeps cyan"},
-			`\x1b\[1;34m`)
+			lightPalette)
 	})
 	t.Run("light", func(t *testing.T) {
 		run(t, []string{"SUGA_THEME=light"}, "再渲染一下",
-			[3]string{`\x1b\[1;34m主题测试`, `\x1b\[35mmake smoke`, `\x1b\[34mfunc`},
+			[3]string{boldBlueHeading, `\x1b\[35mmake smoke`, blueKeyword},
 			[3]string{"light heading is bold blue", "light inline code is magenta", "light keyword is blue"},
-			`\x1b\[1;36m`)
+			darkPalette)
 	})
 }
