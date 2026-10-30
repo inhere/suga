@@ -121,7 +121,7 @@ func releaseBuiltinSkill(root, name, version string, src fs.FS) error {
 	if !hasMarker {
 		// No usable marker: either nothing is there yet (first release) or the
 		// directory is the user's own skill, which is never touched.
-		_, statErr := os.Stat(target)
+		_, statErr := statRetry(target)
 		switch {
 		case statErr == nil:
 			slog.Debug("built-in skill directory has no marker; left as is", "dir", target)
@@ -301,6 +301,42 @@ func moveAside(target, aside string) error {
 	return err
 }
 
+// renameIntoPlace renames the finished copy onto target. On Windows a rename
+// onto a name another release is renaming onto (or has just created and is
+// still being scanned by another process) is refused with a momentary
+// access-denied; it is retried while the target has not appeared, and stops as
+// soon as it exists, because then another release has won and its directory is
+// complete (it was renamed into place).
+func renameIntoPlace(tmp, target string) error {
+	var err error
+	for i := 0; i < asideRetries; i++ {
+		if err = os.Rename(tmp, target); err == nil || !renameConflict(err) {
+			return err
+		}
+		if info, statErr := os.Stat(target); statErr == nil && info.IsDir() {
+			return err
+		}
+		time.Sleep(asideRetryDelay)
+	}
+	return err
+}
+
+// statRetry is os.Stat that retries the momentary access-denied Windows
+// reports while another release is renaming a directory into place.
+func statRetry(p string) (fs.FileInfo, error) {
+	var (
+		info fs.FileInfo
+		err  error
+	)
+	for i := 0; i < installRetries; i++ {
+		if info, err = os.Stat(p); err == nil || !renameConflict(err) {
+			return info, err
+		}
+		time.Sleep(installRetryDelay)
+	}
+	return info, err
+}
+
 // installBuiltinSkill writes one released skill directory.
 func installBuiltinSkill(target string, files map[string][]byte, marker builtinMarker) error {
 	parent := filepath.Dir(target)
@@ -321,6 +357,13 @@ func installBuiltinSkill(target string, files map[string][]byte, marker builtinM
 	// directory fails on every platform.
 	var aside string
 	if _, err := os.Stat(target); err == nil {
+		// A concurrent release may have just finished this very copy: moving a
+		// current directory aside only opens a window with no target at all, in
+		// which every other racing release fails to rename onto it.
+		if releasedCurrent(target, marker.Files) {
+			slog.Debug("built-in skill already released by another process", "dir", target)
+			return nil
+		}
 		aside = tmp + ".old"
 		if err := moveAside(target, aside); err != nil {
 			// Another release of the same version may have finished the upgrade
@@ -334,7 +377,7 @@ func installBuiltinSkill(target string, files map[string][]byte, marker builtinM
 		}
 		defer func() { _ = os.RemoveAll(aside) }()
 	}
-	if err := os.Rename(tmp, target); err != nil {
+	if err := renameIntoPlace(tmp, target); err != nil {
 		// Another process may have released the same skill between the check
 		// above and here: its directory is complete, so this release is done.
 		if targetReady(target) {
