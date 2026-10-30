@@ -15,6 +15,8 @@
 
 ### 新增
 
+- `suga run` 新增 `--clear-ctx`：与 `--session-id`/`--resume` 同用时，本轮在该会话上开一个新分段，不带历史消息与交接包，并清空计划与已加载的延迟工具；系统提示、项目规则、会话保存的 append prompt、模型与会话身份保留，旧消息仍可被历史检索与 `suga trace` 看到（trace 记 `context_cleared` 事件，含清掉的消息数与估算 token）。与 `--from` 同用或两者都没给时报参数错误（退出码 2），会话不存在时按只给 `--session-id` 新建、不报错。
+- stream-json 的 `turn_end` 与 `result` 行新增 `context` 对象：`est_tokens`（本轮最后一次请求的估算输入 token）、`window`（上下文窗口）与 `ratio`（两者之比，保留 3 位小数），与 chat `:context` / trace 的 context 事件同一套计算；`result` 行原有的 `used`/`share` 仍在。没有请求时不输出该对象，`usage` 行不变。
 - sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。
 - chat 的工具输出按工具族着色并各带一个符号（`▸` 读、`✎` 写、`$` 命令、`⇄` 网络、`◆` 子 agent、`✦` 会话/计划），参数变暗、`⎿ ok:` 与失败结果各自成色；新增 `chat.colors`（`style`/`mode` 加每元素一个颜色）覆盖默认配色，未知键或颜色启动报错。
 - 新增 `providers.<id>.prompt_cache_retention`（`in_memory` / `24h`，仅 `openai-responses`）：设置上游保留 prompt 缓存多久，空闲很久的会话写 `24h` 才能跨回合复用缓存。压缩/空闲整理/交接包的摘要请求改用独立的缓存键（`<会话>-compact`），不再冲掉主对话的缓存条目。
