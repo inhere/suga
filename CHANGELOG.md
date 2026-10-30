@@ -16,6 +16,7 @@
 
 ### 新增
 
+- `file_write` / `file_edit` 拒绝覆盖“自本会话上次 `file_read` / 写入之后被外部修改过”的文件（按大小 + 修改时间判断），错误提示先 `file_read` 再改；从未读过的文件与新建文件不受影响，每个会话（子 agent 也各自）有自己的记录。新增配置 `tools.protect_changed_files`（缺省 `true`），设为 `false` 关闭。
 - `suga run` 新增 `--clear-ctx`：与 `--session-id`/`--resume` 同用时，本轮在该会话上开一个新分段，不带历史消息与交接包，并清空计划与已加载的延迟工具；系统提示、项目规则、会话保存的 append prompt、模型与会话身份保留，旧消息仍可被历史检索与 `suga trace` 看到（trace 记 `context_cleared` 事件，含清掉的消息数与估算 token）。与 `--from` 同用或两者都没给时报参数错误（退出码 2），会话不存在时按只给 `--session-id` 新建、不报错。
 - stream-json 的 `turn_end` 与 `result` 行新增 `context` 对象：`est_tokens`（本轮最后一次请求的估算输入 token）、`window`（上下文窗口）与 `ratio`（两者之比，保留 3 位小数），与 chat `:context` / trace 的 context 事件同一套计算；`result` 行原有的 `used`/`share` 仍在。没有请求时不输出该对象，`usage` 行不变。
 - sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。

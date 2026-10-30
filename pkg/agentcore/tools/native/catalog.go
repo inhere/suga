@@ -89,6 +89,13 @@ type Env struct {
 	// TurnID names the turn ctx belongs to ("" outside a turn): the per-turn send
 	// limit of session_message resets with every turn.
 	TurnID func(context.Context) string
+	// ProtectChangedFiles makes file_write and file_edit refuse a file that was
+	// changed on disk since this tool set last read or wrote it
+	// (tools.protect_changed_files); BuildTools gives the tools one shared
+	// FileGuard, so each tool set (a sub-agent's included) has its own table.
+	ProtectChangedFiles bool
+	// Guard is that table; BuildTools fills it when ProtectChangedFiles is set.
+	Guard *FileGuard
 }
 
 // Spec is one entry of the native tool catalog. Whether a tool writes is its
@@ -106,7 +113,7 @@ type Spec struct {
 func Catalog() []Spec {
 	return []Spec{
 		{Name: "file_read", New: func(env Env) api.Tool {
-			t := &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes}
+			t := &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes, guard: env.Guard}
 			// file_read reads pictures with the same pipeline as view_image (design
 			// 2026-10-23-file-read-images); the host rebinds this instance to the
 			// runtime's live vision gate and session images directory.
@@ -140,10 +147,10 @@ func Catalog() []Spec {
 			return t
 		}},
 		{Name: "file_write", New: func(env Env) api.Tool {
-			return &FileWriteTool{workspace: env.Workspace, addDirs: env.AddDirs, snapshots: env.Snapshots}
+			return &FileWriteTool{workspace: env.Workspace, addDirs: env.AddDirs, snapshots: env.Snapshots, guard: env.Guard}
 		}},
 		{Name: "file_edit", New: func(env Env) api.Tool {
-			return &FileEditTool{workspace: env.Workspace, addDirs: env.AddDirs, snapshots: env.Snapshots}
+			return &FileEditTool{workspace: env.Workspace, addDirs: env.AddDirs, snapshots: env.Snapshots, guard: env.Guard}
 		}},
 		{Name: "file_remove", New: func(env Env) api.Tool {
 			if env.TrashDir == "" {
@@ -203,6 +210,9 @@ func newImageViewTool(env Env) *ViewImageTool {
 // Tools that are not read-only (tools.MetaOf) are skipped unless allowWrite
 // is set.
 func BuildTools(env Env, allowWrite bool) []api.Tool {
+	if env.ProtectChangedFiles && env.Guard == nil {
+		env.Guard = NewFileGuard()
+	}
 	var out []api.Tool
 	for _, spec := range Catalog() {
 		t := spec.New(env)

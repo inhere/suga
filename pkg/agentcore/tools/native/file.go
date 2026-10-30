@@ -21,6 +21,7 @@ type FileWriteTool struct {
 	workspace string
 	addDirs   *AddDirs
 	snapshots Snapshotter
+	guard     *FileGuard // refuses a write over a file changed since it was read; nil = off
 }
 
 // NewFileTools returns the three file tools scoped to workspace.
@@ -73,6 +74,9 @@ func (t *FileWriteTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	if err != nil {
 		return nil, err
 	}
+	if err := t.guard.check("file_write", target); err != nil {
+		return nil, err
+	}
 	content, _ := call.Arguments["content"].(string)
 
 	var before []byte
@@ -116,6 +120,7 @@ func (t *FileWriteTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 			Bytes: complete.Size, Unrecoverable: complete.Unrecoverable})
 	}
 
+	t.guard.rememberNow(target)
 	out := fmt.Sprintf("wrote %d bytes to %s", len(content), target.abs)
 	if notice := snapshotNotice(beforeResult); notice != "" {
 		out += "\n" + notice
