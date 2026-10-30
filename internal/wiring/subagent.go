@@ -23,6 +23,11 @@ import (
 // tools by type, a sub-agent prompt and environment, and the agents.* limits.
 type subAgents struct {
 	workspace, ruleCWD string
+	// projectMemoryKey is the parent session's host-pinned project memory scope
+	// (Options.ProjectMemoryKey). Sub-agents get no memory tools, but their
+	// runtime settings still assemble a memory setup; passing the key keeps that
+	// assembly from probing the repository the workspace sits in.
+	projectMemoryKey string
 	// mainModel is the parent runtime's --model override ("" = the config's
 	// model); sub-agents use it unless agents.model names their own.
 	mainModel      string
@@ -136,7 +141,7 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	if model == "" {
 		model = s.mainModel // the parent's model, --model included
 	}
-	rs, err := loadRuntimeSettings(s.workspace, model, "")
+	rs, err := loadRuntimeSettings(s.workspace, model, "", s.projectMemoryKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("agents.model: %w", err)
 	}

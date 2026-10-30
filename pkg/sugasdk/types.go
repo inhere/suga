@@ -43,6 +43,9 @@ type SessionOptions struct {
 	// process directory); empty uses the process directory. The session's
 	// project rules, memory scope and file tools work in it.
 	Workspace string
+	// ProjectMemoryKey pins this session's project memory to a host-owned key.
+	// A non-empty key ignores repository discovery and memory.project.backend.
+	ProjectMemoryKey string
 	// Model overrides EngineOptions.Model for this session.
 	Model string
 	// AllowWrite exposes the workspace write and shell tools.
