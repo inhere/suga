@@ -39,18 +39,18 @@ func WithContext(line map[string]any, result personal.RunResult, contextWindow i
 	if occupancy != nil && occupancy.Window > 0 {
 		contextWindow = occupancy.Window
 	}
-	used, window, share, ok := ContextUsage(result.LastInputTokens, contextWindow)
+	used, _, share, ok := ContextUsage(result.LastInputTokens, contextWindow)
 	if !ok && occupancy == nil {
 		return line
 	}
-	view := map[string]any{"window": window}
+	view := map[string]any{"window": contextWindow}
 	if ok {
 		view["used"], view["share"] = used, share
 	}
 	if occupancy != nil {
 		view["est_tokens"] = occupancy.EstTokens
-		if window > 0 {
-			view["ratio"] = ContextRatio(occupancy.EstTokens, window)
+		if contextWindow > 0 {
+			view["ratio"] = ContextRatio(occupancy.EstTokens, contextWindow)
 		}
 	}
 	line["context"] = view

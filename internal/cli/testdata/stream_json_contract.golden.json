@@ -37,6 +37,7 @@
       "type": "turn_end",
       "status": "FAILED",
       "fields": [
+        "context",
         "run_id",
         "session_id",
         "status",
@@ -124,6 +125,7 @@
       "type": "turn_end",
       "status": "COMPLETED",
       "fields": [
+        "context",
         "run_id",
         "session_id",
         "status",
@@ -187,6 +189,7 @@
       "type": "turn_end",
       "status": "COMPLETED",
       "fields": [
+        "context",
         "run_id",
         "session_id",
         "status",

@@ -327,8 +327,10 @@ func TestRunTextModeShowsContextShare(t *testing.T) {
 	}
 }
 
-// TestStreamJSONResultContext pins the result event's context object and its
-// omission when the model window is unknown.
+// TestStreamJSONResultContext pins the result event's context object: the
+// provider-reported used/share when the model window is known, and the turn's
+// own estimate (est_tokens) with the window compaction measures against in
+// every case the turn sent a request.
 func TestStreamJSONResultContext(t *testing.T) {
 	for _, tc := range []struct {
 		name                            string
@@ -337,7 +339,9 @@ func TestStreamJSONResultContext(t *testing.T) {
 		wantUsed, wantWindow, wantShare float64
 	}{
 		{name: "known window", window: 1000, wantContext: true, wantUsed: 550, wantWindow: 1000, wantShare: 55},
-		{name: "unknown window", wantContext: false},
+		// Without a configured window the default one of the trace's context
+		// event applies, so used and the estimate are both reported.
+		{name: "default window", wantContext: true, wantUsed: 550, wantWindow: 128000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo, err := store.Open(newTestStorePath(t))
@@ -356,8 +360,9 @@ func TestStreamJSONResultContext(t *testing.T) {
 			if !tc.wantContext {
 				return
 			}
-			assert.Eq(t, tc.wantUsed, contextValue["used"])
 			assert.Eq(t, tc.wantWindow, contextValue["window"])
+			assert.Eq(t, true, contextValue["est_tokens"].(float64) > 0)
+			assert.Eq(t, tc.wantUsed, contextValue["used"])
 			assert.Eq(t, tc.wantShare, contextValue["share"])
 		})
 	}
