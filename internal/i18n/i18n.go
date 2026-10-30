@@ -121,6 +121,9 @@ func New(lang Language) (*Catalog, error) {
 	return NewWithLogger(lang, nil)
 }
 
+// initMu serializes catalog loading (see NewWithLogger).
+var initMu sync.Mutex
+
 // NewWithLogger creates a catalog and sends missing-key diagnostics to warn.
 // A nil callback uses the project's slog logger rather than writing to stderr.
 func NewWithLogger(lang Language, warn WarningFunc) (catalog *Catalog, err error) {
@@ -137,6 +140,11 @@ func NewWithLogger(lang Language, warn WarningFunc) (catalog *Catalog, err error
 			err = fmt.Errorf("initialize language catalog: %v", recovered)
 		}
 	}()
+	// The ini parser behind the catalog loader writes a package-level token map
+	// on every load: concurrent sessions of one process (the SDK) must load one
+	// at a time (suga-g866).
+	initMu.Lock()
+	defer initMu.Unlock()
 	manager := gookiti18n.NewWithFS(catalogFS, "catalog", string(lang), supportedLanguages)
 	manager.LoadMode = gookiti18n.DirMode
 	manager.TransMode = gookiti18n.ReplaceMode

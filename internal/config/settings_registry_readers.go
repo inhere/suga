@@ -332,7 +332,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return value, true, nil
 		}
 		return "ask", false, nil
-	case "tools.parallel_reads", "tools.minimize_output", "tools.loop_guard", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots", "tools.protect_changed_files":
+	case "tools.parallel_reads", "tools.minimize_output", "tools.loop_guard", "tools.dependency_roots", "tools.standards_roots", "tools.skill_roots", "tools.protect_changed_files", "tools.ask_on_external_origin":
 		if value, present := lookupRawConfig(key); present {
 			return value, true, nil
 		}
