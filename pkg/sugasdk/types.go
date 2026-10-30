@@ -246,6 +246,27 @@ type Entry struct {
 	CreatedAt time.Time       `json:"created_at"`
 }
 
+// TraceEvent is one trace event of a session (turn, model call, tool call,
+// denial, ...) as shown by `suga inspect trace`. ID is the stable, increasing
+// cursor for paging; Attrs is the event's raw JSON attribute object.
+type TraceEvent struct {
+	ID               int64           `json:"id"`
+	SessionID        string          `json:"session_id"`
+	TurnID           string          `json:"turn_id,omitempty"`
+	Kind             string          `json:"kind"`
+	Name             string          `json:"name,omitempty"`
+	Status           string          `json:"status,omitempty"`
+	StartedAt        time.Time       `json:"started_at"`
+	DurationMs       int64           `json:"duration_ms,omitempty"`
+	TTFTMs           int64           `json:"ttft_ms,omitempty"`
+	InputTokens      int64           `json:"input_tokens,omitempty"`
+	OutputTokens     int64           `json:"output_tokens,omitempty"`
+	CacheReadTokens  int64           `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64           `json:"cache_write_tokens,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	Attrs            json.RawMessage `json:"attrs,omitempty"`
+}
+
 // SessionInfo is one row of Engine.Sessions.
 type SessionInfo struct {
 	ID        string    `json:"id"`
@@ -359,6 +380,19 @@ func convertCard(c personal.SessionCard) Card {
 // convertEntry maps an internal store entry without exposing internal types.
 func convertEntry(e store.Entry) Entry {
 	return Entry{SessionID: e.SessionID, Seq: e.Seq, TurnID: e.TurnID, Type: e.Type, JSON: e.JSON, CreatedAt: e.CreatedAt}
+}
+
+// convertTraceEvent maps an internal store event without exposing internal types.
+func convertTraceEvent(e store.Event) TraceEvent {
+	out := TraceEvent{ID: e.ID, SessionID: e.SessionID, TurnID: e.TurnID, Kind: e.Kind, Name: e.Name, Status: e.Status,
+		StartedAt: e.StartedAt, DurationMs: e.DurationMs, TTFTMs: e.TTFTMs, InputTokens: e.InputTokens,
+		OutputTokens: e.OutputTokens, CacheReadTokens: e.CacheReadTokens, CacheWriteTokens: e.CacheWriteTokens, Error: e.Error}
+	if len(e.Attrs) > 0 {
+		if raw, err := json.Marshal(e.Attrs); err == nil {
+			out.Attrs = raw
+		}
+	}
+	return out
 }
 
 // convertMemoryEntry maps one memory entry of a scope.
