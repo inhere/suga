@@ -89,7 +89,10 @@ func TestPaletteFamiliesApart(t *testing.T) {
 // TestPaletteThemes: the light theme is its own set of colors - the dark ones
 // nearly vanish on a light background - and ok/dim stay apart too.
 func TestPaletteThemes(t *testing.T) {
-	dark, light := mustPalette(t, "", nil), mustPalette(t, themeLight, nil)
+	// The 256 color mode is set explicitly: with no setting the depth follows the
+	// terminal, and a CI runner without a 256 color terminal degrades the codes.
+	mode := map[string]string{colorsKeyMode: colorMode256}
+	dark, light := mustPalette(t, "", mode), mustPalette(t, themeLight, mode)
 	assert.Eq(t, "\x1b[38;5;111m", dark.familyInk(familyRead))
 	assert.Eq(t, "\x1b[38;5;25m", light.familyInk(familyRead))
 	for family := 0; family < familyCount; family++ {
