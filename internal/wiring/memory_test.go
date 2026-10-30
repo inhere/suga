@@ -128,6 +128,27 @@ func TestSelectProjectBackend(t *testing.T) {
 	})
 }
 
+func TestExplicitProjectMemoryKey(t *testing.T) {
+	home := t.TempDir()
+	_, sub := memRepo(t, false, true)
+	setup, err := buildMemoryWithProjectKey(sub, MemoryConfig{ProjectBackend: memoryBackendGofer, SugaHome: home}, "topic-A")
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, MemoryBackendChoice{Scope: memory.ProjectScope("topic-A"), Backend: memoryBackendFiles,
+		Reason: MemoryReasonHostKey, Location: filepath.Join(home, "projects", "topic-A", "memory")}, setup.Project)
+	assert.Eq(t, filepath.Join(home, "projects", "topic-A", "memory"), setup.Project.Location)
+	backend, err := setup.Router.Route(memory.ProjectScope("topic-A"))
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "files", memory.BackendName(backend))
+
+	for _, key := range []string{"", ".", "..", "topic/a", strings.Repeat("x", 97)} {
+		if key == "" {
+			continue
+		}
+		_, _, err := selectExplicitProjectBackend(key, MemoryConfig{SugaHome: home})
+		assert.Err(t, err)
+	}
+}
+
 func TestProjectKey(t *testing.T) {
 	keyPattern := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*-[0-9a-f]{8}$`)
 	t.Run("directory name plus hash of the full path", func(t *testing.T) {

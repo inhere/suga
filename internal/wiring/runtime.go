@@ -34,6 +34,10 @@ type Options struct {
 	// SessionOrigin is the meta.origin an embedded host records on the sessions
 	// it creates; empty keeps the entry point's own origin (chat, run, ACP).
 	SessionOrigin string
+	// ProjectMemoryKey pins the project memory scope for an embedding host. A
+	// non-empty key forces the SUGA_HOME files layout and ignores repository
+	// discovery and memory.project.backend, so hosts can isolate topics safely.
+	ProjectMemoryKey string
 	// Thinking overrides the main model's thinking level (--thinking).
 	Thinking string
 	// AllowWrite exposes workspace write and shell tools.
@@ -387,7 +391,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	dirs.Set(nativeAddDirs(adddir.Effective(opts.AddDirs, opts.ReadOnly)))
 	opts.sessionDirs = dirs
-	rs, err := loadRuntimeSettings(workspace, opts.Model, opts.Thinking)
+	rs, err := loadRuntimeSettings(workspace, opts.Model, opts.Thinking, opts.ProjectMemoryKey)
 	if err != nil {
 		return nil, err
 	}

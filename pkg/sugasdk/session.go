@@ -62,6 +62,11 @@ func (e *Engine) OpenSession(ctx context.Context, id string, opts SessionOptions
 	if closed {
 		return nil, ErrEngineClosed
 	}
+	if key := opts.ProjectMemoryKey; key != "" {
+		if err := validateProjectMemoryKey(key); err != nil {
+			return nil, err
+		}
+	}
 	workspace := strings.TrimSpace(opts.Workspace)
 	if workspace == "" {
 		wd, err := ctxGetwd()
@@ -87,7 +92,7 @@ func (e *Engine) OpenSession(ctx context.Context, id string, opts SessionOptions
 	}
 	rt, err := wiring.Open(ctx, wiring.Options{
 		Workspace: abs, RuleCWD: abs, Model: model, AllowWrite: opts.AllowWrite,
-		SessionOrigin: origin, ExtraTools: opts.ExtraTools, Hooks: opts.Hooks,
+		SessionOrigin: origin, ProjectMemoryKey: opts.ProjectMemoryKey, ExtraTools: opts.ExtraTools, Hooks: opts.Hooks,
 		HostContext: opts.HostContext, Approver: opts.Approver,
 		MemoryConfirm: memoryConfirmAdapter(opts.MemoryConfirm),
 	})
@@ -124,6 +129,20 @@ func openSessionID(ctx context.Context, runner *personal.Runner, id, origin stri
 		return "", fmt.Errorf("sugasdk: open session: %w", err)
 	}
 	return model.ID, nil
+}
+
+// validateProjectMemoryKey rejects keys that could escape or ambiguously name a
+// host-owned memory directory.
+func validateProjectMemoryKey(key string) error {
+	if key == "." || key == ".." || len(key) == 0 || len(key) > 96 {
+		return fmt.Errorf("sugasdk: invalid ProjectMemoryKey %q (want 1-96 ASCII letters, digits, '.', '_' or '-')", key)
+	}
+	for _, r := range key {
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-') {
+			return fmt.Errorf("sugasdk: invalid ProjectMemoryKey %q (want 1-96 ASCII letters, digits, '.', '_' or '-')", key)
+		}
+	}
+	return nil
 }
 
 // memoryConfirmAdapter turns the SDK's confirmation into the runtime's: an

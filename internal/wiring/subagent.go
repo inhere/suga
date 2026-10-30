@@ -136,7 +136,7 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	if model == "" {
 		model = s.mainModel // the parent's model, --model included
 	}
-	rs, err := loadRuntimeSettings(s.workspace, model, "")
+	rs, err := loadRuntimeSettings(s.workspace, model, "", "")
 	if err != nil {
 		return nil, nil, fmt.Errorf("agents.model: %w", err)
 	}

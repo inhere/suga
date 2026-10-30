@@ -250,7 +250,7 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `memory.<scope>.args` | `[]` | 外部命令参数 |
 | `memory.<scope>.timeout_sec` | 不设 | 外部命令超时秒数 |
 
-`memory.project.backend` 不设时的选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/<id>.md`，可随项目提交）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`（`<key>` = 仓库目录名 + 路径短哈希）。`suga inspect manifest` 显示结果与原因。
+`memory.project.backend` 不设时的选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/<id>.md`，可随项目提交）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`（`<key>` = 仓库目录名 + 路径短哈希）。`suga inspect manifest` 显示结果与原因。嵌入式宿主可用 `sugasdk.SessionOptions.ProjectMemoryKey` 固定某个会话的项目记忆作用域；非空时始终使用 `$SUGA_HOME/projects/<key>/memory`，不读取仓库、gofer 或该配置。
 
 ## `hooks.*`（仅 chat）
 

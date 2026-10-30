@@ -36,6 +36,7 @@ const (
 	MemoryReasonConfig       = "config"         // memory.<scope>.backend set explicitly
 	MemoryReasonRepoIndex    = "repo_memory_md" // MEMORY.md exists at the repository root
 	MemoryReasonGoferTracker = "gofer_tracker"  // .gofer/tracker exists at the repository root
+	MemoryReasonHostKey      = "host_key"       // the embedding host pinned the project key
 	MemoryReasonDefault      = "default"        // built-in files backend under SUGA_HOME
 )
 
@@ -173,11 +174,25 @@ func (s *MemorySetup) Bind(repo *store.Store) {
 // buildMemory selects the user and project backends for workspaceRoot and
 // registers them on a new Router. It runs no backend command.
 func buildMemory(workspaceRoot string, cfg MemoryConfig) (*MemorySetup, error) {
+	return buildMemoryWithProjectKey(workspaceRoot, cfg, "")
+}
+
+// buildMemoryWithProjectKey assembles a session's memory. A non-empty host key
+// deliberately bypasses repository discovery and memory.project.backend: an
+// embedding host owns that isolation boundary and must not accidentally share
+// or write memory through the workspace's repository.
+func buildMemoryWithProjectKey(workspaceRoot string, cfg MemoryConfig, projectMemoryKey string) (*MemorySetup, error) {
 	user, userChoice, err := selectUserBackend(cfg)
 	if err != nil {
 		return nil, err
 	}
-	project, projectChoice, err := selectProjectBackend(workspaceRoot, cfg)
+	var project memory.Store
+	var projectChoice MemoryBackendChoice
+	if projectMemoryKey == "" {
+		project, projectChoice, err = selectProjectBackend(workspaceRoot, cfg)
+	} else {
+		project, projectChoice, err = selectExplicitProjectBackend(projectMemoryKey, cfg)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -304,6 +319,39 @@ func selectProjectBackend(workspaceRoot string, cfg MemoryConfig) (memory.Store,
 	}
 	st, err := files.New(map[memory.Scope]files.Layout{choice.Scope: layout})
 	return st, choice, err
+}
+
+// selectExplicitProjectBackend chooses the files layout explicitly requested by
+// an embedding host. It intentionally does not inspect workspaceRoot.
+func selectExplicitProjectBackend(key string, cfg MemoryConfig) (memory.Store, MemoryBackendChoice, error) {
+	if err := validateProjectMemoryKey(key); err != nil {
+		return nil, MemoryBackendChoice{}, err
+	}
+	if err := requireHome(cfg); err != nil {
+		return nil, MemoryBackendChoice{}, err
+	}
+	scope := memory.ProjectScope(key)
+	location := filepath.Join(cfg.SugaHome, "projects", key, "memory")
+	choice := MemoryBackendChoice{Scope: scope, Backend: memoryBackendFiles, Reason: MemoryReasonHostKey, Location: location}
+	st, err := files.New(map[memory.Scope]files.Layout{scope: files.DirLayout{Dir: location}})
+	return st, choice, err
+}
+
+// validateProjectMemoryKey checks the host-owned directory component before it
+// is joined under SUGA_HOME.
+func validateProjectMemoryKey(key string) error {
+	if key == "" {
+		return errors.New("memory: project memory key must not be empty")
+	}
+	if key == "." || key == ".." || len(key) > 96 {
+		return fmt.Errorf("memory: invalid project memory key %q (want 1-96 ASCII letters, digits, '.', '_' or '-')", key)
+	}
+	for _, r := range key {
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-') {
+			return fmt.Errorf("memory: invalid project memory key %q (want 1-96 ASCII letters, digits, '.', '_' or '-')", key)
+		}
+	}
+	return nil
 }
 
 // OpenMemoryStore builds the memory backends of workspaceRoot from the loaded
