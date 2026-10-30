@@ -388,6 +388,58 @@ func (e *Engine) Entry(ctx context.Context, ref string, window int) ([]Entry, er
 	return out, nil
 }
 
+// Entries limits for Engine.Entries: a zero or negative limit means the default,
+// anything above the maximum is clamped.
+const (
+	DefaultEntriesLimit = 100
+	MaxEntriesLimit     = 1000
+)
+
+// Entries lists the records of one session in sequence order, starting at the
+// first record whose Seq is >= fromSeq (fromSeq <= 1 starts at the beginning).
+// It returns at most limit records (DefaultEntriesLimit when limit <= 0,
+// clamped to MaxEntriesLimit); page by passing the last Seq + 1. A fromSeq past
+// the end yields an empty slice. An unknown session is an error.
+func (e *Engine) Entries(ctx context.Context, sessionID string, fromSeq int64, limit int) ([]Entry, error) {
+	if e == nil {
+		return nil, ErrEngineClosed
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, errors.New("sugasdk: session id is empty")
+	}
+	if limit <= 0 {
+		limit = DefaultEntriesLimit
+	}
+	if limit > MaxEntriesLimit {
+		limit = MaxEntriesLimit
+	}
+	since := fromSeq - 1
+	if since < 0 {
+		since = 0
+	}
+	repo, err := e.openStore()
+	if err != nil {
+		return nil, err
+	}
+	defer repo.Close()
+	if _, err := repo.GetSession(ctx, sessionID); err != nil {
+		if errors.Is(err, store.ErrSessionNotFound) {
+			return nil, fmt.Errorf("sugasdk: session %q was not found", sessionID)
+		}
+		return nil, fmt.Errorf("sugasdk: read session %q: %w", sessionID, err)
+	}
+	entries, err := repo.ListEntries(ctx, sessionID, store.EntryFilter{SinceSeq: since, Limit: limit})
+	if err != nil {
+		return nil, fmt.Errorf("sugasdk: list entries of %q: %w", sessionID, err)
+	}
+	out := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, convertEntry(entry))
+	}
+	return out, nil
+}
+
 // parseEntryRef validates the stable session/sequence reference used by
 // Engine.Entry. Session ids cannot contain '/', so the last separator is safe.
 func parseEntryRef(ref string) (string, int64, error) {

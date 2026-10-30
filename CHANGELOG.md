@@ -6,6 +6,7 @@
 
 ### 新增
 
+- sugasdk 新增只读 `Engine.Entries(ctx, sessionID, fromSeq, limit)`：按序号区间分页列出会话记录（`fromSeq` 含边界，limit 默认 100、上限 1000，会话不存在返回明确错误），供宿主读取会话历史。
 - 写类 / 执行类工具（`file_write`、`file_edit`、`shell_exec`、MCP 工具等）的参数里若逐字含有会话中 `web_fetch`、`web_search`、MCP 工具结果的 12 字节以上原文（空白折叠后比较），即使 `tools.approval: auto` 也再确认一次：chat 里弹出询问并注明来源工具与片段，run / ACP 等无人可问时拒绝并说明（提示注入的实用缓解）；只读工具不受影响。每个会话最多记住约 25 万个窗口，超出后先忘最旧的结果。`tools.ask_on_external_origin`（默认 `true`）可关闭。
 
 ### 修复
