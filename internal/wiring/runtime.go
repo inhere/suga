@@ -772,6 +772,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		TranscriptDir:         transcriptDir,
 		LockRoot:              lockRoot,
 		ProcessRoot:           processRoot,
+		OnFilesRestored:       forgetRestoredFiles(capabilities.Registry),
 	})
 	if err != nil {
 		_ = repo.Close()
@@ -858,6 +859,25 @@ func bindFileReadImage(reg *tools.Registry, img *native.ViewImageTool) {
 	if t, err := reg.Get("file_read"); err == nil {
 		if fr, ok := t.(*native.FileReadTool); ok {
 			fr.SetImagePipeline(img)
+		}
+	}
+}
+
+// forgetRestoredFiles makes the write guard of the session's file tools forget
+// files :undo restored: the restore is suga's own write, not an outside change.
+func forgetRestoredFiles(reg *tools.Registry) func(paths []string) {
+	return func(paths []string) {
+		if reg == nil {
+			return
+		}
+		// The three file tools share one guard; one of them may be disabled.
+		for _, name := range []string{"file_write", "file_edit", "file_read"} {
+			if t, err := reg.Get(name); err == nil {
+				if g := native.GuardOf(t); g != nil {
+					g.Forget(paths...)
+					return
+				}
+			}
 		}
 	}
 }

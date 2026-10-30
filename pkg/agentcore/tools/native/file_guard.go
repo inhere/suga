@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/inhere/suga/pkg/agentcore/api"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -67,6 +68,36 @@ func (g *FileGuard) rememberNow(target readTarget) {
 	}
 	stamp, ok := stampOf(target)
 	g.remember(target.abs, stamp, ok)
+}
+
+// Forget drops the records of paths, so the next write of them is judged as for
+// a file never read. Suga calls it for files it changed itself outside the file
+// tools (:undo restoring a checkpoint): without it the guard would take its own
+// restore for an outside change. A nil guard does nothing.
+func (g *FileGuard) Forget(paths ...string) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, p := range paths {
+		delete(g.seen, filepath.Clean(p))
+	}
+}
+
+// GuardOf returns the FileGuard a file tool of a tool set works with (nil when
+// the tool is not a file tool or the guard is off), so the host can Forget the
+// files it changes itself.
+func GuardOf(t api.Tool) *FileGuard {
+	switch x := t.(type) {
+	case *FileWriteTool:
+		return x.guard
+	case *FileEditTool:
+		return x.guard
+	case *FileReadTool:
+		return x.guard
+	}
+	return nil
 }
 
 // check returns an error when target was seen by this session and its stamp

@@ -108,3 +108,33 @@ func TestFileGuard(t *testing.T) {
 		assert.NoErr(t, run(t, other, map[string]any{"path": "a.txt", "content": "x"}))
 	})
 }
+
+func TestFileGuardForget(t *testing.T) {
+	t.Run("edit, host restores the file and forgets it, edit again: allowed", func(t *testing.T) {
+		dir, read, write, edit := guardedTools(t, true)
+		path := filepath.Join(dir, "t.txt")
+		assert.NoErr(t, os.WriteFile(path, []byte("one"), 0o644))
+		assert.NoErr(t, run(t, read, map[string]any{"path": "t.txt"}))
+		assert.NoErr(t, run(t, edit, map[string]any{"path": "t.txt", "old_string": "one", "new_string": "two"}))
+		// :undo writes the old content back behind the tools' back
+		touchExternally(t, path, "one")
+		guard := GuardOf(write)
+		assert.NotNil(t, guard)
+		guard.Forget(path)
+		assert.NoErr(t, run(t, edit, map[string]any{"path": "t.txt", "old_string": "one", "new_string": "three"}))
+	})
+	t.Run("edit, changed outside, edit: still refused", func(t *testing.T) {
+		dir, read, _, edit := guardedTools(t, true)
+		path := filepath.Join(dir, "t.txt")
+		assert.NoErr(t, os.WriteFile(path, []byte("one"), 0o644))
+		assert.NoErr(t, run(t, read, map[string]any{"path": "t.txt"}))
+		assert.NoErr(t, run(t, edit, map[string]any{"path": "t.txt", "old_string": "one", "new_string": "two"}))
+		touchExternally(t, path, "two plus")
+		assert.ErrMsgContains(t, run(t, edit, map[string]any{"path": "t.txt", "old_string": "two", "new_string": "x"}), "file_read")
+	})
+	t.Run("a nil guard is harmless", func(t *testing.T) {
+		var g *FileGuard
+		g.Forget("x")
+		assert.Nil(t, GuardOf(nil))
+	})
+}
