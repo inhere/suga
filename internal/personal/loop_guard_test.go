@@ -22,10 +22,13 @@ type loopStep struct {
 	isError bool
 }
 
-// runLoopHint is the reminder R1/R2 append for file_read; shellLoopHint is R3's.
-func runLoopHint(n int) string { return loopGuardHint("R1", "file_read", n) }
+// runLoopHint is the reminder R1/R2 append for file_read; shellLoopHint is R3's;
+// prefixLoopHint is R4's.
+func runLoopHint(n int) string { return loopGuardHint("R1", "file_read", n, "") }
 
-func shellLoopHint(n int) string { return loopGuardHint("R3", "shell_exec", n) }
+func shellLoopHint(n int) string { return loopGuardHint("R3", "shell_exec", n, "") }
+
+func prefixLoopHint(n int, prefix string) string { return loopGuardHint("R4", "file_read", n, prefix) }
 
 // runLoopStepsHook feeds steps (one turn's calls, in order) through the hook
 // and returns the result content the events end up carrying.
@@ -118,7 +121,7 @@ func TestLoopGuardHookRules(t *testing.T) {
 			lastRule: "R2", lastCount: 4},
 		{name: "成功的重复命令（结果相同）仍触发 R1",
 			stepList: steps(shellOK, shellOK, shellOK),
-			want:     []string{"", "", loopGuardHint("R1", "shell_exec", 3)}, events: 1,
+			want:     []string{"", "", loopGuardHint("R1", "shell_exec", 3, "")}, events: 1,
 			lastRule: "R1", lastCount: 3},
 		{name: "同一命令失败三次触发 R3",
 			stepList: steps(shellFail, edit, shellFail, edit, shellFail),
@@ -164,19 +167,50 @@ func TestLoopGuardHookRules(t *testing.T) {
 	}
 }
 
+// TestLoopGuardPrefixRule: a model that keeps failing with the same argument
+// prefix (it appends a suffix to the path and retries) is reminded to confirm
+// the value instead of guessing (session sg_31nv13n28jb8: 16 such file_read
+// calls in one turn, none of them identical, so R1/R2 never fired).
+func TestLoopGuardPrefixRule(t *testing.T) {
+	step := func(suffix string, failed bool) loopStep {
+		return loopStep{
+			name:    "file_read",
+			args:    map[string]any{"path": "deploy-hub/cmd/dhcli/internal/cmds/login/login_test.go; " + suffix},
+			content: "r",
+			isError: failed,
+		}
+	}
+	_, prefix := loopGuardPrefixKey("file_read", step("end!", true).args)
+
+	hook := newLoopGuardHook(nil)
+	got := runLoopStepsHook(t, hook, []loopStep{step("stop!", true), step("why?", true), step("end!", true)})
+	assert.Eq(t, "r", got[0])
+	assert.Eq(t, "r", got[1])
+	assert.Eq(t, "r\n\n"+prefixLoopHint(3, prefix), got[2])
+
+	// A successful call clears the prefix, so the next failures start over.
+	got = runLoopStepsHook(t, hook, []loopStep{step("fixed", false), step("a", true), step("b", true)})
+	assert.NotContains(t, got[2], "参数前缀相同")
+
+	// Another tool with the same prefix is a different group.
+	other := loopStep{name: "file_symbols", args: step("c", true).args, content: "r", isError: true}
+	got = runLoopStepsHook(t, newLoopGuardHook(nil), []loopStep{step("a", true), step("b", true), other})
+	assert.NotContains(t, got[2], "参数前缀相同")
+}
+
 // TestLoopGuardHintWording: each rule's text says what the rule knows (the
 // repeated arguments and an unchanged result, or a command that failed again).
 func TestLoopGuardHintWording(t *testing.T) {
 	t.Run("R1/R2 说结果没有变化", func(t *testing.T) {
 		for _, rule := range []string{"R1", "R2"} {
-			hint := loopGuardHint(rule, "file_read", 3)
+			hint := loopGuardHint(rule, "file_read", 3, "")
 			assert.StrContains(t, hint, "第 3 次相同调用且结果没有变化")
 			assert.StrContains(t, hint, "换一种方法")
 			assert.StrNotContains(t, hint, "已失败")
 		}
 	})
 	t.Run("R3 说已失败几次", func(t *testing.T) {
-		hint := loopGuardHint("R3", "shell_exec", 3)
+		hint := loopGuardHint("R3", "shell_exec", 3, "")
 		assert.StrContains(t, hint, "已失败 3 次")
 		assert.StrContains(t, hint, "换一种方法")
 		assert.StrNotContains(t, hint, "结果没有变化")

@@ -23,17 +23,22 @@ import (
 //   - R2 累计重复：本回合内同一个键累计 loopGuardRule2Calls 次（不要求连续）。
 //   - R3 反复失败：同一条 shell 命令（工具、规范化参数相同，不看输出）在本回合
 //     内失败 loopGuardRule3Fails 次。
+//   - R4 前缀相同反复失败：同工具、参数前缀相同（前 loopGuardPrefixChars 个字符）
+//     的调用连续失败 loopGuardRule4Fails 次，即“一直在改后缀猜参数”（会话
+//     sg_31nv13n28jb8：file_read 的 path 被追加自我叙述后重试 16 次）。
 //   - 编辑重置：一次成功的写入类工具调用（file_edit/file_write/file_remove）之后
-//     工作区变了，R1/R2 的计数清零——改完再跑同一条命令是正常迭代，不是死循环。
+//     工作区变了，R1/R2/R4 的计数清零——改完再跑同一条命令是正常迭代，不是死循环。
 //     R3 的失败计数不重置：中间改了还失败，才是真正的死路。
 //   - 同一组（工具, 参数）每回合最多提示 loopGuardMaxHints 次，避免刷屏。
 //
 // 计数按回合清零：hook 是 turnHooks 里按回合新建的实例，状态天然不跨回合。
 const (
-	loopGuardRule1Calls = 3 // R1：连续相同调用（含结果）的触发次数
-	loopGuardRule2Calls = 4 // R2：累计相同调用（含结果）的触发次数
-	loopGuardRule3Fails = 3 // R3：同一条 shell 命令失败的触发次数
-	loopGuardMaxHints   = 2 // 同一组重复每回合最多提示的次数
+	loopGuardRule1Calls  = 3  // R1：连续相同调用（含结果）的触发次数
+	loopGuardRule2Calls  = 4  // R2：累计相同调用（含结果）的触发次数
+	loopGuardRule3Fails  = 3  // R3：同一条 shell 命令失败的触发次数
+	loopGuardRule4Fails  = 3  // R4：同工具、参数前缀相同的调用连续失败的触发次数
+	loopGuardPrefixChars = 40 // R4 比较的参数前缀长度（字符）
+	loopGuardMaxHints    = 2  // 同一组重复每回合最多提示的次数
 )
 
 // loopGuardShellTool is the one tool R3 watches: a command that keeps failing
@@ -82,6 +87,11 @@ type loopGuardHook struct {
 	// fails counts the failed calls of one shell command (tool and canonical
 	// arguments, without the result) for R3.
 	fails map[string]int
+	// prefixFails counts the consecutive failures of one argument prefix (R4):
+	// a call that succeeds, or a successful write, clears its own prefix.
+	prefixFails map[string]int
+	// prefixHints counts the reminders already appended for one prefix group.
+	prefixHints map[string]int
 }
 
 // AfterTool counts the call and, on R1, R2 or R3, appends the reminder to the
@@ -98,6 +108,7 @@ func (h *loopGuardHook) AfterTool(ctx context.Context, event *agentcore.ToolEven
 	//（改代码 → go test → 再改 → 再 go test），所以 R1/R2 的计数从这里重新算。
 	if loopGuardWriteTools[event.Call.Name] && !failed {
 		h.counts = map[string]int{}
+		h.prefixFails = map[string]int{}
 		h.last, h.streak = "", 0
 	}
 	key := group + loopGuardSeq + loopGuardResultKey(event.Result, failed)
@@ -111,22 +122,44 @@ func (h *loopGuardHook) AfterTool(ctx context.Context, event *agentcore.ToolEven
 	if event.Call.Name == loopGuardShellTool && failed {
 		h.fails[group]++
 	}
+	// R4：同工具的参数前缀连续失败。一次成功就把该前缀清零（改对了或换对了），
+	// R3 的 shell_exec 不重复统计（它的死路已由 R3 提醒）。
+	prefixKey, prefix := loopGuardPrefixKey(event.Call.Name, event.Call.Arguments)
+	if event.Call.Name != loopGuardShellTool {
+		if failed {
+			h.prefixFails[prefixKey]++
+		} else {
+			delete(h.prefixFails, prefixKey)
+		}
+	}
 	rule, n := "", 0
 	switch {
 	case event.Call.Name == loopGuardShellTool && h.fails[group] >= loopGuardRule3Fails:
 		// R3 优先：一条反复失败的命令比“结果没变”更值得提醒（失败命令的输出
 		// 往往每次都一样，否则 R1 会先抢到这一次）。
 		rule, n = "R3", h.fails[group]
+	case event.Call.Name != loopGuardShellTool && h.prefixFails[prefixKey] >= loopGuardRule4Fails:
+		rule, n = "R4", h.prefixFails[prefixKey]
 	default:
 		rule, n = loopGuardRule(total, h.streak)
 	}
-	if rule == "" || h.hints[group] >= loopGuardMaxHints {
+	if rule == "" {
 		return nil
 	}
-	h.hints[group]++
-	hint := loopGuardHint(rule, event.Call.Name, n)
+	if rule == "R4" {
+		if h.prefixHints[prefixKey] >= loopGuardMaxHints {
+			return nil
+		}
+		h.prefixHints[prefixKey]++
+	} else {
+		if h.hints[group] >= loopGuardMaxHints {
+			return nil
+		}
+		h.hints[group]++
+	}
+	hint := loopGuardHint(rule, event.Call.Name, n, prefix)
 	event.Result.Content = appendLoopGuardHint(event.Result.Content, hint)
-	h.trace(ctx, event.Call.Name, rule, n)
+	h.trace(ctx, event.Call.Name, rule, n, prefix)
 	h.show(ctx, event.Call.Name, rule, n)
 	return nil
 }
@@ -148,10 +181,15 @@ func loopGuardRule(total, streak int) (string, int) {
 // loopGuardHint is the text appended to the repeated call's result (one to two
 // lines) and the wording of chat's gray loop_guard line. Each rule describes
 // what actually happened: R1/R2 know the arguments and the result repeated,
-// R3 knows the command failed again.
-func loopGuardHint(rule, tool string, n int) string {
-	if rule == "R3" {
+// R3 knows the command failed again, R4 knows the argument prefix stayed the
+// same while the call kept failing (a model guessing suffixes).
+func loopGuardHint(rule, tool string, n int, prefix string) string {
+	switch rule {
+	case "R3":
 		return fmt.Sprintf("↻ 这条命令在本回合已失败 %d 次（%s），换一种方法或停下说明卡在哪里。", n, tool)
+	case "R4":
+		return fmt.Sprintf("↻ 本回合同工具、参数前缀相同的调用已连续失败 %d 次（%s：%s…）。"+
+			"别再改后缀猜参数：先用 file_list / file_find 确认实际的路径或名称，再按确切值重试。", n, tool, prefix)
 	}
 	return fmt.Sprintf("↻ 这是本回合第 %d 次相同调用且结果没有变化（%s），请换一种方法；若确实没有变化，请停下说明原因。", n, tool)
 }
@@ -168,6 +206,25 @@ func (h *loopGuardHook) ensureMaps() {
 	if h.fails == nil {
 		h.fails = map[string]int{}
 	}
+	if h.prefixFails == nil {
+		h.prefixFails = map[string]int{}
+	}
+	if h.prefixHints == nil {
+		h.prefixHints = map[string]int{}
+	}
+}
+
+// loopGuardPrefixKey keys one argument prefix of a tool call (R4) and returns
+// the prefix itself for the reminder text. The canonical JSON of the arguments
+// makes the first loopGuardPrefixChars characters stable across calls that only
+// differ in a trailing suffix.
+func loopGuardPrefixKey(tool string, args map[string]any) (string, string) {
+	runes := []rune(loopGuardArgs(args))
+	if len(runes) > loopGuardPrefixChars {
+		runes = runes[:loopGuardPrefixChars]
+	}
+	prefix := string(runes)
+	return tool + loopGuardSeq + prefix, prefix
 }
 
 // loopGuardResultKey is the result part of a repetition key: whether the call
@@ -213,13 +270,17 @@ func appendLoopGuardHint(content, hint string) string {
 // trace writes the loop_guard trace event (kind loop_guard, name = tool):
 // attrs carry which rule fired and the count of the group, so `suga inspect
 // trace` can see every reminder. Best-effort like every event.
-func (h *loopGuardHook) trace(ctx context.Context, tool, rule string, n int) {
+func (h *loopGuardHook) trace(ctx context.Context, tool, rule string, n int, prefix string) {
 	if h.record == nil {
 		return
 	}
+	attrs := map[string]any{"rule": rule, "count": n}
+	if rule == "R4" {
+		attrs["prefix"] = prefix
+	}
 	h.record(ctx, store.Event{
 		Kind: store.EventLoopGuard, Name: tool, Status: eventOK,
-		Attrs: map[string]any{"rule": rule, "count": n},
+		Attrs: attrs,
 	})
 }
 
