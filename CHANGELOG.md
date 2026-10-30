@@ -15,6 +15,8 @@
 
 ### 新增
 
+- `sugasdk.SessionOptions` 新增 `ProjectMemoryKey`：宿主可将会话的项目记忆固定到 `$SUGA_HOME/projects/<key>/memory`，按主题隔离且不触碰工作区仓库的 `MEMORY.md` 或 `.gofer/tracker`。
+
 - sugasdk 新增按 `<会话>/<序号>` 读取不可变记录窗口与 `Session.Cancel`，支持宿主取消进行中的回合并继续使用会话。
 - chat 的工具输出按工具族着色并各带一个符号（`▸` 读、`✎` 写、`$` 命令、`⇄` 网络、`◆` 子 agent、`✦` 会话/计划），参数变暗、`⎿ ok:` 与失败结果各自成色；新增 `chat.colors`（`style`/`mode` 加每元素一个颜色）覆盖默认配色，未知键或颜色启动报错。
 - 新增 `providers.<id>.prompt_cache_retention`（`in_memory` / `24h`，仅 `openai-responses`）：设置上游保留 prompt 缓存多久，空闲很久的会话写 `24h` 才能跨回合复用缓存。压缩/空闲整理/交接包的摘要请求改用独立的缓存键（`<会话>-compact`），不再冲掉主对话的缓存条目。

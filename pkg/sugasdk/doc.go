@@ -23,7 +23,10 @@
 //
 // Every session assembles its own runtime for its workspace (tools, provider,
 // project rules, memory scope), so sessions of different directories can run
-// side by side. A session runs one turn at a time: a second concurrent Send
+// side by side. A host may set SessionOptions.ProjectMemoryKey to pin a session's
+// project memory to an isolated files scope under <SUGA_HOME>/projects/<key>/memory;
+// this bypasses repository discovery and memory.project.backend for that session.
+// A session runs one turn at a time: a second concurrent Send
 // returns ErrBusy instead of queueing, and Steer inserts text into a turn that is
 // already running (ErrNoRunningTurn when there is none), and Cancel stops the
 // in-flight turn so the session can continue with a later Send. A panic inside a

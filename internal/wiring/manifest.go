@@ -583,7 +583,7 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 		return Manifest{}, manifestParts{}, err
 	}
 	_ = langTranslator
-	st, err := loadRuntimeSettings(workspace, opts.Model, opts.Thinking)
+	st, err := loadRuntimeSettings(workspace, opts.Model, opts.Thinking, "")
 	if err != nil {
 		return Manifest{}, manifestParts{}, err
 	}
@@ -669,7 +669,7 @@ type runtimeSettings struct {
 
 // loadRuntimeSettings reads and validates the settings that need no I/O
 // beyond configuration and path resolution. It runs no backend command.
-func loadRuntimeSettings(workspace, model, thinking string) (runtimeSettings, error) {
+func loadRuntimeSettings(workspace, model, thinking, projectMemoryKey string) (runtimeSettings, error) {
 	var s runtimeSettings
 	var err error
 	if s.models, err = appconfig.ReadModelSettings(model); err != nil {
@@ -707,7 +707,7 @@ func loadRuntimeSettings(workspace, model, thinking string) (runtimeSettings, er
 		return s, err
 	}
 	// Backend selection only (no backend command runs here).
-	if s.memSetup, err = buildMemory(workspace, memConfig); err != nil {
+	if s.memSetup, err = buildMemoryWithProjectKey(workspace, memConfig, projectMemoryKey); err != nil {
 		return s, err
 	}
 	if s.sessionsDir, err = appconfig.ResolveSessionsDir(); err != nil {
