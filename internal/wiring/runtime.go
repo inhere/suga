@@ -575,9 +575,12 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// update_plan, memory, session_search, recall, skill, suga_manifest) must be
 	// removable too.
 	removeDisabledTools(capabilities.Registry)
-	approvalLayer := tools.NewApproval(capabilities.Registry, guardDangerous(opts.Approver))
+	// Text copied from a web or MCP result into a write or exec call is asked
+	// about again (guardExternalOrigin); originObserver feeds it the results.
+	origin := tools.NewExternalOrigin()
+	approvalLayer := tools.NewApproval(capabilities.Registry, guardExternalOrigin(guardDangerous(opts.Approver), chatApproverOf(opts.Approver), origin))
 	approvalLayer.SetDisabled(disabledToolHints(capabilities.Registry, opts))
-	vis, err := newToolVisibility(capabilities.Registry, approvalLayer, contextWindow,
+	vis, err := newToolVisibility(capabilities.Registry, &originObserver{inner: approvalLayer, origin: origin}, contextWindow,
 		preferredMCPToolNames(capabilities.Registry, preferredTools))
 	if err != nil {
 		_ = capabilities.Close()

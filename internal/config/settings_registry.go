@@ -215,6 +215,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.standards_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.protect_changed_files", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.ask_on_external_origin", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.shell", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.shell_timeout_max", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.task_timeout_max", Type: ConfigTypeInt, Writable: true},
