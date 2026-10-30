@@ -35,6 +35,13 @@ type toolEventHook struct {
 
 func (h toolEventHook) publish(ctx context.Context, event Event) {
 	event.SessionID, event.TurnID, event.RunID = h.sessionID, h.turnID, h.runID
+	// The sink is host code (an SDK callback): a panic in it is logged like a
+	// failed emit, never turned into a hook failure that refuses the tool call.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			turnLogger(ctx).Warn("emit tool event panicked", "kind", event.Kind, "tool", event.ToolName, "panic", recovered)
+		}
+	}()
 	if err := emit(ctx, h.sink, event); err != nil {
 		turnLogger(ctx).Warn("emit tool event", "kind", event.Kind, "tool", event.ToolName, "err", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -49,6 +50,12 @@ func parseTime(s string) time.Time {
 type Store struct {
 	db   *sql.DB
 	path string
+
+	// release gives the handle back when the store closes: a shared read-write
+	// handle drops a reference (see sharedDB), nil closes db itself.
+	release   func() error
+	closeOnce sync.Once
+	closeErr  error
 
 	// sessionsDir is the root of the per-session files (sessions/<id>/
 	// tools.jsonl). It is <db dir>/../sessions by default, so every caller that
@@ -149,30 +156,100 @@ func Open(path string, opts ...Option) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", buildDSN(abs))
+	// Every Open of one file in this process shares one *sql.DB: a pool per
+	// session would race each other (and their own first-open migration) for the
+	// SQLite write lock (suga-g866). A migration re-checks the ledger under the
+	// write lock, so concurrent first opens (even of other processes) apply each
+	// migration once.
+	db, release, err := acquireDB(abs)
 	if err != nil {
-		return nil, fmt.Errorf("open store: %w", err)
-	}
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("open store: %w", err)
+		return nil, err
 	}
 	s := newStore(db, abs)
+	s.release = release
 	for _, opt := range opts {
 		opt(s)
 	}
 	if err := s.migrate(context.Background()); err != nil {
-		_ = db.Close()
+		_ = s.Close()
 		return nil, err
 	}
 	// The persistent switch of the tool body files and their checkpoint live in
 	// a small table this open creates (never a migration: opening a ledger must
 	// not start full-table work) and a reader does not create.
 	if err := s.ensureStoreMeta(context.Background()); err != nil {
-		_ = db.Close()
+		_ = s.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+// sharedHandle is the process-wide read-write handle of one database file.
+type sharedHandle struct {
+	db   *sql.DB
+	refs int
+}
+
+var (
+	sharedMu      sync.Mutex
+	sharedHandles = map[string]*sharedHandle{}
+)
+
+// sharedKey is the registry key of a database path (Windows paths compare
+// case-insensitively).
+func sharedKey(abs string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(abs)
+	}
+	return abs
+}
+
+// pingAttempts bounds the retries of the first connection: switching a fresh
+// file to WAL needs a lock SQLite does not wait for through busy_timeout when
+// another process opens the same new file at the same moment.
+const pingAttempts = 8
+
+// acquireDB returns the shared read-write handle of abs (opening it on first
+// use) and the release func that drops this caller's reference; the handle
+// closes with its last reference.
+func acquireDB(abs string) (*sql.DB, func() error, error) {
+	key := sharedKey(abs)
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	h := sharedHandles[key]
+	if h == nil {
+		db, err := sql.Open("sqlite", buildDSN(abs))
+		if err != nil {
+			return nil, nil, fmt.Errorf("open store: %w", err)
+		}
+		for attempt := 0; ; attempt++ {
+			err = db.Ping()
+			if err == nil {
+				break
+			}
+			if !isBusy(err) || attempt >= pingAttempts {
+				_ = db.Close()
+				return nil, nil, fmt.Errorf("open store: %w", err)
+			}
+			time.Sleep(txBeginBaseDelay << min(attempt, 4))
+		}
+		h = &sharedHandle{db: db}
+		sharedHandles[key] = h
+	}
+	h.refs++
+	release := func() error {
+		sharedMu.Lock()
+		defer sharedMu.Unlock()
+		h.refs--
+		if h.refs > 0 {
+			return nil
+		}
+		if sharedHandles[key] == h {
+			delete(sharedHandles, key)
+		}
+		return h.db.Close()
+	}
+	return h.db, release, nil
 }
 
 // newStore is the store of a path with the defaults every open shares.
@@ -227,7 +304,17 @@ func OpenReadOnly(path string, opts ...Option) (*Store, error) {
 }
 
 // Close releases the database handle.
-func (s *Store) Close() error { return s.db.Close() }
+// A shared handle closes with its last store; closing twice is harmless.
+func (s *Store) Close() error {
+	s.closeOnce.Do(func() {
+		if s.release != nil {
+			s.closeErr = s.release()
+			return
+		}
+		s.closeErr = s.db.Close()
+	})
+	return s.closeErr
+}
 
 // DB exposes the handle for read-only queries by sibling packages.
 func (s *Store) DB() *sql.DB { return s.db }
@@ -280,6 +367,17 @@ func (s *Store) migrateUpTo(ctx context.Context, last string) error {
 		tx, err := s.beginWriteTx(ctx)
 		if err != nil {
 			return err
+		}
+		// Another process may have applied it since the check above; the write
+		// lock is held now, so this re-check is final.
+		var applied int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM schema_migrations WHERE name = ?`, name).Scan(&applied); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if applied > 0 {
+			_ = tx.Rollback()
+			continue
 		}
 		if _, err := tx.ExecContext(ctx, up); err != nil {
 			_ = tx.Rollback()
