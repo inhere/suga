@@ -570,6 +570,21 @@ func handoffOutputTokens() int {
 	return 0
 }
 
+// summaryOutputTokens is the output cap of one summary call: the default
+// (handoffOutputTokens) unless context.summary_max_tokens sets one.
+func (r *Runner) summaryOutputTokens() int {
+	if r.cfg.SummaryMaxTokens > 0 {
+		return r.cfg.SummaryMaxTokens
+	}
+	return handoffOutputTokens()
+}
+
+// retryOutputTokens is the cap of the one re-ask after a truncated summary:
+// twice a configured cap (the cap itself was too tight), else unchanged.
+func retryOutputTokens(maxTokens int) int {
+	return maxTokens * 2
+}
+
 // completeProtectedNote is what a re-ask after a truncated summary asks for: it
 // names the sections to compress and the one that must stay verbatim.
 const completeProtectedNote = "\n\n# 注意\n上一次的输出被输出上限截断。请把“" + handoffSectionCoords + " / " + handoffSectionVerified +

@@ -9,11 +9,16 @@
 - sugasdk 新增只读 `Engine.TraceEvents(ctx, sessionID, afterID, limit)`：按事件 ID 游标分页列出会话的 trace 事件（与 `suga inspect trace` 同源，返回公开的 `TraceEvent`，含种类、时间、回合、工具名、用量与原始 attrs JSON），供宿主并入自己的时间线。
 - sugasdk 新增只读 `Engine.Entries(ctx, sessionID, fromSeq, limit)`：按序号区间分页列出会话记录（`fromSeq` 含边界，limit 默认 100、上限 1000，会话不存在返回明确错误），供宿主读取会话历史。
 - 写类 / 执行类工具（`file_write`、`file_edit`、`shell_exec`、MCP 工具等）的参数里若逐字含有会话中 `web_fetch`、`web_search`、MCP 工具结果的 12 字节以上原文（空白折叠后比较），即使 `tools.approval: auto` 也再确认一次：chat 里弹出询问并注明来源工具与片段，run / ACP 等无人可问时拒绝并说明（提示注入的实用缓解）；只读工具不受影响。每个会话最多记住约 25 万个窗口，超出后先忘最旧的结果。`tools.ask_on_external_origin`（默认 `true`）可关闭。
+- 子 agent（`agent` 工具）接入同一外部来源守卫（suga-up40）：子 agent 读到的 web / MCP 结果会被记录，其后写文件 / 执行命令的参数若逐字含这些原文，按 run 规则拒绝并说明来源（子 agent 没有终端可问，也不借用父会话的 chat 询问通道，因后台子 agent 的询问会脱离用户正在看的内容）；当前子 agent 只带只读工具，此守卫是纵深防御，为日后放开写类工具预留。
+- 压缩补三个旋钮（suga-m34w，键在 `context.*`，默认值保持原行为）：`context.pin_first_user`（默认 `false`）让每个换段交接包都带上本会话第一条用户请求原文；`context.keep_user_words_budget`（字节，默认 `0` = 原规则最近 3 条）给用户原话独立预算，大于 0 时从最新一条起往前保留到放不下为止；`context.summary_max_tokens`（默认 `0` = 不设上限）限制单次摘要输出，被截断时用 2 倍上限重问一次。已登记到设置 registry 与 `suga-guide` 配置文档。
 
 ### 修复
 
 - 同一进程里多个会话（sugasdk 嵌入）并发时不再出现 `database is locked (SQLITE_BUSY)`：根因是每个会话各开一个 SQLite 连接池，首次打开时并发切换 WAL、并发迁移互相争锁（还会报迁移重复）；现在同一进程内同一库文件共享一个连接池（引用计数，最后一个关闭才释放），迁移在写锁内复查账本，首个连接遇忙会退避重试，并发加载语言包也改为串行；宿主事件回调 panic 不再让工具调用失败（记 warn 日志）。
 - 危险删除守卫的测试不再依赖宿主 HOME 与临时目录布局，也不再假定 shell 是 POSIX sh：在 Windows（shell_exec 走 PowerShell）上通过；守卫实现本身无需改动。
+- 补 sugasdk 记忆回归测试（suga-r1kg）：删除后同标题重新添加、再编辑，读回为新文本；把重新添加的条目改回已删除的原文会明确返回 `ErrTombstoned`（墓碑守卫），不会静默成功。用公开 API 与随机序列（含重开引擎）均未复现“edit 成功但读回旧文本”，记忆 id 复用时旧墓碑已归档、uuid 重新生成，读写路径无缓存；疑似现象来自编辑回已删除文本时被墓碑拒绝。
+- 内置 skill 释放在多个释放者同时启动时（Windows 高负载）偶发 `install ...: Access is denied` 失败（suga-5ken）：根因是目标刚被另一方建好时仍把它移到一边再装，留出“目标不存在”的窗口，其余释放者的重命名被拒且只等 50ms；现在已是当前内容的目录不再移开，重命名遇瞬时拒绝时按“目标是否已出现”条件重试，Stat 的瞬时拒绝同样重试（12 进程 × 200 次压测由必现失败变为 0 失败）。
+- `tools.approval: ask` 下，参数含外部来源原文的写 / 执行调用不再被问两次（suga-2v5n）：原先外部来源确认放行后仍交给原审批器再问一遍；现在只问一次，提示里合并了该调用的细节与外部来源说明，回答 y 即视为本次调用已确认（规则仍可放行或拒绝；`auto` 模式与 run / ACP 无人可问时拒绝的行为不变）。
 
 ### 变更
 

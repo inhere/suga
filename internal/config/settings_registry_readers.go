@@ -248,6 +248,18 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.At, true, nil
 		}
 		return settings.Keep, true, nil
+	case "context.pin_first_user", "context.keep_user_words_budget", "context.summary_max_tokens":
+		settings, err := ReadCompactSettings()
+		if err != nil {
+			return nil, false, err
+		}
+		switch key {
+		case "context.pin_first_user":
+			return settings.PinFirstUser, true, nil
+		case "context.keep_user_words_budget":
+			return settings.KeepUserWordsBudget, true, nil
+		}
+		return settings.SummaryMaxTokens, true, nil
 	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme", "chat.colors":
 		settings, err := ReadChatSettings()
 		if err != nil {

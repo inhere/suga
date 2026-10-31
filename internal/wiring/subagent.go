@@ -11,6 +11,7 @@ import (
 	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/internal/personal/store"
+	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 	approvalrules "github.com/inhere/suga/pkg/agentcore/tools/rules"
@@ -53,6 +54,10 @@ type subAgents struct {
 	// model-facing wording in the same language as the parent's (i18n phase
 	// 1b); nil is the Chinese compatibility fallback.
 	translator i18n.Translator
+	// extraTools are registered in every child next to the whitelisted catalog
+	// tools. Production leaves it empty (children only read); it is the seam
+	// that lets tests give a child a write tool to prove the origin guard.
+	extraTools []agentcore.Tool
 }
 
 var _ native.SubAgents = (*subAgents)(nil)
@@ -161,7 +166,14 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	// parent policy still applies explicit deny/ask rules, while an ask has no
 	// child terminal and therefore fails closed.
 	policy := s.childPolicy()
-	approval := tools.NewApproval(registry, newPolicyApprover(policy))
+	// A child has no terminal to ask on, so the external-origin guard runs in its
+	// "nobody to ask" form: a write or exec call whose arguments copy text from a
+	// web / MCP result the child itself read is refused with the source named,
+	// the same rule as suga run and ACP (suga-up40). The parent's chat question
+	// is not reused: a child may run in the background, and a question about its
+	// call would arrive detached from what the person is looking at.
+	origin := tools.NewExternalOrigin()
+	approval := tools.NewApproval(registry, guardExternalOrigin(newPolicyApprover(policy), nil, origin))
 	approval.SetDisabled(subAgentDisabledHints(registry))
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	if err != nil {
@@ -172,7 +184,7 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 		return nil, nil, err
 	}
 	runner, err := personal.New(personal.Config{
-		Repository: repo, Provider: provider, Tools: approval,
+		Repository: repo, Provider: provider, Tools: &originObserver{inner: approval, origin: origin},
 		Model: rs.models.Main.Model, ProviderName: rs.models.Main.Provider.ID,
 		ContextWindow: appconfig.ContextWindowFor(rs.models.Main),
 		Price:         priceLookup(rs.models),
@@ -225,6 +237,9 @@ func (s *subAgents) toolRegistry(kind string) (*tools.Registry, error) {
 		if wanted[tool.Name()] {
 			registry.Register(tool)
 		}
+	}
+	for _, tool := range s.extraTools {
+		registry.Register(tool)
 	}
 	if err := applyDisabledTools(registry); err != nil {
 		return nil, err

@@ -180,6 +180,10 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 		}
 	}
 
+	if originConfirmed(ctx) {
+		// The external-origin question already asked about this call.
+		return nil
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	asked := time.Now()
@@ -262,6 +266,34 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 		tools.ReportApproval(ctx, tools.AskedAndDenied, wait)
 		return tools.Denied("用户拒绝执行 " + name)
 	}
+}
+
+// previewAsk returns the question Decide would put to the person for call, and
+// false when it would not ask (a rule or the mode allows or denies it, or the
+// call is checked elsewhere). It changes nothing.
+func (a *chatApprover) previewAsk(call agentcore.ToolCall, tool agentcore.Tool) (tools.Question, bool) {
+	if a.usePolicy {
+		a.mu.Lock()
+		action, _ := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+		a.mu.Unlock()
+		if action != approvalrules.Ask {
+			return tools.Question{}, false
+		}
+		return a.questionFor(call, tool, a.scopeFor(call, tool)), true
+	}
+	if tools.IsMCP(tool) {
+		return tools.Question{}, false
+	}
+	if meta := tools.MetaOf(tool); meta.ReadOnly || meta.AgentState || a.auto {
+		return tools.Question{}, false
+	}
+	a.mu.Lock()
+	always := a.always[call.Name]
+	a.mu.Unlock()
+	if always {
+		return tools.Question{}, false
+	}
+	return a.question(call), true
 }
 
 // persistRule resolves the explicit user choice to one of the two rule files.

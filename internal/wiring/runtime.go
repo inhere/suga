@@ -762,6 +762,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		// The output limit of the main model's requests: the CLI flag and the
 		// environment override the configured value.
 		MaxOutputTokens: maxOutputTokens,
+		// The compaction knobs: context.pin_first_user, context.keep_user_words_budget, context.summary_max_tokens.
+		PinFirstUser: rs.compact.PinFirstUser, KeepUserWordsBudget: rs.compact.KeepUserWordsBudget, SummaryMaxTokens: rs.compact.SummaryMaxTokens,
 		RuleSource: func() (string, string, error) {
 			home, err := appconfig.ResolveSugaHome()
 			if err != nil {

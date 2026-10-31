@@ -26,6 +26,9 @@ const (
 	// requestTextLimit caps one request's text (bytes, head+tail kept): a
 	// pasted log must not blow up every request of the new segment.
 	requestTextLimit = 4000
+	// maxBudgetRequests bounds how many requests are looked at when
+	// context.keep_user_words_budget decides the count by bytes.
+	maxBudgetRequests = 50
 	// shortRequestRunes: shorter requests ("继续", "go on", "ok") say nothing
 	// about the task and are skipped.
 	shortRequestRunes = 6
@@ -126,6 +129,12 @@ func (r *Runner) recentRequests(ctx context.Context, sessionID, turnID string, n
 		seq  int64
 		text string
 	}
+	// context.keep_user_words_budget: the user's words have a byte budget of their
+	// own instead of the fixed count; the budget is applied below, newest first.
+	budget := r.cfg.KeepUserWordsBudget
+	if budget > 0 {
+		n = maxBudgetRequests
+	}
 	var typed, injected []request
 	for i := len(entries) - 1; i >= 0 && len(typed) < n; i-- { // newest first
 		e := entries[i]
@@ -154,6 +163,47 @@ func (r *Runner) recentRequests(ctx context.Context, sessionID, turnID string, n
 		typed = append(typed, req)
 	}
 	sort.Slice(typed, func(i, j int) bool { return typed[i].seq < typed[j].seq })
+	if budget > 0 {
+		// Newest first, keep requests while they fit; the newest is always kept
+		// (cut to the budget when it alone is larger).
+		used, keepFrom := 0, len(typed)
+		for i := len(typed) - 1; i >= 0; i-- {
+			if used+len(typed[i].text) > budget && keepFrom < len(typed) {
+				break
+			}
+			used += len(typed[i].text)
+			keepFrom = i
+		}
+		typed = typed[keepFrom:]
+		if len(typed) > 0 && len(typed[len(typed)-1].text) > budget {
+			typed[len(typed)-1].text = truncateMiddle(typed[len(typed)-1].text, budget)
+		}
+	}
+	if r.cfg.PinFirstUser {
+		// context.pin_first_user: the session's first request (the task as it
+		// was first stated) rides along in every package, ahead of the recent
+		// ones and outside their budget; skipped when it is among them already.
+		for _, e := range entries { // oldest first
+			if !done[e.TurnID] {
+				continue
+			}
+			var m agentcore.Message
+			if err := json.Unmarshal(e.JSON, &m); err != nil || m.Role != "user" || isContextUpdate(m) || isSegmentContext(m) || isInjectedItem(m) {
+				continue
+			}
+			text := strings.TrimSpace(m.Content)
+			if isFillerRequest(text) {
+				continue
+			}
+			if v, _ := m.Metadata[metaInjected].(bool); v {
+				continue
+			}
+			if len(typed) == 0 || e.Seq < typed[0].seq {
+				typed = append([]request{{seq: e.Seq, text: truncateMiddle(text, requestTextLimit)}}, typed...)
+			}
+			break
+		}
+	}
 	out := make([]string, len(typed))
 	for i, req := range typed {
 		out[i] = req.text
