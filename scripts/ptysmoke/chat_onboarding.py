@@ -10,8 +10,8 @@ closed localhost endpoint: ``models`` must finish without constructing a
 provider or making a request.
 
 The chat candidate/Tab/trace and config-file snapshot checks are in
-``chat_model.py``, which runs immediately after this scenario from
-``make smoke-chat``.
+the Go TestChatModel (test/ptye2e), which runs from
+``make smoke-go``.
 
 Reverse verification (Linux/macOS only):
 
