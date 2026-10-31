@@ -1,0 +1,617 @@
+{
+  "artifact_type": "review_ledger",
+  "schema_version": "2.1.0",
+  "candidate_progression": "DOCUMENT_REVISION",
+  "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "b7b335261c060d50fedbfcf2f6eb28b95f6fa263",
+    "subject_path": "docs/design/2026-10-31-session-rewind-fork-design.md",
+    "document_revision": "0.2"
+  },
+  "author_id": "author-main",
+  "required_rounds": [
+    1,
+    2
+  ],
+  "required_sections": [
+    "总体方案",
+    "架构",
+    "关键流程",
+    "已确认事实与规范",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "范围与非目标"
+  ],
+  "required_axes": [
+    "Standards/Governance",
+    "Spec/Executability"
+  ],
+  "receipts": [
+    {
+      "round": 1,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "0ae0a20c5965ce544b794a0445e6445428380387",
+        "subject_path": "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "document_revision": "0.1"
+      },
+      "axis": "Standards/Governance",
+      "reviewer_id": "reviewer-standards",
+      "session_id": "reviewer-standards-r1",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "docs/review/2026-10-31-session-rewind-fork/standards-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork/standards-review.md",
+        "source_report_commit_oid": "b71dd04e3fbca2a31920c6de2867b3e2bd3b0811",
+        "source_report_blob_oid": "c20c035a20833d1c0faea6909a9f5afb5e1d6371",
+        "direct_repo_paths": [
+          "docs/design/2026-10-31-session-rewind-fork-design.md",
+          "docs/review/2026-10-31-session-rewind-fork/standards-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "总体方案",
+        "架构",
+        "关键流程",
+        "已确认事实与规范",
+        "安全、数据、运维与回滚",
+        "决策",
+        "待确认事项",
+        "范围与非目标"
+      ],
+      "dependency_edges": [
+        {
+          "from": "总体方案",
+          "to": "关键流程"
+        },
+        {
+          "from": "已确认事实与规范",
+          "to": "总体方案"
+        },
+        {
+          "from": "总体方案",
+          "to": "安全、数据、运维与回滚"
+        }
+      ],
+      "global_invariants": [
+        "rewind 追加回退记录而不删数据，被回退内容不得进入模型上下文",
+        "fork 产生新会话且源会话不变"
+      ],
+      "findings": [
+        {
+          "finding_id": "S1",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "读者清单漏 segment_handoff.go:112-124 recentRequests、handoff.go:124 buildHandoff 的 LatestEntry(EntryPlan)、lastreply.go:28 LastReply、ledger.go:262；按 turn 读取的 compact.go:176、replay.go:233、admit.go:165、steer.go:418 未说明",
+          "impact": "[BUG] rewind 后的 compaction/handoff 把被回退的原话与 plan 写进新交接包，R2 不泄漏不成立",
+          "recommendation": "读者规则改为凡进入模型上下文或用户可见当前状态的 entry 读者，同类穷尽逐个标注",
+          "core_acceptance": "R2：rewind 后模型上下文不含被回退内容",
+          "necessary_causal_chain": [
+            "设计只列 loadHistory、latestPlan、session card、SegmentHistory 四类读者",
+            "未列读者 recentRequests/buildHandoff/LastReply 仍读取全部 entries",
+            "compaction 或 handoff 将被回退的用户原话与 plan 写入新交接包并进入模型上下文",
+            "R2 不泄漏验收不成立"
+          ],
+          "minimal_owner": [
+            "设计文档：总体方案中 visibleEntries 读者规则一节"
+          ],
+          "deletion_alternative": "FAIL",
+          "scope_effect": []
+        },
+        {
+          "finding_id": "S2",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "session_search/Entries 可见性只作事实陈述未作决策",
+          "impact": "可见性语义不明确",
+          "recommendation": "补充决策"
+        },
+        {
+          "finding_id": "S3",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "trace 已回退标记超出范围与代码组织",
+          "impact": "范围扩张",
+          "recommendation": "移除或延后该标记"
+        },
+        {
+          "finding_id": "S4",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "多步写入失败语义不完整（GR109）",
+          "impact": "失败时状态不确定",
+          "recommendation": "补全失败边界"
+        },
+        {
+          "finding_id": "S5",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "SR1301 入参校验与资源归属未写；fork 继承 :rw 授予未说明",
+          "impact": "安全核对清单缺项",
+          "recommendation": "补入参校验与授予继承说明"
+        },
+        {
+          "finding_id": "S6",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "taint 继承判据单位不一致（tainted_at 是时间，cut 是 seq）",
+          "impact": "判据无法直接比较",
+          "recommendation": "统一判据单位"
+        },
+        {
+          "finding_id": "S7",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "代码组织缺装配项（GR108、SR2004）",
+          "impact": "结构违规，计划批准前必须修正",
+          "recommendation": "补全代码组织一节"
+        },
+        {
+          "finding_id": "S8",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "工作声明与待确认事项有过时表述，review budget 未写",
+          "impact": "文档与现状不一致",
+          "recommendation": "更新表述并写 review budget"
+        },
+        {
+          "finding_id": "S9",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "部分事实引用不准（store 路径、undo_options 行号、heldLocks 位置等）",
+          "impact": "引用误导读者",
+          "recommendation": "修正引用"
+        },
+        {
+          "finding_id": "S10",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "回滚到旧版本的两条分支拼接未披露",
+          "impact": "回滚影响披露不全",
+          "recommendation": "在回滚一节披露"
+        },
+        {
+          "finding_id": "S11",
+          "severity": "LOW",
+          "disposition": "OUT_OF_SCOPE",
+          "evidence": "回填第 N 轮提问到输入行不在 issue ①② 内",
+          "impact": "超出 scope freeze",
+          "recommendation": "不修改当前 candidate"
+        }
+      ],
+      "verdict": "BLOCKED"
+    },
+    {
+      "round": 1,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "0ae0a20c5965ce544b794a0445e6445428380387",
+        "subject_path": "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "document_revision": "0.1"
+      },
+      "axis": "Spec/Executability",
+      "reviewer_id": "reviewer-spec",
+      "session_id": "reviewer-spec-r1",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "docs/review/2026-10-31-session-rewind-fork/spec-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork/spec-review.md",
+        "source_report_commit_oid": "b71dd04e3fbca2a31920c6de2867b3e2bd3b0811",
+        "source_report_blob_oid": "9733c5c3e01b0bbc0d8b9e48382bed0f719567f2",
+        "direct_repo_paths": [
+          "docs/design/2026-10-31-session-rewind-fork-design.md",
+          "docs/review/2026-10-31-session-rewind-fork/spec-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "总体方案",
+        "架构",
+        "关键流程",
+        "已确认事实与规范",
+        "安全、数据、运维与回滚",
+        "决策",
+        "待确认事项",
+        "范围与非目标"
+      ],
+      "dependency_edges": [
+        {
+          "from": "总体方案",
+          "to": "关键流程"
+        },
+        {
+          "from": "已确认事实与规范",
+          "to": "总体方案"
+        },
+        {
+          "from": "总体方案",
+          "to": "安全、数据、运维与回滚"
+        }
+      ],
+      "global_invariants": [
+        "rewind 追加回退记录而不删数据，被回退内容不得进入模型上下文",
+        "fork 产生新会话且源会话不变"
+      ],
+      "findings": [
+        {
+          "finding_id": "F1",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "loadHistory 只采纳 done[e.TurnID]（context.go:206-208），done 来自 ListTurns；turns.id 为全局主键（核心迁移 :15-23）；设计未提 turns 与 entry 的 turn_id",
+          "impact": "[MISSING_FUNCTION][BUG] fork 未处理 turns 表，分叉会话历史全部丢失",
+          "recommendation": "为复制的轮生成新 turn_id 并写 turns 行，按映射改写 entry TurnID，写明 last_turn_id；单测 fork 后 loadHistory 条目数等于源 cut 前可见条目数",
+          "core_acceptance": "A2：fork 新会话可续聊且等于源会话第 N 轮前可见历史",
+          "necessary_causal_chain": [
+            "fork 仅复制 entries，不复制 turns 行",
+            "loadHistory 只采纳 done 中存在的 TurnID，新会话 done 为空",
+            "分叉会话加载历史为空，A2 不成立"
+          ],
+          "minimal_owner": [
+            "设计文档：fork 流程一节（turn_id 映射与 turns 行写入）"
+          ],
+          "deletion_alternative": "FAIL",
+          "scope_effect": [
+            "state"
+          ]
+        },
+        {
+          "finding_id": "F2",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "recentRequests（segment_handoff.go:111-160）进入交接包与 compaction 的 RecentRequests；buildHandoff（handoff.go:100-128）的 recentRequests、独立 LatestEntry(EntryPlan)、loadedToolNames",
+          "impact": "[BUG] 漏列的读者会把被回退内容送给模型",
+          "recommendation": "读者定义扩为进入模型请求或交接包的 entries 读取，逐个列出（含 nudge.go:221；说明 turnSteers、markInterruptedToolCalls 为何不受影响）；单测 rewind 后 compaction 交接包不含被回退提问",
+          "core_acceptance": "A1：回退后模型上下文无被回退内容",
+          "necessary_causal_chain": [
+            "设计的读者清单不含 recentRequests 与 buildHandoff",
+            "这些读者仍读取全部 entries",
+            "被回退内容进入交接包与 compaction 并送达模型",
+            "A1 不成立"
+          ],
+          "minimal_owner": [
+            "设计文档：读者清单一节"
+          ],
+          "deletion_alternative": "FAIL",
+          "scope_effect": []
+        },
+        {
+          "finding_id": "F3",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "removeCheckpoint 整体删除目录不留墓碑（snapshot_retention.go:620-628）；ListCheckpoints 对无快照轮直接跳过（undo.go:363-366）",
+          "impact": "[MISSING_FUNCTION][DATA] R4 快照被清理列为不可恢复无数据来源",
+          "recommendation": "以 events 中 Kind=tool、Name∈{file_write,file_edit,file_remove}（observe.go:311，analyze.go:207 同类用法）判断有写调用但无快照即已清理，路径取自事件属性；快照整体关闭时单独说明",
+          "core_acceptance": "A3：R4 有数据来源与实现路径",
+          "necessary_causal_chain": [
+            "快照清理后目录被整体删除且不留墓碑",
+            "ListCheckpoints 对无快照轮直接跳过",
+            "设计未指定其他数据来源，无法判定快照已被清理",
+            "R4 无法实现，文件回退可能静默漏恢复文件"
+          ],
+          "minimal_owner": [
+            "设计文档：文件回退流程一节（清理检测来源）"
+          ],
+          "deletion_alternative": "UNKNOWN",
+          "scope_effect": []
+        },
+        {
+          "finding_id": "F4",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "visibleEntries 形态与语义未定死（限量查询、Types 过滤、区间并集）",
+          "impact": "实现不唯一",
+          "recommendation": "定死形态与语义"
+        },
+        {
+          "finding_id": "F5",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "其他读者遗漏或需取舍（LastReply、last_turn_id、session card 口径、session_search/recall、sugasdk.Entries 返回新类型）",
+          "impact": "读者覆盖不全",
+          "recommendation": "逐个取舍"
+        },
+        {
+          "finding_id": "F6",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "cut_seq 与用户轮序号定义不明（第 N 轮首条 entry seq-1；用户轮以 suga.injected 元数据判定）",
+          "impact": "选轮边界不唯一",
+          "recommendation": "写明定义"
+        },
+        {
+          "finding_id": "F7",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "文件回退实现路径未定（gate 不可重入、OnFilesRestored、undone/partial、级联冲突、失败边界）",
+          "impact": "文件回退实现不唯一",
+          "recommendation": "写明不加锁执行函数与失败语义"
+        },
+        {
+          "finding_id": "F8",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "meta 与进程内状态重置未写（loaded_tools、fold 两字段、prefix 缓存、待注入任务通知、undo.pending）",
+          "impact": "回退后状态残留",
+          "recommendation": "列出重置项"
+        },
+        {
+          "finding_id": "F9",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "fork 其余细节缺失（cwd 与重复 start 段、first_kept_seq 映射、图片/spill/Refs、单事务与失败清理、taint 比较、回合中行为）",
+          "impact": "fork 实现不唯一",
+          "recommendation": "补全细节"
+        },
+        {
+          "finding_id": "F10",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "旧版本下的 compaction 会把屏蔽区间永久写进摘要",
+          "impact": "回滚泄漏",
+          "recommendation": "在回滚一节披露"
+        },
+        {
+          "finding_id": "F11",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "可测性：fakeLLM 需记录完整消息列表与按轮写入不同内容",
+          "impact": "测试难以覆盖",
+          "recommendation": "点名单测"
+        },
+        {
+          "finding_id": "D1",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "transcripts 无回退标记",
+          "impact": "未来增强",
+          "recommendation": "延后"
+        },
+        {
+          "finding_id": "D2",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "sugasdk RequestID 去重可能重放被屏蔽轮输出",
+          "impact": "未来增强",
+          "recommendation": "延后"
+        },
+        {
+          "finding_id": "D3",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "fork 条目进 FTS 造成跨会话重复命中",
+          "impact": "未来增强",
+          "recommendation": "延后"
+        },
+        {
+          "finding_id": "O1",
+          "severity": "LOW",
+          "disposition": "OUT_OF_SCOPE",
+          "evidence": "redo、summarize、CLI、ACP",
+          "impact": "超出 scope freeze",
+          "recommendation": "不修改当前 candidate"
+        }
+      ],
+      "verdict": "BLOCKED"
+    },
+    {
+      "round": 2,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "b7b335261c060d50fedbfcf2f6eb28b95f6fa263",
+        "subject_path": "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "document_revision": "0.2"
+      },
+      "axis": "Standards/Governance",
+      "reviewer_id": "reviewer-standards",
+      "session_id": "reviewer-standards-r2",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "docs/review/2026-10-31-session-rewind-fork/standards-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork/standards-review.md",
+        "source_report_commit_oid": "f18babe8df2b22224a2d0e873af2609d54371433",
+        "source_report_blob_oid": "c89a7673c7c0e29ba3f278421c9c2e685d74cae7",
+        "direct_repo_paths": [
+          "docs/design/2026-10-31-session-rewind-fork-design.md",
+          "docs/review/2026-10-31-session-rewind-fork/standards-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "总体方案",
+        "架构",
+        "关键流程",
+        "已确认事实与规范",
+        "安全、数据、运维与回滚",
+        "决策",
+        "待确认事项",
+        "范围与非目标"
+      ],
+      "dependency_edges": [
+        {
+          "from": "总体方案",
+          "to": "关键流程"
+        },
+        {
+          "from": "已确认事实与规范",
+          "to": "总体方案"
+        },
+        {
+          "from": "总体方案",
+          "to": "安全、数据、运维与回滚"
+        }
+      ],
+      "global_invariants": [
+        "rewind 追加回退记录而不删数据，被回退内容不得进入模型上下文",
+        "fork 产生新会话且源会话不变"
+      ],
+      "findings": [
+        {
+          "finding_id": "R2-S-N1",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": ":checkpoints/:undo（undo.go:347 ListTurns）与 segment_clear.go:100（LastEntrySeq）未在不受影响的读者中归类",
+          "impact": "实施时可能误把 :undo 计数改为经屏蔽，致屏蔽轮文件改动无法撤销",
+          "recommendation": "计划中写明理由（文件改动仍在磁盘；LastEntrySeq 不读内容）"
+        },
+        {
+          "finding_id": "R2-S-N2",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "R11 只排除当前会话，workspace/all 作用域下其他会话（含 fork 源会话）屏蔽条目是否可检索未写明",
+          "impact": "检索取舍不明确",
+          "recommendation": "计划中一句话写明取舍与理由"
+        }
+      ],
+      "verdict": "PASS"
+    },
+    {
+      "round": 2,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "b7b335261c060d50fedbfcf2f6eb28b95f6fa263",
+        "subject_path": "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "document_revision": "0.2"
+      },
+      "axis": "Spec/Executability",
+      "reviewer_id": "reviewer-spec",
+      "session_id": "reviewer-spec-r2",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/design/2026-10-31-session-rewind-fork-design.md",
+        "docs/review/2026-10-31-session-rewind-fork/spec-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork/spec-review.md",
+        "source_report_commit_oid": "f18babe8df2b22224a2d0e873af2609d54371433",
+        "source_report_blob_oid": "66bdcafc11267f1ad8db773c88321374189099aa",
+        "direct_repo_paths": [
+          "docs/design/2026-10-31-session-rewind-fork-design.md",
+          "docs/review/2026-10-31-session-rewind-fork/spec-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "总体方案",
+        "架构",
+        "关键流程",
+        "已确认事实与规范",
+        "安全、数据、运维与回滚",
+        "决策",
+        "待确认事项",
+        "范围与非目标"
+      ],
+      "dependency_edges": [
+        {
+          "from": "总体方案",
+          "to": "关键流程"
+        },
+        {
+          "from": "已确认事实与规范",
+          "to": "总体方案"
+        },
+        {
+          "from": "总体方案",
+          "to": "安全、数据、运维与回滚"
+        }
+      ],
+      "global_invariants": [
+        "rewind 追加回退记录而不删数据，被回退内容不得进入模型上下文",
+        "fork 产生新会话且源会话不变"
+      ],
+      "findings": [
+        {
+          "finding_id": "R2-F-F11",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "正文未写 fakeLLM 记录完整消息、按轮写入不同内容与点名单测（第 1 轮 F11 仍 OPEN）",
+          "impact": "可测性不足",
+          "recommendation": "在实施计划补齐"
+        },
+        {
+          "finding_id": "R2-F-N1",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "fork 单个事务用现有 API 无法实现：CreateSession、CreateTurn、AppendEntries 各自独立，beginWriteTx 私有；附件复制不在 DB 事务中；insertSession 必写 start 段记录（runner_sessions.go:181）",
+          "impact": "fork 原子性无法保证",
+          "recommendation": "新增 store 方法一次写入 session+turns+entries，或失败即 DeleteSession+DeleteSessionFiles；fork 不经 insertSession"
+        },
+        {
+          "finding_id": "R2-F-N2",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "快照已清理检测须只统计 Status=ok 的写事件；target 为原始路径，file_remove 可为目录",
+          "impact": "清理检测可能误判",
+          "recommendation": "限定 Status=ok 并处理目录路径"
+        },
+        {
+          "finding_id": "R2-F-N3",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "session card 的 Turns 来自 CountTurns（turns 表），屏蔽区间不影响",
+          "impact": "口径不明",
+          "recommendation": "写明口径或扣减"
+        },
+        {
+          "finding_id": "R2-F-N4",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "只回会话时丢弃 suga.undo.pending 会丢失 cut 之前 undo 的事实；引用应为 xhen/internal/link/anchor.go",
+          "impact": "通知信息丢失",
+          "recommendation": "合并两段通知并修正引用"
+        },
+        {
+          "finding_id": "R2-F-N5",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "限量查询需新增 store 游标方法（如 RecentEntriesBefore）与 FTS 排除方式，并保持 BenchmarkSessionCard",
+          "impact": "分页正确性与性能风险",
+          "recommendation": "在计划中落实游标方法与基准"
+        }
+      ],
+      "verdict": "PASS"
+    }
+  ],
+  "dependency_edges": [
+    {
+      "from": "总体方案",
+      "to": "关键流程"
+    },
+    {
+      "from": "已确认事实与规范",
+      "to": "总体方案"
+    },
+    {
+      "from": "总体方案",
+      "to": "安全、数据、运维与回滚"
+    }
+  ],
+  "global_invariants": [
+    "rewind 追加回退记录而不删数据，被回退内容不得进入模型上下文",
+    "fork 产生新会话且源会话不变"
+  ],
+  "open_core_blockers": [],
+  "status": "PASS"
+}
