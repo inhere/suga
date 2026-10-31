@@ -21,6 +21,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/chatui"
 	"github.com/inhere/suga/pkg/chatui/lineedit"
 )
 
@@ -207,7 +208,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// chat.colors: the styling of chat's own lines, resolved once for this terminal.
 	// A bad key, style, mode or color stops chat before it prints anything, instead
 	// of leaving the line it meant to paint as it was.
-	pal, err := newPalette(opts.Theme, opts.Colors)
+	pal, err := chatui.NewPalette(opts.Theme, opts.Colors)
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,6 @@
 package chat
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/inhere/suga/internal/i18n"
 	"io"
@@ -19,7 +17,6 @@ import (
 	"github.com/inhere/suga/internal/output/termtext"
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
-	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/chatui"
@@ -29,9 +26,9 @@ import (
 
 const (
 	// resultSummaryLimit caps the one-line tool result summary, in runes.
-	resultSummaryLimit = 100
+	resultSummaryLimit = chatui.ResultSummaryLimit
 	// callArgsLimit caps the tool_call argument text on screen, in runes.
-	callArgsLimit = 120
+	callArgsLimit = chatui.CallArgsLimit
 
 	promptText = "❯ "
 
@@ -180,9 +177,9 @@ type agentProgressState struct {
 func newRenderer(opts rendererOptions) *Renderer {
 	if opts.Palette == nil {
 		// The defaults: no configured key can fail, so the error is unreachable.
-		opts.Palette, _ = newPalette("", nil)
+		opts.Palette, _ = chatui.NewPalette("", nil)
 	}
-	r := &Renderer{opts: opts, pal: opts.Palette, agentProgress: make(map[string]*agentProgressState)}
+	r := &Renderer{opts: opts, pal: opts.Palette.WithColor(opts.Color), agentProgress: make(map[string]*agentProgressState)}
 	r.spin = newThinkingSpinner(spinnerConfig{
 		enabled:    opts.Spinner && opts.Color,
 		out:        opts.Out,
@@ -208,7 +205,7 @@ func (r *Renderer) localNow() time.Time {
 
 // paintDim dims a line (the arguments and the notices around a tool call) on a
 // colored terminal.
-func (r *Renderer) paintDim(s string) string { return r.ink(r.pal.dim, s) }
+func (r *Renderer) paintDim(s string) string { return r.ink(r.pal.DimInk(), s) }
 
 // ink paints s with one resolved chat.colors style (an SGR prefix, "" for the
 // terminal's default foreground). Like the paint() above it writes no SGR when the
@@ -220,35 +217,7 @@ func (r *Renderer) ink(sgr, s string) string {
 	if !r.opts.Color || sgr == "" || !color.Enable || !color.SupportColor() {
 		return s
 	}
-	return paintSGR(sgr, s)
-}
-
-// toolCallLine is the one-line display of a tool call: the symbol and the name of
-// its family, then the arguments dim. chat.colors.style picks how much of the line
-// the family color covers (the symbol only, the symbol and the name, the whole
-// line).
-func (r *Renderer) toolCallLine(name, args string) string {
-	family := toolFamilyOf(name)
-	symbol, ink := familySymbols[family], r.pal.familyInk(family)
-	switch r.pal.style {
-	case colorStyleLine:
-		line := symbol + " " + name
-		if args != "" {
-			line += " " + args
-		}
-		return r.ink(ink, line)
-	case colorStyleSymbol:
-		line := r.ink(ink, symbol) + " " + r.paintDim(name)
-		if args != "" {
-			line += " " + r.paintDim(args)
-		}
-		return line
-	}
-	line := r.ink(ink, symbol+" "+name)
-	if args != "" {
-		line += " " + r.paintDim(args)
-	}
-	return line
+	return r.pal.Paint(sgr, s)
 }
 
 // colorEnabledFor reports whether w is a terminal and NO_COLOR is not set.
@@ -383,7 +352,7 @@ func (r *Renderer) Handle(event personal.Event) {
 	case "tool_call":
 		r.live.Finish() // never start a tool line in the middle of streamed text
 		r.beginAgent(event)
-		fmt.Fprintln(r.opts.Out, r.toolCallLine(event.ToolName, r.toolCallArgs(event.ToolName, event.Text, event.ToolArgs)))
+		fmt.Fprintln(r.opts.Out, chatui.ToolCallLine(r.tr(), r.pal, chatui.ToolEvent{Name: event.ToolName, Args: event.ToolArgs, Text: event.Text}, r.opts.Workspace))
 		r.toolRunning(event.ToolName) // the tool runs now, the model does not
 		// A file change was read before the tool ran (personal.Config.DiffPreview);
 		// the approval question and result below show it.
@@ -392,17 +361,8 @@ func (r *Renderer) Handle(event personal.Event) {
 		r.live.Finish()
 		change, tool := r.pending, event.ToolName
 		r.pending = nil
-		summary := truncateLine(redact.Secrets(event.Text), resultSummaryLimit)
-		if event.IsError {
-			fmt.Fprintln(r.opts.Out, r.ink(r.pal.errInk, strings.TrimRight("  ⎿ error: "+summary, " ")))
-		} else {
-			// The ok label carries the status color and the summary the terminal's own
-			// foreground: a result reads brighter than the arguments above it.
-			line := r.ink(r.pal.ok, "  ⎿ ok:")
-			if summary != "" {
-				line += " " + r.ink("", summary)
-			}
-			fmt.Fprintln(r.opts.Out, line)
+		fmt.Fprintln(r.opts.Out, chatui.ToolResultLine(r.tr(), r.pal, chatui.ToolEvent{Name: event.ToolName, Text: event.Text, IsError: event.IsError}))
+		if !event.IsError {
 			r.noteMemory(event)
 			r.showToolResult(change, tool)
 		}
@@ -420,7 +380,7 @@ func (r *Renderer) Handle(event personal.Event) {
 		r.agentMu.Unlock()
 		if r.agentProgressMode() == "full" {
 			r.live.Finish()
-			line := "  · " + r.ink(r.pal.familyInk(toolFamilyOf(event.ToolName)), event.ToolName)
+			line := "  · " + r.ink(r.pal.FamilyInk(toolFamilyOf(event.ToolName)), event.ToolName)
 			if args := r.toolCallArgs(event.ToolName, event.Text, event.ToolArgs); args != "" {
 				line += " " + r.paintDim(args)
 			}
@@ -503,7 +463,7 @@ func (r *Renderer) renderPlan(event personal.Event) {
 	if event.Plan.Explanation != "" {
 		head += " " + truncateLine(event.Plan.Explanation, callArgsLimit)
 	}
-	fmt.Fprintln(r.opts.Out, r.ink(r.pal.familyInk(familyMeta), head))
+	fmt.Fprintln(r.opts.Out, r.ink(r.pal.FamilyInk(familyMeta), head))
 	for _, step := range event.Plan.Steps {
 		switch step.Status {
 		case "completed":
@@ -799,42 +759,5 @@ func formatElapsed(d time.Duration) string {
 
 // truncateLine collapses whitespace (one display line), removes terminal controls, and cuts to limit runes.
 func truncateLine(s string, limit int) string {
-	s = strings.Join(strings.Fields(termtext.Clean(s)), " ")
-	runes := []rune(s)
-	if len(runes) <= limit {
-		return s
-	}
-	return string(runes[:limit-1]) + "…"
-}
-
-// toolArgsText makes the arguments of a tool call (event.Text, the compact JSON
-// of personal.toolArgSummary) readable. encoding/json escapes <, > and & as
-// \u003c, \u003e and \u0026 for HTML, which turns the command of a shell call
-// such as `gofer ready 2>&1 | grep x` into unreadable escapes on the tool line:
-// decode the text and encode it again with HTML escaping off. Numbers keep their
-// exact form (decoder.UseNumber) and the keys keep the order the summary has
-// (both encode a map by sorted key). Anything that is not JSON is shown as it is.
-// Only the display changes; the events, the transcript and stream-json keep the
-// escaped text.
-func toolArgsText(text string) string {
-	if text == "" {
-		return ""
-	}
-	dec := json.NewDecoder(strings.NewReader(text))
-	dec.UseNumber()
-	var value any
-	if err := dec.Decode(&value); err != nil {
-		return text
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return text // more than one value: not the summary this is written for
-	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(value); err != nil {
-		return text
-	}
-	// Encoder.Encode ends every value with a newline; the tool line is one line.
-	return strings.TrimSuffix(buf.String(), "\n")
+	return chatui.TruncateLine(s, limit)
 }

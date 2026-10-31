@@ -5,6 +5,7 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/suga/pkg/chatui"
 )
 
 // colorRenderer returns a renderer whose lines are painted, with a palette built
@@ -74,7 +75,7 @@ func TestPaletteFamiliesApart(t *testing.T) {
 			pal := mustPalette(t, theme, map[string]string{colorsKeyMode: colorMode256})
 			seen := make(map[string]toolFamily, familyCount)
 			for family := 0; family < familyCount; family++ {
-				ink := pal.familyInk(toolFamily(family))
+				ink := pal.FamilyInk(toolFamily(family))
 				assert.StrContains(t, ink, "\x1b[38;5;")
 				if other, ok := seen[ink]; ok {
 					t.Fatalf("families %s and %s share the color %q", familyNames[other], familyNames[family], ink)
@@ -93,13 +94,13 @@ func TestPaletteThemes(t *testing.T) {
 	// terminal, and a CI runner without a 256 color terminal degrades the codes.
 	mode := map[string]string{colorsKeyMode: colorMode256}
 	dark, light := mustPalette(t, "", mode), mustPalette(t, themeLight, mode)
-	assert.Eq(t, "\x1b[38;5;111m", dark.familyInk(familyRead))
-	assert.Eq(t, "\x1b[38;5;25m", light.familyInk(familyRead))
+	assert.Eq(t, "\x1b[38;5;111m", dark.FamilyInk(familyRead))
+	assert.Eq(t, "\x1b[38;5;25m", light.FamilyInk(familyRead))
 	for family := 0; family < familyCount; family++ {
-		assert.True(t, dark.familyInk(toolFamily(family)) != light.familyInk(toolFamily(family)),
+		assert.True(t, dark.FamilyInk(toolFamily(family)) != light.FamilyInk(toolFamily(family)),
 			familyNames[family], "keeps a palette of its own")
 	}
-	assert.True(t, dark.dim != dark.ok && light.dim != light.ok, "the ok label and the dim arguments stay apart")
+	assert.True(t, dark.DimInk() != dark.OKInk() && light.DimInk() != light.OKInk(), "the ok label and the dim arguments stay apart")
 }
 
 // TestPaletteColorDepth: a named color always keeps its ANSI code, while a 256 or
@@ -108,27 +109,27 @@ func TestPaletteColorDepth(t *testing.T) {
 	t.Run("a 16 color name", func(t *testing.T) {
 		for _, mode := range []string{colorModeANSI, colorMode256, colorModeTrue} {
 			pal := mustPalette(t, "", map[string]string{colorsKeyMode: mode, "read": "blue"})
-			assert.Eq(t, "\x1b[34m", pal.familyInk(familyRead), mode)
+			assert.Eq(t, "\x1b[34m", pal.FamilyInk(familyRead), mode)
 		}
 	})
 	t.Run("256 colors", func(t *testing.T) {
 		pal := mustPalette(t, "", map[string]string{colorsKeyMode: colorMode256, "read": "256:75"})
-		assert.Eq(t, "\x1b[38;5;75m", pal.familyInk(familyRead))
+		assert.Eq(t, "\x1b[38;5;75m", pal.FamilyInk(familyRead))
 	})
 	t.Run("true color", func(t *testing.T) {
 		pal := mustPalette(t, "", map[string]string{colorsKeyMode: colorModeTrue, "read": "#87afff"})
-		assert.Eq(t, "\x1b[38;2;135;175;255m", pal.familyInk(familyRead))
+		assert.Eq(t, "\x1b[38;2;135;175;255m", pal.FamilyInk(familyRead))
 	})
 	t.Run("true color on a 256 color terminal", func(t *testing.T) {
 		pal := mustPalette(t, "", map[string]string{colorsKeyMode: colorMode256, "read": "#87afff"})
-		ink := pal.familyInk(familyRead)
+		ink := pal.FamilyInk(familyRead)
 		assert.StrContains(t, ink, "\x1b[38;5;")
 		assert.StrNotContains(t, ink, "38;2;")
 	})
 	t.Run("everything degrades to 16 colors", func(t *testing.T) {
 		for _, spec := range []string{"256:75", "#87afff"} {
 			pal := mustPalette(t, "", map[string]string{colorsKeyMode: colorModeANSI, "read": spec})
-			ink := pal.familyInk(familyRead)
+			ink := pal.FamilyInk(familyRead)
 			assert.StrNotContains(t, ink, "38;", spec)
 			assert.True(t, len(ink) > 0 && ink[len(ink)-1] == 'm', spec, "is an ANSI code")
 		}
@@ -136,16 +137,16 @@ func TestPaletteColorDepth(t *testing.T) {
 	t.Run("off writes no SGR", func(t *testing.T) {
 		pal := mustPalette(t, "", map[string]string{colorsKeyMode: colorModeOff})
 		for family := 0; family < familyCount; family++ {
-			assert.Eq(t, "", pal.familyInk(toolFamily(family)))
+			assert.Eq(t, "", pal.FamilyInk(toolFamily(family)))
 		}
-		assert.Eq(t, "", pal.ok)
-		assert.Eq(t, "", pal.errInk)
-		assert.Eq(t, "", pal.dim)
+		assert.Eq(t, "", pal.OKInk())
+		assert.Eq(t, "", pal.ErrInk())
+		assert.Eq(t, "", pal.DimInk())
 	})
 	t.Run("default keeps the terminal foreground", func(t *testing.T) {
 		pal := mustPalette(t, "", map[string]string{colorsKeyMode: colorMode256, "dim": "default"})
-		assert.Eq(t, "", pal.dim)
-		assert.StrContains(t, pal.familyInk(familyRead), "38;5;")
+		assert.Eq(t, "", pal.DimInk())
+		assert.StrContains(t, pal.FamilyInk(familyRead), "38;5;")
 	})
 }
 
@@ -176,4 +177,10 @@ func mustPalette(t *testing.T, theme string, settings map[string]string) *palett
 		t.Fatal(err)
 	}
 	return pal
+}
+
+// toolCallLine renders one tool call the way the renderer's tool_call event does
+// (the tests below pass the already shown argument text).
+func (r *Renderer) toolCallLine(name, args string) string {
+	return chatui.ToolCallLine(nil, r.pal.WithColor(r.opts.Color), chatui.ToolEvent{Name: name, Text: args}, "")
 }
