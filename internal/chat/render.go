@@ -94,7 +94,7 @@ type rendererOptions struct {
 	InputLineUp bool
 	// Status is where that status line goes (the input source); nil while chat keeps
 	// no input line on screen.
-	Status statusSetter
+	Status chatui.StatusSetter
 	// Spinner shows the "思考中…" waiting line while the model is asked for its
 	// next message (config chat.spinner, on by default). Like Markdown it needs
 	// a colored terminal: a pipe, a redirected output or NO_COLOR keeps it off.
@@ -132,7 +132,7 @@ type Renderer struct {
 	pal  *palette
 	live *chatui.LiveText
 	// spin is the waiting line between a model request and its first output.
-	spin *thinkingSpinner
+	spin *chatui.Spinner
 	// memory collects this turn's successful memory writes, shown with the
 	// status line ("已记住：...").
 	memory []string
@@ -180,15 +180,15 @@ func newRenderer(opts rendererOptions) *Renderer {
 		opts.Palette, _ = chatui.NewPalette("", nil)
 	}
 	r := &Renderer{opts: opts, pal: opts.Palette.WithColor(opts.Color), agentProgress: make(map[string]*agentProgressState)}
-	r.spin = newThinkingSpinner(spinnerConfig{
-		enabled:    opts.Spinner && opts.Color,
-		out:        opts.Out,
-		status:     opts.Status,
-		paint:      r.paintDim,
-		speed:      spinnerSpeed,
-		now:        opts.spinnerNow,
-		ticks:      opts.spinnerTicks,
-		translator: opts.Translator,
+	r.spin = chatui.NewSpinner(chatui.SpinnerConfig{
+		Enabled:    opts.Spinner && opts.Color,
+		Out:        opts.Out,
+		Status:     opts.Status,
+		Paint:      r.paintDim,
+		Speed:      spinnerSpeed,
+		Now:        opts.spinnerNow,
+		Ticks:      opts.spinnerTicks,
+		Translator: opts.Translator,
 	})
 	r.resetLive()
 	return r
@@ -299,7 +299,7 @@ func (r *Renderer) toolRunning(name string) {
 		r.spin.Stop()
 		return
 	}
-	r.spin.SetLabel(toolLabel(r.tr(), name))
+	r.spin.SetLabel(chatui.ToolLabel(r.tr(), name))
 }
 
 // toolCallArgs is the package's toolCallArgs (tool_summary.go) with the path
@@ -442,7 +442,7 @@ func (r *Renderer) noteBudget(snapshot *personal.BudgetSnapshot) {
 // instead of on a line of its own. The status text only changes there, since
 // the line editor clears that row around every write anyway; a line of its own
 // has to be taken down before each one.
-func (r *Renderer) statusLine() bool { return r.spin.statusRow() }
+func (r *Renderer) statusLine() bool { return r.spin.StatusRow() }
 
 // stopsWaiting reports whether event ends the "the model is answering" state:
 // its text, a tool call it asked for, a plan it published, or the next request

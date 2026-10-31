@@ -23,6 +23,7 @@
 ### 变更
 
 - 工具行与配色抽到公共包 `pkg/chatui`（xhen 对齐计划 B1，chat 显示不变）：新增 `ToolEvent`、`ToolCallLine`、`ToolResultLine`、`ToolCallArgs`、`Palette` / `NewPalette`（承接 `chat.colors.*`），工具参数摘要、家族符号与配色、结果行（参数与结果经 redact）从 `internal/chat` 迁入；Translator 为 nil 时用内置中文文案，`workdir` 为空时路径保持绝对；`internal/chat` 改为调用这些函数。
+- 等待行（spinner）抽到公共包 `pkg/chatui`（xhen 对齐计划 B2，chat 显示不变）：新增 `Spinner` / `SpinnerConfig` / `NewSpinner`、`StatusSetter`、`ToolLabel`（now / ticks 注入保留，状态行与独占行两种输出方式不变）；Translator 为 nil 时用内置中文文案；`internal/chat` 改为调用这些类型。
 - 新增调研 `docs/research/2026-10-30-decision-models.md`：TypeSafe System One（jev）决策模型的用途、协议（`POST /v1/systemone`，非 OpenAI 兼容）与在 suga 的接入建议；结论为暂不接入。
 - `file_grep` 的 lookaround / 反向引用回退匹配器依赖升级到 `github.com/dlclark/regexp2/v2` v2.12.0（原 v1.12.0）；回退语法与单文件 200ms 超时语义不变。
 - 伪终端冒烟开始从 Python 迁到 Go（`test/ptye2e`，`github.com/gookit/gopty/ptytest`，Linux 与 Windows ConPTY 同一套）：新增共享的 Go 假模型 `fakellm_test.go`，第一批迁移 `chat_edit`、`chat_diff`、`chat_render`、`chat_theme`、`chat_idle`、`chat_retry`、`chat_observe`、`chat_commands`；入口 `make smoke-go`，`make smoke-chat` 先跑它再跑剩余 Python 场景。

@@ -17,6 +17,7 @@ import (
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/mock"
 	"github.com/inhere/suga/pkg/agentcore/schedule"
+	"github.com/inhere/suga/pkg/chatui"
 )
 
 // The English side of the chat status output (language: en): the banner, the
@@ -143,8 +144,8 @@ func TestChatENSteerAndFollowUpLabels(t *testing.T) {
 func TestChatENSpinner(t *testing.T) {
 	t.Run("the waiting line of its own", func(t *testing.T) {
 		out, clock := &syncOutput{}, newSpinnerClock()
-		spin := newThinkingSpinner(spinnerConfig{
-			enabled: true, out: out, translator: enTranslator(t), now: clock.Now, ticks: clock.ticks,
+		spin := chatui.NewSpinner(chatui.SpinnerConfig{
+			Enabled: true, Out: out, Translator: enTranslator(t), Now: clock.Now, Ticks: clock.ticks,
 		})
 		spin.Start()
 		clock.tick(time.Second)

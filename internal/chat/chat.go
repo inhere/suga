@@ -384,7 +384,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	// The status line above the input line exists only while that line stays up
 	// for the whole turn (chat.steering); without it the waiting line keeps a row of
 	// its own (a typed nil would count as a status line, so it stays unset).
-	var status statusSetter
+	var status chatui.StatusSetter
 	if steering {
 		status = inputSource
 	}
