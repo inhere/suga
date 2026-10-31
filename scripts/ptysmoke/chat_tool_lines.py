@@ -42,7 +42,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
 from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
-from chat_observe import trace_events  # noqa: E402
+from chat_approval import trace_events  # noqa: E402
 
 REPLY = "SMOKE_TOOL_LINES_REPLY"
 # The fixture the read looks at: two lines are shown, the third is outside the

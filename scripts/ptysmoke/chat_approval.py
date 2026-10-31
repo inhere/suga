@@ -40,6 +40,7 @@ Reverse verification (drop the behaviour and the check fails):
 Exit status 0 when every check passes. The work dir defaults to tmp/smoke.
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -113,6 +114,17 @@ def check_answered_prompt(s, cols, name):
     s.check(name + ": typed text is a prompt line", input_row(s, cols) == "❯ abc")
     s.send(CTRL_U)
     s.drain(0.2)
+
+
+def trace_events(binary, env, session):
+    out = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True, text=True, env=env, timeout=60)
+    events = []
+    for line in out.stdout.splitlines():
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            pass
+    return events
 
 
 def turn_end(s, start):

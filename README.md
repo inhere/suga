@@ -236,7 +236,7 @@ suga ps | suga inspect manifest                                # running chats /
 
 ```bash
 go test -race ./...     # unit tests
-make smoke-chat         # PTY end-to-end chat tests incl. chat_memory and chat_idle (Linux/macOS, Python 3)
+make smoke-chat         # PTY end-to-end chat tests incl. chat_memory (Linux/macOS, Python 3); make smoke-go runs the Go ptytest scenarios (Linux and Windows ConPTY)
 go run ./scripts/eval --fake --bin tmp/smoke/suga   # task evals, see scripts/eval/README.md
 make build-all          # cross-compile to dist/
 ```
