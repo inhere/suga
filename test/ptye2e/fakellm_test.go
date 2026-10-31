@@ -29,9 +29,14 @@ import (
 //	memory  shell_exec of Command, then memory add ("Smoke rule"), then Reply;
 //	        a user message containing "直接" skips the shell_exec.
 //
-// Not ported yet (used by scripts that are still Python): refs, adddir, image,
-// deferred, demo, loop*, nudge, session, preferred, empty-final and
-// the sub-agent paths.
+//	adddir  every user message gets file_read of ReadPath, then file_write of
+//	        WritePath (WriteBody); "只读"/"只写" in the message narrows it to
+//	        one of the two calls.
+//	empty-final  file_write of WritePath, then an empty streamed completion
+//	        after the tool result (the resamples too).
+//
+// Not ported yet (used by scripts that are still Python): refs, image,
+// deferred, demo, loop*, nudge, session, preferred and the sub-agent paths.
 type fakeLLM struct {
 	Mode       string
 	Delay      time.Duration // before every response (fakellm.py --delay, default 1s)
@@ -59,7 +64,8 @@ type fakeLLM struct {
 	EditPath, EditOld, EditNew string // edit mode (target.txt, "SMOKE_TARGET old" -> "... new")
 	RemovePath                 string // edit mode: file_remove target (delete.txt)
 	ShellCommand               string // edit mode: shell_exec command (echo SMOKE_SHELL)
-	WritePath, WriteBody       string // edit mode "附加": file_write target
+	WritePath, WriteBody       string // edit mode "附加" / adddir / empty-final: file_write target
+	ReadPath                   string // adddir mode: file_read target
 
 	mu       sync.Mutex
 	served   int
@@ -68,9 +74,11 @@ type fakeLLM struct {
 
 // fakeRequest is what a scenario can check the model received.
 type fakeRequest struct {
+	Model    string // the "model" field of the request
 	Stream   bool
 	LastRole string
 	User     string   // the last user message
+	Messages string   // the text of every message the model received, one per line
 	Tools    []string // names of the tools offered
 	ToolText string   // the last tool result (first 300 bytes)
 }
@@ -164,14 +172,24 @@ func (f *fakeLLM) editCalls(user string) []toolCall {
 }
 
 func (f *fakeLLM) command() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.Command == "" {
 		return "echo SMOKE_OK"
 	}
 	return f.Command
 }
 
+// SetCommand changes the shell_exec command between the phases of a scenario.
+func (f *fakeLLM) SetCommand(command string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Command = command
+}
+
 func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		Model    string        `json:"model"`
 		Stream   bool          `json:"stream"`
 		Messages []fakeMessage `json:"messages"`
 		Tools    []struct {
@@ -216,7 +234,7 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	toolDone := lastTool > lastAssistant
 
-	req := fakeRequest{Stream: body.Stream, LastRole: body.Messages[len(body.Messages)-1].Role, User: user}
+	req := fakeRequest{Model: body.Model, Stream: body.Stream, LastRole: body.Messages[len(body.Messages)-1].Role, User: user}
 	for _, tl := range body.Tools {
 		name := tl.Function.Name
 		if name == "" {
@@ -224,6 +242,11 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Tools = append(req.Tools, name)
 	}
+	var texts []string
+	for _, m := range body.Messages {
+		texts = append(texts, m.text())
+	}
+	req.Messages = strings.Join(texts, "\n")
 	if lastTool >= 0 {
 		req.ToolText = body.Messages[lastTool].text()
 		if len(req.ToolText) > 300 {
@@ -275,6 +298,24 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if step < len(calls) {
 			call = &calls[step]
 		}
+	case "adddir":
+		calls := []toolCall{
+			{"file_read", map[string]any{"path": f.ReadPath}},
+			{"file_write", map[string]any{"path": f.WritePath, "content": orDefault(f.WriteBody, "SMOKE_ADD_DIR_WRITE")}},
+		}
+		switch {
+		case strings.Contains(user, "只读"):
+			calls = calls[:1]
+		case strings.Contains(user, "只写"):
+			calls = calls[1:]
+		}
+		if step < len(calls) {
+			call = &calls[step]
+		}
+	case "empty-final":
+		if !toolDone {
+			call = &toolCall{"file_write", map[string]any{"path": f.WritePath, "content": f.WriteBody}}
+		}
 	case "edit":
 		if calls := f.editCalls(user); step < len(calls) {
 			call = &calls[step]
@@ -296,6 +337,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"index": 0, "id": fmt.Sprintf("call_%d", time.Now().UnixNano()),
 			"function": map[string]any{"name": call.name, "arguments": string(raw)},
 		}}}
+	} else if f.Mode == "empty-final" {
+		delta = map[string]any{}
 	} else {
 		delta = map[string]any{"content": f.reply()}
 	}
@@ -354,6 +397,13 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		send(map[string]any{"choices": []any{}, "usage": usage})
 	}
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func orDefault(v, d string) string {
+	if v == "" {
+		return d
+	}
+	return v
 }
 
 // isImagePart reports a user message that only carries a tool result's picture.

@@ -106,4 +106,4 @@ RESULT: suga exited 21ms after Ctrl+C
 
 - **ConPTY 模式在 gofer job 里起不来**：`CreateProcess` 带 `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE` 时子进程立刻以 `0xC0000142`（STATUS_DLL_INIT_FAILED）退出，连 `cmd.exe` 也一样；job 不允许 breakaway（`CREATE_BREAKAWAY_FROM_JOB` 返回 Access denied），脱离 job 也做不到。`--pty-probe` 在普通终端（Windows Terminal / conhost）里跑才有效。
 - 打字用 `WriteConsoleInput` 写 KEY_EVENT；**合成 Ctrl-C 按键事件不能触发 CTRL_C_EVENT**（conhost 依赖真实键盘状态），所以 `exit` 场景（cooked）用 `GenerateConsoleCtrlEvent` 投递，`steer` 场景（raw）用合成按键，靠控制台把它的字符 `0x03` 交给读输入的一方。
-- 只覆盖 shell_exec 前台工具；审批提问（`Ask`）、后台任务、MCP 工具的中断另有测试（`scripts/ptysmoke/chat_approval.py`、`chat_tasks.py`）。
+- 只覆盖 shell_exec 前台工具；审批提问（`Ask`）、后台任务、MCP 工具的中断另有测试（`scripts/ptysmoke/chat_approval.py`、Go `TestChatTasks`（`test/ptye2e`））。
