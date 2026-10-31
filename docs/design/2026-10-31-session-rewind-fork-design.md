@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 会话 rewind 与 fork 设计
 
-> 状态：Draft 0.2 / 待人工计划批准
+> 状态：Draft 0.2 / 已批准（用户 2026-10-31：“批准 rewind 设计 0.2（含 R11、R12）”；两轴评审 PASS，见 docs/review/2026-10-31-session-rewind-fork/；设计批准只授权进入规划，不授权实施）
 
 ## 修订记录
 
@@ -277,7 +277,7 @@ flowchart LR
 
 用户已于 2026-10-31（web）确认：rewind 移到 0.54，原待确认 1–4 按推荐执行，采用两轴独立评审。
 
-0.2 新增的 R11（模型侧检索排除被屏蔽内容）与 R12（`loaded_tools` 保留不重算）都是推荐取舍，交批准时一并确认。
+0.2 新增的 R11（模型侧检索排除被屏蔽内容）与 R12（`loaded_tools` 保留不重算）已由用户随设计批准一并确认。
 
 ## 结论与人工计划 Gate
 
