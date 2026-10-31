@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.53.0] - 2026-10-31
+
+本版新增 chat 常驻指标行、sugasdk 只读记录与 trace 接口、外部来源守卫覆盖子 agent、压缩新增三个旋钮，并把 chat 的工具行、等待行与输入字节泵抽成公开包 `pkg/chatui` 供 xhen 复用。
+
 ### 新增
 
 - chat 回合结束的常驻指标行（suga-guzy）：彩色终端里状态行下多一行灰色 `cache 82% · ctx 41% · 折叠余量 37% · 后台 2`（本回合 cache 命中率、上下文占用、距离触发折叠还剩的比例、运行中的后台任务数），数据取自本回合已有的用量与任务表，不增加模型调用；没有数据的项不显示。`chat.status_metrics`（默认 `true`）可关闭；非终端或 `NO_COLOR` 时输出与以前逐字相同。已登记到设置 registry、`config/config.yaml` 与 `suga-guide` 文档。
@@ -1280,7 +1284,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.52.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/inhere/suga/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/inhere/suga/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/inhere/suga/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/inhere/suga/compare/v0.49.0...v0.50.0
