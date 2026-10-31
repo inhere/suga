@@ -1,77 +1,79 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 会话 rewind 与 fork 实施计划 可执行轴评审（Round 7）
+# suga 会话 rewind 与 fork 实施计划 可执行轴评审（Round 8）
 
 ## 评审目标与范围
 
-- 目标：`docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，计划 commit `234a9a51`）
-- 修订版本：Draft 0.7
-- 评审范围：只评审变更部分，即 `git diff abdb5bd9 234a9a51 -- docs/plans/2026-10-31-session-rewind-fork-plan.md` 的改动，以及这些改动直接依赖的段落：跨任务接口中的 `RewindFileItem`/`RewindResult`、T4 文件清单、T5 文件清单与第 7–8 步、T5 验证、追溯表、批准证据
+- 目标：`docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，计划 commit `ff0586ba`）
+- 修订版本：Draft 0.8
+- 评审范围：只评审变更部分，即 `git diff 234a9a51 ff0586ba -- docs/plans/2026-10-31-session-rewind-fork-plan.md`，以及其直接依赖的段落：T5 第 7–8 步、T5 验证、修订记录与批准证据
 - 依据：
-  - 设计 `docs/design/2026-10-31-session-rewind-fork-design.md` 0.2（已批准），流程 1 第 5 步与流程 3（通知）；
-  - 本目录第 6 轮可执行轴报告：F42 为 CORE_CORRECTIVE，F43 为 ADVISORY。
+  - 设计 `docs/design/2026-10-31-session-rewind-fork-design.md` 0.2（已批准），流程 3（通知）；
+  - 本目录第 7 轮可执行轴报告：F44 为 CORE_CORRECTIVE。
 - 评审者：可执行轴（Spec/Executability）独立评审子 agent，只读；与规范轴隔离，没有读 standards-review.md
-- 轮次：**Round 7**
+- 轮次：**Round 8**（严谨模式最后一轮）
 - 日期：2026-10-31
-- **结论：PASS**（没有开放的 CORE_BLOCKING）。新增一项 CORE_CORRECTIVE F44（只改 T5 第 8 步一条子项），建议写入后由主会话核对 diff，不需要再开一轮评审
+- **结论：PASS**（没有开放的 CORE_BLOCKING，也没有新增 CORE_CORRECTIVE）。新发现 F45、F46 都是 ADVISORY，可在实施任务书中处理
 
 ## 输入与方法
 
-在 `234a9a51` 上静态读码，没有运行测试。读过的代码：
+在 `ff0586ba` 上静态读码，没有运行测试。读过的代码：
 
-- `internal/personal/undo_restore.go:20-115`（`UndoResult`、`restoreOutcome`、`Undo` 的计数与入队）、`:143-240`（`restoreItem` 各返回分支）；
-- `internal/personal/undo.go:75-76`（`HasSnapshots` 即 `len(Items) > 0`）；
-- `internal/personal/undo_notice.go:25-202` 全部队列与通知代码；
-- `internal/personal/store/types.go:88,115`（`EventSession`、`EventUndo` 常量）。
+- `internal/personal/undo_notice.go:31-202`（`pendingUndoNotice`、`undoNoticeMessage`、`undoNoticeText`、队列取放、`injectUndoNotice`、`enqueueUndoNotice`）；
+- `internal/personal/undo.go:435-460`（`classifySnapshot`）；
+- `internal/personal/undo_restore.go:76-90,170-188`（计数分支、`restoreItem` 的不可恢复分支）；
+- 设计 0.2 流程 3。
 
-## 第 6 轮发现关闭状态
+## 第 7 轮发现关闭状态
 
-| 项 | 级别 | 0.7 落点 | 状态 | 说明 |
+| 项 | 级别 | 0.8 落点 | 状态 | 说明 |
 |---|---|---|---|---|
-| F42 files scope 的 Turns 与入队条件 | CORE_CORRECTIVE | T5 第 7 步、验证、追溯表 | **CLOSED** | 见下方核对 1 |
-| F43-1 被取代 rewind 通知的文件事实 | ADVISORY | T5 第 8 步 | **PARTIAL → F44** | 已写“并入新通知”，但只列了跳过与不可恢复，漏了 F43 场景的核心事实（已恢复/已删除），且缺载体与文案规则，详见 F44 |
-| F43-2 skip 的 `RewindFileItem.Action` | ADVISORY | T5 第 7 步 | **CLOSED** | 映射为 `conflict`，Reason 取跳过原因。`restoreOutcome.reason`（`undo_restore.go:34`）在每个 skip 分支都有赋值，可行 |
-| F43-3 `UndoResult.Files` 映射 | ADVISORY | T5 第 7 步 | **CLOSED** | “Files 为实际恢复与删除的路径”，与 `undo_restore.go:72-74` 一致 |
-| F41/F33 附带小项、F21、F24 | ADVISORY | — | 不变 | 不在本轮 diff 范围内 |
-| 文件清单残留（`runner.go` 移出 T5、`ErrRewindBusy` 写入 T4 清单） | — | T4、T5 | 已核对 | T5 不再列 `runner.go`，与 T2/T5 文件交集说明一致；`ErrRewindBusy` 归属与跨任务接口一致 |
+| F44 被取代 rewind 通知的文件事实 | CORE_CORRECTIVE | T5 第 8 步、T5 验证 | **CLOSED** | 改为“被移除项的 `Text` 原样前置拼接（空一行），结构字段只取新项、不新增字段”。不再需要承载清单的新字段，也不需要合并文案，F44 的载体缺失与文案缺失两点随之消失。可行性见核对 1 |
+| F43 其余子项、F41/F33 附带小项、F21、F24 | ADVISORY | — | 不变 | 不在本轮 diff 范围内 |
+| 上一轮“剩余风险”中的 checkpoint 状态与 `Failures` 收集 | 提示 | — | 不变 | 不在本轮 diff 范围内，实施时对齐 `:undo` |
 
-### 核对 1：Turns 定义与入队条件（F42）
+### 核对 1：前置拼接的可行性（F44）
 
-- **Turns 定义一致。** 计划写“目标范围内有快照目录的轮数（`undo_restore.go:62-67`）”。代码中 `Undo` 对每个 `row.HasSnapshots()` 的选中轮执行 `result.Turns++`，与项结果无关；`HasSnapshots` 即 `len(c.Items) > 0`（`undo.go:76`）。实施时以 `HasSnapshots` 为准即可，行号引用正确。
-- **入队条件一致。** “Turns>0 时调用与 `:undo` 相同的 `enqueueUndoNotice`（`undo_restore.go:105`）”：`enqueueUndoNotice`（`undo_notice.go:189-202`）先 `AppendEvent(EventUndo)`，再 `appendUndoNotice` 入队尾，与计划描述一致。全部冲突时 Turns>0，通知文案走 `undoNoticeText` 的“跳过 N 个冲突”分支（`undo_notice.go:68-70`），与新增验证用例一致。
-- **预判 unrecoverable 的项。** 计划规定 unrecoverable 项不送进 `restoreItem`（F35）。只要该轮 `Items` 非空，Turns 仍按 `HasSnapshots` 计数，与 `:undo` 一致（`:undo` 下这些项由 `restoreItem` 返回 unrecoverable，同样计入 Turns 与 Unrecoverable）。
-- **Turns=0 只写一条 session 事件：可行。** `store.EventSession = "session"`（`types.go:88`）已存在，与 conversation scope 的 rewind 事件同 kind 同 name，由 attrs 的 scope 区分。Turns=0 时 `:undo` 不写事件、不入队；rewind 改写一条 session 事件、不入队，磁盘确实无变化（没有项进入 `restoreItem`），所以“不入队通知”与 `:undo` 的通知方式一致，“一次操作一条事件”也成立。这是只在使用 `:rewind` 时才出现的新行为，不触发“没有回退记录的会话上行为变化”的 fail-closed。
-- 三种情形（conversation 写 session 事件、files Turns>0 写 EventUndo、files Turns=0 写 session 事件）互斥且各恰好一条，F31 成立。
+- **载体可行。** `pendingUndoNotice.Text` 是预渲染的完整字符串（`undo_notice.go:32`），注入时直接 `undoNoticeMessage(notice.Text)`（`undo_notice.go:162`），生成一条 `EntryUser`（`:167-168`）。把旧项 `Text + "\n\n" + 新 Text` 写进新项的 `Text`，下一轮仍然只有一条注入，内容依次是两次操作，不需要改 `undoNoticeMessage`、取法或回填逻辑。
+- **结构字段只取新项可行。** `undoEventAttrs` 只在 `enqueueUndoNotice` 入队前用于写事件（`undo_notice.go:91-104,192-195`），队列项的计数字段在注入时不再使用；所以旧项的计数不并入，不影响注入正文，只影响新项事件的 attrs，符合“一次操作一条事件”。
+- **回填正确。** 合并后的项只带新项的 `EventID`，注入后回填新事件（`:181-185`）；旧事件的 `entry_seq` 保持 0，计划已写明（S29）。
+- **多次连续 rewind 可行。** rewind 项总在队首且入队时先移除旧 rewind 项，队列里最多一个 rewind 项；第三次 rewind 前置的是已拼接过的正文，按时间顺序累积，语义一致。
+- **注入失败放回队首** 放回的是合并后的整项，不会丢失第一次的事实。
+- **第一次的已恢复事实能否送达：** 取决于 both 通知正文是否写出已恢复事实，见 F45。
+
+### 核对 2：不可恢复夹具（S33）
+
+`classifySnapshot`（`undo.go:448-450`）对 `meta.Unrecoverable != ""` 或 `meta.Kind == native.SnapshotKindPurged` 返回 `CheckpointActionUnrecoverable`；`:undo` 一侧 `restoreItem` 的 `switch meta.Kind` 对 purged 落到 default 分支，同样返回 unrecoverable（`undo_restore.go:182-186`），计数在 `undo_restore.go:82-83` 累加。夹具只需把快照 meta 的 `Kind` 写为 purged，`:rewind files` 的预判与 `:undo` 的计数同口径，“计数与 `:undo` 一致”可断言。可行。
+
+### 核对 3：全部冲突用例（S32）
+
+全部冲突时 `Restored=Deleted=0`、`Files` 为空、`Skipped>0`，`undoNoticeText` 只输出“跳过 N 个冲突”（`undo_notice.go:68-70`），不进入“没有文件被恢复”分支。用例只断言跳过计数、沿用现有文案，可行，也不改 `:undo` 行为。
 
 ## 新发现
 
-### F44 [CORE_CORRECTIVE] 被取代 rewind 通知的“文件事实并入”漏掉已恢复/已删除，且队列项没有承载清单的字段
+### F45 [ADVISORY] both 通知在“全部恢复成功”时的正文没有写明要列出已恢复事实，而新用例依赖它
 
 - 证据：
-  - T5 第 8 步（计划 `:428`）：“被移除项的文件事实（跳过、不可恢复清单）并入新通知”。
-  - F43 原场景：`:rewind t5 both` 已回退文件、尚未发消息，又执行 `:rewind t3 conversation`。旧通知被移除后，模型从未得知 t5 之后的文件已被回退；新通知按设计流程 3 的“只回会话”文案说“磁盘文件没有回退”。0.7 只并入跳过与不可恢复清单，**没有并入已恢复/已删除的事实**，所以新通知仍对模型陈述一个错误事实，F43 想修的正是这一点。计划既然选择“并入”而不是“记为已接受取舍”，就应把关键事实并全。
-  - 载体缺失：队列项 `pendingUndoNotice`（`undo_notice.go:31-41`）只有计数和 `Files`（仅 restore/delete 路径，`undo_restore.go:72-74`），`Text` 是预渲染好的字符串；没有跳过、不可恢复的路径清单。计划只声明新增 `Kind` 字段，实施方要么从 `Text` 反解析（不可行），要么自行加字段（计划未写，属于接口缺口）。
-  - 文案规则缺失：新通知为“只回会话”而并入了旧的文件事实时，设计流程 3 的三种文案都不直接适用（“只回会话”文案说磁盘没有回退，与并入的事实矛盾）。计划没有写选用哪种文案、或如何拼接。
-- 建议（改 T5 第 8 步该子项）：
-  1. 并入范围改为“被移除项的全部文件结果：已恢复、已删除、跳过、不可恢复”；
-  2. 写明 rewind 队列项需携带结构化的文件结果（例如在 `pendingUndoNotice` 上新增 `omitempty` 字段保存跳过与不可恢复路径；restore/delete 沿用 `Files` 与计数），合并后用这些字段重新渲染 `Text`，不从旧 `Text` 解析。undo 项不设这些字段，编码不变；
-  3. 写明合并后的文案：本次为“只回会话”但并入了文件结果时，不使用“磁盘文件没有回退”，改为说明“此前一次回退已改动磁盘文件”并列出文件（新增一条 `model.ini` 文案，zh/en 各一份）；
-  4. 验证增加一个用例：`both` 回退后不发消息再做 `conversation` 回退，下一轮通知含前一次已恢复的文件，且不含“磁盘文件没有回退”。
-- 影响：只涉及有回退记录的会话的 rewind 队列项，不改跨任务接口，也不改 undo 项的编码与取放。
+  - 设计流程 3 只给了三种文案：只回会话、只回文件、“两者都回，但有不可恢复或跳过的文件：列出这些文件”。both 且全部恢复成功的正文没有规定。
+  - 计划 T5 第 8 步只写“新增通知文案进 `model.ini`”，没有写 both 正文是否包含已恢复/已删除计数或路径。
+  - T5 新验证用例（计划 `:442`）要求“第一次为 both 且恢复了文件……第一次的已恢复事实可见”。若实施者按设计字面只在有跳过/不可恢复时列文件，both 全成功的正文可能只有会话部分，用例无法通过；而 only-conversation 文案“磁盘文件没有回退”显然不适用于 both。
+- 判定：用例已把要求钉死（both 正文须含已恢复事实），实施者可以从计划唯一推出做法，不会实施错误，故不是 CORE。
+- 建议（可在实施任务书中处理）：写明 both 正文 = “会话已回到第 N 轮” + 文件结果（已恢复/已删除计数与路径，沿用 `undoNoticeText` 的截断规则 `undoNoticeTextFiles`，`undo_notice.go:25,77-86`），有跳过或不可恢复时另列这些文件；不得出现“磁盘文件没有回退”。
 
-## 并行与依赖核对
+### F46 [ADVISORY] 拼接后两段正文之间没有先后标识
 
-- T5 文件清单去掉 `runner.go` 后，W3 中 T5 与 T6 仍无文件交集（T6 改 `fork.go`、`fork_files.go`、`personal.ini`）。
-- T4 文件清单写明声明 `ErrRewindBusy`，T5 声明 `ErrRewindStale`，依赖方向 T5→T4 不变。
-- “容器内 git 只前缀 `GIT_DIR/GIT_WORK_TREE`”从 fail-closed 列表移到“运行目录与环境”，只是归类调整，语义不变。
+- 证据：第一次 both 的正文说文件已回退，紧接着第二次 conversation 的正文说“磁盘文件没有回退”。计划只写“空一行、按先后顺序”。模型可能把后一句理解为“此前的回退也没有改动磁盘”。
+- 判定：计划已选定“原样拼接”且用例可断言，不影响实施正确性。
+- 建议（可在实施任务书中处理）：只回会话文案可改为“本次只回退了会话，磁盘文件未再改动”，或在拼接时不加额外字段、仅靠文案措辞区分“本次”。若不改，记为已接受取舍即可。
 
 ## 结论
 
-**PASS**（可执行轴，Round 7）。
+**PASS**（可执行轴，Round 8，最后一轮）。
 
-- 第 6 轮发现：F42 关闭；F43 的 skip 映射与 `Files` 映射关闭；F43 的“文件事实并入”部分关闭，剩余转为 F44。
-- 新增 CORE_CORRECTIVE F44：并入范围补上已恢复/已删除，写明队列项的结构化字段与合并后文案。修订局限于 T5 第 8 步一条子项和一个验证用例，建议写入后由主会话核对 diff，然后交用户批准计划。
+- 第 7 轮 F44 关闭：前置拼接只用现有 `Text` 字段与现有注入路径，可行，且第一次 rewind 的正文会在同一条注入里送达。
+- S33 夹具（purged）与 S32 全部冲突用例均可按现有代码实现。
+- 新发现 F45、F46 均为 ADVISORY，可在实施任务书中处理，无需再开评审轮次。
 
 ## 剩余风险与后续
 
-- 第 6 轮记录的风险不变：抢占空闲整理后第一次执行可能以 stale 结束；undo 通知会迟到送达；分段查询代价要在 T1 实测。
-- 计划未写 `applyRewindFiles` 是否像 `Undo`（`undo_restore.go:95-101`）那样按轮设置 checkpoint 状态（undone/partial），以及 `restoreItem` 返回错误时是否收集到 `Failures` 而不中断；不在本轮 diff 范围内，仅提示实施时对齐 `:undo`。
+- 第 6–7 轮记录的风险不变：抢占空闲整理后第一次执行可能以 stale 结束；undo 通知会迟到送达；分段查询代价要在 T1 实测。
+- `applyRewindFiles` 的 checkpoint 状态（undone/partial）与 `Failures` 收集需在实施时对齐 `:undo`（`undo_restore.go:95-101`）。
