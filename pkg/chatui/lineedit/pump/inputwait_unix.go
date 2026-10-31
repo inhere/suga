@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-package chat
+package pump
 
 import (
 	"time"
@@ -8,17 +8,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// waitInputSupported reports that waitTerminalInput really asks the platform
+// WaitInputSupported reports that WaitTerminalInput really asks the platform
 // whether a byte is ready: the decisions built on it (a lone Esc, a pasted
 // newline) may then trust an answer of "nothing ready".
-const waitInputSupported = true
+const WaitInputSupported = true
 
-// waitTerminalInput reports whether the terminal has a byte ready within timeout,
+// WaitTerminalInput reports whether the terminal has a byte ready within timeout,
 // without reading it (poll(2)): the wait behind the lone-Esc decision, which must
 // not leave a group+blocked read behind. A poll that fails (a closed terminal, no
 // such fd) reports nothing ready, which keeps the Esc byte in the editor as the
 // start of a sequence.
-func waitTerminalInput(fd int, timeout time.Duration) bool {
+func WaitTerminalInput(fd int, timeout time.Duration) bool {
 	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 	ms := int(timeout / time.Millisecond)
 	n, err := unix.Poll(fds, ms)

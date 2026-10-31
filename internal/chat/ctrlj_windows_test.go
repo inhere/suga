@@ -25,3 +25,9 @@ func TestCtrlJInsertsNewline(t *testing.T) {
 	assert.NoErr(t, event.err)
 	assert.Eq(t, "第一行\n第二行", event.line)
 }
+
+// testNewline is the byte sequence a terminal hands over for Enter (and for the line
+// break of a paste or a pre-typed line): a Windows console sends CRLF, and the pump
+// drops the LF of that pair. A bare LF is Ctrl+J or Ctrl+Enter here
+// (ctrlJIsInputNewline).
+const testNewline = "\r\n"

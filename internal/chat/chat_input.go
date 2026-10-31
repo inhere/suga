@@ -14,6 +14,7 @@ import (
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/chatui/lineedit"
+	"github.com/inhere/suga/pkg/chatui/lineedit/pump"
 	"golang.org/x/term"
 )
 
@@ -236,12 +237,12 @@ func newChatInputSource(parent context.Context, input io.Reader, output io.Write
 			}
 			return func() error { return term.Restore(fd, state) }, nil
 		}
-		source.restoreOutput = func() error { return restoreOutputProcessing(fd) }
-		source.clearOutput = func() error { return clearOutputProcessing(fd) }
-		source.flushInput = func() error { return flushTerminalInput(fd) }
+		source.restoreOutput = func() error { return pump.RestoreOutputProcessing(fd) }
+		source.clearOutput = func() error { return pump.ClearOutputProcessing(fd) }
+		source.flushInput = func() error { return pump.FlushTerminalInput(fd) }
 		// The wait behind the lone-Esc and pasted-newline decisions: "is a byte
 		// ready?", asked without reading it (inputwait_*.go).
-		source.inputWait = func(timeout time.Duration) bool { return waitTerminalInput(fd, timeout) }
+		source.inputWait = func(timeout time.Duration) bool { return pump.WaitTerminalInput(fd, timeout) }
 		source.reader = &chatActivityReader{source: source, input: input}
 		terminalIO := &chatTerminalIO{reader: source.reader, output: source.output}
 		source.terminal = lineedit.NewTerminal(terminalIO, "")
@@ -257,11 +258,10 @@ func newChatInputSource(parent context.Context, input io.Reader, output io.Write
 		// the window is, so a window wider than 80 columns wrapped a line early and
 		// the fill width (screenWidth) disagreed with the layout.
 		source.sizeFD = terminalSizeFD(input, output)
-		source.applyTerminalSize()
 		// A window resized while chat runs: follow it, so the editor keeps wrapping
 		// at the current width (SIGWINCH on Unix, a poll where there is no signal;
 		// resize_unix.go / resize_poll.go).
-		go source.watchScreenSize()
+		source.watchScreenSize()
 	}
 	go source.run()
 	return source, nil
@@ -491,46 +491,21 @@ func (s *chatInputSource) ctrlCClearsNow() bool {
 }
 
 // watchScreenSize applies window size changes for as long as chat runs (SIGWINCH on
-// Unix, a poll where there is no signal). The line editor wraps at the size it was
-// last given, so a resized window has to reach it (SetSize also repaints the line
-// being edited; a blocked read releases the editor's lock, so that normally applies
-// at once).
+// Unix, a poll where there is no signal): pump.WatchSize hands every changed size to
+// the line editor and tells the source the width (screenWidth).
 func (s *chatInputSource) watchScreenSize() {
-	events, stop := resizeNotify()
-	defer stop()
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-events:
-			s.applyTerminalSize()
-		}
-	}
-}
-
-// applyTerminalSize reads the terminal size (sizeFD) and hands a changed one to the
-// line editor. A window that did not change costs one ioctl and nothing else; a
-// size that cannot be read leaves the editor with its default width, which decides
-// how every line of the chat is laid out, so it is worth a log line.
-func (s *chatInputSource) applyTerminalSize() {
 	if s.terminal == nil || s.sizeFD < 0 {
 		return
 	}
-	width, height, err := term.GetSize(s.sizeFD)
-	if err != nil || width <= 0 {
-		slog.Warn("read the terminal size; the chat keeps its default line width",
-			"fd", s.sizeFD, "err", err)
-		return
-	}
-	s.mu.Lock()
-	changed := width != s.screenWidth
-	s.screenWidth = width
-	s.mu.Unlock()
-	if !changed {
-		return
-	}
-	slog.Info("terminal size", "fd", s.sizeFD, "width", width, "height", height)
-	_ = s.terminal.SetSize(width, height)
+	stop := pump.WatchSize(s.terminal, s.sizeFD, func(width, _ int) {
+		s.mu.Lock()
+		s.screenWidth = width
+		s.mu.Unlock()
+	})
+	go func() {
+		<-s.ctx.Done()
+		stop()
+	}()
 }
 
 // Request asks for one prompt line (between turns): the chat loop takes the result
@@ -825,7 +800,7 @@ func (s *chatInputSource) run() {
 func (s *chatInputSource) serve(request chatInputRequest) {
 	for {
 		line, err := s.readLine(request)
-		s.byteConsumed() // the line editor is done with every byte it got
+		s.OnConsumed() // the line editor is done with every byte it got
 		if s.ctx.Err() != nil {
 			return
 		}
@@ -847,7 +822,7 @@ func (s *chatInputSource) readLine(request chatInputRequest) (string, error) {
 	prompt := request.prompt
 	// An input that already ended answers its EOF at once (also for input that is not
 	// a terminal, whose read would return it again anyway).
-	if err := s.stickyEOF(); err != nil {
+	if err := s.StickyEOF(); err != nil {
 		return "", err
 	}
 	if s.terminal != nil {
@@ -863,7 +838,7 @@ func (s *chatInputSource) readLine(request chatInputRequest) (string, error) {
 		// press does not throw a half-typed message away), the answer of an approval
 		// question and the read of a local command do not (ask.go, local_cmd.go).
 		s.terminal.SetCtrlCClearsLine(s.ctrlCClearsNow())
-		s.reader.activitySent = false
+		s.reader.resetActivity()
 		var line string
 		var err error
 		if s.currentReadMode() == modeAsk {
@@ -898,10 +873,10 @@ func (s *chatInputSource) readLine(request chatInputRequest) (string, error) {
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
-			s.recordEOF(err)
+			s.OnEOF(err)
 			return "", err
 		}
-		s.recordEOF(io.EOF)
+		s.OnEOF(io.EOF)
 		return "", io.EOF
 	}
 	return scanner.Text(), nil

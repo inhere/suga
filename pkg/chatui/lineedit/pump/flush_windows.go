@@ -1,6 +1,6 @@
 //go:build windows
 
-package chat
+package pump
 
 import "golang.org/x/sys/windows"
 
@@ -8,8 +8,8 @@ import "golang.org/x/sys/windows"
 // called from kernel32.dll directly.
 var procFlushConsoleInputBuffer = windows.NewLazySystemDLL("kernel32.dll").NewProc("FlushConsoleInputBuffer")
 
-// flushTerminalInput discards console input received but not read yet.
-func flushTerminalInput(fd int) error {
+// FlushTerminalInput discards console input received but not read yet.
+func FlushTerminalInput(fd int) error {
 	ok, _, err := procFlushConsoleInputBuffer.Call(uintptr(fd))
 	if ok == 0 {
 		return err

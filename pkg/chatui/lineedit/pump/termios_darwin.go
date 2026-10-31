@@ -1,6 +1,6 @@
 //go:build darwin
 
-package chat
+package pump
 
 import "golang.org/x/sys/unix"
 

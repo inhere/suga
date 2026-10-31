@@ -1,6 +1,6 @@
 //go:build windows
 
-package chat
+package pump
 
 import (
 	"encoding/binary"

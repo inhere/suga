@@ -29,6 +29,7 @@
 - `file_grep` 的 lookaround / 反向引用回退匹配器依赖升级到 `github.com/dlclark/regexp2/v2` v2.12.0（原 v1.12.0）；回退语法与单文件 200ms 超时语义不变。
 - 伪终端冒烟开始从 Python 迁到 Go（`test/ptye2e`，`github.com/gookit/gopty/ptytest`，Linux 与 Windows ConPTY 同一套）：新增共享的 Go 假模型 `fakellm_test.go`，第一批迁移 `chat_edit`、`chat_diff`、`chat_render`、`chat_theme`、`chat_idle`、`chat_retry`、`chat_observe`、`chat_commands`；入口 `make smoke-go`，`make smoke-chat` 先跑它再跑剩余 Python 场景。
 - 伪终端冒烟迁移第二批（suga-hb8v）：`chat_rules`、`chat_undo`、`chat_danger`、`chat_tasks`、`chat_model`、`chat_shortname`、`chat_sanitize`、`chat_empty_final` 迁到 `test/ptye2e`（Linux pty 与 Windows ConPTY 同一套，Windows 下 shell 命令改用 PowerShell 写法），共享 Go 假模型新增 `adddir`、`empty-final` 模式与请求日志的 `Model`/`Messages` 字段；对应 Python 脚本与 `make smoke-chat` 里的入口已删除，检查项逐条保留。
+- 字节泵与窗口尺寸跟随抽到公共包 `pkg/chatui/lineedit/pump`（xhen 对齐计划 B3，chat 输入行为不变）：`pump.New(in, term, hooks)` 返回按字节交付给行编辑器的 `io.Reader`，由 `pump.Hooks` 在**每次读取前**求值 Alt+Enter / 粘贴换行 / 单独 Esc 的判定（prompt 读取与 steer 读取模式不同，不是静态开关），并提供读取生命周期挂钩（epoch 与 `HandOver` 丢弃冲刷前的字节、首字节活动握手、粘性 EOF、Esc 事件）；`pump.DefaultHooks` 给没有 steer 的使用方；`pump.WatchSize(term, fd, onChange)` 跟随窗口大小（Unix SIGWINCH，Windows 轮询）；平台输入等待、终端输入冲刷、输出标志恢复（`WaitTerminalInput`、`FlushTerminalInput`、`RestoreOutputProcessing` 等）一并迁入。`internal/chat` 的输入源实现 `Hooks` 并组合该泵，steer、图片与提问逻辑仍留在 `internal/chat`。
 
 ## [0.52.0] - 2026-10-30
 

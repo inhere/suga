@@ -1,6 +1,6 @@
 //go:build linux
 
-package chat
+package pump
 
 import "golang.org/x/sys/unix"
 

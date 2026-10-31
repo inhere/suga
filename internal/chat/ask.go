@@ -286,15 +286,15 @@ func (s *chatInputSource) takeSavedLine() string {
 	return saved
 }
 
-func (s *chatInputSource) currentEpoch() uint64 {
+func (s *chatInputSource) Epoch() uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.inputEpoch
 }
 
-// handOver marks a byte as passed to the line editor, unless the input was
+// HandOver marks a byte as passed to the line editor, unless the input was
 // flushed after it was read (then it must be dropped and false is returned).
-func (s *chatInputSource) handOver(epoch uint64) bool {
+func (s *chatInputSource) HandOver(epoch uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.inputEpoch != epoch {
@@ -304,8 +304,8 @@ func (s *chatInputSource) handOver(epoch uint64) bool {
 	return true
 }
 
-// byteConsumed records that the line editor processed the last byte it got.
-func (s *chatInputSource) byteConsumed() {
+// OnConsumed records that the line editor processed the last byte it got.
+func (s *chatInputSource) OnConsumed() {
 	s.mu.Lock()
 	if s.handing {
 		s.handing = false
