@@ -62,11 +62,13 @@ func TestChatRender(t *testing.T) {
 // The SGR a heading, a keyword and an inline code span get. ConPTY re-encodes the
 // stream: bold cyan arrives as "ESC[36m ESC[1m" instead of "ESC[1;36m", and a color
 // set before a line break may come before the CR LF, so the patterns accept both.
+// When the waiting line repaints, ConPTY may also put a cursor position
+// (ESC[row;colH) between the keyword color and the keyword (CI windows-latest).
 const (
 	boldCyanHeading = `\x1b\[(?:1;36m|36m\x1b\[1m)主题测试`
 	boldBlueHeading = `\x1b\[(?:1;34m|34m\x1b\[1m)主题测试`
-	cyanKeyword     = `\x1b\[36m(?:\x1b\[K)?(?:\r\n)?func`
-	blueKeyword     = `\x1b\[34m(?:\x1b\[K)?(?:\r\n)?func`
+	cyanKeyword     = `\x1b\[36m(?:\x1b\[K)?(?:\r\n)?(?:\x1b\[\d+;\d+H)?func`
+	blueKeyword     = `\x1b\[34m(?:\x1b\[K)?(?:\r\n)?(?:\x1b\[\d+;\d+H)?func`
 	// The other theme's heading or inline code must not appear.
 	darkPalette  = boldCyanHeading + `|\x1b\[93mmake smoke`
 	lightPalette = boldBlueHeading + `|\x1b\[35mmake smoke`
