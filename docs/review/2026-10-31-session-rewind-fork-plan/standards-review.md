@@ -3,131 +3,152 @@
 
 ## 评审目标与范围
 
-- 目标: `docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，candidate commit `bae17865`）
-- 修订版本: Draft 0.1
+- 目标: `docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，candidate commit `3618827e`）
+- 修订版本: Draft 0.2
 - 评审者: 规范与治理轴（Standards/Governance）独立评审子 agent，只读；未读本计划的可执行轴报告
-- 轮次: Round 1（discovery，全量读）
+- 轮次: Round 2（confirmation）。读 `bae17865..3618827e` 的计划 diff，并因 0.2 重排了任务与接口，实际全量重读计划
 - 日期: 2026-10-31
-- 排除项: 未运行测试与基准；fork 映射、分页补足、嵌套 cut 的逐行推演归可执行轴
+- 结论: **BLOCKED**（S11，1 项 CORE_BLOCKING）
+- 排除项: 未运行测试与基准；fork seq 映射、分页补足、嵌套 cut 的逐行推演归可执行轴
 
 ## 输入与方法
 
-- 规范：`idevstd load --delivery semantic --task plan --task review --consumer-mode --thinking-mode rigorous`，BOUND、FULL、18 项资源，payload sha256 已核验（`a7be77b2…`）。payload 未含 plan 合同与 plan 模板，另从已绑定 runtime 1.2.0 只读查阅 `plan-contract.md` 与 `templates/plan.md`（template 1.3.0）作对照。
-- 读取：计划全文；设计 0.2 全文；设计评审 `standards-review.md`、`spec-review.md`（第 2 轮遗留项）；仓库 `AGENTS.md`。
-- 结构校验：`idevstd script validate_document --kind plan <plan>` → `ok: true, errors: []`。
-- 代码核对：对计划“预期符号”与各任务引用逐条 `sed`/`grep`（结果见“验收标准”下的核对表）。
-
-## 验收标准
-
-plan 合同（思考声明、修订记录、Capability Discovery 三表、`host_or_non_offline_action`、前置/fail-closed、波次依赖、任务五要素与运行目录、跨任务签名、workspace baseline、人工 Gate、exact 可追溯、完成 Gate）；评审合同与 SR1301 安全清单；GR104/GR107–GR110、SR2002–SR2004；AGENTS.md 验证要求。
-
-代码位置核对结果：
+- 规范：`idevstd load --delivery semantic --accept-delta --task plan --task review --agent claude --consumer-mode --thinking-mode rigorous`，BOUND、FULL、18 项资源，payload sha256 `a7be77b2…` 已核验。payload 不含 plan 合同，另从 `IDEV_STD_RELEASES_ROOT` 下的 release 只读查阅 `plan-contract.md`。
+- 读取：计划 0.2 全文；设计 0.2（名词、事实、总体方案、代码组织、关键流程、决策表）；第 1 轮规范轴报告；仓库 `AGENTS.md`。
+- 结构校验：`idevstd script validate_document --kind plan <plan>`，结果 `ok: true, errors: []`。
+- 代码核对：对“预期符号”逐条 `sed -n`，并 grep 跨任务接口涉及的现有类型（见下表）。
 
 | 引用 | 结果 |
 |---|---|
-| `context.go:111` loadHistory、`segment_handoff.go:97/112`、`handoff.go:124`、`lastreply.go:23`、`session_card.go:99` | 一致 |
-| `store/entries.go:24,291,321,358`、`fts_snapshot.go:27`、`turns.go:30,61,91`、`sessions.go:45` | 一致（AppendEntries、LatestEntry、RecentEntries、CountEntriesByType、SearchEntriesPage、CreateTurn、ListTurns、CountTurns、CreateSession） |
-| `undo.go:207-227,347,363-366`、`gate.go:115-140`、`snapshot_retention.go:620-628`、`observe.go:311` | 一致（gate 范围落在 Acquire/TryAcquire 内） |
-| `runner_sessions.go:181` writeStartSegment、`segment_clear.go:100`、`compact.go:176`、`replay.go:233`、`admit.go:165`、`steer.go:418` | 一致 |
-| `ledger.go:100-135,262`、`chat/steering.go:205-212`、`chat/chat_usage.go:103-115` | 一致 |
-| `restoreItem`(undo_restore.go:143)、`contentConflict`(:346)、`UndoWithOptions`(undo_options.go:20)、`TakeNotices`(tasks.go:686)、`Manager.Running`(:766)、`clearRequest`(prefix.go:366)、`SetCheckpointState`、`OnFilesRestored`、`HydrateEntries`、`DeleteSession`、`DeleteSessionFiles`、`idx_entries_type`、`metaInjected`、`chat.undo_confirm`、`BenchmarkSessionCard`、`make smoke-chat/smoke-go`、`undo_notice.go`、`fakellm_test.go` | 均存在 |
-| Baseline：HEAD `d3782cdc` + 一个 tracker 提交 | 属实（`cbab7594`），之后是计划自身提交 `bae17865`；工作区干净 |
+| `context.go:111/355`、`segment_handoff.go:97/112`、`handoff.go:124`、`lastreply.go:23` | 一致 |
+| `session_card.go:99/126/129/194`（194 在 `fillCardPlan` 内，函数起于 193） | 一致 |
+| `undo.go:109` UndoCore、`:190` checkpointsLocked、`:347` ListTurns；`undo_runner.go:8` | 一致 |
+| `tasks.go:18` TaskNotices；`tasks.Manager.List`（`pkg/agentcore/tasks/tasks.go:559`）；实现方只有 `*tasks.Manager`（`internal/wiring/runtime.go:91`、`internal/chat/chat.go:134`）和测试 fake | 一致；给接口加 `List` 不用改 wiring |
+| `ledger.go:100-135` 作用域、`:124` SearchEntriesPage、`:249` readMessages | 一致（设计写 `:262`，计划已更正为 `:249`） |
+| `store/entries.go:24,291,321,358`、`fts_snapshot.go:27`、`events.go:40`、`turns.go:30,61,91`、`sessions.go:45` | 一致 |
+| `pkg/sugasdk/engine.go:296` 用零值以外的字段只传 `Query/Limit` | 一致 |
+| `chat_undo.go:107`（SelectUndoCheckpoints）、`:170`（Undo）；`steering.go:209`；`chat_usage.go:103-115` | 一致 |
+| `prefix.go:366` clearRequest、`segment_handoff.go:52` metaInjected、`undo_notice.go:22` `suga.undo.pending`、`ledger_test.go:59` spill 夹具、`../xhen/internal/link/anchor.go` | 均存在 |
+| `BenchmarkSessionCard`（`internal/personal/session_card_test.go`）、`make smoke-chat`/`smoke-go`（Makefile:135/178）、`fakellm_test.go` 的 `ptye2e` build tag | 均存在，验证命令可执行 |
+
+## 验收标准
+
+plan 合同（思考声明、修订记录、Capability Discovery 三表、`host_or_non_offline_action`、前置检查与 fail-closed、波次依赖、任务五要素与运行目录、跨任务签名、workspace baseline、人工 Gate、exact 可追溯、完成 Gate）；评审合同（同类穷尽、五类 CORE_BLOCKING 与 necessity proof）；SR1301；GR104、GR107–GR110、SR2002–SR2004；AGENTS.md 的验证要求。
+
+## 第 1 轮发现关闭状态
+
+| ID | 状态 | 依据 |
+|---|---|---|
+| S1 依赖与波次 | 已关闭 | T2←T1、T3←T2、T5←T3+T4、T6←T1+T2+T3、T8←T0+T7（计划 166-170 行）；前置拒绝只有一个 owner（T3 `rewindPreconditions`，279 行），T5、T6 复用；失败处理表移到依赖 T4 的 T5（340 行）。各波次的并行任务文件不相交（W0 T0/T1，W1 T2/T4，W3 T5/T6） |
+| S2 跨任务签名 | 部分关闭 | 新增“跨任务接口”一节（91-124 行），给出了 store、Runner、预览/执行两段式和 `ErrRewindStale`。剩余缺口见 S12 |
+| S3 sugasdk 默认行为 | 已关闭 | `ExcludeSession` 零值不排除，sugasdk 与 CLI 用零值（104、204-207 行）；T1 加零值一致用例；`engine.go:296` 列入预期符号 |
+| S4 可追溯 | 已关闭 | 表中有 R9、R10 两行（468-469 行）；recall 有动作与用例（244、259 行）；`session_card.go:194` 已点名（239 行） |
+| S5 文件清单 | 基本关闭 | T5 已列 `model.ini`，预期符号已加 `ListEvents`。领域层文件拆分（design 的 `rewind.go` 拆成 `rewind_target.go`、`rewind_notice.go`、`store/rewind_store.go`，并新增 `fork_files.go`）仍没写理由（上轮未穷尽），并入 S16 作 ADVISORY |
+| S6 Capability 覆盖 | 已关闭 | 已补 CAP-05–09。NM-01 的分类问题见 S15（ADVISORY） |
+| S7 反向验证 | 已关闭 | T3 的跨会话归属（288 行）、T5 的 undo pending 合并（351 行）、T8 每个场景一次（434-439 行） |
+| S8 运行目录 | 已关闭 | 152-154 行写了 worktree 根目录与 gofer `--cwd` 形态；完成 Gate 第 2 条 `--cwd inhere-tools/suga` |
+| S9 外部动作 Gate | 已关闭 | 49 行与 454 行都是“发版 v0.54.0、push、主机安装” |
+| S10 文字与基线 | 基本关闭 | 只涉及单仓库；baseline 写了 Git root 与 branch；评审纠正项造成的偏差已在 58-61 行注明。T2 仍用整包 `go test ./internal/personal/`，属 ADVISORY，不再跟踪 |
 
 ## 发现
 
-### S1 [MEDIUM] 波次依赖与任务依赖不一致，存在隐藏依赖（CORE_CORRECTIVE）
+### S11 [HIGH] ApplyRewind 的会话部分不按 scope 区分，files 模式会把对话一起回退（CORE_BLOCKING · [BUG]）
 
-同类全部出现点：
-- T2 写“依赖：无（…T1 未合入前先用接口桩）”，但 W1 位于 W0 之后，T1 必已合入，“接口桩”自相矛盾；且 T2 要“排除已被屏蔽的轮”，需要 T3 的 `masked.Hidden`（`visible.go`），而波次表写“T2 与 T3 可并行”。并行时 T2 只能自建一份区间判断，与 T3 重复实现。
-- T4 要实现“设计流程 1 第 4 步的失败处理表”各分支，其中“文件部分返回 error”“文件已恢复但写 entry 失败”都需要 T6 的 `rewindFiles`；但 T4 与 T6 同波并行，T4 未依赖 T6。
-- T7 “前置拒绝条件同 rewind”，复用 T4 的前置检查，但 T7 不依赖 T4，存在复制前置检查的风险。
-- T9 的三种 scope 用例依赖 T0 的按轮写入能力，但 T9 依赖只写 T8（经 W0 时序间接满足）。
-- 建议：T2 依赖改为 T1、T3（或把 masked 集合构造前移到 T1/T2 并由 T3 消费，二选一写死）；T4 依赖加 T6，或把“编排文件部分 + 失败表”移到依赖 T4、T6 的任务；前置检查函数指定唯一 owner（T4）并让 T7 依赖它；T9 依赖写 T0、T8。
+- 证据（同类全部出现点）：
+  - 设计：回退记录只在“会话部分（scope 包含 conversation）”追加（design 100-103 行）；fold、`loaded_tools`、前缀缓存的重置写在“rewind 会话部分”（design §3）；流程 3 写明“只回文件：沿用现有 undo 文案”。
+  - 计划 T5 `ApplyRewind`（327-338 行）：第 2 步“按 scope 调用 applyRewindFiles”，第 3 步“追加 `rewind` entry”，第 4 步 meta 重置与 `clearRequest`，第 5 步 `TakeNotices` 丢弃、合并 undo pending、注入会话通知。第 3–5 步都没有 scope 条件。
+  - 计划 T2 `maskedRanges`（233 行）：“由 `RewindRecords` 构造区间并集”，不按 `RewindRecord.Scope`（97 行）过滤。
+  - `RewindPlan.DropTasks`（112 行）与 T5 预览（325 行）也不分 scope。
+- 影响：照计划字面实施，`:rewind N files` 会写一条 rewind 记录，而 T2 会把它算进屏蔽区间，于是对话也回到了第 N 轮，同时丢弃任务通知、重置 fold，并注入“会话已回退”的通知。这违反完成定义第 2 条和设计流程 3。T5 的用例“三种 scope 的结果”可能按同一误读编写，测不出这个问题。另一种实施方式（只在 conversation/both 时写记录）也说得通，所以实施不唯一。
+- necessity proof：
+  - core_acceptance：完成定义第 2 条（files 只恢复快照），以及设计流程 3 对“只回文件”的通知要求。
+  - necessary_causal_chain：T5 第 3 步无条件写记录 → T2 用全部记录构造区间 → files scope 屏蔽了对话 → 第 2 条验收的结果错误。
+  - minimal_owner：T5（第 3–5 步与预览加 scope 条件）；也可以改为 T2 按 Scope 过滤，两种方式只能选一种写死。
+  - deletion_alternative：PASS（只需加一句条件，不新增机制）。
+  - scope_effect：不新增 Module、Interface、Schema、state 或 lifecycle。
+- 建议：
+  - 在 T5 写明：“第 3–5 步与 DropTasks 只在 scope 为 conversation 或 both 时执行；files 只执行第 2 步，然后按现有 undo 文案入队通知（`enqueueUndoNotice`）”。
+  - 在 T2 写明区间只来自 conversation/both 的记录（如果第 3 步仍写记录用于审计，这一条就是必需的）。
+  - T5 增加反向验证：“files 模式下写入 rewind 记录，conversation 未变用例失败”。
 
-### S2 [MEDIUM] 跨任务调用的函数缺签名、返回格式与错误归属（CORE_CORRECTIVE）
+### S12 [MEDIUM] 跨任务接口仍有未定义的形状与归属（CORE_CORRECTIVE，S2 残留）
 
-- 证据：plan 合同要求“任务新增或改变会被其他任务调用的函数…写出签名、返回格式、错误类型与文案归属”。计划中被他任务消费的接口：
-  - T1 `RecentEntriesBefore`/`LatestEntryBefore` 只有参数名无类型与返回；`SearchEntriesPage` “支持传入屏蔽区间”未给 `EntrySearch` 新字段形状，也未说明 workspace/all 作用域下多会话区间如何传入（逐会话 map 还是 SQL 子查询）；`CreateForkedSession` 的“seq 映射”返回类型未定。
-  - T3 `masked` 的构造函数与 `Hidden` 签名、谁负责读 `RewindRecords`。
-  - T4 `Runner.Rewind(ctx, sid, target, scope)` 无返回类型；T5/T6 产出的“回退计划”（被丢弃通知、恢复/跳过/不可恢复清单）由谁组装、以什么结构交给 T8 打印，未定义。
-  - 设计流程 1 是“校验 → 生成并打印回退计划 → 确认 → 执行”。现有 `:undo` 用 `ListCheckpoints` + `BuildUndoPlan`（`internal/chat/chat_undo.go:150,236`）先预览再执行；计划没有预览/dry-run API，也没写 Rewind 在等待用户确认时是否持锁。T8 无法唯一实现确认交互。
-  - T7 `Runner.Fork` 返回值（新会话 ID）未写，而 T8 要打印它。
-- 建议：在 T1/T3/T4/T7 各补一行签名；新增“回退计划预览”API（如 `Runner.RewindPlan` 只读、执行时重新校验），并写明锁只在执行段持有。
+- 证据：
+  - `RewindResult`（117 行）与 `RewindFileItem`（111 行）没有字段定义。T7 要打印结果，T4 的 `planRewindFiles`/`applyRewindFiles`（297-298 行）没写返回类型，也没写这些类型由 T4 还是 T5 定义。
+  - `Hidden(seq)`（233 行）由 T2 提供，但 `maskedRanges` 返回 `store.SeqRanges`。Go 不能在 personal 包里给 store 的类型定义方法，所以 `Hidden` 要么是 T1 的 `SeqRanges` 方法，要么是 T2 的独立函数，计划没写定。
+  - 接口里同时有 `UndoCore.RewindPlan` 和 `Runner.RewindPlan`（115-116 行），但 UndoCore 没有 Tasks 和回合状态（`undo.go:109-116` 只有 Repository、Snapshots、Gate、HeldLock）。所以 DropTasks、前置拒绝和目标解析（T3 函数需要 Runner 的屏蔽集合）放在哪一层，计划没有说明。
+  - `ForkInput` 的字段只出现在 T1 正文（208 行），接口一节里没有。
+- 建议：
+  - 在接口一节补齐 `RewindResult`、`RewindFileItem`、`ForkInput`，以及 T4 两个方法的签名；
+  - 写定 `Hidden` 归 T1 的 `SeqRanges`；
+  - 写明 UndoCore 只负责文件部分，Runner 负责组装目标、任务与 Stamp。如果 UndoCore.RewindPlan 没有独立调用方，就删掉它。
 
-### S3 [MEDIUM] sugasdk 也调用 `SearchEntriesPage`，计划未声明默认行为不变（CORE_CORRECTIVE）
+### S13 [MEDIUM] 用 `Manager.List` 预览“将丢弃的待注入通知”，取到的集合不对（CORE_CORRECTIVE）
 
-- 证据：`pkg/sugasdk/engine.go:296` 直接调用 `repo.SearchEntriesPage`。计划 scope freeze 排除 sugasdk，R11 规定“FTS 数据保留”，但 T1 只写“支持传入屏蔽区间”。若实施成默认排除，sugasdk 搜索结果会悄然变化，越过 R9/R11 的范围。
-- 建议：T1 写明排除为显式开关（零值 = 不排除），只有 `ledger.go` 打开；T1 验证加“不开开关时结果与基线一致”用例。
+- 证据：
+  - CAP-05 与 T5 的预览（73、325 行）用 `List` 收集将丢弃的通知。但 `Manager.List` 返回会话的全部任务（`pkg/agentcore/tasks/tasks.go:559-574`），而待注入通知在 `s.notices` 中，只有 `TakeNotices` 能读出（`:686-690`），而且它会同时清空队列。已经注入过的已结束任务，也会被 `List` 当成“将丢弃”列出。
+  - 待注入通知还包括带 text 的进度通知（`:699` `taken[i].text`），`List` 表达不了这类通知。
+  - 在 `pkg/agentcore/tasks` 增加只读 peek 超出 scope freeze（20 行没有列 `pkg/agentcore/**`）。
+- 影响：预览列出的被丢弃项与实际结果不一致（设计 R8、流程 1 第 2 步要求列出）。
+- 建议：二选一写定：
+  - 预览只列“已结束的任务（可能有待注入通知）”，准确清单以 `ApplyRewind` 的 `TakeNotices` 结果为准，在结果里列出（T5 的“被丢弃并列出”用例已覆盖）；
+  - 或者把 `pkg/agentcore/tasks` 的只读 peek 作为显式扩围提交 Human Gate。
 
-### S4 [MEDIUM] 可追溯表未 exact-cover 设计决策与读者清单（CORE_CORRECTIVE）
+  CAP-05 的 proven_gap 按选定方案改写。
 
-- R9（延后项）与 R10（排进 0.54）未出现在可追溯表；R9 只在“排除”段引用，R10 只体现在发版 Gate，表中应各有一行（R9 → 无任务 + 排除段 / 完成 Gate 第 6 条；R10 → 外部动作 Gate v0.54.0）。
-- R11 在设计中是 `session_search` **与 recall**（设计读者表 `ledger.go:124,262`）。T3 动作只写“检索”，验证只列“检索排除三种作用域”；recall（`ledger.go:262` 按 ref 的 `ListEntries(SinceSeq…)`，可指向任何会话）没有动作与用例。按 ref 召回被屏蔽 seq 是 R11 的直接泄漏路径。
-- `session_card.go:194` 另有一处 `LatestEntry(EntryPlan)`（LatestSummary/plan），T3 只笼统写“session card 用游标补足”，未点名。
-- 建议：可追溯表补 R9、R10 两行；T3 动作与验证点名 recall（被屏蔽 seq 的 ref 返回空或拒绝）与 `session_card.go:194`。
+### S14 [LOW] R11 的收窄与设计一致，但 deferred 项写错了依据（ADVISORY）
 
-### S5 [LOW] 任务文件清单不完整（CORE_CORRECTIVE）
+- 核对：设计 R11（design 273 行）与 §4（156 行）是“当前会话的 session_search/recall 排除被屏蔽条目”，目的是不让模型检索回自己回退掉的内容。计划写的是“任何作用域都排除当前会话的屏蔽条目，其他会话不排除”（32、243-244 行），覆盖了设计的字面要求。workspace 与 all 作用域也排除当前会话，这比只管 current 作用域更严，与设计目的一致。recall 只在 ref 属于当前会话时跳过，与此一致。**此项一致。**
+- 问题：45 行把“其他会话屏蔽区间的排除”列在“排除（设计 R9）”下，494 行写“设计 R9、R11”。但设计 R9（271 行）和非目标（53 行）都没有这一项，它是计划依 R11 字面做的 deferred。
+- 建议：改成“依 R11 字面只覆盖当前会话；其他会话列为计划级 deferred”，不归到 R9。
 
-- T5 要把三种通知文案加入 zh/en i18n，模型侧文案在 `internal/i18n/catalog/*/model.ini`（`model_texts.go` 注释），但 T5 文件清单只有 `rewind.go`、`undo_notice.go`，catalog 仅出现在 T8。
-- T4 新增 `rewind_records.go`，设计“代码组织”把回退记录放在 `rewind.go`；属可接受细化，但应在计划中注明偏离理由（SR2004 对偏离要求写理由，此处为同包拆分，影响小）。
-- T6 清理检测需读 events（`store/events.go:40 ListEvents`），T3/T4/T6 均未把它列入预期符号。
-- 建议：T5 文件加 `internal/i18n/catalog/{zh,en}/model.ini`；T4 注一句拆分理由；预期符号补 `ListEvents`、`ListCheckpoints`、`session_card.go:194`。
+### S15 [LOW] NM-01 不是新 Module，删除处置写成了将来复用（ADVISORY）
 
-### S6 [LOW] Capability decisions 未覆盖全部所需能力（CORE_CORRECTIVE）
+- 证据：CAP-08 与 NM-01（76、83 行）把 `internal/personal/fork_files.go` 记为 `MINIMAL_NEW_MODULE`。它是现有包里、只服务 fork 的一个文件，实质是 fork owner 的扩展，拆出来只为满足 GR104 的行数上限。NM-01 的 `deletion_or_merge_handling` 写的是“将来 CLI fork 复用同一函数”，这是对未来复用的推测（SR1405 target-locked），没有写删除或合并时怎么处理。替代方案的说法“放入 ledger 会混进检索 owner”也没对准真正的备选（放进 `fork.go`）。
+- 建议：CAP-08 改为 `OWNER_EXTENSION`（owner 为 fork），New module candidates 写 `NONE` sentinel；如果保留 NM-01，删除处置改为“随 fork 一并删除”。
 
-- 证据：只有 CAP-01–04。以下能力在任务中出现但无 CAP 行，无法看出“复用 → 扩展 → 新建”的检索结论：fork 附件复制与 `out:<会话>:` 改写（全仓 `grep 'func.*[Cc]opy.*(Image|Spill|Session|Body)'` 无现成实现，即新增能力）、回退预览（可复用 `ListCheckpoints`/`BuildUndoPlan` 模式）、清理检测读 events（复用 `ListEvents`）、失败清理（复用 `DeleteSession`+`DeleteSessionFiles`）、用户轮索引（复用 `ListTurns` + `metaInjected`）。
-- 建议：补 CAP-05..09，各写 decision（DIRECT_REUSE / OWNER_EXTENSION）与 proven_gap；附件复制写明归属 `internal/personal/fork.go` 而非 store。
+### S16 [LOW] baseline 与若干文字细节（ADVISORY）
 
-### S7 [LOW] 反向验证覆盖不足（CORE_CORRECTIVE）
-
-- T2 的 SR1301 归属校验（跨会话 `turn_id`、已屏蔽轮）无反向验证；T5 的 F-N4（undo pending 合并而非丢弃）无反向验证。这两项分别是安全校验与评审遗留纠正项，缺反向验证则无法证明用例真能拦住回归。
-- ADVISORY 部分：T4 失败分支、T8 命令无反向验证；T9 五个 e2e 场景只有一个反向验证（AGENTS.md：新场景写完做一次反向验证）。
-- 建议：T2 加“去掉归属校验，跨会话用例失败”；T5 加“改回丢弃 pending，合并用例失败”；T9 至少对 fork（源会话不变）与回合中放回各补一个反向验证。
-
-### S8 [LOW] 验证命令未写运行目录；主机命令未给 gofer 提交形态（CORE_CORRECTIVE）
-
-- 证据：plan 合同要求“命令写明运行目录（相对 Git root）”。全文未写；实施在 `.worktrees/<branch>` 下，主机 Windows 用例（T9、完成 Gate 第 2 条）未给 `--cwd` 形态。
-- 建议：在“前置检查”加一句“所有命令在任务 worktree 根运行；主机命令以 `gofer job run -p my-tools-dev -a exec --runner local --cwd inhere-tools/suga/.worktrees/<branch> --sync -- …` 提交”。
-
-### S9 [LOW] 外部动作 Gate 前后不一致（ADVISORY）
-
-- “授权”段写发版 v0.54.0、push、**安装**走外部动作 Gate；“人工 Gate”第 3 条只列发版、push。按合同应是一个覆盖全部出机器动作的 Gate 并逐项列目标。
-- 建议：Gate 第 3 条补“安装”（及如有的内网上传），两处一致。
-
-### S10 [LOW] 文字与基线细节（ADVISORY）
-
-- fail-closed 写“两仓库都只在 `.worktrees/` 下实施”，本计划只涉及 suga 一个仓库。
-- workspace baseline 未显式写 Git root 与 branch（`inhere-tools/suga`、`main`），也未列 preserved dirty（当前为空，写“无”即可）。
-- T0、T1、T3、T8 的任务验证用整包 `go test ./internal/personal/` 等；合同建议任务级写 focused `-run`，整包放波次末/完成 Gate（完成 Gate 已有整包）。
-- T5 采纳 F-N4（合并 undo pending）、T1/T7 采纳 F-N1（`CreateForkedSession`），与设计 0.2 正文（§3“同样丢弃”、§2“CreateTurn + 一次 AppendEntries”）字面不同；计划已引用评审编号，建议各加半句“依设计评审第 2 轮纠正项，替代设计正文 §x 的写法”，避免实施者按设计正文回退。
+- baseline（128 行）写的是 HEAD `a59b27d0`。当前 main 是 `66a3cbc8`，其中包含 `3618827e` 之后合入的 B4（`pkg/chatui` 文档与示例，不在本计划范围内）。实施开工时要按 plan closure 重新采集 baseline。
+- 128 行说本计划在 `render.go`、`chat.go` 中“新增命令分支”，但命令分发实际在 `chat_commands.go:381`，T7 的文件清单也不含 `chat.go`/`render.go`。应删掉这句或改成 `chat_commands.go`。
+- S5 残留：领域层文件按职责拆分，偏离了设计“代码组织”，需补一句理由（同包拆分，GR104 / 单一职责）。
+- T6 的 title 后缀“（分叉）”没写是否走 i18n；如果走 i18n，T6 要在文件清单里加 catalog 文件，并说明与同波次的 T5 改动的 `model.ini` 不冲突。
+- fail-closed（156 行）写“改 sugasdk 行为即停止”，而 T8 的 CHANGELOG 承认 `sugasdk.Entries` 会返回新的 `rewind` 类型。建议在 fail-closed 中注明这是设计内的预期，避免实施者误停。
 
 ### SR1301 安全核对
 
-- 鉴权：不适用（本地 chat，无新增入口）。
-- 注入防护：T1 在 SQL 中按区间排除 seq，计划未写参数化要求——建议 T1 动作注明区间以绑定参数传入（并入 S2 修订即可，ADVISORY）。
-- 秘密不进日志/输出：不适用（事件 attrs 只含轮、scope、文件统计）。已核对。
-- 入参校验：T2 `resolveTarget` 已覆盖序号/turn_id。已核对。
-- 资源归属：T2 校验 turn_id 属于该会话。已核对（反向验证见 S7）。
+- 鉴权：不适用（本地 chat，没有新增入口）。
+- 注入防护：已核对。T1 用 `NOT (seq > ? AND seq < ?)` 绑定参数（200 行）；`ExcludeSession` 进入 fingerprint。
+- 秘密不进日志或输出：已核对。事件 attrs 只含目标轮、scope 和文件统计。
+- 入参校验：已核对。T3 `resolveTarget` 校验序号或 turn_id。
+- 资源归属：已核对。T3 校验 turn_id 属于本会话，有反向验证（288 行）；recall 对 ref 落在区间内的条目按“不存在”处理（244 行）。
 
 ### 已核对且无问题
 
-- 模板 1.3.0 首行、状态 `Draft 0.1`、修订记录、计划工作声明（RIGOROUS、核心目标、scope freeze、暴露度、预算、停止条件）齐全；validator 通过。
-- Capability Discovery 三表 grammar、`NONE` sentinel、Rejected new tools 删除测试成立；CAP-01（gate 不可重入 → 不加锁新函数复用 restoreItem）、CAP-03（无跨调用事务 → store 内新增）决策合理。
-- `host_or_non_offline_action=REQUIRED` 恰一处，理由明确（主机 go test / ptye2e，tmp SUGA_HOME）。
-- 授权边界：计划批准只授权 worktree 实施与本地提交；合入、发版、push 另行 Gate；`make smoke-chat` 作为合入前提并用 `&&` 串接，fail-closed。
-- 设计评审遗留项 S-N1、S-N2、F11、F-N1–F-N5 均已落到任务（目标第 6 条映射与任务正文一致；spec 评审提到的 `Hops>0` 是否用户轮也落到 T2）。
-- 结构条目：无新入口/CLI，GR107/GR110/SR2003 不适用；装配不变（GR108）；GR109 在 T4 点名；GR104 由设计限 400 行；SR2002 由 AGENTS.md 约束。真实环境披露（完成 Gate 第 4 条 `UNVERIFIED_REAL_ENV`）符合要求。
+- 首行模板 1.3.0、状态 `Draft 0.2`；修订记录只因语义变化递增；RIGOROUS 声明、scope freeze、暴露度（非低暴露，两轴）、预算与停止条件齐全；validator 通过。
+- `host_or_non_offline_action=REQUIRED` 恰好一处（50 行）。
+- 授权 Gate 一致：计划批准只授权 worktree 实施与本地提交；合入由主会话执行；外部动作（发版、push、安装）单独 Gate；冒烟以 `&&` 串接作为合入前提。
+- 可追溯表覆盖 R1–R12 全部要求，以及设计评审与计划第 1 轮的各项。
+- 结构条目：不新增入口或 CLI，GR107、GR110、SR2003 不适用；wiring 不改（GR108）。`TaskNotices` 加 `List` 只影响 `*tasks.Manager` 与测试 fake，不越过“不改 wiring”。GR109 在 T5 中点名；GR104 由每个新文件 400 行的上限约束；SR2002 由 AGENTS.md 约束。
 
 ## 覆盖缺口与限制
 
-未运行任何测试或基准；未推演 SQL 分页与 fork seq 映射正确性；plan 合同与模板从 runtime 1.2.0 目录只读查阅（不在本次 semantic payload 内）；未核对“B1–B3 与 S50A1 已合入”的说法。
+- 未运行测试与基准。
+- 未推演 fork 的 seq 与 `first_kept_seq` 映射、分页补足、嵌套 rewind 的正确性（归可执行轴）。
+- plan 合同取自 releases root 下的 release 副本，不在本次 semantic payload 内。
+- 未核实“B1–B4 与 S50A1 已合入”的说法，只确认 B4 在 `3618827e` 之后合入。
 
 ## 结论
 
-PASS（规范与治理轴，Round 1）。无 CORE_BLOCKING；S1–S8 为 CORE_CORRECTIVE，按评审合同须在计划批准前修正；S9、S10 为 ADVISORY。
+**BLOCKED**（规范与治理轴，Round 2）。
+
+- 开放 CORE_BLOCKING：S11 [BUG]，ApplyRewind 与屏蔽区间不按 scope 区分。
+- S12、S13 为 CORE_CORRECTIVE，须在计划批准前修正。
+- S14–S16 为 ADVISORY。
+- 第 1 轮 S1、S3、S4、S6–S9 已关闭；S2 的残留并入 S12；S5、S10 基本关闭。
 
 ## 剩余风险与后续
 
-- S1、S2 不修正时，W1/W2 并行实施会出现重复的区间判断与前置检查，T8 确认交互实现不唯一。
-- S3 不修正时有越过 sugasdk 范围的风险。
-- 修订后第 2 轮只需读 `bae17865..<新 candidate>` 的 diff 与依赖章节。
+- S11 修正只需加一条 scope 条件，再加一个反向验证；第 3 轮只读修订 diff 与 T2、T5 两节。
+- S13 如果选择扩围（tasks peek），须先过 Human Gate。
+- 开工前重新采集 baseline（当前 main 为 `66a3cbc8`）。
