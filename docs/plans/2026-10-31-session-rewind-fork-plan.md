@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 会话 rewind 与 fork 实施计划
 
-> 状态：Draft 0.7 / 待人工计划批准
+> 状态：Draft 0.8 / 待人工计划批准
 
 ## 修订记录
 
@@ -14,6 +14,7 @@
 | 0.5 | 2026-10-31 | Claude | 收口计划评审第 4 轮（两轴 PASS）的 CORE_CORRECTIVE：S22–S23、F32–F34，并处理 S24、F35–F38。<br>• 撤回 undo 通知取空队列的例外，改为 rewind 通知插入队首，没有回退记录的会话行为不变（S22）；<br>• `AcquireUnlessBusy`、`withSessionUnlessBusy` 移到 T4，T6 依赖 T4（S23、F34）；<br>• fork 的 origin 按设计取 chat（F32）；<br>• recall 只在 `last.Seq+1` 落在区间内时才换续读取法（F33）；<br>• title 后缀放 `personal.ini`（F34）；<br>• T4 正文与签名对齐（S24、F35）；补桩、`runner.go`、`UndoResult` 计数映射（F36–F38）；<br>• CHANGELOG 用 `Session.Card` 并补 `Run`/`Compact`（S17 残留） |
 | 0.6 | 2026-10-31 | Claude | 收口计划评审第 5 轮（两轴 PASS）的 CORE_CORRECTIVE：S25–S26、F39–F40，并处理 S27、F41。<br>• 错误值 `ErrRewindBusy` 归 T4、`ErrRewindStale` 归 T5（S25）；<br>• undo 队列项加 `kind`（omitempty）：新 rewind 通知取代未送达的旧 rewind 通知；rewind 通知注入失败时放回队首；undo 项的取放不变（S26、F39、F41）；<br>• files scope 的计数与入队条件对齐 `:undo`（F40）；<br>• 偏差清单、批准证据、T2 文件清单、列表结构（S27、F41） |
 | 0.7 | 2026-10-31 | Claude | 收口计划评审第 6 轮（两轴 PASS）的 CORE_CORRECTIVE：S28/F42（同一问题），并处理 S29–S30、F43。<br>• files scope 的 Turns 与入队条件逐字沿用 `:undo`；Turns=0 时改写一条 rewind 会话事件，保证一次操作一条事件；<br>• 被取代的旧 rewind 通知的文件事实并入新通知；skip 结果的 Action 与 `UndoResult.Files` 写明；<br>• 列表位置与文件清单残留 |
+| 0.8 | 2026-10-31 | Claude | 收口计划评审第 7 轮（两轴 PASS）的 CORE_CORRECTIVE：S31/F44、S32，并处理 S33。<br>• 被取代的旧 rewind 通知改为正文原样前置拼接，不再合并清单（S31、F44）；<br>• 全部冲突用例只断言跳过计数，不改 undo 文案（S32）；<br>• 写明不可恢复夹具（S33） |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -66,7 +67,8 @@
   - round 3：`a3e9eb93`，两轴 PASS，CORE_CORRECTIVE 在 0.4 收口；
   - round 4：`f009fd02`，评审 0.4，两轴 PASS，CORE_CORRECTIVE 在 0.5 收口；
   - round 5：`67fd3f0c`，评审 0.5，两轴 PASS，CORE_CORRECTIVE 在 0.6 收口；
-  - round 6：`8b0e8bf7`，评审 0.6，两轴 PASS，CORE_CORRECTIVE 在 0.7 收口。
+  - round 6：`8b0e8bf7`，评审 0.6，两轴 PASS，CORE_CORRECTIVE 在 0.7 收口；
+  - round 7：`351c4d4b`，评审 0.7，两轴 PASS，CORE_CORRECTIVE 在 0.8 收口。
 - issue：suga-4tnd。gofer plan `plan-20261031-211227-3fa910d5`（suga 0.54）。
 - 本计划与设计正文的偏差都来自评审纠正项，偏差处标注了依据：
   - T6 的 fork 写入方式（F-N1、计划 F2）；
@@ -425,7 +427,7 @@ var ErrRewindStale error // T5 声明
        - **只回文件**：沿用现有 undo 文案与 `suga.undo.pending` 队列（`undo_notice.go:22`），与 `:undo` 的通知方式一致。
        - **含会话**：本次通知**插入队列首位**，已在队列中的 undo 通知保留不删，在之后的回合依次送达（F-N4、S22）。队列中各项沿用现有的 `event_id` 回填（`undo_notice.go:182,199`），不改回填逻辑（计划 F23）。
        - 队列项 `pendingUndoNotice` 加字段 `Kind`（`json:"kind,omitempty"`，rewind 通知为 `rewind`，undo 通知为空，旧数据兼容）（F39、S26）：
-         - 入队新的 rewind 通知时，先移除队列中尚未送达的 rewind 项（连续两次 rewind 时只送最新状态）；被移除项的文件事实（跳过、不可恢复清单）并入新通知；被移除项的事件 `entry_seq` 不再回填，事件本身保留（S29、F43）；
+         - 入队新的 rewind 通知时，先移除队列中尚未送达的 rewind 项（连续两次 rewind 时只送最新状态）；被移除项的正文 `Text` 原样放在新通知正文之前（中间空一行），两次操作的事实按先后顺序在同一条注入中送达；计数、路径等结构字段只取新项，不合并，也不新增字段（S31、F44）；被移除项的事件 `entry_seq` 不再回填，事件本身保留（S29）；
          - rewind 项注入失败时放回**队首**（`undo_notice.go:169-178` 的放回逻辑按 Kind 分支）；undo 项仍放回队尾，行为不变；
          - 没有回退记录的会话里队列不出现 rewind 项，行为与现在相同。
        - 现有 `takeUndoNotice`（`undo_notice.go:119`）每回合取队首一项，取法不改。rewind 通知在队首，因此总在下一轮送达（R5）；没有回退记录的会话，队列行为与现在完全相同（S22）。
@@ -437,10 +439,10 @@ var ErrRewindStale error // T5 声明
     - 过期：预览后追加 entry、预览后删除快照目录、预览后改 cwd，三种都返回 `ErrRewindStale`；
     - 回合进行中返回 `ErrRewindBusy`，不等待；空闲整理持有 gate 时被抢占，rewind 成功；
     - 先 `:undo` 再 `:rewind`（中间不发消息）：下一轮送达 rewind 通知，再下一轮送达 undo 通知，event_id 各自回填；`TestUndoNoticeQueueKeepsOrder` 保持通过；
-    - 连续两次含会话的 rewind：只送达后一次的通知；
+    - 连续两次含会话的 rewind（第一次为 both 且恢复了文件）：下一轮只有一条注入，正文依次含第一次与第二次的通知文本，第一次的已恢复事实可见；
     - rewind 通知注入失败：放回队首，下一轮仍先送达；
-    - files scope 有不可恢复项：通知含“无法恢复”提示，计数与 `:undo` 一致；
-    - files scope 全部冲突：Turns>0，写 EventUndo 并通知跳过清单；
+    - files scope 有不可恢复项（夹具：快照 meta 标为 purged，见 `undo.go:449`）：通知含“无法恢复”提示，计数与 `:undo` 一致；
+    - files scope 全部冲突：Turns>0，写 EventUndo 并入队，通知含跳过计数（沿用 `:undo` 现有文案，不改文案）；
     - files scope 全部无快照：Turns=0，只写一条 rewind 会话事件，不入队；
     - 四种失败分支（注入错误）；
     - fold 两个字段、前缀缓存被清；
