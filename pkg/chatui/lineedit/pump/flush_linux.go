@@ -1,11 +1,11 @@
 //go:build linux
 
-package chat
+package pump
 
 import "golang.org/x/sys/unix"
 
-// flushTerminalInput discards terminal input received but not read yet
+// FlushTerminalInput discards terminal input received but not read yet
 // (tcflush(fd, TCIFLUSH)).
-func flushTerminalInput(fd int) error {
+func FlushTerminalInput(fd int) error {
 	return unix.IoctlSetInt(fd, unix.TCFLSH, unix.TCIFLUSH)
 }

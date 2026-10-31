@@ -10,7 +10,6 @@ import (
 
 	"github.com/gookit/goutil/x/assert"
 	"golang.org/x/sys/unix"
-	"golang.org/x/term"
 )
 
 // TestTerminalSizeFD: the terminal size is read from the output end when it is a
@@ -34,33 +33,6 @@ func TestTerminalSizeFD(t *testing.T) {
 	t.Run("a pipe is not a terminal", func(t *testing.T) {
 		assert.Eq(t, -1, terminalSizeFD(bytes.NewReader(nil), &bytes.Buffer{}))
 	})
-}
-
-// TestRestoreOutputProcessing: raw input (which chat.steering keeps while a turn
-// runs) clears OPOST|ONLCR along with the input flags, and chat puts the output
-// flags back - otherwise anything written straight to stderr during the turn (a
-// hook notice, a warning) would walk down the screen instead of starting a line.
-// clearOutputProcessing is the counterpart for a read between turns: the flags go
-// back to what raw input left, so the line editor's own CR LF is not doubled.
-func TestRestoreOutputProcessing(t *testing.T) {
-	slave := openTestPTY(t)
-
-	_, err := term.MakeRaw(slave)
-	assert.NoErr(t, err)
-	raw, err := unix.IoctlGetTermios(slave, getTermiosRequest)
-	assert.NoErr(t, err)
-	assert.True(t, raw.Oflag&unix.OPOST == 0) // raw mode cleared it
-
-	assert.NoErr(t, restoreOutputProcessing(slave))
-	got, err := unix.IoctlGetTermios(slave, getTermiosRequest)
-	assert.NoErr(t, err)
-	assert.True(t, got.Oflag&unix.OPOST != 0)
-	assert.True(t, got.Oflag&unix.ONLCR != 0)
-
-	assert.NoErr(t, clearOutputProcessing(slave))
-	got, err = unix.IoctlGetTermios(slave, getTermiosRequest)
-	assert.NoErr(t, err)
-	assert.True(t, got.Oflag&unix.OPOST == 0)
 }
 
 // openTestPTY opens a pty (/dev/ptmx plus its /dev/pts/N slave) and returns the

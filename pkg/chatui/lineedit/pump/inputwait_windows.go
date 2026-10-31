@@ -1,6 +1,6 @@
 //go:build windows
 
-package chat
+package pump
 
 import (
 	"encoding/binary"
@@ -10,10 +10,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// waitInputSupported reports that waitTerminalInput really asks the platform
+// WaitInputSupported reports that WaitTerminalInput really asks the platform
 // whether a byte is ready: the decisions built on it (a lone Esc, a pasted
 // newline) may then trust an answer of "nothing ready".
-const waitInputSupported = true
+const WaitInputSupported = true
 
 // procPeekConsoleInput looks at the console input queue without taking events off
 // it (golang.org/x/sys/windows has no wrapper for it).
@@ -32,7 +32,7 @@ const (
 	inputPollStep = 2 * time.Millisecond
 )
 
-// waitTerminalInput reports whether the console input has a byte ready within
+// WaitTerminalInput reports whether the console input has a byte ready within
 // timeout, without reading it. The console input handle is signalled while any
 // event is queued - also the key-up of the Enter just read, focus, mouse and
 // buffer-size events, which never become a byte. Some terminals queue the key-up
@@ -42,7 +42,7 @@ const (
 // queue cannot be looked at (not a console) falls back to the plain wait. Whether
 // a Ctrl+C pressed while the console waits comes back as the byte 0x03 is not
 // verified here; see scripts/wincons.
-func waitTerminalInput(fd int, timeout time.Duration) bool {
+func WaitTerminalInput(fd int, timeout time.Duration) bool {
 	handle := windows.Handle(fd)
 	deadline := time.Now().Add(timeout)
 	for {
