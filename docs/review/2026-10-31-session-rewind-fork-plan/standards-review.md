@@ -3,137 +3,124 @@
 
 ## 评审目标与范围
 
-- 目标: `docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，candidate commit `19f6f589`）
-- 修订版本: Draft 0.3
+- 目标: `docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，candidate commit `6e03cbff`）
+- 修订版本: Draft 0.4
 - 评审者: 规范与治理轴（Standards/Governance）独立评审子 agent，只读；未读本计划的可执行轴报告（spec-review.md）
-- 轮次: Round 3（blocking closure）。读 `3618827e..19f6f589` 的计划 diff，以及受影响的章节：跨任务接口、前置检查、T2、T3、T5、T6、T7、T8、可追溯性
+- 轮次: Round 4（变更范围评审）。读 `git diff 19f6f589..6e03cbff -- <plan>`，以及受影响的章节：计划工作声明、输入与批准证据、跨任务接口、前置检查与 fail-closed、波次与依赖、T3、T4、T5、T6、T8、可追溯性
 - 日期: 2026-10-31
-- 结论: **PASS**（没有开放的 CORE_BLOCKING；S17–S20 为 CORE_CORRECTIVE，建议在计划批准前修正）
-- 排除项: 未运行测试与基准；fork seq 映射、分页补足、嵌套 cut 的逐行推演归可执行轴
+- 结论: **PASS**（没有开放的 CORE_BLOCKING）。附条件：S22 必须在交人工批准前处理；如果保留“取空队列”方案，批准请求里必须单独点明这项行为变化
+- 排除项: 未运行测试与基准；没有逐行推演取空队列的失败回退、gate 抢占的时序（归可执行轴）
 
 ## 输入与方法
 
-- 规范：`idevstd load --delivery semantic --accept-delta --task plan --task review --agent claude --consumer-mode --thinking-mode rigorous`。结果 BOUND、FULL、18 项资源，payload sha256 `a7be77b2…` 已核验。plan 合同不在 payload 内，沿用上一轮从 release 只读查阅的结论。
-- 读取：计划 0.3 全文；`3618827e..19f6f589` 的计划 diff；设计 0.2（范围、非目标、读者表、R2/R9/R11、流程 3）；第 2 轮规范轴报告；仓库 `AGENTS.md`。
-- 结构校验：对 `19f6f589` 的计划运行 `idevstd script validate_document --kind plan`，结果 `ok: true, errors: []`。工作区中的计划与 candidate 一致。
+- 规范：`idevstd load --delivery semantic --accept-delta --workspace <suga> --task plan --task review --agent claude --consumer-mode --thinking-mode rigorous`。结果 BOUND、FULL、18 项资源，payload sha256 `a7be77b2…` 已核验，与上一轮一致。
+- 读取：0.3→0.4 的计划 diff 和上面列出的章节；第 3 轮规范轴报告；设计 0.2 中的流程 3、R5、R8 与“锁与恢复函数”（design 85、151-152、236-240、267、270 行）；设计评审 ledger 中的 R2-F-N4。
+- 结构校验：对工作区的计划（与 `6e03cbff` 一致，`git status` 干净）运行 `idevstd script validate_document --kind plan`，结果为 `ok: true, errors: []`。
 - 代码核对：用 grep 和 sed 核对本轮新增的引用。
 
 | 新增引用 | 结果 |
 |---|---|
-| `session_card.go:117` LatestSummary（`RecentEntries` handoff/compaction） | 一致 |
-| `pkg/sugasdk/session.go:464` | 一致。调用 `Runner.SessionCard`，但对外的方法名是 `Session.Card`，见 S21 |
-| `undo_notice.go:22` undoNoticeQueueKey、`:182` UpdateEventEntrySeq、`:199` `notice.EventID = event.ID` | 一致（计划写 `:181`，实际回填调用在 182 行，差 1 行，可忽略） |
-| `gate.go:133` TryAcquire | 一致 |
-| `chat_commands.go:381` `case isUndoCommand` | 一致 |
-| `undo.go:207-227` withSession（阻塞 `Gate.Acquire` 加跨进程锁）；`UndoGate` 接口只有 `Acquire`（`undo.go:102-104`） | 与 S18 相关 |
-| `undo_restore.go:143` `restoreItem(..., item CheckpointItem, ...)`；`CheckpointItem.Meta SnapshotMeta`（`undo.go:32-41`） | 与 S19 相关 |
-| `tasks.Manager.TakeNotices` 返回 `[]tasks.Info`（`pkg/agentcore/tasks/tasks.go:686`），与 `RewindResult.DroppedTasks` 的类型一致 | 一致 |
-| sugasdk 调用的 Runner 方法：`Run`、`RunWithContract`、`Steer`、`SessionCard`、`Compact`（`pkg/sugasdk/session.go:300,314,448,464,477`） | 与 S17 相关 |
+| `gate.go:105` Acquire（先抢占可抢占的持有者，再等待）、`:133` TryAcquire、`:174` TryAcquirePreemptible | 一致 |
+| `compact.go:775` ConsolidateIdle 用 `TryAcquirePreemptible` | 一致 |
+| `undo.go:102` UndoGate 只有 `Acquire`、`:207` withSession（gate 加跨进程锁，被占时返回 `ErrSessionBusy`） | 一致 |
+| `undo_runner.go:42` gateForUndo | 一致，在 T5 的文件清单内 |
+| `undo_notice.go:119` takeUndoNotice 每次只取队首一项；`runner.go:646` 每回合只调用一次 `injectUndoNotice` | 一致，与 F26 所述的现状相符 |
+| `SnapshotRootStatus`（`undo.go:91`）；`CheckpointItem` 已含 `RootStatus` 字段（`undo.go:35`） | 类型存在。`rewindFileStep.Root` 与 `Item.RootStatus` 重复，见 S24 |
+| `enqueueUndoNotice` 的调用方：`undo_restore.go:106`、`undo_options.go:84`；`internal/cli/undo.go` 与 `internal/chat/chat_undo.go` 都走 UndoCore | 与 S22 相关：CLI 的 `suga undo` 也写入同一队列 |
+| `pkg/sugasdk/session.go:460-466` 对外方法是 `Session.Card` | 与 S17 的残留相关 |
 
 ## 验收标准
 
-plan 合同（思考声明、修订记录、Capability Discovery 三表、`host_or_non_offline_action`、前置检查与 fail-closed、波次依赖、任务五要素、跨任务签名、baseline、人工 Gate、可追溯、完成 Gate）；评审合同（同类穷尽、五类 CORE_BLOCKING 与 necessity proof、新增机制的 scope necessity）；SR1301；SR1403/SR1405/SR1410；GR104、GR107–GR110、SR2002–SR2004。
+- plan 合同：思考声明、修订记录、scope freeze 与 fail-closed、波次依赖与文件不相交、任务五要素、跨任务签名、可追溯、人工 Gate。
+- 评审合同：同类穷尽、五类 CORE_BLOCKING 与 necessity proof、新增机制的 scope necessity、按删除优先的顺序关闭。
+- 其他规则：SR1401、SR1403、SR1405、SR1408、SR1410、SR1411、SR1301；GR104、GR109。
 
-## 第 2 轮发现关闭状态
+## 第 3 轮发现关闭状态
 
 | ID | 状态 | 依据 |
 |---|---|---|
-| S11 ApplyRewind 不分 scope（CORE_BLOCKING） | **已关闭** | T5 第 3 步写明 4–6 步只在 scope 含 conversation 时执行（381 行）。files scope 不写 rewind 记录，所以 T2 的区间只来自 conversation/both 的记录，`maskedRanges` 不需要按 Scope 过滤。第 8 步的通知分为只回文件和含会话两种（390-391 行）。`RewindPlan.DropTasks` 已删除。新增了用例“files scope 不写记录、不改 meta、不丢通知、历史不变”和反向验证“去掉 scope 条件，用例失败”（397、406 行）。T8 给出了三种 scope 的判据（479-481 行） |
-| S12 接口形状与归属 | 基本关闭 | 已补 `RewindFileItem`、`RewindResult`、`ForkResult`、T4 的两个签名、`SeqRange` 与 `SeqRanges.Hidden`。分工写明 Runner 负责目标、前置、任务与 meta，UndoCore 只负责文件，删掉了 `UndoCore.RewindPlan`（101-144 行）。残留：`ForkInput` 与 `RewindFileAction` 仍没有类型定义，只在 T1 正文和注释中出现（110、116、250 行），属上轮未穷尽，ADVISORY。`RewindFileItem` 的新形状引出 S19 |
-| S13 任务通知预览 | **已关闭** | 选了方案一：预览只给一般提示，执行结果列出实际丢弃项（377、387、461-462 行），不扩 agentcore |
-| S14 R11 deferred 的依据 | **已关闭** | 排除项分为“设计 R9”和“本计划依据设计 R11 字面范围的决定”两条（41-47 行），完成定义第 6 条同步（34 行） |
-| S15 NM-01 归类 | **已关闭** | CAP-08 改为 `OWNER_EXTENSION`，New module candidates 为 `NONE` sentinel（78、85 行） |
-| S16 baseline 与文字细节 | 部分关闭 | 已关闭：baseline 改为 `66a3cbc8`，开工时重新采集（155-156 行）；分发位置改为 `chat_commands.go:381`（158 行）；补了文件拆分理由（194 行）。**未关闭（上轮未穷尽）**：① fail-closed 仍写“改 sugasdk 行为即停止”（190 行），与 0.3 新写的 sugasdk 行为变化说明矛盾，见 S17；② T6 的 title 后缀“（分叉）”仍没写是否走 i18n（428 行） |
+| S17 sugasdk 行为说明与 fail-closed 冲突 | **部分关闭** | 已关闭两项：① scope freeze 改为“有回退记录的会话上 `Run`、`Compact`、`Session.Card` 反映可见状态”（24-25 行）；② fail-closed 改为“公开 API”以及“没有回退记录的会话上的任何行为”（210 行）。**未关闭（上轮未穷尽）**：T8 的 CHANGELOG 条目仍写“sugasdk `SessionCard`”，没有改用对外名 `Session.Card`，也没有补充 `Run`/`Compact` 的变化（508 行）。24 行承诺“T8 在 CHANGELOG 中写明”这三项，T8 正文只覆盖了其中一项。维持 CORE_CORRECTIVE（LOW） |
+| S18 gate/锁的取法与 Busy 的归属 | **基本关闭** | 新增 `AcquireUnlessBusy` 和 `withSessionUnlessBusy`，写明抢占语义、`ErrSessionBusy`→`ErrRewindBusy` 的映射，以及“`ErrRewindBusy` 只由它产生”（161-168 行）。预览不加锁已写定。T3 的前置拒绝收为两项（349-351 行）。残留（上轮未穷尽）：T3 的验证仍写“三种前置拒绝”（356 行），应改为两种。新机制引出 S23 的依赖问题 |
+| S19 `RewindFileItem` 缺 Meta | **已关闭** | 新增内部类型 `rewindFileStep{View, Item CheckpointItem, Root}`，`planRewindFiles` 和 `applyRewindFiles` 都改为传 step（124-131 行）。剩下的文字问题见 S24 |
+| S20 屏蔽区间缓存 | **已关闭** | 删除了缓存，T5 第 4 步的失效逻辑和缓存用例随之删除，并写明“基准不达标时停止，回到计划修订，不在实施中临时加缓存”（298-299 行）。保留的跨实例用例（329 行）在没有缓存时只是一条回归测试，没有问题 |
+| S21 文字与元数据细节 | **部分关闭** | 已关闭：计划评审 round 1–3 补齐（60-63 行）；补了 `ForkInput` 与 `RewindFileAction` 的定义（125、149 行）；files scope 只写一条事件（405 行）；`TryAcquirePreemptible` 的情况改为可抢占（S18 已覆盖）。**未关闭（上轮未穷尽）**：① “文件拆分理由”仍插在 fail-closed 列表与“容器内 git……”之间，git 那一条仍是它的子项（215-216 行）；② title 的 i18n 后缀写成“进 `chat.ini` 或 `model.ini`”，没有定下来，T6 的文件清单也没有 catalog 文件（446、433 行），并入 S23 |
 
 ## 发现
 
-### S17 [MEDIUM] scope freeze 中 sugasdk 行为变化的说明与设计相容，但措辞过窄，并与 fail-closed 冲突（CORE_CORRECTIVE）
+### S22 [MEDIUM] “唯一预先登记的例外”（取空 undo 通知队列）的必要性没有证明，影响面写窄了，并与 scope freeze 冲突（CORE_CORRECTIVE）
 
-- 相容性核对：设计 R2（design 264 行）要求“凡进入模型请求、交接包或用户可见当前状态的读者”都经过屏蔽，读者表把 session card 列在其中（design 76 行）。R9（design 271 行）与非目标（design 50 行）延后的是 sugasdk 的**新增 API 与暴露**，不是现有读者的行为。所以“SessionCard 随之反映回退后状态”与 R2、R9 相容，计划做这个说明是对的。
-- 问题（同类全部出现点）：
-  - 23 行写“sugasdk 行为**只有一处**随之变化：SessionCard”。但 sugasdk 的 `Session.Run`/`RunWithContract`（`session.go:300,314`）走 `loadHistory`，并让模型使用 `session_search`/recall。`Session.Compact`（`session.go:477`）走 `recentRequests`/`latestPlan`/`buildHandoff`。在 chat 中回退过的会话上，这些路径的结果也会按 R2/R11 变化。这是设计本身要的结果，但“只有一处”不成立。
-  - 190 行 fail-closed 仍写“需要改……sugasdk 行为……属 Semantic Amendment，停止”，没有给 23 行列出的变化留出例外。T2 的实施者照字面会在改 `session_card.go`/`context.go` 时触发停止条件（S16 第 5 点上轮未穷尽）。
-  - T8 的 CHANGELOG 条目（488 行）写 “sugasdk `SessionCard`”，对外的方法名其实是 `Session.Card`（`session.go:460`），返回 `Card`。
-- 影响：治理条款自相矛盾，实施者可能误停；CHANGELOG 对外说明不准确。不影响结果的正确性。
+- 证据：
+  - fail-closed 登记了例外：T5 把 `takeUndoNotice` 改为每回合取空队列，“连续多次 `:undo` 的通知”从每轮一条变为下一轮全部送达（211 行；T5 410 行；T8 CHANGELOG 507 行）。
+  - scope freeze 同时写着“没有回退记录的会话，所有行为不变”（25 行），没有提到这个例外。两处自相矛盾。
+  - 影响面比写的大。`enqueueUndoNotice` 在 UndoCore 中（`undo_restore.go:106`、`undo_options.go:84`），chat 的 `:undo` 和 CLI 的 `suga undo`（`internal/cli/undo.go`）都写同一个队列。注入发生在 `Runner.Run`（`runner.go:646`），所以 chat、`suga send`、sugasdk `Run`、ACP 的下一轮都会改变。scope freeze 写的是“不改 CLI……sugasdk 行为”，而例外实际碰到了 CLI 与 sugasdk 在无回退会话上的可见行为。例外的文字只提了 `:undo`。
+  - 这项变化不在已批准设计 0.2 中。设计流程 3 与 R8（design 151-152、270 行）原本是“丢弃队列中的 undo 通知”。R2-F-N4 推翻了这一点，建议是“合并两段通知”。“输入与批准证据”中的设计偏差清单（64-67 行）列了 F-N4 的“合并”，但没有列 F26 的“取空队列”，而取空队列改变的是 rewind 以外的既有功能。
+- 必要性（Review Candidate Loop：先删除，再复用，再收窄）：F26 要解决的是：先 `:undo` 再 `:rewind conversation` 时，R5 要求的“磁盘未回退”通知排在 undo 通知之后，会晚一轮送达。有不改变无回退会话行为的做法，计划没有说明为什么不选：
+  - 把 rewind 通知放到队首，或在注入时优先取 rewind 项。R5 和 F-N4 都满足，现有队列格式与逐轮送达的行为不变。
+  - 只有队列中有 rewind 项时才取空。
+  - 按 R2-F-N4 的原建议，在入队时把 rewind 通知与已排队的 undo 通知合并为一项。
+- 内部有效性（只在保留取空队列时适用）：现有 `injectUndoNotice` 在写入失败时把这一项放回队列（`undo_notice.go:166-176`）。改成多项之后，“第 k 项写入失败”时前面已写入的项与剩下的项如何处理（顺序、重复、丢失），计划没有写，这与 GR109 相关。验证中也没有“只连续 `:undo`、不 rewind”的用例，也没有“改回只取一项则用例失败”的反向验证。
+- 为什么不是 CORE_BLOCKING：变化已在计划正文中登记并写进 CHANGELOG，没有绕过 Gate。它不丢数据，也可以回滚。所以只按 SR1410（默认最小方案）和 scope necessity 记为 CORE_CORRECTIVE。
+- 是否需要用户在批准时明确知悉：**需要**，如果保留取空队列的话。依据 SR1401 和 SR1411：这项变化改变了既有功能（`:undo`、`suga undo`）在设计范围之外的用户可见结果。仅把它放在 fail-closed 的子项里，不能认定为用户在批准时已经知道。
+- 建议（二选一，优先 A）：
+  - A：改用“rewind 通知优先注入”（队首插入，或注入时优先取 rewind 项）。这样删除例外，scope freeze 第 25 行就成立，CHANGELOG 中的 F26 条目也删除。T5 的用例保留“先 `:undo` 再 `:rewind`，下一轮 R5 通知必定送达”，另加“只连续 `:undo` 时行为与现在一致”。
+  - B：保留取空队列。需要做五件事：
+    1. 第 25 行改为“除 fail-closed 登记的例外外，所有行为不变”；
+    2. 例外的文字补全影响面：chat `:undo`、CLI `suga undo`，以及之后经 chat、`suga send`、sugasdk、ACP 的下一轮；
+    3. 把 F26 加入设计偏差清单（64-67 行）；
+    4. T5 写明多项写入中途失败时的处理，并补“只连续 `:undo`”的用例和“改回只取一项则失败”的反向验证；
+    5. 主会话在批准请求中用一句话单独点明这项变化。
+
+### S23 [MEDIUM] `withSessionUnlessBusy` 的归属不唯一，T6 的依赖缺失，W3“文件不相交”不成立（CORE_CORRECTIVE）
+
+- 证据（同类全部出现点）：
+  - 接口一节把 `withSessionUnlessBusy` 写在“personal：文件部分（T4）”下（131 行）。但 T4 的文件清单只有 `rewind_files.go`（363 行）。`gate.go`、`undo.go`、`undo_runner.go`（AcquireUnlessBusy、gateForUndo）则列在 T5 的文件清单中（389 行）。归 T4 还是 T5，两处说法不同。
+  - T6 的 `Runner.Fork` 要在 `withSessionUnlessBusy` 内执行（435 行），但 T6 只依赖 T1、T2、T3，并在 W3 与 T5 并行（225、471 行）。T6 的 worktree 中没有这个方法，实施者只能等 T5，或者自己在 `gate.go`/`undo.go` 中再实现一份。后一种做法与 T5 改同一批文件，合入时冲突，也有重复实现的风险。
+  - T6 的 title 后缀定为“进 `chat.ini` 或 `model.ini`”（446 行），没有定下来，T6 的文件清单也没有 catalog 文件。如果选 `model.ini`，就与 T5 的 `model.ini` 改动冲突（S21 残留，上轮未穷尽）。
+- 影响：波次表与任务正文不能同时照字面执行。编译或合入时会立即暴露，结果不会错，所以不是 blocker。
 - 建议：
-  - 23 行改为“sugasdk 现有的读路径（`Session.Card`、`Run`、`Compact`）在回退过的会话上按设计 R2/R11 反映可见状态；`Entries` 与 `engine.go:296` 的搜索保持原样；不新增 sugasdk API”；
-  - 190 行改为“需要改 DDL、CLI、ACP、sugasdk 公开 API，或改变 scope freeze 所列之外的 sugasdk/用户可见行为……停止”；
-  - T8 的 CHANGELOG 用 `Session.Card` 的名字，并补一句 `Run`/`Compact` 在回退过的会话上的变化。
+  - 把 `AcquireUnlessBusy`、`withSessionUnlessBusy`，以及 `gate.go`、`undo.go`、`undo_runner.go` 中 gateForUndo 的改动移到 T4。T4 在 W1，没有依赖，与 T2 的文件不相交。然后给 T6 加上对 T4 的依赖，T5 的文件清单相应删去 `gate.go` 与 `undo.go`。也可以保留在 T5，让 T6 依赖 T5，把 T6 移到 W4。
+  - title 后缀定一个文件，例如 `chat.ini`。把它加入 T6 的文件清单，并在 W3 的并行说明中写明与 T5 的 `model.ini` 不冲突。
 
-### S18 [MEDIUM] gate 与跨进程锁的取法、预览是否加锁、Busy 的归属写得不一致（CORE_CORRECTIVE）
+### S24 [LOW] 文字与小处不一致（ADVISORY）
 
-- 证据：
-  - 147-149 行：rewind 与 fork 用 `TryAcquire` 取 gate，“跨进程锁沿用 undo 的取法”。但 undo 的取法 `UndoCore.withSession`（`undo.go:207-227`）把阻塞的 `Gate.Acquire` 与跨进程锁绑在一起，`UndoGate` 接口也只有 `Acquire`（`undo.go:102-104`）。gate 不可重入（CAP-01，`gate.go:115-140`），所以 `TryAcquire` 之后再调用 `withSession` 会自锁。要只取跨进程锁，需要从 `withSession` 中抽出锁的部分，计划没有写这一步，也没有写跨进程锁被占时返回现有的 `ErrSessionBusy`（`undo.go:220`）还是 `ErrRewindBusy`。
-  - T4 的方法要求“调用方持有 gate 与锁”（112、347 行）。T5 的 `RewindPlan` 标为“预览，只读”（373 行），并调用 `planRewindFiles`，但没有写预览是否取 gate 与锁。对照的 undo 预览 `Select` 是在 `withSession` 内调用 `checkpointsLocked` 的（`undo.go:150-187`）。
-  - T3 `rewindPreconditions` 写“调用方已用 `TryAcquire` 取得 gate”，同时又把“回合进行中：`TryAcquire` 失败即返回 `ErrRewindBusy`”列为它的一项拒绝（330-331 行）。已经持有 gate 的函数观察不到 `TryAcquire` 失败，所以 Busy 的判定是在 T3 还是在 T5/T6 的调用方，写得不唯一。T3 的验证“三种前置拒绝”也因此不清楚测的是哪三种。
-- 影响：实施方式不唯一。照字面实施会自锁，或者预览在没有锁的情况下读快照。T5 的锁内重算加比较能兜住数据安全，测试也能发现自锁，所以不构成 blocker。
-- 建议：在跨任务接口中写定：
-  - Runner 的 `withRewindSession(sid, fn)` 先 `r.gate(sid).TryAcquire()`，失败返回 `ErrRewindBusy`；再取跨进程锁，这部分从 `withSession` 抽出共用的 `withLock`，被占时返回 `ErrSessionBusy`（或映射为 `ErrRewindBusy`，二选一写死）；
-  - `RewindPlan`、`ApplyRewind`、`Fork` 都在这个函数内执行；
-  - T3 的 `rewindPreconditions` 只判定归档与运行中任务两项，Busy 的判定归调用方，T3 的验证相应改为两项。
-
-### S19 [MEDIUM] 冻结的 `RewindFileItem` 形状不含 `restoreItem` 所需的快照元数据（CORE_CORRECTIVE）
-
-- 证据：
-  - 95 行规定“改形状要回到计划修订”。
-  - `RewindFileItem` 只有 `TurnID`、`Path`、`Action`、`Reason`（113-118 行）。`applyRewindFiles(ctx, sid, items []RewindFileItem)` 要“循环调用 `restoreItem`”（349 行），但 `restoreItem` 的入参是 `CheckpointItem`，需要其中的 `Meta SnapshotMeta`（快照文件、hash 等）和 `RootStatus`（`undo_restore.go:143`、`undo.go:32-41`）。
-  - 只凭 `Path` 无法恢复。实施者要么给类型加字段（这违反冻结），要么在 `applyRewindFiles` 内重跑 `checkpointsLocked`，再按 TurnID 加 Path 匹配（计划没写，而且与“只接受调用方在锁内刚算出的条目”的意图重复）。
-- 影响：T4 的动作与接口不能同时照字面执行，实施方式不唯一。
-- 建议：`RewindFileItem` 增加一个不导出的 `item CheckpointItem` 字段（也可以导出为 `Item`），注明预览与比较只用导出字段，`applyRewindFiles` 用 `item` 调用 `restoreItem`。也可以写明比较的键是 `(TurnID, Path, Action, Reason)`。
-
-### S20 [LOW] T2 新增的屏蔽区间缓存没有证明必要性（CORE_CORRECTIVE）
-
-- 证据：
-  - T2 的 `maskedRanges` 在 0.3 中新增“按会话缓存在 Runner 中，键为最新 rewind 记录 seq，本进程写入时失效，其他进程写入时按键比较后重建”（278-280 行）。T2 还为它加了一个跨 Store 实例的用例（310 行），T5 第 4 步要负责让它失效（382 行）。
-  - 按键比较需要每次读都查一次“最新 rewind 记录 seq”。T1 已经说明 rewind 条目“在全库中极少”，并要求按 EXPLAIN 和基准选定 `RewindRecords` 的查询方式（236-238 行）。所以缓存省掉的只是对极少几条记录的区间合并，而省不掉查询本身。计划没有说明为什么需要缓存。
-  - 缓存是 Runner 上新的共享状态，计划也没有写它的并发保护。这与 `-race` 的要求相关。
-- 依据：SR1403、SR1410（默认最小方案，重机制须证明局部修复不足）；Review Candidate Loop 的 scope necessity（必要性未证明时，支持删除新增机制）。
-- 建议：删除缓存，T5 第 4 步与 T2 的缓存用例随之删除。如果担心性能，改成条件：“T2 基准超过 20% 时，才允许加入按会话缓存（带 mutex），并记入 progress”。
-
-### S21 [LOW] 文字与元数据细节（ADVISORY）
-
-- 194-195 行：“文件拆分理由”插在 fail-closed 列表中间，原属 fail-closed 的“容器内 git 只对单条命令前缀……”一条变成了它的子项。应把拆分理由移到 fail-closed 列表之后，或改为平级。
-- 58 行“计划评审”只写 round 1（`a59b27d0`），没有补 round 2（`71a0b184`）。35 行完成定义第 7 条仍写“计划评审第 1 轮”，可追溯表其实已覆盖第 2 轮。这属元数据，不需要递增版本。
-- S12 残留：`ForkInput{Session, Turns, Entries}` 与 `RewindFileAction` 应在接口一节给出类型定义。
-- S16 残留：T6 的 title 后缀“（分叉）”是否走 i18n。如果走，要在 T6 的文件清单中加 catalog 文件，并说明与同波次 T5 的 `model.ini` 改动不冲突。
-- files scope 下，T5 第 7 步写 `session/rewind` 事件，第 8 步复用的 `enqueueUndoNotice` 又会写一条 `EventUndo`（`undo_notice.go:191-199`），同一次操作会产生两条事件。建议写明这是预期行为，或者 files scope 只保留其中一条。
-- 用 `TryAcquire` 判定“回合进行中”时，后台整理用 `TryAcquirePreemptible` 持有 gate（`gate.go:174`）的情况也会让 rewind 返回 Busy，而 `Acquire` 在这种情况下会先让对方让出。建议在 T3 或 T5 中注明这一点是否可以接受（这一条主要归可执行轴，这里只作提示）。
+- `rewindFileStep.Root SnapshotRootStatus` 与 `Item.RootStatus` 重复，因为 `CheckpointItem` 本来就带 `RootStatus`（`undo.go:35`）。建议删去 `Root`，或注明它就是 `Item.RootStatus` 的副本（SR1403）。
+- T4 正文仍写 `applyRewindFiles(ctx, sid, items)`、“只接受调用方……条目”（367 行），应改为 `steps` 与 `rewindFileStep`，与接口一致。
+- 跨任务接口写“T4……调用方持有 gate 与跨进程锁”，T4 的单测要直接调用这两个不加锁的方法，可以注明测试中不取锁。
+- S17 与 S18 的残留（T8 的 CHANGELOG 名称、T3 的“三种”）见关闭状态表。修正都是一行措辞，与 S22、S23 一起改即可。
 
 ### SR1301 安全核对
 
 - 鉴权：不适用（本地 chat，不新增入口）。
-- 注入防护：已核对。Skipping 查询改为按可见段做 seq 范围查询，仍然绑定参数（240 行）。
-- 秘密不进日志或输出：已核对。事件 attrs 只有目标轮、scope、文件统计；`RewindResult.Notice` 是给模型的通知正文，不含秘密。
-- 入参校验：已核对。T3 的 `resolveTarget` 不变。
-- 资源归属：已核对。turn_id 的会话归属校验与反向验证保留（328、339 行）；recall 中 ref 落在区间内时按“不存在”处理，续读跳过区间（293-294 行）；缓存按会话分键。
+- 注入防护：已核对。`EntriesFromSkipping` 增加 types 参数，仍然是参数化的 seq 范围查询。
+- 秘密不进日志或输出：已核对。取空队列只搬运已有的通知正文，事件 attrs 不变。
+- 入参校验：已核对。`resolveTarget` 不变。
+- 资源归属：已核对。`withSessionUnlessBusy` 按 sid 取 gate 与锁。recall 的续读 ref 改为多读一条并取它的 seq，总是指向可见条目，“ref 在区间内按不存在处理”保留（312-313 行）。
 
 ### 已核对且无问题
 
-- 首行模板 1.3.0，状态 `Draft 0.3`；修订记录 0.3 只描述语义变化；RIGOROUS 声明、暴露度（两轴）、停止条件不变；validator 通过。
-- `host_or_non_offline_action=REQUIRED` 恰好一处（52 行）。
-- scope freeze 的路径没有扩大：0.3 新增的改动仍在 `internal/personal/**`、`internal/chat/**` 内，`pkg/agentcore/**` 与 `pkg/sugasdk/**` 都不改。
-- 依赖与并行：T5 第 4 步要使 T2 的缓存失效，T5 经 T3 传递依赖 T2，依赖成立。W3 的 T5（`rewind.go`、`rewind_notice.go`、`undo_runner.go`、`model.ini`）与 T6（`fork.go`、`fork_files.go`）文件不相交。W1 的 T4 只新增 `rewind_files.go`，与 T2 不相交。
-- 授权 Gate 不变：计划批准只授权 worktree 实施与本地提交；合入由主会话审核；发版 v0.54.0、push、主机安装单独走外部动作 Gate；冒烟用 `&&` 串接作为合入前提。
-- 可追溯表新增了 S11–S16 与 F15–F24 的行，每项都指向任务或章节以及验证。
-- 结构条目：不新增入口与 CLI，wiring 不改；GR109 在 T5 第 9 步点名；GR104 由每个新文件 400 行的上限和拆分理由约束；SR2002 由 AGENTS.md 约束。
+- 首行模板 1.3.0，状态 `Draft 0.4`。0.4 的修订记录只描述语义变化，并逐项对应到 S17–S21、F25–F31。validator 通过。
+- scope freeze 的路径没有扩大。新增的 `gate.go`、`undo.go`、`undo_notice.go` 仍在 `internal/personal/**` 内，不改 `pkg/**`。
+- S20 按删除优先关闭，并加了“不在实施中临时加缓存”的 fail-closed 约束，符合 SR1410。
+- `AcquireUnlessBusy` 是现有 gate 的方法扩展（OWNER_EXTENSION），没有新建 Module。空闲整理被抢占沿用 `Acquire` 的既有语义，并有用例（T5 418 行）。
+- 授权 Gate 不变：计划批准只授权 worktree 实施与本地提交；发版、push、主机安装单独走外部动作 Gate。
+- 可追溯表新增了 S17–S21 与 F25–F31 的行，每行都指向任务和验证。缺口只有两处：S22 的设计偏差清单，以及 S17 行所说的 T8 CHANGELOG 内容与 T8 正文不一致，这两处已在上文列出。
 
 ## 覆盖缺口与限制
 
-- 未运行测试与基准；没有验证可见段分页、续读跳区间、锁内重算比较的正确性（归可执行轴）。
-- 只读了 diff 和受影响的章节；未变化的章节沿用第 2 轮的结论。
-- plan 合同沿用第 2 轮从 release 只读查阅的版本，本轮没有重读。
+- 只读了 diff 和受影响的章节。未变化的章节（T0、T1、T7、Capability Discovery、回滚）沿用第 3 轮的结论。
+- 未运行测试与基准，也没有验证 `AcquireUnlessBusy` 如何从 gate 状态中区分“回合持有”与“可抢占持有”（归可执行轴）。
 
 ## 结论
 
-**PASS**（规范与治理轴，Round 3）。
+**PASS**（规范与治理轴，Round 4）。
 
-- 上一轮唯一的 CORE_BLOCKING S11 已关闭，S13–S15 已关闭，S12、S16 基本关闭，残留并入 S17 与 S21。
-- 本轮新发现都不是 CORE_BLOCKING：
-  - S17–S20 为 CORE_CORRECTIVE，都只是改写措辞或删减内容，不新增 Module、Interface、Schema 或授权，建议在交人工计划批准前一并修正；
-  - S21 为 ADVISORY。
+- S18–S20 已关闭或基本关闭。S17、S21 部分关闭，残留都是一行措辞。
+- 新发现都不是 CORE_BLOCKING：
+  - S22、S23 为 CORE_CORRECTIVE，都只是收窄或调整依赖，不新增 Module、Interface、Schema 或授权；
+  - S24 为 ADVISORY。
 
 ## 剩余风险与后续
 
-- S17–S20 的修正属于语义变化，修正后计划应递增为 0.4。修正只会澄清或删减内容，不需要新的 blocking 轮次（第 3 轮以后只为 CORE_BLOCKING 开轮）。批准时由主会话核对修正 diff 即可。
-- S20 如果选择保留缓存，应写明并发保护和必要性依据（基准结果）。
-- 开工时按计划重新采集 baseline（当前 main 已在 `19f6f589` 之后）。
+- S22 优先选 A：删除例外，回到“无回退会话行为不变”。如果选 B，主会话在批准请求中要单独用一句话点明：“`:undo` 与 `suga undo` 的连续通知改为下一轮全部送达”。不能只靠 fail-closed 的子项让用户知悉。
+- S22、S23 的修正属于语义变化，修正后计划应递增为 0.5。修正只是收窄内容或调整依赖，不需要新开 blocking 轮次（第 3 轮以后只为 CORE_BLOCKING 开轮），由主会话核对修正 diff 即可。
+- 开工时按计划重新采集 baseline。
