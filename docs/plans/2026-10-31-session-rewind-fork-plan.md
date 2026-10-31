@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 会话 rewind 与 fork 实施计划
 
-> 状态：Draft 0.3 / 待人工计划批准
+> 状态：Draft 0.4 / 待人工计划批准
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-10-31 | Claude | 初稿：按已批准设计 0.2 拆为 W0–W3；收口设计两轴第 2 轮遗留的 CORE_CORRECTIVE（S-N1、S-N2、F11、F-N1–N5） |
 | 0.2 | 2026-10-31 | Claude | 收口计划评审第 1 轮：规格轴 F1–F9 与规范轴 S1–S8。主要变化：<br>• 新增“跨任务接口”一节，rewind 改为预览加执行两段式，入口挂在 UndoCore 适配层；<br>• 重排任务与依赖，消除并行任务改同一文件；<br>• fork 的 seq 映射在事务前算好，CreateForkedSession 复用 FTS 与正文外置写入；<br>• R11 按设计原文收窄为“任何作用域下都排除当前会话的屏蔽条目”，sugasdk 与 CLI 默认不排除；<br>• 补 recall、SegmentCount、后台任务判定、checkpointsLocked；<br>• 补 R9、R10 追溯、反向验证、运行目录 |
 | 0.3 | 2026-10-31 | Claude | 收口计划评审第 2 轮：规范轴 S11–S16 与规格轴 F15–F24。主要变化：<br>• 会话部分只在 scope 含 conversation 时执行（S11）；<br>• ApplyRewind 在锁内重算回退计划并与预览比较，去掉 Stamp（F15）；<br>• 任务通知改为执行后报告实际丢弃项，预览只做一般提示（S13、F16）；<br>• 补全接口字段与 T4 签名（S12）；<br>• session card 的 LatestSummary 接入屏蔽，并在 CHANGELOG 写明 sugasdk 会话卡片的变化（F17）；<br>• recall 用区间跳过的窗口读法（F18）；<br>• 屏蔽区间按会话缓存，Skipping 查询按可见区间分段走主键（F19）；<br>• gate 改用 TryAcquire 拒绝；meta 白名单默认拒绝；undo 通知合并方式按 `undo_notice.go` 写明（F20–F23）；<br>• baseline、分发位置、NM-01 归类（S14–S16、F24） |
+| 0.4 | 2026-10-31 | Claude | 收口计划评审第 3 轮（两轴 PASS）的 CORE_CORRECTIVE：S17–S20、F25–F28，并处理 S21、F29–F31。<br>• sugasdk 行为变化如实写明，fail-closed 改为“无回退记录的会话上行为变化”（S17）；<br>• 新增 `UndoCore.withSessionUnlessBusy`：gate 用新增的 `AcquireUnlessBusy`，回合占用时返回忙，空闲整理占用时抢占后等待；预览不加锁（S18、F28）；<br>• 文件部分改用内部按项结构，携带 `restoreItem` 所需的 Meta 与 RootStatus（S19、F25）；<br>• 去掉屏蔽区间缓存（S20、F29）；<br>• undo 通知注入改为每回合取空队列（F26）；<br>• recall 窗口读法带 types，续读 ref 取多读一条的 seq（F27）；<br>• meta 白名单按真实键名；files scope 只写一条事件；`cfg.Tasks` 判空（F30、F31） |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -20,7 +21,8 @@
 - Scope freeze：
   - 只改 suga 仓库（Git root `inhere-tools/suga`，分支 `main`）的 `internal/personal/**`、`internal/personal/store/**`、`internal/chat/**`、`internal/i18n/catalog/**`、`test/ptye2e/**`，以及 CHANGELOG、README 中的 chat 说明。
   - 不改 CLI 子命令、ACP、sugasdk 公开 API、wiring、DDL。
-  - sugasdk 行为只有一处随之变化：`SessionCard`（`pkg/sugasdk/session.go:464` 调用 personal 的 session card）会反映回退后的当前状态，因为设计 R2 把 session card 列为必须经过屏蔽的读者。T8 在 CHANGELOG 中写明。sugasdk 的 `Entries` 与搜索保持原样。
+  - sugasdk 的公开 API 不变。但在**有回退记录的会话**上，经 sugasdk 调用的 `Run`、`Compact`、`Session.Card` 会反映回退后的可见状态（`pkg/sugasdk/session.go:464` 等调用 personal 的同一批读者）。这是设计 R2 的直接结果，T8 在 CHANGELOG 中写明。
+  - sugasdk 的 `Entries` 与搜索保持原样；没有回退记录的会话，所有行为不变。
 - 暴露度：会话数据是用户资产，不属低暴露（SR1409）。计划评审采用两轴独立评审，严谨模式最多 8 轮；无开放 `CORE_BLOCKING` 即停止。
 - 停止条件：两轴都 PASS 后交用户批准；实施中出现 Semantic Amendment 或 Ownership Conflict 即停。
 
@@ -55,7 +57,10 @@
 
 - 设计：`docs/design/2026-10-31-session-rewind-fork-design.md` 0.2，用户 2026-10-31 批准，原话：“批准 rewind 设计 0.2（含 R11、R12）”。
 - 设计评审：`docs/review/2026-10-31-session-rewind-fork/`（rounds 1–2，PASS，`cff054ce`）。
-- 计划评审：`docs/review/2026-10-31-session-rewind-fork-plan/`（round 1，`a59b27d0`）。
+- 计划评审：`docs/review/2026-10-31-session-rewind-fork-plan/`。
+  - round 1：`a59b27d0`；
+  - round 2：`71a0b184`；
+  - round 3：`a3e9eb93`，两轴 PASS，CORE_CORRECTIVE 在 0.4 收口，由主会话核对修正 diff。
 - issue：suga-4tnd。gofer plan `plan-20261031-211227-3fa910d5`（suga 0.54）。
 - 本计划与设计正文的偏差都来自评审纠正项，偏差处标注了依据：
   - T6 的 fork 写入方式（F-N1、计划 F2）；
@@ -103,7 +108,7 @@ type SeqRanges []SeqRange             // 已排序、已合并
 func (r SeqRanges) Hidden(seq int64) bool
 func (s *Store) RecentEntriesSkipping(ctx, sid string, types []string, skip SeqRanges, limit int) ([]Entry, error)
 func (s *Store) LatestEntrySkipping(ctx, sid, typ string, skip SeqRanges) (*Entry, error)
-func (s *Store) EntriesFromSkipping(ctx, sid string, fromSeq int64, skip SeqRanges, limit int) ([]Entry, error) // recall 窗口，正序
+func (s *Store) EntriesFromSkipping(ctx, sid string, types []string, fromSeq int64, skip SeqRanges, limit int) ([]Entry, error) // recall 窗口，正序
 func (s *Store) CountEntriesByTypeSkipping(ctx, sid, typ string, skip SeqRanges) (int, error)
 func (s *Store) CountTurnsSkipping(ctx, sid string, skip SeqRanges) (int, error)
 // SearchEntriesPage 增加选项 ExcludeSession{SessionID string; Ranges SeqRanges}；零值不排除（sugasdk、CLI 默认零值）
@@ -116,8 +121,16 @@ type RewindFileItem struct {
     Action RewindFileAction // restore | delete | conflict | unrecoverable
     Reason string          // conflict / unrecoverable 的原因（cleared、no_snapshot、snapshots_off、root_untrusted…）
 }
-func (u *UndoCore) planRewindFiles(ctx, sid, toTurnID string) ([]RewindFileItem, error)
-func (u *UndoCore) applyRewindFiles(ctx, sid string, items []RewindFileItem) ([]RewindFileItem, error) // 返回实际结果
+type RewindFileAction string // restore | delete | conflict | unrecoverable
+// 内部按项结构：携带 restoreItem 所需的快照条目与根状态（S19、F25）
+type rewindFileStep struct {
+    View RewindFileItem
+    Item CheckpointItem      // 含 SnapshotMeta
+    Root SnapshotRootStatus  // 非 trusted 映射为 unrecoverable/root_untrusted
+}
+func (u *UndoCore) planRewindFiles(ctx, sid, toTurnID string) ([]rewindFileStep, error)
+func (u *UndoCore) applyRewindFiles(ctx, sid string, steps []rewindFileStep) ([]RewindFileItem, error) // 返回实际结果
+func (u *UndoCore) withSessionUnlessBusy(ctx, sid string, fn func() error) error // gate 用 AcquireUnlessBusy，再取跨进程锁
 
 // personal：Runner 入口（T3、T5、T6）
 type RewindScope string // files | conversation | both
@@ -133,6 +146,7 @@ type RewindResult struct {
     Notice       string           // 注入给模型的通知正文（为空表示未注入）
 }
 type ForkResult struct { SessionID string; Turns, Entries int }
+// store.ForkInput{Session store.Session; Turns []store.Turn; Entries []store.NewEntry（Seq 与 CreatedAt 已填）}
 func (r *Runner) RewindPlan(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, target string, scope RewindScope) (RewindPlan, error)
 func (r *Runner) ApplyRewind(ctx, snapshots *SessionSnapshots, sessionsRoot string, plan RewindPlan) (RewindResult, error)
 func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, target string) (ForkResult, error)
@@ -145,8 +159,13 @@ var ErrRewindStale, ErrRewindBusy error
 - 适配层：Runner 方法与现有 `Runner.Undo` 一样，通过 `r.UndoCore(snapshots, sessionsRoot)` 拿到 UndoCore。
 - 恢复：文件恢复走 UndoCore 的 `checkpointsLocked`，以带上 RootStatus（计划 F7）。
 - 并发判定（计划 F21）：
-  - rewind 与 fork 用 `TryAcquire` 取 gate，取不到返回 `ErrRewindBusy`，不等待。
-  - 跨进程锁沿用 undo 的取法。
+  - 新增 gate 方法 `AcquireUnlessBusy(ctx)`，并加入 `UndoGate` 接口（`undo.go:102`），Runner 侧由 `gateForUndo` 提供：
+    - 回合持有（非可抢占）时，立即返回 `ErrRewindBusy`；
+    - 空闲整理以可抢占方式持有（`compact.go:775`）时，与 `Acquire` 一样触发抢占并等待释放；
+    - 空闲时直接取得。
+  - `withSessionUnlessBusy` 与 `withSession`（`undo.go:207`）结构相同，只是 gate 换用 `AcquireUnlessBusy`；跨进程锁照旧，`ErrSessionBusy` 映射为 `ErrRewindBusy`。不在已持 gate 的情况下再调用 `withSession`，避免自锁（S18）。
+  - 预览（`RewindPlan`）不取 gate 与锁，只读；正确性由执行时的锁内重算保证。
+  - ApplyRewind 与 Fork 的全部步骤都在 `withSessionUnlessBusy` 的 fn 内执行；`ErrRewindBusy` 只由它产生。
 - 过期判定（计划 F15）：`ApplyRewind` 在锁内重新计算回退计划，包括目标解析、`planRewindFiles` 与 LatestSeq，再与预览逐项比较。任何不同（含 cwd、add_dirs 或快照目录变化导致的条目变化）都返回 `ErrRewindStale`，不执行。
 
 ## 前置检查与 fail-closed 条件
@@ -164,7 +183,8 @@ var ErrRewindStale, ErrRewindBusy error
   - `session_card.go:99` SessionCard、`:117` LatestSummary、`:126` SegmentCount、`:129` Turns、`:194` fillCardPlan；
   - `pkg/sugasdk/session.go:464`（session card 调用方）；
   - `undo_notice.go:22` undoNoticeQueueKey、`:181,199` event_id 回填；
-  - `gate.go:133` TryAcquire；
+  - `gate.go:105` Acquire、`:133` TryAcquire、`:174` TryAcquirePreemptible；`compact.go:775` 空闲整理取 gate；
+  - `undo.go:102` UndoGate、`:207` withSession；`undo_notice.go:119` takeUndoNotice；
   - `chat_commands.go:381` 命令分发；
   - `ledger.go:100-135` 检索作用域、`:249` readMessages（recall）；
   - `store/entries.go:24,291,321,358`；
@@ -187,7 +207,8 @@ var ErrRewindStale, ErrRewindBusy error
   - 容器内命令都在任务 worktree 根目录 `inhere-tools/suga/.worktrees/<任务>` 下执行；Go 1.26，`GOFLAGS=-buildvcs=false`。
   - 主机命令写法：`gofer job run -p my-tools-dev -a exec --runner local --sync --cwd inhere-tools/suga/.worktrees/<任务> -- go test ...`。
 - **fail-closed**：
-  - 需要改 DDL、sugasdk 行为、CLI、ACP，或改变设计以外的用户可见行为：属 Semantic Amendment，停止。
+  - 需要改 DDL、sugasdk 公开 API、CLI、ACP，或在**没有回退记录的会话**上改变任何行为（含 sugasdk），或改变设计以外的用户可见行为：属 Semantic Amendment，停止。
+    - 唯一预先登记的例外：T5 把 undo 通知改为每回合取空队列（F26）。连续多次 `:undo` 的通知，从“每轮送一条”变为“下一轮全部送达”。CHANGELOG 中写明。
   - `BenchmarkSessionCard`（含新增的带屏蔽区间变体）比 T1 记录的基线回退超过 20%（`-benchtime=2s`）：停止。
   - 区间排除的检索查询，`EXPLAIN QUERY PLAN` 出现对 entries 的全表扫描：停止。
   - 尾部大屏蔽区间基准（见 T1）的耗时与无屏蔽基准相比超过 2 倍：停止。
@@ -275,9 +296,7 @@ var ErrRewindStale, ErrRewindBusy error
 - 文件：`internal/personal/visible.go`（新）、`context.go`、`segment_history.go`、`segment_handoff.go`、`handoff.go`、`lastreply.go`、`session_card.go`、`ledger.go` 及测试
 - 动作：
   - `maskedRanges(ctx, sid) (store.SeqRanges, error)`：由 `RewindRecords` 构造区间并集。
-    - 按会话缓存在 Runner 中，键为会话最新的 rewind 记录 seq（计划 F19）；
-    - 本进程写入 rewind 记录时使缓存失效；
-    - 其他进程写入时，按键比较发现变化后重建。
+    - 不做缓存（S20、F29）：每个读者调用一次 `RewindRecords`，代价由 T1 选定的查询方式与 T2 的基准把关；基准不达标时按 fail-closed 停止并回到计划修订，不在实施中临时加缓存。
   - 接入设计 0.2 读者表中的全部读者：
     - `loadHistory`：Types 白名单加入 `EntryRewind`，扫描时把它当作区间记录；
     - `SegmentHistory`、`latestPlan`、`recentRequests`、`buildHandoff`；
@@ -289,9 +308,9 @@ var ErrRewindStale, ErrRewindBusy error
     - Turns 改用 `CountTurnsSkipping`（F-N3）。
   - 检索（R11，计划 S3、F4）：
     - `session_search` 在任何作用域下都传入 `ExcludeSession{当前会话, 当前会话区间}`；
-    - recall 的 `readMessages`（`ledger.go:249`）改用 `EntriesFromSkipping` 读窗口，跳过当前会话区间内的条目（计划 F18）。
-      - 模型给出的 ref 指向被屏蔽条目时，按“不存在”处理；
-      - 续读位置（上一窗口最后一条 seq+1）落在区间内时，自动从区间之后的第一条可见条目继续，不报错。
+    - recall 的 `readMessages`（`ledger.go:249`）改用 `EntriesFromSkipping`，types 传原有的 `ledgerMessageTypes`，跳过当前会话区间内的条目（计划 F18、F27）。
+      - 窗口多读一条（limit+1），续读 ref 取这一条的 seq，因此续读 ref 总是指向可见条目；
+      - ref 指向被屏蔽条目时，一律按“不存在”处理。
   - 在 `visible.go` 的注释与 progress 中写明“不受影响的读者”及理由（S-N1、计划 F10）：
     - 按单轮读取：`compact.go:176`、`replay.go:233`、`admit.go:165`、`steer.go:418`；
     - `:checkpoints`/`:undo`（`undo.go:347` ListTurns）按磁盘事实计数；
@@ -306,8 +325,8 @@ var ErrRewindStale, ErrRewindBusy error
     - LastReply 不误报；
     - session card 四个字段（LatestSummary、plan、SegmentCount、Turns）；
     - 检索：当前会话、workspace、all 三种作用域都不返回当前会话的屏蔽条目，其他会话照常返回；
-    - recall：ref 在区间内、窗口跨越区间、续读位置落在区间内；
-    - 缓存：另一个 Store 实例写入 rewind 记录后，本 Runner 的读者能看到新区间。
+    - recall：ref 在区间内、窗口跨越区间、上一窗口末尾紧挨区间时续读 ref 指向区间后第一条可见条目；
+    - 另一个 Store 实例写入 rewind 记录后，本 Runner 的读者立即看到新区间。
   - 反向验证：
     - 去掉 `recentRequests` 的屏蔽，交接包用例失败；
     - 去掉 loadHistory 的屏蔽，上下文用例失败；
@@ -327,10 +346,9 @@ var ErrRewindStale, ErrRewindBusy error
   - `Hops>0` 的轮与 `suga send` 发起的轮：实施前核实它们是否带 Injected 标记，结果写入 progress。没有标记的按用户轮处理。
   - `resolveTarget(sid, arg)`：参数可以是序号或 `turn_id`；`turn_id` 须属于该会话、不在屏蔽区间内、且是用户轮（SR1301）。
   - `cutFor(turn)`：取该轮首条 entry 的 seq 减 1。
-  - 前置拒绝 `rewindPreconditions(ctx, sid)`，rewind 与 fork 共用，调用方已用 `TryAcquire` 取得 gate：
-    - 回合进行中：`TryAcquire` 失败即返回 `ErrRewindBusy`（计划 F21）；
+  - 前置拒绝 `rewindPreconditions(ctx, sid)`，rewind 与 fork 共用，在 `withSessionUnlessBusy` 的 fn 内调用（回合进行中已由 gate 返回 `ErrRewindBusy`）：
     - 会话已归档；
-    - 有运行中的后台任务：`TaskNotices` 接口加 `List(sessionID) []tasks.Info`，判断其中 Status 为 running（计划 F8）。
+    - 有运行中的后台任务：`TaskNotices` 接口加 `List(sessionID) []tasks.Info`，判断其中 Status 为 running（计划 F8）；`cfg.Tasks` 为 nil 时视为没有任务（F31）。
 - 验证：
   - `go test -race -count=1 -run 'UserTurn|Cut|ResolveTarget|RewindPrecond' ./internal/personal/`，覆盖：
     - injected、nudge、空轮、steer；
@@ -368,35 +386,36 @@ var ErrRewindStale, ErrRewindBusy error
 
 ### T5 回退预览与执行
 
-- 文件：`internal/personal/rewind.go`（新）、`rewind_notice.go`（新）、`undo_runner.go`（只加适配方法）、`internal/i18n/catalog/{zh,en}/model.ini` 及测试
+- 文件：`internal/personal/rewind.go`（新）、`rewind_notice.go`（新）、`undo_runner.go`（只加适配方法）、`undo_notice.go`（取空队列）、`gate.go` 与 `undo.go`（`AcquireUnlessBusy`、`withSessionUnlessBusy`）、`internal/i18n/catalog/{zh,en}/model.ini` 及测试
 - 动作：
   - `RewindPlan`（预览，只读）：
     - 解析目标（T3）；
     - scope 含 files 时调用 T4 的 `planRewindFiles`；
     - 记录 LatestSeq。
     - 不预列任务通知：`pkg/agentcore/tasks` 没有只读取得待注入通知的方法，本计划不扩 agentcore（计划 S13、F16）。chat 预览给出一般提示“已结束但未送达的后台任务通知将被丢弃”，实际丢弃项在执行结果中列出。
-  - `ApplyRewind`（执行），用 `TryAcquire` 取 gate，再取跨进程锁：
+  - `ApplyRewind`（执行），全部步骤在 `withSessionUnlessBusy` 内：
     1. 重跑前置拒绝；在锁内重算回退计划并与预览逐项比较，不同则返回 `ErrRewindStale`（计划 F15）。
-    2. scope 含 files 时，用锁内重算的条目调用 `applyRewindFiles`。
+    2. scope 含 files 时，用锁内重算的 `rewindFileStep` 调用 `applyRewindFiles`。
     3. **以下 4–6 步只在 scope 含 conversation 时执行**（设计“会话部分（scope 包含 conversation）”，计划 S11）：
-    4. 追加 `rewind` entry `{cut_seq, target_turn, scope, files}`，并使 T2 的屏蔽缓存失效。
+    4. 追加 `rewind` entry `{cut_seq, target_turn, scope, files}`。
     5. 处理 meta：
        - 重置 `fold_boundary=0`、`fold_active=false`；
        - `loaded_tools` 保留（R12）；
        - 调用 `r.rec.prefix.clearRequest`。
-    6. 任务通知：`TakeNotices` 取出已结束的任务通知后丢弃，并写入 `RewindResult.DroppedTasks`。gate 内与 `takeTaskNotices`（`context.go:355`，只在持 gate 的回合中运行）互斥，没有竞争（计划 F8）。
-    7. 写 `session` 事件，name 为 `rewind`，attrs 含目标轮、scope、文件统计。
+    6. 任务通知（`cfg.Tasks` 非 nil 时）：`TakeNotices` 取出已结束的任务通知后丢弃，并写入 `RewindResult.DroppedTasks`。gate 内与 `takeTaskNotices`（`context.go:355`，只在持 gate 的回合中运行）互斥，没有竞争（计划 F8）。
+    7. 事件：scope 含 conversation 时写一条 `session` 事件，name 为 `rewind`，attrs 含目标轮、scope、文件统计。只回文件时不另写 session 事件，只沿用 `:undo` 的 EventUndo 与通知记录，保证一次操作一条事件（F31）。
     8. 注入通知，按设计流程 3：
        - **只回文件**：沿用现有 undo 文案与 `suga.undo.pending` 队列（`undo_notice.go:22`），与 `:undo` 的通知方式一致。
        - **含会话**：本次通知作为一项加入同一队列，已在队列中的 undo 通知保留不删（F-N4）。队列中各项沿用现有的 `event_id` 回填（`undo_notice.go:181,199`），不改回填逻辑（计划 F23）。
-       - 实施时先核实：现有注入是否把队列各项合成一条注入。不是的话，在 progress 中写明实际行为，并保证各项都送达。
+       - 现有 `takeUndoNotice`（`undo_notice.go:119`）每回合只取一项。改为每回合取空队列：每项各写一条注入 entry，并各自回填 event_id。这样先 `:undo` 再 `:rewind` 时，两条通知都在下一轮送达（R5，F26）。
        - 新增通知文案进 `model.ini`，zh 与 en 各一份。
     9. 按设计流程 1 第 4 步的失败处理表，实现各分支的报告与 Warn 日志（GR109）。
 - 验证：
   - `go test -race -count=1 -run 'Rewind' ./internal/personal/`，覆盖：
     - 三种 scope 的结果；**files scope 不写 rewind 记录、不改 meta、不丢任务通知，下一轮请求历史不变**；
     - 过期：预览后追加 entry、预览后删除快照目录、预览后改 cwd，三种都返回 `ErrRewindStale`；
-    - 回合进行中返回 `ErrRewindBusy`，不等待；
+    - 回合进行中返回 `ErrRewindBusy`，不等待；空闲整理持有 gate 时被抢占，rewind 成功；
+    - 先 `:undo` 再 `:rewind`（中间不发消息），下一轮两条通知都送达，event_id 各自回填；
     - 四种失败分支（注入错误）；
     - fold 两个字段、前缀缓存被清；
     - 任务通知被丢弃并列在结果中；
@@ -413,7 +432,7 @@ var ErrRewindStale, ErrRewindBusy error
 
 - 文件：`internal/personal/fork.go`（新）、`fork_files.go`（新）及测试
 - 动作：
-  - `Runner.Fork`，用 `TryAcquire` 取源会话 gate，再跑 T3 的前置拒绝。
+  - `Runner.Fork`，在源会话的 `withSessionUnlessBusy` 内执行，先跑 T3 的前置拒绝。
   - 收集与映射：
     - 收集源会话 cut 之前的可见轮与条目，`HydrateEntries` 取回正文；
     - 丢弃 `rewind` 记录本身（新会话不需要屏蔽，原样复制会让 cut_seq 指错，计划 F2）。
@@ -424,9 +443,9 @@ var ErrRewindStale, ErrRewindBusy error
     - 每轮生成新 turn_id；
     - 写好的 payload 一次交给 `CreateForkedSession`。
   - meta 复制规则**默认拒绝**（计划 F22）：只复制白名单中的键，白名单列在 `fork.go` 注释中，测试逐项断言。
-    - 复制：cwd、`:rw`、model 与 provider、`loaded_tools`（与 R12 一致）；
-    - 改写：title 加“（分叉）”；
-    - 新增：origin、`forked_from`、`forked_at_turn`；
+    - 复制：cwd（sessions 表列）、`add_dirs`（`:rw` 的 meta 键）、model 与 provider、`loaded_tools`（与 R12 一致）；
+    - 改写：title 加 i18n 后缀（zh“（分叉）”，en “(fork)”，进 `chat.ini` 或 `model.ini` 中与 title 同处）；
+    - 新增：origin 取值 `fork`、`forked_from`、`forked_at_turn`；
     - 其余一律不复制。实施时 grep 全部 meta 键，在 progress 中列出未复制的键及理由。已知未复制的有：fold 字段、segment 与前缀缓存键、pin、子会话关系、`suga.undo.pending`、`short_name`。
   - 附件：
     - `fork_files.go` 复制图片与 spill 文件，并改写正文中的 `out:<源会话>:` 前缀；
@@ -485,6 +504,7 @@ var ErrRewindStale, ErrRewindBusy error
     - **回合中输入**：回合进行中输入 `:rewind` 被放回。
   - CHANGELOG 写明：
     - `sugasdk.Entries` 会返回新类型 `rewind`；
+    - 连续多次 `:undo` 的通知改为在下一轮全部送达（F26）；
     - sugasdk `SessionCard` 在回退后反映可见状态：LatestSummary、plan、SegmentCount、Turns 都不计被屏蔽部分（计划 F17）；
     - 回滚到旧版本的语义：两条分支会拼接成一条上下文，旧版本下的 compaction 会把屏蔽区间永久写进摘要，建议回滚前先 fork。
   - README 补充命令说明。
@@ -545,9 +565,16 @@ var ErrRewindStale, ErrRewindBusy error
 | 计划 S14–S16、F24 | 范围与排除项、Capability、前置检查、T8 判据 | — |
 | 计划 F15 锁内重算 | 跨任务接口、T5 | 三种过期用例与反向验证 |
 | 计划 F17 card LatestSummary | T2、T8 | card 四字段用例、CHANGELOG |
-| 计划 F18 recall 续读 | T1、T2 | 续读落在区间内的用例 |
-| 计划 F19 区间读取性能 | T1、T2 | 尾部大区间基准、缓存用例 |
+| 计划 F18 recall 续读 | T1、T2 | 续读 ref 指向可见条目的用例 |
+| 计划 F19 区间读取性能 | T1、T2 | 尾部大区间基准 |
 | 计划 F20–F23 | 跨任务接口、T3、T5、T6 | Busy、meta 默认拒绝、event_id 回填用例 |
+| 计划 S17 sugasdk 行为 | 计划工作声明、fail-closed、T8 | 无回退记录会话的零变化用例（T1 零值选项、T2 全部既有用例） |
+| 计划 S18、F28 取锁 | 跨任务接口、T5、T6 | Busy 与抢占用例 |
+| 计划 S19、F25 文件按项结构 | 跨任务接口、T4 | RootStatus 用例 |
+| 计划 S20、F29 去缓存 | T2 | 跨实例可见用例、基准 |
+| 计划 F26 通知取空 | T5 | undo 后 rewind 两条通知用例 |
+| 计划 F27 recall | T1、T2 | 续读 ref 用例 |
+| 计划 S21、F30、F31 | 跨任务接口、T3、T5、T6 | meta 白名单、单事件、Tasks 为 nil |
 
 ## 完成 Gate 与剩余工作
 
