@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 会话 rewind 与 fork 实施计划
 
-> 状态：Draft 0.2 / 待人工计划批准
+> 状态：Draft 0.3 / 待人工计划批准
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-10-31 | Claude | 初稿：按已批准设计 0.2 拆为 W0–W3；收口设计两轴第 2 轮遗留的 CORE_CORRECTIVE（S-N1、S-N2、F11、F-N1–N5） |
 | 0.2 | 2026-10-31 | Claude | 收口计划评审第 1 轮：规格轴 F1–F9 与规范轴 S1–S8。主要变化：<br>• 新增“跨任务接口”一节，rewind 改为预览加执行两段式，入口挂在 UndoCore 适配层；<br>• 重排任务与依赖，消除并行任务改同一文件；<br>• fork 的 seq 映射在事务前算好，CreateForkedSession 复用 FTS 与正文外置写入；<br>• R11 按设计原文收窄为“任何作用域下都排除当前会话的屏蔽条目”，sugasdk 与 CLI 默认不排除；<br>• 补 recall、SegmentCount、后台任务判定、checkpointsLocked；<br>• 补 R9、R10 追溯、反向验证、运行目录 |
+| 0.3 | 2026-10-31 | Claude | 收口计划评审第 2 轮：规范轴 S11–S16 与规格轴 F15–F24。主要变化：<br>• 会话部分只在 scope 含 conversation 时执行（S11）；<br>• ApplyRewind 在锁内重算回退计划并与预览比较，去掉 Stamp（F15）；<br>• 任务通知改为执行后报告实际丢弃项，预览只做一般提示（S13、F16）；<br>• 补全接口字段与 T4 签名（S12）；<br>• session card 的 LatestSummary 接入屏蔽，并在 CHANGELOG 写明 sugasdk 会话卡片的变化（F17）；<br>• recall 用区间跳过的窗口读法（F18）；<br>• 屏蔽区间按会话缓存，Skipping 查询按可见区间分段走主键（F19）；<br>• gate 改用 TryAcquire 拒绝；meta 白名单默认拒绝；undo 通知合并方式按 `undo_notice.go` 写明（F20–F23）；<br>• baseline、分发位置、NM-01 归类（S14–S16、F24） |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -18,7 +19,8 @@
 - 核心目标：实现设计 `docs/design/2026-10-31-session-rewind-fork-design.md` 0.2，即 `:rewind N [files|conversation|both]` 与 `:fork N`，并满足 suga-4tnd 的验收：三种 scope、fork 后原会话不变、有 e2e 与单测。
 - Scope freeze：
   - 只改 suga 仓库（Git root `inhere-tools/suga`，分支 `main`）的 `internal/personal/**`、`internal/personal/store/**`、`internal/chat/**`、`internal/i18n/catalog/**`、`test/ptye2e/**`，以及 CHANGELOG、README 中的 chat 说明。
-  - 不改 CLI 子命令、ACP、sugasdk 公开 API 与行为、wiring、DDL。
+  - 不改 CLI 子命令、ACP、sugasdk 公开 API、wiring、DDL。
+  - sugasdk 行为只有一处随之变化：`SessionCard`（`pkg/sugasdk/session.go:464` 调用 personal 的 session card）会反映回退后的当前状态，因为设计 R2 把 session card 列为必须经过屏蔽的读者。T8 在 CHANGELOG 中写明。sugasdk 的 `Entries` 与搜索保持原样。
 - 暴露度：会话数据是用户资产，不属低暴露（SR1409）。计划评审采用两轴独立评审，严谨模式最多 8 轮；无开放 `CORE_BLOCKING` 即停止。
 - 停止条件：两轴都 PASS 后交用户批准；实施中出现 Semantic Amendment 或 Ownership Conflict 即停。
 
@@ -29,7 +31,7 @@
 3. `:rewind N`（both）：同时满足 1 和 2，并按设计流程 3 注入通知。
 4. `:fork N`：生成新会话，可以续聊，其投影历史等于源会话第 N 轮之前的可见历史；源会话的 entries、turns、meta 不变。
 5. 序号只追加的承诺不变。旧条目保留，trace 照常显示。
-6. R11：模型侧的 `session_search` 与 recall 在任何作用域下都不返回**当前会话**的被屏蔽条目。其他会话的条目照常返回，sugasdk 与 CLI 的检索行为不变。
+6. R11：模型侧的 `session_search` 与 recall 在任何作用域下都不返回**当前会话**的被屏蔽条目。其他会话的条目照常返回，这是本计划依据设计 R11 字面范围（“当前会话”）作出的决定。sugasdk 与 CLI 的检索行为不变。
 7. 设计评审遗留项与计划评审第 1 轮的发现都落到具体任务，见可追溯性。
 8. 完成 Gate 全部通过。
 
@@ -41,8 +43,8 @@
   - CLI、ACP、sugasdk API；
   - trace 与 transcript 中的“已回退”标注；
   - 把第 N 轮提问回填到输入行；
-  - 延长快照保留期；
-  - 其他会话的屏蔽区间在跨会话检索中的排除。
+  - 延长快照保留期。
+- 排除（本计划依据设计 R11 字面范围的决定）：跨会话检索时排除其他会话的屏蔽区间。
 - 授权：
   - 计划批准只授权在 `inhere-tools/suga/.worktrees/` 下按任务实施并本地提交（SR1211）；
   - 合入 main 由主会话审核后执行；
@@ -73,14 +75,14 @@
 | CAP-05 | 运行中后台任务判定 | `tasks.Manager.List`；personal `TaskNotices` 接口 | 部分：Manager 有 List，接口没有 | 在 `TaskNotices` 接口加 `List(sessionID) []tasks.Info`，Manager 已实现 | OWNER_EXTENSION | 计划 F8 | 只扩接口，无新实现 |
 | CAP-06 | 回退计划预览 | `chat_undo.go:107,170` 两段式（先选、再执行） | 部分：结构可借鉴 | 新增 `RewindPlan` 与 `ApplyRewind`，结构对齐 undo | OWNER_EXTENSION | 计划 F1、S2 | 与 undo 并列，不改 undo |
 | CAP-07 | 写调用事件读取 | `store/events.go:40` ListEvents（`observe.go` 写入的 tool 事件） | 是 | 直接调用 | DIRECT_REUSE | none | 无 |
-| CAP-08 | fork 附件复制与失败清理 | 图片与 spill 路径（`ledger_test.go:59` 的 spill 夹具）；`DeleteSession`、`DeleteSessionFiles` | 清理部分直接复用 | 新增复制函数，放在 `fork_files.go` | MINIMAL_NEW_MODULE | 仓库内没有复制会话附件的实现 | 只被 fork 使用，随 fork 生命周期 |
+| CAP-08 | fork 附件复制与失败清理 | 图片与 spill 路径（`ledger_test.go:59` 的 spill 夹具）；`DeleteSession`、`DeleteSessionFiles` | 清理部分直接复用 | 在 personal 包内新增复制函数（文件 `fork_files.go`） | OWNER_EXTENSION | 仓库内没有复制会话附件的实现 | 只被 fork 使用，随 fork 生命周期 |
 | CAP-09 | 用户轮索引 | `store.ListTurns`、entry 的 `suga.injected` 元数据 | 部分 | 新增过滤函数 | OWNER_EXTENSION | 没有“用户轮”概念的现成函数 | 只有一份 |
 
 ### New module candidates
 
 | candidate_id | capability_id | proposed_module | searched_candidates | direct_reuse_gap | thin_adapter_or_owner_extension_gap | proven_gap | unique_owner_and_lifecycle | deletion_or_merge_handling |
 |---|---|---|---|---|---|---|---|---|
-| NM-01 | CAP-08 | `internal/personal/fork_files.go` | 图片/spill 读写、DeleteSessionFiles | 没有复制实现 | 放入 ledger 会把 fork 专用逻辑混进检索 owner | 没有附件复制实现 | personal 包，只有 fork 调用 | 将来 CLI fork 复用同一函数 |
+| NONE | none | none | none | none | none | none | none | none |
 
 ### Rejected new tools
 
@@ -96,42 +98,74 @@
 // store（T1）
 type RewindRecord struct { Seq, CutSeq int64; TargetTurn, Scope string }
 func (s *Store) RewindRecords(ctx, sid string) ([]RewindRecord, error)
-type SeqRanges []SeqRange          // 左开右开区间 (CutSeq, Seq)
+type SeqRange struct{ Lo, Hi int64 } // 左开右开区间 (CutSeq, Seq)
+type SeqRanges []SeqRange             // 已排序、已合并
+func (r SeqRanges) Hidden(seq int64) bool
 func (s *Store) RecentEntriesSkipping(ctx, sid string, types []string, skip SeqRanges, limit int) ([]Entry, error)
 func (s *Store) LatestEntrySkipping(ctx, sid, typ string, skip SeqRanges) (*Entry, error)
+func (s *Store) EntriesFromSkipping(ctx, sid string, fromSeq int64, skip SeqRanges, limit int) ([]Entry, error) // recall 窗口，正序
 func (s *Store) CountEntriesByTypeSkipping(ctx, sid, typ string, skip SeqRanges) (int, error)
 func (s *Store) CountTurnsSkipping(ctx, sid string, skip SeqRanges) (int, error)
-// SearchEntriesPage 增加选项 ExcludeSession{SessionID, Ranges}；零值不排除（sugasdk、CLI 默认零值）
+// SearchEntriesPage 增加选项 ExcludeSession{SessionID string; Ranges SeqRanges}；零值不排除（sugasdk、CLI 默认零值）
 func (s *Store) CreateForkedSession(ctx, in ForkInput) error   // 一个写事务
 
-// personal（T3、T5、T6）
+// personal：文件部分（T4，UndoCore 上，不加锁，调用方持有 gate 与跨进程锁）
+type RewindFileItem struct {
+    TurnID string
+    Path   string          // 快照条目路径；不可恢复项为 attrs["target"] 原值
+    Action RewindFileAction // restore | delete | conflict | unrecoverable
+    Reason string          // conflict / unrecoverable 的原因（cleared、no_snapshot、snapshots_off、root_untrusted…）
+}
+func (u *UndoCore) planRewindFiles(ctx, sid, toTurnID string) ([]RewindFileItem, error)
+func (u *UndoCore) applyRewindFiles(ctx, sid string, items []RewindFileItem) ([]RewindFileItem, error) // 返回实际结果
+
+// personal：Runner 入口（T3、T5、T6）
 type RewindScope string // files | conversation | both
 type RewindPlan struct {
     SessionID, TargetTurn string; Scope RewindScope; CutSeq int64
-    Files      []RewindFileItem   // 将恢复、删除、冲突、不可恢复
-    DropTasks  []tasks.Info       // 将丢弃的已完成任务通知
-    Stamp      rewindStamp        // 预览时的最新 seq 与各 checkpoint 状态
+    Files      []RewindFileItem // scope 含 files 时填写
+    LatestSeq  int64            // 预览时会话的最新 seq
 }
-func (u *UndoCore) RewindPlan(ctx, sid, target string, scope RewindScope) (RewindPlan, error)
+type RewindResult struct {
+    Files        []RewindFileItem // 实际恢复、删除、跳过、不可恢复
+    Conversation bool             // 是否写入了 rewind 记录
+    DroppedTasks []tasks.Info     // 实际取出并丢弃的任务通知
+    Notice       string           // 注入给模型的通知正文（为空表示未注入）
+}
+type ForkResult struct { SessionID string; Turns, Entries int }
 func (r *Runner) RewindPlan(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, target string, scope RewindScope) (RewindPlan, error)
 func (r *Runner) ApplyRewind(ctx, snapshots *SessionSnapshots, sessionsRoot string, plan RewindPlan) (RewindResult, error)
-// ApplyRewind 在 gate 与跨进程锁内重新计算 Stamp，不一致返回 ErrRewindStale
-func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, target string) (ForkResult, error) // ForkResult{SessionID, Turns, Entries}
+func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, target string) (ForkResult, error)
+var ErrRewindStale, ErrRewindBusy error
 ```
 
-- 适配层：Runner 方法与现有 `Runner.Undo` 一样，是 `undo_runner.go` 风格的薄适配。
-- 取锁：通过 `r.UndoCore(snapshots, sessionsRoot)` 拿 gate 与锁。
+- 分工：
+  - `maskedRanges`（T2）返回 `store.SeqRanges`，`Hidden` 由 T1 的类型提供。
+  - Runner 入口负责目标解析、前置拒绝、任务与 meta；UndoCore 只负责文件。不设 `UndoCore.RewindPlan`（计划 F20）。
+- 适配层：Runner 方法与现有 `Runner.Undo` 一样，通过 `r.UndoCore(snapshots, sessionsRoot)` 拿到 UndoCore。
 - 恢复：文件恢复走 UndoCore 的 `checkpointsLocked`，以带上 RootStatus（计划 F7）。
+- 并发判定（计划 F21）：
+  - rewind 与 fork 用 `TryAcquire` 取 gate，取不到返回 `ErrRewindBusy`，不等待。
+  - 跨进程锁沿用 undo 的取法。
+- 过期判定（计划 F15）：`ApplyRewind` 在锁内重新计算回退计划，包括目标解析、`planRewindFiles` 与 LatestSeq，再与预览逐项比较。任何不同（含 cwd、add_dirs 或快照目录变化导致的条目变化）都返回 `ErrRewindStale`，不执行。
 
 ## 前置检查与 fail-closed 条件
 
-- **Workspace baseline**：suga Git root `inhere-tools/suga`，分支 `main`，HEAD `a59b27d0`（设计、计划、评审文档提交之后），工作区干净。设计 0.2 已批准。B1–B4 与 S50A1 的改动在 `internal/chat/render.go`、`chat.go`，本计划只在其中新增命令分支。
+- **Workspace baseline**：
+  - suga Git root `inhere-tools/suga`，分支 `main`，HEAD `66a3cbc8`（B4 合入之后），工作区干净。
+  - 实施开工时以当时的 main HEAD 为准，记入 progress。
+  - 设计 0.2 已批准。
+  - chat 命令分发在 `chat_commands.go:381`，本计划只在其中新增分支。
 - **预期符号**（每个任务开工时 grep 复核）：
   - `context.go:111` loadHistory、`:355` takeTaskNotices；
   - `segment_handoff.go:97` latestPlan、`:112` recentRequests；
   - `handoff.go:124`；
   - `lastreply.go:23` LastReply；
-  - `session_card.go:99` SessionCard、`:126` SegmentCount、`:129` Turns、`:194` fillCardPlan；
+  - `session_card.go:99` SessionCard、`:117` LatestSummary、`:126` SegmentCount、`:129` Turns、`:194` fillCardPlan；
+  - `pkg/sugasdk/session.go:464`（session card 调用方）；
+  - `undo_notice.go:22` undoNoticeQueueKey、`:181,199` event_id 回填；
+  - `gate.go:133` TryAcquire；
+  - `chat_commands.go:381` 命令分发；
   - `ledger.go:100-135` 检索作用域、`:249` readMessages（recall）；
   - `store/entries.go:24,291,321,358`；
   - `store/fts_snapshot.go:27` SearchEntriesPage；
@@ -156,6 +190,8 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
   - 需要改 DDL、sugasdk 行为、CLI、ACP，或改变设计以外的用户可见行为：属 Semantic Amendment，停止。
   - `BenchmarkSessionCard`（含新增的带屏蔽区间变体）比 T1 记录的基线回退超过 20%（`-benchtime=2s`）：停止。
   - 区间排除的检索查询，`EXPLAIN QUERY PLAN` 出现对 entries 的全表扫描：停止。
+  - 尾部大屏蔽区间基准（见 T1）的耗时与无屏蔽基准相比超过 2 倍：停止。
+- **文件拆分理由**：新文件按职责拆分（store 区间读取、fork 写入、屏蔽集合、目标解析、文件回退、执行、通知、fork、附件复制），使每个新文件不超过 400 行（GR104）、每个 go 文件不超过 1000 行（AGENTS.md）。
   - 容器内 git 只对单条命令前缀 `GIT_DIR/GIT_WORK_TREE`；合并在主机执行，并以 `is_ancestor=0` 为收尾前提。
 
 ## 波次与依赖
@@ -196,8 +232,14 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
   - 新文件 `rewind_store.go`、`fork_store.go`；
   - 对应测试。
 - 动作（签名见“跨任务接口”）：
-  - `EntryRewind = "rewind"`；`RewindRecords` 按 `(session_id, seq)` 主键扫描，过滤 type。不声称走 `idx_entries_type`（计划 F5）。
-  - `RecentEntriesSkipping`、`LatestEntrySkipping`：在 SQL 中用 `NOT (seq > ? AND seq < ?)` 跳过区间，不在 Go 里先读后补。
+  - `EntryRewind = "rewind"`。
+  - `RewindRecords`：rewind 条目在全库中极少，查询方式以 `EXPLAIN QUERY PLAN` 与基准为准选定，结果记入 progress（计划 F5、F19）。备选两种：
+    - `idx_entries_type` 上 `type='rewind'` 再按会话过滤；
+    - 主键范围扫描。
+  - `SeqRanges` 及 `Hidden`：区间排序合并后二分查找。
+  - `RecentEntriesSkipping`、`LatestEntrySkipping`、`EntriesFromSkipping`：把 skip 的补集拆成若干可见段，每段一条 `seq` 范围查询，按方向依次查，取够 limit 即停（计划 F19）。
+    - 不在 SQL 里用 `NOT (seq…)` 逐行过滤：那样遇到尾部大区间时要逐行走过被屏蔽的条目；
+    - 也不在 Go 里先读后补。
   - `CountEntriesByTypeSkipping`、`CountTurnsSkipping`：供 session card 使用（计划 F6）。
     - turn 被屏蔽的判定：该轮的全部 entry 都在区间内。
     - 没有 entry 的轮按原样计数。
@@ -222,7 +264,9 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
   - 反向验证：
     - 去掉区间排除，分页用例失败；
     - 去掉 fork 的 FTS 写入，检索用例失败。
-  - 基线：`go test -run '^$' -bench BenchmarkSessionCard -benchtime=2s ./internal/personal/`，结果记入 progress。
+  - 基准：
+    - `go test -run '^$' -bench BenchmarkSessionCard -benchtime=2s ./internal/personal/`，作为基线记入 progress；
+    - 新增 `BenchmarkRecentEntriesSkipping`：会话 2 万条，屏蔽最后 1 万条，耗时与无屏蔽相比不超过 2 倍。
 - 完成标准：用例与反向验证通过；基线已记录。
 - 依赖：无
 
@@ -230,18 +274,24 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
 
 - 文件：`internal/personal/visible.go`（新）、`context.go`、`segment_history.go`、`segment_handoff.go`、`handoff.go`、`lastreply.go`、`session_card.go`、`ledger.go` 及测试
 - 动作：
-  - `maskedRanges(ctx, sid) (store.SeqRanges, error)`：由 `RewindRecords` 构造区间并集，提供 `Hidden(seq)`。
+  - `maskedRanges(ctx, sid) (store.SeqRanges, error)`：由 `RewindRecords` 构造区间并集。
+    - 按会话缓存在 Runner 中，键为会话最新的 rewind 记录 seq（计划 F19）；
+    - 本进程写入 rewind 记录时使缓存失效；
+    - 其他进程写入时，按键比较发现变化后重建。
   - 接入设计 0.2 读者表中的全部读者：
     - `loadHistory`：Types 白名单加入 `EntryRewind`，扫描时把它当作区间记录；
     - `SegmentHistory`、`latestPlan`、`recentRequests`、`buildHandoff`；
     - `LastReply`：跳过被屏蔽的轮。回退后最新可见轮如果是正常结束的，不得误报“上一回合未正常结束”（计划 F11）。
   - session card：
+    - LatestSummary（`:117`）改用 `RecentEntriesSkipping`（计划 F17）；
     - `fillCardPlan`（`:194`）改用 `LatestEntrySkipping`；
     - SegmentCount 改用 `CountEntriesByTypeSkipping`；
     - Turns 改用 `CountTurnsSkipping`（F-N3）。
   - 检索（R11，计划 S3、F4）：
     - `session_search` 在任何作用域下都传入 `ExcludeSession{当前会话, 当前会话区间}`；
-    - recall 的 `readMessages`（`ledger.go:249`）按 ref 读窗口时跳过当前会话区间内的条目；ref 本身落在区间内时，按“不存在”处理。
+    - recall 的 `readMessages`（`ledger.go:249`）改用 `EntriesFromSkipping` 读窗口，跳过当前会话区间内的条目（计划 F18）。
+      - 模型给出的 ref 指向被屏蔽条目时，按“不存在”处理；
+      - 续读位置（上一窗口最后一条 seq+1）落在区间内时，自动从区间之后的第一条可见条目继续，不报错。
   - 在 `visible.go` 的注释与 progress 中写明“不受影响的读者”及理由（S-N1、计划 F10）：
     - 按单轮读取：`compact.go:176`、`replay.go:233`、`admit.go:165`、`steer.go:418`；
     - `:checkpoints`/`:undo`（`undo.go:347` ListTurns）按磁盘事实计数；
@@ -254,9 +304,10 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
     - rewind 后再 compaction，交接包不含被回退的提问与 plan；
     - interrupted 轮、context_update；
     - LastReply 不误报；
-    - session card 三个字段；
+    - session card 四个字段（LatestSummary、plan、SegmentCount、Turns）；
     - 检索：当前会话、workspace、all 三种作用域都不返回当前会话的屏蔽条目，其他会话照常返回；
-    - recall：ref 在区间内、窗口跨越区间。
+    - recall：ref 在区间内、窗口跨越区间、续读位置落在区间内；
+    - 缓存：另一个 Store 实例写入 rewind 记录后，本 Runner 的读者能看到新区间。
   - 反向验证：
     - 去掉 `recentRequests` 的屏蔽，交接包用例失败；
     - 去掉 loadHistory 的屏蔽，上下文用例失败；
@@ -276,8 +327,8 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
   - `Hops>0` 的轮与 `suga send` 发起的轮：实施前核实它们是否带 Injected 标记，结果写入 progress。没有标记的按用户轮处理。
   - `resolveTarget(sid, arg)`：参数可以是序号或 `turn_id`；`turn_id` 须属于该会话、不在屏蔽区间内、且是用户轮（SR1301）。
   - `cutFor(turn)`：取该轮首条 entry 的 seq 减 1。
-  - 前置拒绝 `rewindPreconditions(ctx, sid)`，rewind 与 fork 共用：
-    - 回合进行中；
+  - 前置拒绝 `rewindPreconditions(ctx, sid)`，rewind 与 fork 共用，调用方已用 `TryAcquire` 取得 gate：
+    - 回合进行中：`TryAcquire` 失败即返回 `ErrRewindBusy`（计划 F21）；
     - 会话已归档；
     - 有运行中的后台任务：`TaskNotices` 接口加 `List(sessionID) []tasks.Info`，判断其中 Status 为 running（计划 F8）。
 - 验证：
@@ -293,9 +344,9 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
 
 - 文件：`internal/personal/rewind_files.go`（新）及测试
 - 动作：
-  - UndoCore 上新增两个方法，都不加锁，由调用方持有 gate 与锁：
-    - `planRewindFiles(ctx, sid, toTurn)`：用 `checkpointsLocked` 取行（带 RootStatus，计划 F7），按时间逆序列出从最新一轮到 toTurn 的恢复、删除、冲突（含级联）与不可恢复项。被屏蔽的轮也计入；已 undone 的轮跳过；partial 的轮重跑。
-    - `applyRewindFiles(ctx, plan)`：循环调用 `restoreItem`，每轮调用 `SetCheckpointState`，返回实际结果。`OnFilesRestored` 由 Runner 适配层调用。
+  - UndoCore 上新增两个方法（签名见跨任务接口），都不加锁，由调用方持有 gate 与锁：
+    - `planRewindFiles(ctx, sid, toTurnID)`：用 `checkpointsLocked` 取行（带 RootStatus，计划 F7），按时间逆序列出从最新一轮到 toTurn 的恢复、删除、冲突（含级联）与不可恢复项。被屏蔽的轮也计入；已 undone 的轮跳过；partial 的轮重跑。
+    - `applyRewindFiles(ctx, sid, items)`：只接受调用方在锁内刚算出的条目，循环调用 `restoreItem`，每轮调用 `SetCheckpointState`，返回实际结果。`OnFilesRestored` 由 Runner 适配层调用。
   - 清理检测（F-N2）：
     - 目标区间内的每一轮，用 ListEvents 查 `Kind=tool`、`Status=ok`、`Name ∈ {file_write, file_edit, file_remove}` 的事件；有这种事件但没有快照目录，就判定为快照已清理。
     - 列出 `attrs["target"]` 的原始值（数组逐项列出），注明可能是相对 cwd 的路径或目录。
@@ -319,37 +370,42 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
 
 - 文件：`internal/personal/rewind.go`（新）、`rewind_notice.go`（新）、`undo_runner.go`（只加适配方法）、`internal/i18n/catalog/{zh,en}/model.ini` 及测试
 - 动作：
-  - `RewindPlan`（预览）：
+  - `RewindPlan`（预览，只读）：
     - 解析目标（T3）；
-    - 文件部分调用 T4 的 `planRewindFiles`；
-    - 用 `List` 收集将丢弃的已完成任务通知（只读，不取出）；
-    - 记录 Stamp。
-  - `ApplyRewind`（执行），在 gate 与跨进程锁内：
-    1. 重跑前置拒绝；重算 Stamp，不一致时返回 `ErrRewindStale`。
-    2. 按 scope 调用 `applyRewindFiles`。
-    3. 追加 `rewind` entry `{cut_seq, target_turn, scope, files}`。
-    4. 处理 meta：
+    - scope 含 files 时调用 T4 的 `planRewindFiles`；
+    - 记录 LatestSeq。
+    - 不预列任务通知：`pkg/agentcore/tasks` 没有只读取得待注入通知的方法，本计划不扩 agentcore（计划 S13、F16）。chat 预览给出一般提示“已结束但未送达的后台任务通知将被丢弃”，实际丢弃项在执行结果中列出。
+  - `ApplyRewind`（执行），用 `TryAcquire` 取 gate，再取跨进程锁：
+    1. 重跑前置拒绝；在锁内重算回退计划并与预览逐项比较，不同则返回 `ErrRewindStale`（计划 F15）。
+    2. scope 含 files 时，用锁内重算的条目调用 `applyRewindFiles`。
+    3. **以下 4–6 步只在 scope 含 conversation 时执行**（设计“会话部分（scope 包含 conversation）”，计划 S11）：
+    4. 追加 `rewind` entry `{cut_seq, target_turn, scope, files}`，并使 T2 的屏蔽缓存失效。
+    5. 处理 meta：
        - 重置 `fold_boundary=0`、`fold_active=false`；
        - `loaded_tools` 保留（R12）；
        - 调用 `r.rec.prefix.clearRequest`。
-    5. 通知：
-       - `TakeNotices` 取出已完成的任务通知后丢弃。gate 内与 `takeTaskNotices`（`context.go:355`，只在持 gate 的回合中运行）互斥，没有竞争（计划 F8）。
-       - 待注入的 `suga.undo.pending` 与本次通知合并成一段注入，保留“哪些文件已被撤销”的事实（F-N4，见 `xhen/internal/link/anchor.go` 的合并方式）。
-       - 设计流程 3 的三种通知文案进 `model.ini`，zh 与 en 各一份。
-    6. 写 `session` 事件，name 为 `rewind`，attrs 含目标轮、scope、文件统计。
-    7. 按设计流程 1 第 4 步的失败处理表，实现各分支的报告与 Warn 日志（GR109）。
+    6. 任务通知：`TakeNotices` 取出已结束的任务通知后丢弃，并写入 `RewindResult.DroppedTasks`。gate 内与 `takeTaskNotices`（`context.go:355`，只在持 gate 的回合中运行）互斥，没有竞争（计划 F8）。
+    7. 写 `session` 事件，name 为 `rewind`，attrs 含目标轮、scope、文件统计。
+    8. 注入通知，按设计流程 3：
+       - **只回文件**：沿用现有 undo 文案与 `suga.undo.pending` 队列（`undo_notice.go:22`），与 `:undo` 的通知方式一致。
+       - **含会话**：本次通知作为一项加入同一队列，已在队列中的 undo 通知保留不删（F-N4）。队列中各项沿用现有的 `event_id` 回填（`undo_notice.go:181,199`），不改回填逻辑（计划 F23）。
+       - 实施时先核实：现有注入是否把队列各项合成一条注入。不是的话，在 progress 中写明实际行为，并保证各项都送达。
+       - 新增通知文案进 `model.ini`，zh 与 en 各一份。
+    9. 按设计流程 1 第 4 步的失败处理表，实现各分支的报告与 Warn 日志（GR109）。
 - 验证：
   - `go test -race -count=1 -run 'Rewind' ./internal/personal/`，覆盖：
-    - 三种 scope 的结果；
-    - Stamp 过期；
+    - 三种 scope 的结果；**files scope 不写 rewind 记录、不改 meta、不丢任务通知，下一轮请求历史不变**；
+    - 过期：预览后追加 entry、预览后删除快照目录、预览后改 cwd，三种都返回 `ErrRewindStale`；
+    - 回合进行中返回 `ErrRewindBusy`，不等待；
     - 四种失败分支（注入错误）；
     - fold 两个字段、前缀缓存被清；
-    - 任务通知被丢弃并列出；
-    - undo pending 被合并；
+    - 任务通知被丢弃并列在结果中；
+    - 队列中已有的 undo 通知保留，event_id 回填正确；
     - 事件属性。
   - 反向验证：
-    - 改成直接丢弃 undo pending，合并用例失败（计划 S7）；
-    - 去掉 Stamp 重算，过期用例失败。
+    - 去掉 scope 条件，files scope 用例失败（计划 S11）；
+    - 改成直接丢弃 undo pending，保留用例失败（计划 S7）；
+    - 去掉锁内重算，过期用例失败。
 - 完成标准：用例与反向验证通过。
 - 依赖：T3、T4
 
@@ -357,7 +413,7 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
 
 - 文件：`internal/personal/fork.go`（新）、`fork_files.go`（新）及测试
 - 动作：
-  - `Runner.Fork`，在源会话 gate 内执行，并先跑 T3 的前置拒绝。
+  - `Runner.Fork`，用 `TryAcquire` 取源会话 gate，再跑 T3 的前置拒绝。
   - 收集与映射：
     - 收集源会话 cut 之前的可见轮与条目，`HydrateEntries` 取回正文；
     - 丢弃 `rewind` 记录本身（新会话不需要屏蔽，原样复制会让 cut_seq 指错，计划 F2）。
@@ -367,11 +423,11 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
     - clear 记录的 K 映射为它自身的新 seq；
     - 每轮生成新 turn_id；
     - 写好的 payload 一次交给 `CreateForkedSession`。
-  - meta 复制规则，用白名单列在 `fork.go` 注释中，并有测试逐项断言：
+  - meta 复制规则**默认拒绝**（计划 F22）：只复制白名单中的键，白名单列在 `fork.go` 注释中，测试逐项断言。
     - 复制：cwd、`:rw`、model 与 provider、`loaded_tools`（与 R12 一致）；
     - 改写：title 加“（分叉）”；
     - 新增：origin、`forked_from`、`forked_at_turn`；
-    - 不复制：fold 字段、segment 与前缀缓存键、pin、子会话关系。
+    - 其余一律不复制。实施时 grep 全部 meta 键，在 progress 中列出未复制的键及理由。已知未复制的有：fold 字段、segment 与前缀缓存键、pin、子会话关系、`suga.undo.pending`、`short_name`。
   - 附件：
     - `fork_files.go` 复制图片与 spill 文件，并改写正文中的 `out:<源会话>:` 前缀；
     - compaction 的 Refs 保留不改（R6）；
@@ -402,10 +458,10 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
   - 注册 `:rewind`（无参数时列出用户轮）与 `:fork N`。
   - 加入 `steering.go` 的回合中放回判断，与 `:undo` 一致。
   - `:rewind` 流程与 `:undo` 对齐（`chat_undo.go:107,170`）：
-    - 先调用 `RewindPlan` 展示计划；
-    - 用 `chat.undo_confirm` 确认后调用 `ApplyRewind`；
+    - 先调用 `RewindPlan` 展示计划：文件清单，以及 scope 含 conversation 时关于任务通知会被丢弃的一般提示；
+    - 用 `chat.undo_confirm` 确认后调用 `ApplyRewind`，再展示 `RewindResult`，包括实际丢弃的任务通知；
     - 无 TTY 时取消；
-    - `ErrRewindStale` 时提示重新执行。
+    - `ErrRewindStale` 时提示重新执行；`ErrRewindBusy` 时提示等回合结束。
   - fork 完成后打印新会话 ID 与 `suga chat --resume <id>`，当前 chat 不切换（R7）。
   - 所有文案 zh 与 en 各一份。
 - 验证：
@@ -419,13 +475,17 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
 - 文件：`test/ptye2e/chat_rewind_test.go`（新）、CHANGELOG、README 的 chat 命令说明
 - 动作：
   - Go ptye2e 用例，按设计“验收”逐项：
-    - **三种 scope**：用 T0 的按内容写入跑 3 轮，`:rewind 2` 分别执行 files、conversation、both，断言磁盘内容与下一轮请求的完整消息；
+    - **三种 scope**：用 T0 的按内容写入跑 3 轮（文件依次为 v1、v2、v3），`:rewind 2` 分别执行 files、conversation、both，判据（计划 F24）：
+      - files：文件为 v1；下一轮请求仍含第 2、3 轮提问；
+      - conversation：文件仍为 v3；下一轮请求不含第 2、3 轮提问，含“磁盘未回退”通知；
+      - both：文件为 v1；请求不含第 2、3 轮提问；
     - **回退早于 `:compact`**：断言交接包与请求里都不含被回退的提问；
     - **快照已清理**：缩短保留期（只在测试 home 中设置），断言列出不可恢复项；
     - **fork**：fork 出新会话后 `--resume` 续聊，新会话请求等于源会话第 N 轮之前的可见历史，源会话不变；
     - **回合中输入**：回合进行中输入 `:rewind` 被放回。
   - CHANGELOG 写明：
     - `sugasdk.Entries` 会返回新类型 `rewind`；
+    - sugasdk `SessionCard` 在回退后反映可见状态：LatestSummary、plan、SegmentCount、Turns 都不计被屏蔽部分（计划 F17）；
     - 回滚到旧版本的语义：两条分支会拼接成一条上下文，旧版本下的 compaction 会把屏蔽区间永久写进摘要，建议回滚前先 fork。
   - README 补充命令说明。
 - 验证：
@@ -472,13 +532,22 @@ func (r *Runner) Fork(ctx, snapshots *SessionSnapshots, sessionsRoot, sid, targe
 | 设计评审 S-N1、S-N2 | T2 | 不受影响读者清单；检索作用域用例 |
 | 设计评审 F11 | T0、T8 | 完整消息断言 |
 | 设计评审 F-N1–F-N5 | T1、T6；T4；T2；T5；T1、T2 | 对应用例 |
-| 计划 F1、S2 预览与接口 | 跨任务接口、T5、T7 | Stamp 过期、确认流程 |
+| 计划 F1、S2 预览与接口 | 跨任务接口、T5、T7 | 锁内重算过期、确认流程 |
 | 计划 F2、F3 fork 事务 | T1、T6 | 失败无残留、FTS、compaction 映射 |
 | 计划 F4、S4 recall | T2 | recall 用例 |
 | 计划 F5、F6、S3 检索与 card | T1、T2 | EXPLAIN、零值一致、基准变体 |
 | 计划 F7、F8 | T4、T3、T5 | RootStatus、运行中任务 |
 | 计划 F9、S1 依赖 | 波次与依赖 | — |
 | 计划 S5–S8、F10–F14 | 前置检查、各任务文件清单、反向验证、运行目录 | — |
+| 计划 S11 files scope 不动会话 | T5 | files scope 用例与反向验证 |
+| 计划 S12 接口字段 | 跨任务接口 | — |
+| 计划 S13、F16 任务通知 | T5、T7 | 结果列出丢弃项 |
+| 计划 S14–S16、F24 | 范围与排除项、Capability、前置检查、T8 判据 | — |
+| 计划 F15 锁内重算 | 跨任务接口、T5 | 三种过期用例与反向验证 |
+| 计划 F17 card LatestSummary | T2、T8 | card 四字段用例、CHANGELOG |
+| 计划 F18 recall 续读 | T1、T2 | 续读落在区间内的用例 |
+| 计划 F19 区间读取性能 | T1、T2 | 尾部大区间基准、缓存用例 |
+| 计划 F20–F23 | 跨任务接口、T3、T5、T6 | Busy、meta 默认拒绝、event_id 回填用例 |
 
 ## 完成 Gate 与剩余工作
 
