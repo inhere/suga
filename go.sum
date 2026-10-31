@@ -30,8 +30,8 @@ github.com/gookit/config/v2 v2.2.9 h1:ojnE2743wU+DHKWR07x2lWjoONaSkkaTzoNozyHF1b
 github.com/gookit/config/v2 v2.2.9/go.mod h1:PgwcvKHnKZk8w/JdqvdF452OXeYnaHj72OEPhffrniA=
 github.com/gookit/gopty v0.1.2 h1:y4aAe5q+IRvGkw/KscaFQJrt8bt+gnh/dc4OBX3O9E4=
 github.com/gookit/gopty v0.1.2/go.mod h1:FRw62OnjCutpQKkoXYzHGsji50SCOz3X5PK2QooAtOk=
-github.com/gookit/goutil v0.8.3 h1:CpVihnR0uDlruMRnai9PYaSKZ7TTSgOif6Ns17b79tA=
-github.com/gookit/goutil v0.8.3/go.mod h1:vJS9HXctYTCLtCsZot5L5xF+O1oR17cDYO9R0HxBmnU=
+github.com/gookit/goutil v0.8.4 h1:LU93xrWsR+csbPMLI65pavJ/qD65g8pWeRaTdqbmHA0=
+github.com/gookit/goutil v0.8.4/go.mod h1:vJS9HXctYTCLtCsZot5L5xF+O1oR17cDYO9R0HxBmnU=
 github.com/gookit/i18n v1.3.0 h1:ckkrgqdeeTNunE/ZJiVCwtVqJ6iy629WO0BfEEMt0yo=
 github.com/gookit/i18n v1.3.0/go.mod h1:+QNQ1WhJoKxEblKtHqsSF7b4gy152CWV6V00embvrws=
 github.com/gookit/ini/v2 v2.3.2 h1:W6tzOGE6zOLQelH2xhcH8BIBZPtnEpJgQ+J6SsAKBSw=
