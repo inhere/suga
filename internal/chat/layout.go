@@ -10,7 +10,8 @@ package chat
 //     between the two);
 //   - end of turn: TurnStatus/BuildTurnStatus is what Renderer.Status prints
 //     after each finished turn - the memory lines of the turn, then the status
-//     line;
+//     line, then (colored terminal, chat.status_metrics) the metrics line of
+//     TurnMetrics/BuildTurnMetrics;
 //   - exit: ExitSummary/BuildExitSummary is what chatStats.print writes to
 //     stderr on the way out, below the prompt (its own blank line first).
 //
@@ -236,6 +237,55 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 		}
 	}
 	return append(lines, LayoutLine{Text: strings.Join(parts, " · "), Color: color.Gray})
+}
+
+// TurnMetrics is what the compact metrics line under the status line shows
+// (chat.status_metrics). Every field is "unknown" at its zero value, and an
+// unknown item stays out of the line.
+type TurnMetrics struct {
+	// Usage is this turn's model usage: CacheReadTokens over InputTokens (the
+	// input count already includes the cache) is the turn's cache hit rate.
+	Usage agentcore.Usage
+	// LastInputTokens and ContextWindow give the context share, the same
+	// "ctx 55%" figure as the status line (either unknown keeps it out).
+	LastInputTokens, ContextWindow int
+	// FoldThreshold is the input size (tokens) at which the runner folds the
+	// context into a new segment (personal.Runner.ContextThreshold); with
+	// LastInputTokens it gives the headroom left before that (0 = unknown).
+	FoldThreshold int
+	// Background is how many background tasks are running now.
+	Background int
+	// Translator is the host UI catalog; nil preserves legacy Chinese output.
+	Translator i18n.Translator
+}
+
+// BuildTurnMetrics builds the compact metrics line, "cache 82% · ctx 41% ·
+// 折叠余量 37% · 后台 2": gray, one line. An item without data is left out, and
+// nil comes back when no item has any, so a turn without usage prints nothing.
+func BuildTurnMetrics(m TurnMetrics) []LayoutLine {
+	t := trOf(m.Translator)
+	var parts []string
+	// Input includes the cache read, so the rate cannot pass 100%; a turn that
+	// reported no input has no rate.
+	if m.Usage.InputTokens > 0 && m.Usage.CacheReadTokens >= 0 {
+		pct := min(m.Usage.CacheReadTokens*100/m.Usage.InputTokens, 100)
+		parts = append(parts, t.T("status.metrics.cache", map[string]any{"pct": pct}))
+	}
+	if _, _, share, ok := output.ContextUsage(m.LastInputTokens, m.ContextWindow); ok {
+		parts = append(parts, t.T("status.metrics.ctx", map[string]any{"pct": share}))
+	}
+	// Headroom: the part of the fold threshold the last request has not used yet.
+	if m.FoldThreshold > 0 && m.LastInputTokens > 0 {
+		pct := max(0, (m.FoldThreshold-m.LastInputTokens)*100/m.FoldThreshold)
+		parts = append(parts, t.T("status.metrics.headroom", map[string]any{"pct": pct}))
+	}
+	if m.Background > 0 {
+		parts = append(parts, t.T("status.metrics.background", map[string]any{"count": m.Background}))
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return []LayoutLine{{Text: strings.Join(parts, " · "), Color: color.Gray}}
 }
 
 // budgetShare returns the largest configured dimension's percentage. Showing

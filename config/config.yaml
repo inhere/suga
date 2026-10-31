@@ -184,6 +184,12 @@ providers:
 #                       # get different backgrounds. Needs a terminal with colors.
 #   notify: auto        # long-turn/approval notification: auto | bell | osc9 | off
 #   notify_after: 60s   # notify after a turn lasts at least this long
+#   status_metrics: true # one more gray line under the end-of-turn status line:
+#                       # "cache 82% · ctx 41% · 折叠余量 37% · 后台 2" (cache hit rate
+#                       # of the turn, how full the context is, headroom before the
+#                       # context is folded, running background tasks). An item
+#                       # without data is left out. Needs a terminal with colors,
+#                       # like markdown: a pipe or NO_COLOR keeps the old output.
 #   terminal_title: true # name the terminal's window/tab after the session:
 #                       # "suga · <short name> · <session title>" (the session title,
 #                       # its first message or the one a resumed session stores, cut
@@ -198,6 +204,7 @@ providers:
 #   spinner: true
 #   highlight_input: true
 #   terminal_title: true
+#   status_metrics: true
 #   steering: true
 #   history: true       # persist keyboard input in $SUGA_HOME/history.jsonl
 #   history_size: 1000  # maximum saved input lines

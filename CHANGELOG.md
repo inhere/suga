@@ -6,6 +6,7 @@
 
 ### 新增
 
+- chat 回合结束的常驻指标行（suga-guzy）：彩色终端里状态行下多一行灰色 `cache 82% · ctx 41% · 折叠余量 37% · 后台 2`（本回合 cache 命中率、上下文占用、距离触发折叠还剩的比例、运行中的后台任务数），数据取自本回合已有的用量与任务表，不增加模型调用；没有数据的项不显示。`chat.status_metrics`（默认 `true`）可关闭；非终端或 `NO_COLOR` 时输出与以前逐字相同。已登记到设置 registry、`config/config.yaml` 与 `suga-guide` 文档。
 - sugasdk 新增只读 `Engine.TraceEvents(ctx, sessionID, afterID, limit)`：按事件 ID 游标分页列出会话的 trace 事件（与 `suga inspect trace` 同源，返回公开的 `TraceEvent`，含种类、时间、回合、工具名、用量与原始 attrs JSON），供宿主并入自己的时间线。
 - sugasdk 新增只读 `Engine.Entries(ctx, sessionID, fromSeq, limit)`：按序号区间分页列出会话记录（`fromSeq` 含边界，limit 默认 100、上限 1000，会话不存在返回明确错误），供宿主读取会话历史。
 - 写类 / 执行类工具（`file_write`、`file_edit`、`shell_exec`、MCP 工具等）的参数里若逐字含有会话中 `web_fetch`、`web_search`、MCP 工具结果的 12 字节以上原文（空白折叠后比较），即使 `tools.approval: auto` 也再确认一次：chat 里弹出询问并注明来源工具与片段，run / ACP 等无人可问时拒绝并说明（提示注入的实用缓解）；只读工具不受影响。每个会话最多记住约 25 万个窗口，超出后先忘最旧的结果。`tools.ask_on_external_origin`（默认 `true`）可关闭。

@@ -88,6 +88,11 @@ type Options struct {
 	// default). Like Markdown it needs a colored terminal: a pipe, a redirected
 	// output or NO_COLOR leaves the title alone.
 	TerminalTitle bool
+	// StatusMetrics adds the compact metrics line (cache hit rate, context share,
+	// folding headroom, running background tasks) under the end-of-turn status line
+	// (config chat.status_metrics, on by default). Like Markdown it needs a colored
+	// terminal: a pipe, a redirected output or NO_COLOR keeps the old output.
+	StatusMetrics bool
 	// Diff shows what a file tool call changed (config chat.diff, on by default):
 	// the unified diff under the tool result, the pending one before an approval
 	// question, and the :diff command. DiffLines caps how many lines one preview
@@ -413,6 +418,8 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		AgentTasks:    agentTasks,
 		Diff:          opts.Diff, DiffLines: opts.DiffLines,
 		CodeHighlight: opts.CodeHighlight, CodeMaxLines: opts.CodeMaxLines,
+		// The metrics line under the turn status (chat.status_metrics).
+		StatusMetrics: opts.StatusMetrics, FoldThreshold: runner.ContextThreshold,
 		Theme:          opts.Theme,
 		Palette:        pal,
 		HighlightInput: opts.HighlightInput, HighlightWidth: inputSource.highlightWidth,
