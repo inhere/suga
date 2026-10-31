@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ type chatOpts struct {
 	Color           bool     // leave NO_COLOR unset so chat renders colors
 	DropEnv         []string // inherited variables to remove (e.g. COLORFGBG)
 	SetEnv          []string // KEY=VALUE appended last (e.g. SUGA_HOOKS=on)
+	Args            []string // extra arguments after `chat` (e.g. --resume <id>)
 }
 
 // startChatOpts writes SUGA_HOME/config.yaml and starts the real chat in a pty.
@@ -80,7 +82,7 @@ providers:
 		env = append(env, entry)
 	}
 	env = append(env, o.SetEnv...)
-	spec := gopty.Spec{Command: binary, Args: []string{"chat"}, Dir: o.Work, Env: env, Cols: 100, Rows: 40}
+	spec := gopty.Spec{Command: binary, Args: append([]string{"chat"}, o.Args...), Dir: o.Work, Env: env, Cols: 100, Rows: 40}
 	return ptytest.StartSpec(t, spec), env
 }
 
@@ -188,3 +190,57 @@ func expectRaw(t *testing.T, s *ptytest.Session, pattern string, rawMark int) {
 		t.Fatalf("expected raw %q; raw tail: %q", pattern, tail(s.RawText()))
 	}
 }
+
+// sugaRun runs the suga binary to completion (ps, send, run, inspect ...) and
+// returns its stdout, stderr and exit code; a start failure fails the test.
+func sugaRun(t *testing.T, binary, work string, env []string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir, cmd.Env = work, env
+	var out, errOut strings.Builder
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	err := cmd.Run()
+	if exit, ok := err.(*exec.ExitError); ok {
+		code = exit.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run suga %v: %v", args, err)
+	}
+	return out.String(), errOut.String(), code
+}
+
+// exitAfterTurn waits for the status line that ends the turn (a Ctrl-C sent
+// while the reply is still arriving cancels the turn instead of asking to
+// exit), then leaves with two Ctrl-C and returns the session id.
+func exitAfterTurn(t *testing.T, s *ptytest.Session, turnMark int) string {
+	t.Helper()
+	check(t, "exit: the turn has ended", s.Expect(`tokens · `, turnMark, 60*time.Second))
+	time.Sleep(300 * time.Millisecond)
+	return ctrlCTwice(t, s)
+}
+
+// until is expect that records a failed wait as one named check instead of
+// stopping the scenario, the way the Python scripts' s.check(.., s.until(..)) did.
+func until(t *testing.T, s *ptytest.Session, name, pattern string, mark int) bool {
+	t.Helper()
+	ok := s.Expect(pattern, mark, 15*time.Second)
+	check(t, name, ok)
+	return ok
+}
+
+// osCommand picks the shell command for the platform: shell_exec runs POSIX sh
+// everywhere except Windows, where it is PowerShell.
+func osCommand(posix, powershell string) string {
+	if runtime.GOOS == "windows" {
+		return powershell
+	}
+	return posix
+}
+
+// check2 is check that also returns the verdict.
+func check2(t *testing.T, name string, ok bool) bool {
+	t.Helper()
+	check(t, name, ok)
+	return ok
+}
+
+var sessionJSONID = regexp.MustCompile(`"id":\s*"([^"]+)"`)
