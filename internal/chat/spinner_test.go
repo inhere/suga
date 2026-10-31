@@ -11,6 +11,7 @@ import (
 	"github.com/inhere/suga/internal/personal"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	"github.com/inhere/suga/pkg/chatui"
 )
 
 // spinnerClock is the test clock of the waiting line: Now reports the fake time,
@@ -98,18 +99,7 @@ func waitOutput(t *testing.T, out *syncOutput, want string) bool {
 // spinnerRunning reports whether the frame goroutine is alive: a stopped spinner
 // has closed its done channel, one that never started has none.
 func spinnerRunning(s *thinkingSpinner) bool {
-	s.mu.Lock()
-	done := s.done
-	s.mu.Unlock()
-	if done == nil {
-		return false
-	}
-	select {
-	case <-done:
-		return false
-	default:
-		return true
-	}
+	return s.Running()
 }
 
 // TestSpinnerWaitingLine: the line appears with the elapsed seconds once a frame
@@ -332,10 +322,10 @@ func TestSpinnerPaintsTheLine(t *testing.T) {
 	t.Cleanup(color.RevertColorLevel)
 
 	out, clock := &syncOutput{}, newSpinnerClock()
-	s := newThinkingSpinner(spinnerConfig{
-		enabled: true, out: out,
-		paint: func(line string) string { return color.Gray.Text(line) },
-		now:   clock.Now, ticks: clock.ticks,
+	s := chatui.NewSpinner(chatui.SpinnerConfig{
+		Enabled: true, Out: out,
+		Paint: func(line string) string { return color.Gray.Text(line) },
+		Now:   clock.Now, Ticks: clock.ticks,
 	})
 	s.Start()
 	clock.tick(time.Second)
