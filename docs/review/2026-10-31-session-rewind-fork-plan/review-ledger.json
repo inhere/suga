@@ -1,0 +1,905 @@
+{
+  "artifact_type": "review_ledger",
+  "schema_version": "2.1.0",
+  "candidate_progression": "DOCUMENT_REVISION",
+  "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "19f6f589c69b4689c668ccc3a797e73d35f18f4b",
+    "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+    "document_revision": "0.3"
+  },
+  "author_id": "author-main",
+  "required_rounds": [
+    1,
+    2,
+    3
+  ],
+  "required_sections": [
+    "修订记录",
+    "计划工作声明",
+    "目标与完成定义",
+    "范围、排除项与授权",
+    "输入与批准证据",
+    "Capability Discovery",
+    "跨任务接口",
+    "前置检查与 fail-closed 条件",
+    "波次与依赖",
+    "任务",
+    "回滚与恢复",
+    "人工 Gate",
+    "可追溯性",
+    "完成 Gate 与剩余工作"
+  ],
+  "required_axes": [
+    "Standards/Governance",
+    "Spec/Executability"
+  ],
+  "receipts": [
+    {
+      "round": 1,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "bae178656d90c15519a7fdb67a1154adcdcafd45",
+        "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "document_revision": "0.1"
+      },
+      "axis": "Standards/Governance",
+      "reviewer_id": "reviewer-standards",
+      "session_id": "reviewer-standards-r1",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md",
+        "source_report_commit_oid": "a59b27d0da3921f9a4fe2ac0c86c8efa5da1fc87",
+        "source_report_blob_oid": "fd6b01c1f2d199e29965494987db9e6eb5f9f8b2",
+        "direct_repo_paths": [
+          "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+          "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "修订记录",
+        "计划工作声明",
+        "目标与完成定义",
+        "范围、排除项与授权",
+        "输入与批准证据",
+        "Capability Discovery",
+        "跨任务接口",
+        "前置检查与 fail-closed 条件",
+        "波次与依赖",
+        "任务",
+        "回滚与恢复",
+        "人工 Gate",
+        "可追溯性",
+        "完成 Gate 与剩余工作"
+      ],
+      "dependency_edges": [
+        {
+          "from": "修订记录",
+          "to": "任务"
+        },
+        {
+          "from": "波次与依赖",
+          "to": "任务"
+        },
+        {
+          "from": "任务",
+          "to": "可追溯性"
+        }
+      ],
+      "global_invariants": [
+        "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+      ],
+      "findings": [
+        {
+          "finding_id": "S1",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "波次依赖与任务依赖不一致，存在隐藏依赖",
+          "impact": "波次依赖与任务依赖不一致，存在隐藏依赖",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S2",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "跨任务调用的函数缺签名、返回格式与错误归属",
+          "impact": "跨任务调用的函数缺签名、返回格式与错误归属",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S3",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "sugasdk 也调用 `SearchEntriesPage`，计划未声明默认行为不变",
+          "impact": "sugasdk 也调用 `SearchEntriesPage`，计划未声明默认行为不变",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S4",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "可追溯表未 exact-cover 设计决策与读者清单",
+          "impact": "可追溯表未 exact-cover 设计决策与读者清单",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S5",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "任务文件清单不完整",
+          "impact": "任务文件清单不完整",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S6",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "Capability decisions 未覆盖全部所需能力",
+          "impact": "Capability decisions 未覆盖全部所需能力",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S7",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "反向验证覆盖不足",
+          "impact": "反向验证覆盖不足",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S8",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "验证命令未写运行目录；主机命令未给 gofer 提交形态",
+          "impact": "验证命令未写运行目录；主机命令未给 gofer 提交形态",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S9",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "外部动作 Gate 前后不一致",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "S10",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "文字与基线细节",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        }
+      ],
+      "verdict": "PASS"
+    },
+    {
+      "round": 1,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "bae178656d90c15519a7fdb67a1154adcdcafd45",
+        "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "document_revision": "0.1"
+      },
+      "axis": "Spec/Executability",
+      "reviewer_id": "reviewer-spec",
+      "session_id": "reviewer-spec-r1",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md",
+        "source_report_commit_oid": "a59b27d0da3921f9a4fe2ac0c86c8efa5da1fc87",
+        "source_report_blob_oid": "14314cd519ab541f0ff8d843ddd24bf78a7e85c2",
+        "direct_repo_paths": [
+          "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+          "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "修订记录",
+        "计划工作声明",
+        "目标与完成定义",
+        "范围、排除项与授权",
+        "输入与批准证据",
+        "Capability Discovery",
+        "跨任务接口",
+        "前置检查与 fail-closed 条件",
+        "波次与依赖",
+        "任务",
+        "回滚与恢复",
+        "人工 Gate",
+        "可追溯性",
+        "完成 Gate 与剩余工作"
+      ],
+      "dependency_edges": [
+        {
+          "from": "修订记录",
+          "to": "任务"
+        },
+        {
+          "from": "波次与依赖",
+          "to": "任务"
+        },
+        {
+          "from": "任务",
+          "to": "可追溯性"
+        }
+      ],
+      "global_invariants": [
+        "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+      ],
+      "findings": [
+        {
+          "finding_id": "F1",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "设计流程 1 的“先出回退计划、确认、再执行”没有归属任务；T4 与 T6 的编排依赖缺失",
+          "impact": "设计流程 1 的“先出回退计划、确认、再执行”没有归属任务；T4 与 T6 的编排依赖缺失",
+          "recommendation": "按报告建议修订计划，下一版复核",
+          "core_acceptance": "设计流程 1 先出回退计划、确认、再执行有归属任务",
+          "necessary_causal_chain": [
+            "计划只有执行接口 Runner.Rewind，无只读预览任务",
+            "T4 失败分支依赖 T6 rewindFiles 但波次并行且未声明依赖",
+            "确认交互与文件编排无处落地，流程 1 不可实施"
+          ],
+          "minimal_owner": [
+            "计划：跨任务接口与 T4/T6/T8 依赖"
+          ],
+          "deletion_alternative": "FAIL",
+          "scope_effect": []
+        },
+        {
+          "finding_id": "F2",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "fork 的 seq 映射与 first_kept_seq 重写在事务之外；rewind 记录与 meta 复制规则缺失",
+          "impact": "fork 的 seq 映射与 first_kept_seq 重写在事务之外；rewind 记录与 meta 复制规则缺失",
+          "recommendation": "按报告建议修订计划，下一版复核",
+          "core_acceptance": "R6 fork 单事务完成且 first_kept_seq 正确",
+          "necessary_causal_chain": [
+            "T7 先写事务再重写 first_kept_seq",
+            "重写失败时 fork 会话边界指向源 seq，loadHistory 截取错误",
+            "rewind 记录与 meta 白名单规则缺失导致 fork 状态错误"
+          ],
+          "minimal_owner": [
+            "计划：T1 CreateForkedSession 与 T7"
+          ],
+          "deletion_alternative": "FAIL",
+          "scope_effect": [
+            "state"
+          ]
+        },
+        {
+          "finding_id": "F3",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "`CreateForkedSession` 未要求复用 AppendEntries 的正文外置、FTS 写入与时间保留",
+          "impact": "`CreateForkedSession` 未要求复用 AppendEntries 的正文外置、FTS 写入与时间保留",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F4",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "设计读者表中的 recall（`ledger.go:262` readMessages）没有落到 T3 动作与测试",
+          "impact": "设计读者表中的 recall（`ledger.go:262` readMessages）没有落到 T3 动作与测试",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F5",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "跨会话检索排除的机制未定；`RewindRecords` 走 `idx_entries_type` 的说法与现有查询计划记录不符",
+          "impact": "跨会话检索排除的机制未定；`RewindRecords` 走 `idx_entries_type` 的说法与现有查询计划记录不符",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F6",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "session card 的 SegmentCount 与 Turns 缺少 store 方法；基准未覆盖有屏蔽区间的会话",
+          "impact": "session card 的 SegmentCount 与 Turns 缺少 store 方法；基准未覆盖有屏蔽区间的会话",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F7",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "`rewindFiles` 只写“直接循环调用 restoreItem”，缺少取得带根校验的检查点行",
+          "impact": "`rewindFiles` 只写“直接循环调用 restoreItem”，缺少取得带根校验的检查点行",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F8",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "“有运行中的后台任务”在 Runner 内无法判断",
+          "impact": "“有运行中的后台任务”在 Runner 内无法判断",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F9",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "T2 与 T3 标为可并行，但 T2 需要 T3 的屏蔽集合",
+          "impact": "T2 与 T3 标为可并行，但 T2 需要 T3 的屏蔽集合",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F10",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "不受影响读者清单（S-N1）可补全",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F11",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "LastReply 的“上一回合未正常结束”判断在回退后可能误报",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F12",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "清理检测细节",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F13",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "测试判据与夹具",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F14",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "文件归属与规模",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        }
+      ],
+      "verdict": "BLOCKED"
+    },
+    {
+      "round": 2,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "3618827e472f6c2fd4d06334638a2df97c092d63",
+        "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "document_revision": "0.2"
+      },
+      "axis": "Standards/Governance",
+      "reviewer_id": "reviewer-standards",
+      "session_id": "reviewer-standards-r2",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md",
+        "source_report_commit_oid": "71a0b184814c2f140d2cb581e3fe8df92290e76f",
+        "source_report_blob_oid": "c57982d130ed2408a0906f5e4e0a6a4d3a1d2827",
+        "direct_repo_paths": [
+          "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+          "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "修订记录",
+        "计划工作声明",
+        "目标与完成定义",
+        "范围、排除项与授权",
+        "输入与批准证据",
+        "Capability Discovery",
+        "跨任务接口",
+        "前置检查与 fail-closed 条件",
+        "波次与依赖",
+        "任务",
+        "回滚与恢复",
+        "人工 Gate",
+        "可追溯性",
+        "完成 Gate 与剩余工作"
+      ],
+      "dependency_edges": [
+        {
+          "from": "修订记录",
+          "to": "任务"
+        },
+        {
+          "from": "波次与依赖",
+          "to": "任务"
+        },
+        {
+          "from": "任务",
+          "to": "可追溯性"
+        }
+      ],
+      "global_invariants": [
+        "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+      ],
+      "findings": [
+        {
+          "finding_id": "S11",
+          "severity": "HIGH",
+          "disposition": "CORE_BLOCKING",
+          "evidence": "ApplyRewind 的会话部分不按 scope 区分，files 模式会把对话一起回退",
+          "impact": "[BUG] ApplyRewind 的会话部分不按 scope 区分，files 模式会把对话一起回退",
+          "recommendation": "按报告建议修订计划，下一版复核",
+          "core_acceptance": "完成定义第 2 条：files scope 只恢复快照，对话不变",
+          "necessary_causal_chain": [
+            "T5 第 3 步无条件写 rewind 记录",
+            "T2 用全部记录构造屏蔽区间",
+            "files scope 误屏蔽对话，验收结果错误"
+          ],
+          "minimal_owner": [
+            "计划：T5 第 3-5 步加 scope 条件"
+          ],
+          "deletion_alternative": "PASS",
+          "scope_effect": []
+        },
+        {
+          "finding_id": "S12",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "跨任务接口仍有未定义的形状与归属",
+          "impact": "跨任务接口仍有未定义的形状与归属",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S13",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "用 `Manager.List` 预览“将丢弃的待注入通知”，取到的集合不对",
+          "impact": "用 `Manager.List` 预览“将丢弃的待注入通知”，取到的集合不对",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S14",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "R11 的收窄与设计一致，但 deferred 项写错了依据",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "S15",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "NM-01 不是新 Module，删除处置写成了将来复用",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "S16",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "baseline 与若干文字细节",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        }
+      ],
+      "verdict": "BLOCKED"
+    },
+    {
+      "round": 2,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "3618827e472f6c2fd4d06334638a2df97c092d63",
+        "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "document_revision": "0.2"
+      },
+      "axis": "Spec/Executability",
+      "reviewer_id": "reviewer-spec",
+      "session_id": "reviewer-spec-r2",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md",
+        "source_report_commit_oid": "71a0b184814c2f140d2cb581e3fe8df92290e76f",
+        "source_report_blob_oid": "a71b559ebff5d3b0817d9f444b2d5d24108a9efc",
+        "direct_repo_paths": [
+          "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+          "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "修订记录",
+        "计划工作声明",
+        "目标与完成定义",
+        "范围、排除项与授权",
+        "输入与批准证据",
+        "Capability Discovery",
+        "跨任务接口",
+        "前置检查与 fail-closed 条件",
+        "波次与依赖",
+        "任务",
+        "回滚与恢复",
+        "人工 Gate",
+        "可追溯性",
+        "完成 Gate 与剩余工作"
+      ],
+      "dependency_edges": [
+        {
+          "from": "修订记录",
+          "to": "任务"
+        },
+        {
+          "from": "波次与依赖",
+          "to": "任务"
+        },
+        {
+          "from": "任务",
+          "to": "可追溯性"
+        }
+      ],
+      "global_invariants": [
+        "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+      ],
+      "findings": [
+        {
+          "finding_id": "F15",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "ApplyRewind 执行的是预览结果而不是锁内重算的结果；Stamp 覆盖不全",
+          "impact": "ApplyRewind 执行的是预览结果而不是锁内重算的结果；Stamp 覆盖不全",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F16",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "用 `TaskNotices.List` 无法得到“将丢弃的已完成任务通知”",
+          "impact": "用 `TaskNotices.List` 无法得到“将丢弃的已完成任务通知”",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F17",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "session card 的 LatestSummary 没有接入屏蔽；`RecentEntriesSkipping` 没有调用方；card 的唯一调用方是 sugasdk",
+          "impact": "session card 的 LatestSummary 没有接入屏蔽；`RecentEntriesSkipping` 没有调用方；card 的唯一调用方是 sugasdk",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F18",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "recall 的屏蔽缺 store 读法，续读 ref 可能落进屏蔽区间",
+          "impact": "recall 的屏蔽缺 store 读法，续读 ref 可能落进屏蔽区间",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F19",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "区间读取的代价与屏蔽区间大小、会话长度成正比，EXPLAIN Gate 与基准变体都检测不到",
+          "impact": "区间读取的代价与屏蔽区间大小、会话长度成正比，EXPLAIN Gate 与基准变体都检测不到",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F20",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "`UndoCore.RewindPlan` 的职责与 Runner 版本重叠，也拿不到 Runner 依赖",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F21",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "前置拒绝“回合进行中”的机制，以及通知互斥的论断",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F22",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "fork 的 meta 白名单应明确默认拒绝，并逐项列出真实的键",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F23",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "undo 待注入通知的合并方式引用有误；合并后 event_id 回填会丢失",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F24",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "测试判据补充",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        }
+      ],
+      "verdict": "PASS"
+    },
+    {
+      "round": 3,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "19f6f589c69b4689c668ccc3a797e73d35f18f4b",
+        "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "document_revision": "0.3"
+      },
+      "axis": "Standards/Governance",
+      "reviewer_id": "reviewer-standards",
+      "session_id": "reviewer-standards-r3",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md",
+        "source_report_commit_oid": "a3e9eb93ff753093e4dbfe3fbeabe4c069752f91",
+        "source_report_blob_oid": "4e5a02401252f5214388f4aab95411fbf7d144e5",
+        "direct_repo_paths": [
+          "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+          "docs/review/2026-10-31-session-rewind-fork-plan/standards-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "修订记录",
+        "计划工作声明",
+        "目标与完成定义",
+        "范围、排除项与授权",
+        "输入与批准证据",
+        "Capability Discovery",
+        "跨任务接口",
+        "前置检查与 fail-closed 条件",
+        "波次与依赖",
+        "任务",
+        "回滚与恢复",
+        "人工 Gate",
+        "可追溯性",
+        "完成 Gate 与剩余工作"
+      ],
+      "dependency_edges": [
+        {
+          "from": "修订记录",
+          "to": "任务"
+        },
+        {
+          "from": "波次与依赖",
+          "to": "任务"
+        },
+        {
+          "from": "任务",
+          "to": "可追溯性"
+        }
+      ],
+      "global_invariants": [
+        "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+      ],
+      "findings": [
+        {
+          "finding_id": "S17",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "scope freeze 中 sugasdk 行为变化的说明与设计相容，但措辞过窄，并与 fail-closed 冲突",
+          "impact": "scope freeze 中 sugasdk 行为变化的说明与设计相容，但措辞过窄，并与 fail-closed 冲突",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S18",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "gate 与跨进程锁的取法、预览是否加锁、Busy 的归属写得不一致",
+          "impact": "gate 与跨进程锁的取法、预览是否加锁、Busy 的归属写得不一致",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S19",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "冻结的 `RewindFileItem` 形状不含 `restoreItem` 所需的快照元数据",
+          "impact": "冻结的 `RewindFileItem` 形状不含 `restoreItem` 所需的快照元数据",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S20",
+          "severity": "LOW",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "T2 新增的屏蔽区间缓存没有证明必要性",
+          "impact": "T2 新增的屏蔽区间缓存没有证明必要性",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "S21",
+          "severity": "LOW",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "文字与元数据细节",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        }
+      ],
+      "verdict": "PASS"
+    },
+    {
+      "round": 3,
+      "candidate": {
+        "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+        "commit": "19f6f589c69b4689c668ccc3a797e73d35f18f4b",
+        "subject_path": "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "document_revision": "0.3"
+      },
+      "axis": "Spec/Executability",
+      "reviewer_id": "reviewer-spec",
+      "session_id": "reviewer-spec-r3",
+      "author_id": "author-main",
+      "coordinator_relationship": "INDEPENDENT",
+      "actual_read_scope": [
+        "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+        "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md"
+      ],
+      "scope_evidence": {
+        "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+        "source_report": "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md",
+        "source_report_commit_oid": "a3e9eb93ff753093e4dbfe3fbeabe4c069752f91",
+        "source_report_blob_oid": "bfbfbe9e4f9f4dc01a3abc3985f9d0018a6ee9e7",
+        "direct_repo_paths": [
+          "docs/plans/2026-10-31-session-rewind-fork-plan.md",
+          "docs/review/2026-10-31-session-rewind-fork-plan/spec-review.md"
+        ],
+        "expanded_repo_manifests": [],
+        "external_inputs": []
+      },
+      "sections": [
+        "修订记录",
+        "计划工作声明",
+        "目标与完成定义",
+        "范围、排除项与授权",
+        "输入与批准证据",
+        "Capability Discovery",
+        "跨任务接口",
+        "前置检查与 fail-closed 条件",
+        "波次与依赖",
+        "任务",
+        "回滚与恢复",
+        "人工 Gate",
+        "可追溯性",
+        "完成 Gate 与剩余工作"
+      ],
+      "dependency_edges": [
+        {
+          "from": "修订记录",
+          "to": "任务"
+        },
+        {
+          "from": "波次与依赖",
+          "to": "任务"
+        },
+        {
+          "from": "任务",
+          "to": "可追溯性"
+        }
+      ],
+      "global_invariants": [
+        "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+      ],
+      "findings": [
+        {
+          "finding_id": "F25",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "`RewindFileItem` 不足以调用 `restoreItem`，`applyRewindFiles` 按冻结签名无法实现",
+          "impact": "`RewindFileItem` 不足以调用 `restoreItem`，`applyRewindFiles` 按冻结签名无法实现",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F26",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "undo 队列每回合只注入一条；队列非空时 rewind 通知会被推迟，违背 R5“下一轮注入”",
+          "impact": "undo 队列每回合只注入一条；队列非空时 rewind 通知会被推迟，违背 R5“下一轮注入”",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F27",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "`EntriesFromSkipping` 缺类型过滤；续读规则与“ref 在区间内按不存在处理”矛盾",
+          "impact": "`EntriesFromSkipping` 缺类型过滤；续读规则与“ref 在区间内按不存在处理”矛盾",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F28",
+          "severity": "MEDIUM",
+          "disposition": "CORE_CORRECTIVE",
+          "evidence": "`TryAcquire` 也会被空闲整理的可抢占持有拒绝，chat 空闲一段时间后 `:rewind`/`:fork` 可能一直报“回合进行中”",
+          "impact": "`TryAcquire` 也会被空闲整理的可抢占持有拒绝，chat 空闲一段时间后 `:rewind`/`:fork` 可能一直报“回合进行中”",
+          "recommendation": "按报告建议修订计划，下一版复核"
+        },
+        {
+          "finding_id": "F29",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "屏蔽缓存的“键”本身要查库，代价约等于 `RewindRecords`",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F30",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "fork meta 白名单的键名与取值写实",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        },
+        {
+          "finding_id": "F31",
+          "severity": "MEDIUM",
+          "disposition": "DEFERRED_ENHANCEMENT",
+          "evidence": "只回文件时的事件与通知写法",
+          "impact": "ADVISORY，实施任务书处理",
+          "recommendation": "在实施任务书中处理，不阻塞计划批准"
+        }
+      ],
+      "verdict": "PASS"
+    }
+  ],
+  "dependency_edges": [
+    {
+      "from": "修订记录",
+      "to": "任务"
+    },
+    {
+      "from": "波次与依赖",
+      "to": "任务"
+    },
+    {
+      "from": "任务",
+      "to": "可追溯性"
+    }
+  ],
+  "global_invariants": [
+    "计划任务与验证覆盖设计 rewind 的不泄漏与 fork 的源会话不变，实施不扩出已批准范围"
+  ],
+  "open_core_blockers": [],
+  "status": "PASS"
+}

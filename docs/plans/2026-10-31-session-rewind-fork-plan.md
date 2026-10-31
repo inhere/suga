@@ -64,11 +64,15 @@
 - 计划评审：`docs/review/2026-10-31-session-rewind-fork-plan/`。
   - round 1：`a59b27d0`；
   - round 2：`71a0b184`；
-  - round 3：`a3e9eb93`，两轴 PASS，CORE_CORRECTIVE 在 0.4 收口；
-  - round 4：`f009fd02`，评审 0.4，两轴 PASS，CORE_CORRECTIVE 在 0.5 收口；
-  - round 5：`67fd3f0c`，评审 0.5，两轴 PASS，CORE_CORRECTIVE 在 0.6 收口；
-  - round 6：`8b0e8bf7`，评审 0.6，两轴 PASS，CORE_CORRECTIVE 在 0.7 收口；
-  - round 7：`351c4d4b`，评审 0.7，两轴 PASS，CORE_CORRECTIVE 在 0.8 收口。
+  - round 3：`a3e9eb93`，评审 0.3，两轴 PASS，是**最后一次合同内评审**；`review-ledger.json` 只记 r1–r3，candidate 为 0.3（`19f6f589`）。
+  - 0.4–0.8 是只收口 CORE_CORRECTIVE 的**未复核修订**（规范会话 2026-10-31 裁决：PASS 之后的纠正项不触发新轮次）。每版收口的内容见修订记录：
+    - 0.4 收口 r3 的 S17–S20、F25–F28；
+    - 0.5 收口 S22–S23、F32–F34；
+    - 0.6 收口 S25–S26、F39–F40；
+    - 0.7 收口 S28、F42；
+    - 0.8 收口 S31–S32、F44。
+  - 这些修订的复核报告在 Git 历史中，作为合同外参考证据，不进 ledger：`f009fd02`、`67fd3f0c`、`8b0e8bf7`、`351c4d4b`、`9a9837f3`。最后一份对 0.8 两轴 PASS，只有 ADVISORY。
+  - 人工 Gate：用户批准 0.3，或明确接受 0.4–0.8 的纠正修订后批准 0.8。
 - issue：suga-4tnd。gofer plan `plan-20261031-211227-3fa910d5`（suga 0.54）。
 - 本计划与设计正文的偏差都来自评审纠正项，偏差处标注了依据：
   - T6 的 fork 写入方式（F-N1、计划 F2）；
