@@ -3,111 +3,105 @@
 
 ## 评审目标与范围
 
-- 目标: `docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，candidate commit `0d6737d7`）
-- 修订版本: Draft 0.5
+- 目标: `docs/plans/2026-10-31-session-rewind-fork-plan.md`（git root `inhere-tools/suga`，candidate commit `abdb5bd9`）
+- 修订版本: Draft 0.6
 - 评审者: 规范与治理轴（Standards/Governance）独立评审子 agent，只读；未读本计划的可执行轴报告（spec-review.md）
-- 轮次: Round 5（变更范围评审）。读 `git diff 6e03cbff..0d6737d7 -- <plan>`，以及受影响的章节：修订记录、输入与批准证据（设计偏差清单）、跨任务接口（文件部分与并发判定）、fail-closed、波次与依赖、T2（recall）、T3 验证、T4、T5（文件与通知）、T6、T8 CHANGELOG、可追溯性
+- 轮次: Round 6（变更范围评审）。读 `git diff 0d6737d7..abdb5bd9 -- <plan>`，以及受影响的章节：修订记录、输入与批准证据（评审轮次、设计偏差清单）、跨任务接口（错误值归属、并发判定）、前置检查（运行目录与环境、fail-closed）、T2 文件清单、T4、T5（步骤 7–8 与验证）、可追溯性
 - 日期: 2026-10-31
-- 结论: **PASS**（没有开放的 CORE_BLOCKING）。S25、S26 为 CORE_CORRECTIVE，交人工批准前按一行级修正处理即可
-- 排除项: 未运行测试与基准；没有逐行推演 recall 续读与 Ledger 注入的时序（归可执行轴）
+- 结论: **PASS**（没有开放的 CORE_BLOCKING）。S28 为 CORE_CORRECTIVE，交人工批准前一行级修正即可
+- 排除项: 未运行测试与基准；没有逐行推演通知队列在多进程下的时序（归可执行轴）
 
 ## 输入与方法
 
 - 规范：`idevstd load --delivery semantic --accept-delta --workspace <suga> --task plan --task review --agent claude --consumer-mode --thinking-mode rigorous`。结果 BOUND、FULL、18 项资源，payload sha256 `a7be77b2…` 已核验，与上一轮相同。
-- 读取：0.4→0.5 的计划 diff 和上面列出的章节；第 4 轮规范轴报告；设计 0.2 的流程 1（fork 建会话，129 行）、流程 3 后台任务（151-152 行）、决策表 R5 与 R8（266、269 行）；设计评审 ledger 中的 R2-F-N4。
-- 结构校验：工作区的计划与 `0d6737d7` 一致。`idevstd script validate_document --kind plan` 结果为 `ok: true, errors: []`，共 596 行，不需要拆分。
+- 读取：0.5→0.6 的计划 diff 和上面列出的章节；第 5 轮规范轴报告；设计 0.2 的流程 3 通知（236-241 行）、流程 3 后台任务（151-152 行）、决策表 R5 与 R8（267、270 行）。
+- 结构校验：工作区的计划与 `abdb5bd9` 一致。`idevstd script validate_document --kind plan` 结果为 `ok: true, errors: []`，共 615 行，不需要拆分。
 - 代码核对：
 
 | 引用 | 结果 |
 |---|---|
-| `undo_notice.go:106-117` appendUndoNotice | 追加到**队尾**。`injectUndoNotice` 写入失败时用它放回（`:169-178`）。与 S26 相关 |
-| `undo_notice.go:119-131` takeUndoNotice | 每次取 `notices[0]`，与计划所述相符 |
-| `undo_core_test.go:17` `undoTestGate` | 存在，T4 补方法的位置正确 |
-| `internal/i18n/catalog/{zh,en}/personal.ini` | 存在，T6 的 title 后缀落点可用 |
-| `ledger.go:74` `bind`；`runner.go:444` `cfg.Ledger.bind(...)` | Ledger 由 Runner 在 personal 内绑定，“Runner 注入 maskedRanges”可以不改 wiring。T2 的文件清单没有 `runner.go`，见 S27 |
-| `wiring/runtime.go:531`、`wiring/manifest.go:609` NewLedger | 只构造，不需要改动，scope freeze 成立 |
+| `undo_notice.go:31-41` pendingUndoNotice | 现无 `Kind` 字段，新增 `kind,omitempty` 不与已有键冲突；旧二进制读到 rewind 项会忽略 `kind`、按普通通知送达，降级可用 |
+| `undo_notice.go:160-178` injectUndoNotice 放回 | 两处失败都调用 `appendUndoNotice` 放回队尾，计划“按 Kind 分支”落点正确 |
+| `undo_notice.go:180-185` event_id 回填 | 只在注入成功时回填，被移除的旧 rewind 项不会回填，见 S29 |
+| `undo_restore.go:62-67`、`undo_options.go:45` `:undo` 的 Turns | 有快照目录的行都计 1（不论是否全部跳过）；入队条件 `result.Turns > 0`（`undo_restore.go:105`、`undo_options.go:83`）。与 S28 相关 |
+| `undo_notice_test.go:117` `TestUndoNoticeQueueKeepsOrder` | 存在 |
 
 ## 验收标准
 
 - plan 合同：修订记录、scope freeze 与 fail-closed 一致、波次依赖与文件不相交、任务五要素、跨任务签名的归属、可追溯、设计偏差的登记、人工 Gate。
 - 评审合同：同类穷尽、五类 CORE_BLOCKING 与 necessity proof、新增机制的 scope necessity、按删除优先的顺序关闭。
-- 其他规则：SR1401、SR1403、SR1406、SR1410、SR1411、SR1301；GR104、GR109。
+- 其他规则：SR1103、SR1401、SR1403、SR1406、SR1410、SR1301；GR104、GR109。
 
-## 第 4 轮发现关闭状态
+## 第 5 轮发现关闭状态
 
 | ID | 状态 | 依据 |
 |---|---|---|
-| S17 残留（T8 CHANGELOG 名称与内容） | **已关闭** | T8 的 CHANGELOG 改为 `Session.Card`，并补了 `Run` 与 `Compact`，限定在“有回退记录的会话”上（511 行），与 scope freeze 第 24 行一致 |
-| S18 残留（T3“三种前置拒绝”） | **已关闭** | 改为“两种前置拒绝”，并写明回合进行中由 T4 的取锁负责（359 行） |
-| S21① 文件拆分理由的位置 | **未关闭（上轮未穷尽）** | “文件拆分理由”已提成独立段落（217 行），但“容器内 git……”一条仍然缩进挂在它下面（218 行），没有回到“运行目录与环境”中。并入 S27 |
-| S21② title 后缀落点 | **已关闭** | 定为 `personal.ini`，已加入 T6 文件清单（437、451 行）；W3 写明 T5 用 `model.ini`、T6 用 `personal.ini`（227 行） |
-| S22 取空队列例外 | **已关闭（按方案 A）** | 删除了 fail-closed 中的例外与 CHANGELOG 中的 F26 条目，改为 rewind 通知插入队首，`takeUndoNotice` 不改（413-414 行）。scope freeze 第 25 行“没有回退记录的会话，所有行为不变”现在成立。验证改为“下一轮 rewind，再下一轮 undo”，并保持 `TestUndoNoticeQueueKeepsOrder` 通过（422 行）。新机制留下两处缺口，见 S26 |
-| S23 取锁归属与 T6 依赖 | **基本关闭** | `AcquireUnlessBusy`、`withSessionUnlessBusy`、`gateForUndo` 与测试桩都移到 T4（366-369 行）；T5 的文件清单删去 `gate.go` 与 `undo.go`（393 行）；T6 依赖 T4（227、475 行）。W1 中 T2 与 T4 的文件不相交，已核对。残留（上轮未穷尽）：`ErrRewindBusy` 的声明归属与可追溯表行，见 S25 |
-| S24 文字与小处 | **已关闭** | 删去 `rewindFileStep.Root`，改为注明 `Item` 自带 RootStatus（130-131 行）；T4 正文改为 `steps`（371 行）；接口注明预览无锁、执行由 `withSessionUnlessBusy` 持锁（119 行） |
+| S25 `ErrRewindBusy` 归属与可追溯表 | **已关闭** | 跨任务接口分两行声明，`ErrRewindBusy` 注明 T4、`ErrRewindStale` 注明 T5（158-159 行）；可追溯表“S18、F28 取锁”改为“跨任务接口、T4、T6”，新增 S25 行（591、597 行）。T4 文件清单未点名声明文件，见 S30 |
+| S26 偏差清单、注入失败放回、连续 rewind 顺序 | **已关闭** | 偏差清单改为“undo 通知保留、rewind 通知插入队首、分轮送达”，并注明设计原为丢弃（71 行），批准时对用户可见；rewind 项注入失败放回队首、undo 项仍放队尾（425 行）；连续 rewind 选定“只送最新”（424 行）；三项都有对应用例（436-437 行）。新机制的小缺口见 S29 |
+| S27① 容器内 git 一条的位置 | **部分关闭** | 已从“文件拆分理由”下移出，但放进了 fail-closed 列表（220 行），而不是“运行目录与环境”（212-214 行）。见 S30 |
+| S27② 批准证据缺 round 4 | **已关闭** | 补了 round 4（`f009fd02`）与 round 5（`67fd3f0c`）（66-67 行） |
+| S27③ T2 文件清单缺 `runner.go` | **已关闭** | T2 清单补 `runner.go`（`:444` Ledger 绑定处注入 `maskedRanges`）（302 行）。T5 的“`runner.go`（如需透传，F36）”未改（397 行），见 S30 |
 
 ## 发现
 
-### S25 [LOW] `ErrRewindBusy` 的声明没有归属，T4 无法独立编译；可追溯表仍把取锁指向 T5（CORE_CORRECTIVE，S23 同类，上轮未穷尽）
+### S28 [LOW] files scope 的 Turns 定义与 `:undo` 不同，而计划同时要求“计数与入队条件对齐 `:undo`”（CORE_CORRECTIVE）
 
 - 证据：
-  - `ErrRewindBusy` 和 `ErrRewindStale` 一起写在跨任务接口的 Runner 段（155 行），没有标明由哪个任务声明。按原来的分工，它们由 T5 的 `rewind.go` 声明。
-  - 0.5 把 `withSessionUnlessBusy` 移到 T4（W1），并要求它把 `ErrSessionBusy` 映射为 `ErrRewindBusy`，“`ErrRewindBusy` 只由它产生”（168、170 行）。T4 的用例还要断言“回合持有返回忙”（368 行）。T4 没有依赖，在 W1 实施，这时 T5 的 `rewind.go` 还不存在。实施者只能自己声明一份，到 W3 时 T5 再声明就会重复定义。
-  - 可追溯表“计划 S18、F28 取锁”一行仍写“跨任务接口、T5、T6”（575 行），与新增的 S23 行（579 行，T4）不一致。
-- 影响：编译时会立即暴露，结果不会错，所以不是 blocker。但这与 S23 是同一类问题（同一符号的归属不唯一）。
-- 建议：在 155 行注明 `ErrRewindBusy` 由 T4 在 `undo.go`（或 `rewind_files.go`）中声明，`ErrRewindStale` 仍由 T5 声明；575 行改为“跨任务接口、T4”。
+  - T5 步骤 7 定义“Turns 为至少有一项 restore 或 delete 的轮数”，同时写“是否入队沿用 `:undo` 的条件”（418-419 行）；验证要求“files scope 有不可恢复项：通知含‘无法恢复’提示，计数与 `:undo` 一致”（438 行）。
+  - `:undo` 的 Turns 是“有快照目录的行数”，全部跳过或不可恢复的行也计 1（`undo_restore.go:62-67`）；入队条件是 `Turns > 0`（`undo_restore.go:105`）。
+  - 因此两种写法在“只有冲突或不可恢复、没有 restore/delete”时结果不同：按计划的定义 Turns=0、不入队、没有“无法恢复”提示；按 `:undo` 的定义会入队并提示。rewind 的不可恢复项还包括快照已清理的轮（T4），这类轮在 `:undo` 中根本不计。实施者拿到的是两条互相矛盾的指令，438 行的用例能否通过取决于夹具是否恰好带一项 restore。
+- 必要性：F40 本身是为了对齐 `:undo`，只需让定义唯一，不新增机制。
+- 影响：通知是否注入、EventUndo 的 `turns` 属性取值不唯一；不影响没有回退记录的会话，不涉及数据安全，chat 侧结果仍列出不可恢复项，所以不是 blocker。
+- 建议：二选一写定一句：
+  - Turns 按 `:undo` 取“有快照目录且被处理的轮数”，入队条件 `Turns > 0`；或
+  - 入队条件改为“Restored、Deleted、Skipped、Unrecoverable 任一大于 0”，并删去“沿用 `:undo` 的条件”。
+  - 同时在 438 行写明夹具（例如“一轮可恢复加一轮已清理”或“只有已清理的轮”），使用例只有一种期望。
 
-### S26 [LOW] 队首插入的 rewind 通知：设计偏差清单没有更新；写入失败时放回队尾，会失去队首位置（CORE_CORRECTIVE）
+### S29 [LOW] 被新 rewind 取代的旧 rewind 项：event_id 不回填、跳过与不可恢复清单丢失，计划没有说明（ADVISORY）
 
 - 证据：
-  - 偏差清单仍写“T5 的 undo 通知合并（F-N4）”（67 行）。0.5 已经不合并，改成 rewind 通知插入队首、undo 通知保留并在之后的回合送达（413 行）。这既不同于设计 0.2 的流程 3 和 R8（151-152、269 行：undo 通知“丢弃”，由 rewind 通知取代），也不同于 R2-F-N4 的建议（“合并两段通知”）。偏差清单记录的做法与计划正文不一致。
-  - 内部有效性：`injectUndoNotice` 写入失败时，用 `appendUndoNotice` 把这一项放回**队尾**（`undo_notice.go:115、169-178`）。计划写的是“取法不改”“不改回填逻辑”（413-414 行），没有处理放回位置。如果 rewind 通知在注入时写入失败，它会排到已有的 undo 通知之后，要再等若干轮才送达。计划所说的“rewind 通知在队首，因此总在下一轮送达（R5）”在这条失败路径上不成立。验证中也没有这个用例。
-  - 连续两次 `:rewind conversation`（中间不发消息）时，后一次的通知插在前一次之前，送达顺序变成先新后旧，计划没有说明这是有意的。
-- 必要性：队首插入是 S22 方案 A 选定的最小机制，必要性成立。上面的缺口都可以在 T5 内用一两行收窄解决，不需要新增机制。
-- 影响：失败路径下 R5 的送达延后，不丢通知，也不涉及没有回退记录的会话。所以不是 blocker。
-- 建议：
-  - 67 行改为“T5 的 undo 通知保留，rewind 通知插入队首、分轮送达（设计 R8 与流程 3 原为丢弃；F-N4、计划 S22）”；
-  - T5 写明：rewind 项写入失败时放回**队首**；undo 项沿用现有的放回队尾，这样没有回退记录的会话行为不变。补一个“rewind 通知写入失败，下一轮仍先送达”的用例；
-  - 连续 rewind 的顺序，二选一写明：插到已有 rewind 项之后（保持先旧后新），或者接受先新后旧。
+  - 424 行“入队新的 rewind 通知时，先移除队列中尚未送达的 rewind 项”。被移除的项带有 `EventID`，回填只在注入成功时发生（`undo_notice.go:180-185`），所以前一次 rewind 的 session 事件 `entry_seq` 永远是 0。414 行“队列中各项沿用现有的 event_id 回填”在这条路径上不成立。
+  - 设计流程 3 要求“两者都回，但有不可恢复或跳过的文件：列出这些文件”（设计 240 行）。如果第一次是 both 且有跳过项，第二次是只回会话，第一次列出的文件不会送达模型。第二次通知已提示“磁盘没有回退，请先重新读取”，模型仍会重读文件，所以不导致错误结果。
+- 必要性：“只送最新”与设计“rewind 通知取代队列中的通知”同向，机制本身成立；这里只要求写明后果。
+- 建议：在 424 行补半句“被取代项的事件 `entry_seq` 保持 0，前一次的跳过与不可恢复清单只在 chat 结果中出现”，或者在新通知中合并前一次未送达的跳过清单（二选一，倾向前者，不新增逻辑）。
 
-### S27 [LOW] 文字与小处（ADVISORY）
+### S30 [LOW] 文字与小处（ADVISORY，S27 残留）
 
-- S21① 残留：218 行“容器内 git……”仍挂在“文件拆分理由”段落下，应移回“运行目录与环境”列表中。
-- “输入与批准证据”的计划评审记录只到 round 3（61-64 行），缺 round 4（`f009fd02`，两轴 PASS，CORE_CORRECTIVE 在 0.5 收口）。这是元数据纠正，不递增版本（SR1103）。
-- T2 写了“Ledger 通过 Runner 注入的 `maskedRanges`”（315 行），而绑定点在 `runner.go:444`，T2 的文件清单（298 行）没有列 `runner.go`。T5 的“`runner.go`（如需透传）”（393 行）则没有写定改什么。expected paths 不是封闭白名单，T2 与 T4 在 W1 也不冲突，所以只建议在 T2 的文件清单中补上 `runner.go`（Ledger 绑定），并把 T5 的“如需”改为具体的改动点或删去。
+- “容器内 git 只对单条命令前缀……”现在挂在 fail-closed 列表下（220 行）。它是运行环境约定，不是停止条件，应移到“运行目录与环境”（212-214 行）。
+- T5 文件清单仍写“`runner.go`（如需透传，F36）”（397 行），没有写定改动点。T2 已补 `runner.go`；T5 若确实无需改动应删去，否则写明改什么（例如“透传 `cfg.Tasks`”）。
+- T4 文件清单（370 行）没有点名 `ErrRewindBusy` 声明在哪个文件。按 `withSessionUnlessBusy` 所在位置应为 `undo.go`，建议在清单的 `undo.go` 括注中补上。
+- 修订记录 0.6 中 F41 同时出现在 S26 与 S27 两条（15 行），属排版，可不改。
 
 ### SR1301 安全核对
 
 - 鉴权：不适用（本地 chat，不新增入口）。
-- 注入防护：已核对。recall 续读只改取 seq 的来源，仍走参数化的 seq 查询。
-- 秘密不进日志或输出：已核对。通知插入队首只改变顺序，正文和事件 attrs 不变。
-- 入参校验：已核对。`resolveTarget` 不变。
-- 资源归属：已核对。Ledger 的屏蔽区间按当前会话的 sid 取得；fork 的 origin 改为 `store.OriginChat`，与设计 129 行一致（F32）。
+- 注入防护：已核对。`Kind` 只是会话 meta 中 JSON 字段，按值分支，不拼接查询或命令。
+- 秘密不进日志或输出：已核对。通知正文与事件 attrs 未新增内容。
+- 入参校验：已核对。`Kind` 为非 `rewind` 的值一律按 undo 项处理即可，计划写明 undo 项“为空”，旧数据兼容。
+- 资源归属：已核对。队列按当前会话 sid 读写（`undo_notice.go:106-131`），不跨会话。
 
 ### 已核对且无问题
 
-- 首行模板 1.3.0，状态 `Draft 0.5`。0.5 的修订记录只描述语义变化，逐项对应 S22–S24、F32–F38 与 S17 残留。validator 通过。
-- scope freeze 与 fail-closed 一致：例外删除后，fail-closed 的“没有回退记录的会话上改变任何行为即停止”（212 行）与 scope freeze 第 25 行之间不再有冲突。新增的 F33 写明“没有回退记录的会话，续读 ref 与现在逐字相同”，并有对应用例（315、331 行）。
-- 偏差清单新增了 recall 续读 ref 一项（70 行）。
-- 波次：W1 中 T2 与 T4 的文件不相交；W3 中 T5 与 T6 的文件不相交（i18n 分别用 `model.ini` 与 `personal.ini`，`undo_runner.go` 只由 T4、T5 先后修改，两者不并行）。
-- 没有新增 Module、Interface、Schema 或授权；授权 Gate 不变。
-- 可追溯表新增 S22、S23、F32、F33 四行，都指向任务和验证。
+- 首行模板 1.3.0，状态 `Draft 0.6`。0.6 含语义变化（新增队列字段与取代规则、files scope 计数），递增版本符合 SR1103；修订记录只写语义变化。validator 通过。
+- 新增机制的 scope necessity：`Kind` 是在不改变 undo 项放回位置（没有回退记录的会话行为不变，scope freeze 第 25 行）的前提下，让 rewind 项放回队首的最小手段；删除替代方案（所有项一律放回队首）会改变既有 undo 行为，违反 fail-closed，所以不成立。“只送最新”复用同一字段，不另加状态。
+- `Kind` 写在会话 meta 的 JSON 队列里，不改 DDL、sugasdk API、CLI、ACP，在 scope freeze 内；`internal/personal/**` 在允许范围。
+- 波次与文件不相交不变：`undo_notice.go` 只在 T5；T4 与 T2 在 W1 文件不相交。
+- 可追溯表新增 S25、S26/F39/F41、F40 三行，都指向任务与用例。
 
 ## 覆盖缺口与限制
 
-- 只读了 diff 和受影响的章节。未变化的章节（T0、T1、T7、Capability Discovery、回滚）沿用第 4 轮的结论。
-- 治理观察：按 Review Candidate Loop，第 3 轮以后只为开放的 CORE_BLOCKING 开轮。第 4 轮没有 CORE_BLOCKING，本轮属于额外的确认。S25–S27 都不是 CORE_BLOCKING，修正后不应再开第 6 轮，由主会话核对修正 diff 即可（SR1406）。
+- 只读了 diff 和受影响的章节。未变化的章节（T0、T1、T3、T6–T8、Capability Discovery、回滚）沿用第 5 轮的结论。
+- 治理观察：第 5 轮没有 CORE_BLOCKING，本轮属于额外确认。S28–S30 都不是 CORE_BLOCKING，按 SR1406 修正后不应再开第 7 轮，由主会话核对修正 diff 即可。
 
 ## 结论
 
-**PASS**（规范与治理轴，Round 5）。
+**PASS**（规范与治理轴，Round 6）。
 
-- 第 4 轮的 S17、S18 残留，S21②、S22、S24 已关闭；S23 基本关闭。S21① 仍有残留，并入 S27。
-- 新发现：
-  - S25、S26 为 CORE_CORRECTIVE，都是归属或失败路径的一两行收窄，不改变范围；
-  - S27 为 ADVISORY。
+- 第 5 轮的 S25、S26 已关闭；S27 的②③已关闭，①与 T5 `runner.go` 残留并入 S30。
+- 新发现：S28 为 CORE_CORRECTIVE（files scope 的 Turns 与入队条件定义不唯一）；S29、S30 为 ADVISORY。
 
 ## 剩余风险与后续
 
-- 交人工批准前修正 S25、S26。S26 修正后，偏差清单与 T5 正文会写明“undo 通知保留、rewind 通知队首、分轮送达”，这项设计偏差在批准时对用户可见。
-- S25、S26 修正属于语义变化，计划递增为 0.6 即可，不需要新开评审轮次。S27 中的纯元数据部分不递增版本。
+- 交人工批准前修正 S28。只是把定义写成唯一，如果选择第一种写法（按 `:undo` 的 Turns）可视为对 F40 的澄清；选择第二种写法属于语义变化，按 SR1103 递增版本，不需要新开评审轮次。
+- S29、S30 可随 S28 一并处理；S30 中纯位置调整不递增版本。
 - 开工时按计划重新采集 baseline。
