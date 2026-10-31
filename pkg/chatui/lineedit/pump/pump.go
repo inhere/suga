@@ -78,7 +78,14 @@ const (
 	lfByte = 0x0a
 )
 
-// Pump is the io.Reader New returns. The extra method is for callers that must
+// Pump is the byte pump the line editor reads through: it hands over
+// one byte per Read (the editor keeps partial key sequences itself), signals the
+// first byte of a read before that byte reaches the editor, and decides what the
+// editor cannot tell by itself: whether a 0x1b byte is the Esc key on its own or
+// the start of an escape sequence, and whether a newline is pasted text or a
+// submit.
+//
+// It is the io.Reader New returns. The extra method is for callers that must
 // build the reader before the terminal exists (lineedit.NewTerminal takes the
 // reader): create it with NewPump and Bind the terminal before the first Read.
 type Pump struct {
@@ -132,12 +139,16 @@ func (r *Pump) Bind(t *lineedit.Terminal) {
 // must not run concurrently with Read; the goroutine that starts the read calls it.
 func (r *Pump) ResetFirstByte() { r.activitySent = false }
 
+// declareNewlineAsText marks the newline byte the pump is about to hand over as
+// text of a paste (lineedit.SetNewlineAsText); only the pump declares one.
 func (r *Pump) declareNewlineAsText() {
 	if r.term != nil {
 		r.term.SetNewlineAsText()
 	}
 }
 
+// declareEscLone marks the Esc byte the pump is about to hand over as the Esc key
+// on its own (lineedit.SetEscAlone); only when Hooks.EscKeyWanted reports true.
 func (r *Pump) declareEscLone() {
 	if r.term != nil {
 		r.term.SetEscAlone()
