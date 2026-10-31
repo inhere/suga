@@ -1,51 +1,49 @@
-<!-- template_id: review; template_version: 1.1.0 -->
+<!-- template_id: review; template_version: 1.2.0 -->
 # suga 会话 rewind 与 fork 设计 规范轴评审
 
 ## 评审目标与范围
 
-- 目标: `docs/design/2026-10-31-session-rewind-fork-design.md`（git root `inhere-tools/suga`，candidate commit `0ae0a20c`）
-- 修订版本: 0.1
-- 评审者: 规范轴独立评审子 agent（只读，与可执行轴隔离）；axis = Standards/Governance；round 1
+- 目标: `docs/design/2026-10-31-session-rewind-fork-design.md`（git root `inhere-tools/suga`，candidate commit `b7b33526`）
+- 修订版本: 0.2
+- 评审者: 规范轴独立评审子 agent（只读，与可执行轴隔离）；axis = Standards/Governance；round 2（confirmation）
 - 日期: 2026-10-31
-- 排除项: 实现能否落地与算法正确性（归可执行轴）；未运行测试
+- 排除项: 算法与可执行性（归可执行轴）；`docs/review/` 下评审产物；未运行测试
+- 第 1 轮报告见本文件 git 历史（提交 `b71dd04e`）
 
 ## 输入与方法
 
-- `idevstd load --task review`（BOUND，FULL，payload hash VERIFIED）；补读 1.2.0 design-contract 与模板 1.2.0。
-- 设计全文、`gofer issue show suga-4tnd`、0ae0a20c diff；抽查 `pkg/sugasdk/doc.go`、`types.go`、`internal/personal/{context,segment_handoff,handoff,undo_options,undo_restore,snapshot_retention,taint,segment_clear,runner_sessions,gate,lastreply,compact}.go`、`store/{entries,toolbody,events,types}.go`、`internal/chat/steering.go`；全仓 grep `ListEntries`/`LatestEntry` 非测试调用点；xhen 对 sugasdk 的使用。
-- `validate_document --kind design` ok。
+- 沿用第 1 轮已完整读取并核验 hash 的规范 payload（task/mode 未变）。
+- 读 `git diff 0ae0a20c..b7b33526 -- <subject>`；因近乎重写，完整读 0.2（289 行）。
+- 同类穷尽复核：列出 `internal/personal/store` 全部 entry/turn 读方法并 grep `internal`、`pkg` 非测试调用点；看 `ledger.go:100-125` 作用域。
+- 新增引用抽查属实（行号偏差 ≤2）；`validate_document --kind design` ok。
 
 ## 验收标准
 
-review-contract、design-contract 1.2.0、模板“代码组织”；SR1101–SR1108、SR1301、SR1403–SR1410、GR104、GR107–GR110、SR2002–SR2004；issue ①② 与验收。
+第 1 轮 S1–S11 逐条闭合；修订不引入新的规范问题（读者同类穷尽、R11/R12 理由、待确认如实、无新能力、SR1301、代码组织与结构条目）。
 
 ## 发现
 
-### S1 [HIGH] 读者清单不全，被屏蔽内容经未列出的读者回到模型上下文（CORE_BLOCKING · BUG）
+### 第 1 轮闭合情况
 
-- 证据: 只列了 loadHistory、latestPlan、session card、SegmentHistory；漏 `segment_handoff.go:112-124 recentRequests`（交接包用户原话）、`handoff.go:124 buildHandoff` 的 `LatestEntry(EntryPlan)`、`lastreply.go:28 LastReply`、`ledger.go:262`；按 turn 读取的 `compact.go:176`、`replay.go:233`、`admit.go:165`、`steer.go:418` 未说明。
-- 影响: rewind 后的 compaction/handoff 把被回退的原话与 plan 写进新交接包，R2“不泄漏”不成立。
-- 建议: 读者规则改为“凡进入模型上下文或用户可见当前状态的 entry 读者”，同类穷尽逐个标注。
+S1（BUG，读者清单）CLOSED：适用规则改为“进入模型请求、交接包或用户可见当前状态”，已列全；剩余未列读者属非目标或不读内容。S2 CLOSED（R11）。S3 CLOSED（移入非目标）。S4 CLOSED（失败处理表）。S5 CLOSED（校验与 `:rw` 理由）。S6 CLOSED（created_at 比较，含 tainted_by）。S7 CLOSED（装配不变）。S8 CLOSED（budget 与确认）。S9 CLOSED（引用修正）。S10 CLOSED（回滚披露）。S11 CLOSED（按 OUT_OF_SCOPE）。
 
-### S2 [MEDIUM] session_search/Entries 可见只作事实陈述未作决策（CORE_CORRECTIVE）
-### S3 [MEDIUM] trace“已回退”标记超出范围与代码组织（CORE_CORRECTIVE）
-### S4 [MEDIUM] 多步写入失败语义不完整（GR109）（CORE_CORRECTIVE）
-### S5 [MEDIUM] SR1301 入参校验与资源归属未写；fork 继承 `:rw` 授予未说明（CORE_CORRECTIVE）
-### S6 [LOW] taint 继承判据单位不一致（tainted_at 是时间，cut 是 seq）（CORE_CORRECTIVE）
-### S7 [LOW] 代码组织缺装配项（GR108、SR2004）（CORE_CORRECTIVE）
-### S8 [LOW] 工作声明与待确认事项有过时表述，review budget 未写（CORE_CORRECTIVE）
-### S9 [LOW] 部分事实引用不准（store 路径、undo_options 行号、heldLocks 位置等）（CORE_CORRECTIVE）
-### S10 [LOW] 回滚到旧版本的“两条分支拼接”未披露（CORE_CORRECTIVE）
-### S11 [LOW] 回填第 N 轮提问到输入行不在 issue ①② 内（OUT_OF_SCOPE）
+### N1 [LOW] `:checkpoints`/`:undo`（`undo.go:347` ListTurns）与 `segment_clear.go:100`（LastEntrySeq）未在“不受影响的读者”中归类（CORE_CORRECTIVE）
+
+- 影响: 实施时可能误把 `:undo` 计数改为经屏蔽，致屏蔽轮文件改动无法撤销。
+- 建议: 在计划中写明理由（文件改动仍在磁盘；LastEntrySeq 不读内容）。
+
+### N2 [LOW] R11 只排除当前会话，workspace/all 作用域下其他会话（含 fork 源会话）屏蔽条目是否可检索未写明（CORE_CORRECTIVE）
+
+- 建议: 计划中一句话写明取舍与理由。
 
 ## 覆盖缺口与限制
 
-按 turn 读取的读者只看调用形态；fold/loaded_tools 重算与 seq 映射归可执行轴；未运行测试；design-contract 为补充读取。
+未逐行推演 fork 映射、分页补足与嵌套 cut（归可执行轴）；记忆自动提取与空闲整理只 grep；未运行测试。
 
 ## 结论
 
-BLOCKED（S1）。S2–S10 CORE_CORRECTIVE（S7 为结构类，计划批准前必须修正）；S11 OUT_OF_SCOPE。
+PASS（规范与治理轴，round 2）。无开放 CORE_BLOCKING；N1、N2 为 LOW CORE_CORRECTIVE，在实施计划落实。
 
 ## 剩余风险与后续
 
-修订 S1 时按“所有 entry 读者”同类穷尽并写明自查范围；修订后进入第 2 轮 confirmation，读 `0ae0a20c..<新 candidate>` diff 与总体方案、已确认事实、安全各节；与可执行轴核对 S1 处置一致。
+R11、R12 需用户批准时确认；回滚说明随 0.54 CHANGELOG 交付；两轴结论合并并提交 ledger 后形成可复用 PASS。
