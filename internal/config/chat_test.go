@@ -143,6 +143,32 @@ func TestChatTerminalTitleEnabled(t *testing.T) {
 	})
 }
 
+// TestChatStatusMetricsEnabled: chat.status_metrics takes the same values as
+// chat.markdown, is on by default and is decided on its own.
+func TestChatStatusMetricsEnabled(t *testing.T) {
+	load := chatConfigLoader(t)
+	t.Run("default on", func(t *testing.T) {
+		load(t, "model: openai/m\n")
+		assert.True(t, ChatStatusMetricsEnabled())
+	})
+	t.Run("bool off", func(t *testing.T) {
+		load(t, "chat:\n  status_metrics: false\n")
+		assert.False(t, ChatStatusMetricsEnabled())
+	})
+	t.Run("string off", func(t *testing.T) {
+		load(t, "chat:\n  status_metrics: \"off\"\n")
+		assert.False(t, ChatStatusMetricsEnabled())
+	})
+	t.Run("string on", func(t *testing.T) {
+		load(t, "chat:\n  status_metrics: \"on\"\n")
+		assert.True(t, ChatStatusMetricsEnabled())
+	})
+	t.Run("spinner does not decide it", func(t *testing.T) {
+		load(t, "chat:\n  spinner: false\n")
+		assert.True(t, ChatStatusMetricsEnabled())
+	})
+}
+
 // TestChatAskOutsideDirs: chat.ask_outside_dirs takes the same values as
 // chat.markdown, is on by default and is decided on its own.
 func TestChatAskOutsideDirs(t *testing.T) {

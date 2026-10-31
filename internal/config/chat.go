@@ -91,6 +91,15 @@ func ChatTerminalTitleEnabled() bool {
 	return chatSwitch("chat.terminal_title")
 }
 
+// ChatStatusMetricsEnabled reports whether chat adds the compact metrics line
+// (cache hit rate, context share, folding headroom, running background tasks)
+// under the status line at the end of a turn (chat.status_metrics, on by
+// default). It takes the same values as chat.markdown; a non-terminal output or
+// NO_COLOR leaves the end of a turn unchanged anyway.
+func ChatStatusMetricsEnabled() bool {
+	return chatSwitch("chat.status_metrics")
+}
+
 // ChatDiffEnabled reports whether chat shows what a file tool call changed
 // (chat.diff, on by default): the unified diff under the tool result, the
 // pending diff before an approval question and the :diff command. It takes the

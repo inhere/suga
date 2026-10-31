@@ -15,6 +15,7 @@ import (
 type ChatSettings struct {
 	History, Markdown, Spinner, HighlightInput bool
 	Steering, TerminalTitle, Diff              bool
+	StatusMetrics                              bool
 	AskOutsideDirs, UndoConfirm                bool
 	AgentProgress                              string
 	HistorySize, DiffLines                     int
@@ -75,6 +76,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		History: ChatHistoryEnabled(), Markdown: ChatMarkdownEnabled(), Spinner: ChatSpinnerEnabled(),
 		HighlightInput: ChatHighlightInputEnabled(), Steering: ChatSteeringEnabled(),
 		TerminalTitle: ChatTerminalTitleEnabled(), Diff: ChatDiffEnabled(),
+		StatusMetrics:  ChatStatusMetricsEnabled(),
 		AskOutsideDirs: ChatAskOutsideDirs(), UndoConfirm: ChatUndoConfirmEnabled(),
 		AgentProgress: agentProgress,
 		HistorySize:   historySize, DiffLines: diffLines, Notify: notify, NotifyAfter: notifyAfter,
@@ -260,7 +262,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.KeepUserWordsBudget, true, nil
 		}
 		return settings.SummaryMaxTokens, true, nil
-	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme", "chat.colors":
+	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.status_metrics", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme", "chat.colors":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -436,6 +438,8 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.Steering
 	case "chat.terminal_title":
 		return settings.TerminalTitle
+	case "chat.status_metrics":
+		return settings.StatusMetrics
 	case "chat.diff":
 		return settings.Diff
 	case "chat.ask_outside_dirs":

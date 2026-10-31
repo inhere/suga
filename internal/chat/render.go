@@ -106,6 +106,14 @@ type rendererOptions struct {
 	// was killed stops being counted whether or not its notice reached the model
 	// (nil: a background agent is not shown, nothing could tell that it ended).
 	AgentTasks func() []tasks.Info
+	// StatusMetrics adds the compact metrics line under the end-of-turn status line
+	// (config chat.status_metrics, on by default). Like Markdown it needs a
+	// colored terminal: a pipe, a redirected output or NO_COLOR keeps the end of
+	// a turn as it was.
+	StatusMetrics bool
+	// FoldThreshold returns the input size (tokens) at which the context is folded
+	// (nil or 0: the headroom item stays out of the metrics line).
+	FoldThreshold func() int
 	// now supplies the local wall clock of the end-of-turn time on the status
 	// line (nil: time.Now). Tests inject a fixed clock.
 	now func() time.Time
@@ -668,7 +676,29 @@ func (r *Renderer) Status(result personal.RunResult, elapsed time.Duration, stee
 		Truncated: result.Truncated, OutputLimit: result.OutputLimit,
 		Translator: r.tr(),
 	}))
+	// The metrics line follows the status line; a plain terminal gets nothing new.
+	if r.opts.StatusMetrics && r.opts.Color {
+		printLayout(r.opts.Out, r.opts.Color, BuildTurnMetrics(r.turnMetrics(result)))
+	}
 	r.memory = nil
+}
+
+// turnMetrics collects the data of the metrics line from what the turn already
+// measured: no provider call and no trace read.
+func (r *Renderer) turnMetrics(result personal.RunResult) TurnMetrics {
+	m := TurnMetrics{
+		Usage: result.Usage, LastInputTokens: result.LastInputTokens,
+		ContextWindow: r.opts.ContextWindow, Translator: r.tr(),
+	}
+	if r.opts.FoldThreshold != nil {
+		m.FoldThreshold = r.opts.FoldThreshold()
+	}
+	for _, info := range r.agentTasks() {
+		if info.Status == tasks.Running {
+			m.Background++
+		}
+	}
+	return m
 }
 
 // LastReply prints the last reply of a session chat continues, above the first

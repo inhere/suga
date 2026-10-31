@@ -106,6 +106,8 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		Theme:         theme,
 		Colors:        colors,
 		TerminalTitle: appconfig.ChatTerminalTitleEnabled(),
+		// The metrics line under the turn status (chat.status_metrics).
+		StatusMetrics: appconfig.ChatStatusMetricsEnabled(),
 		// What a file tool changed (chat.diff / chat.diff_lines): the diff under the
 		// tool result, before an approval question and with :diff. The change itself
 		// comes from the runner's tool_call events, which wiring turns on for chat.

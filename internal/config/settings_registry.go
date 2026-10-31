@@ -151,6 +151,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "chat.highlight_input", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.steering", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.terminal_title", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
+	{Pattern: "chat.status_metrics", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.diff", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.diff_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_highlight", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},

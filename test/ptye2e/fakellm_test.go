@@ -45,6 +45,9 @@ type fakeLLM struct {
 	// omits usage entirely.
 	PromptTokens int
 	NoUsage      bool
+	// CachedTokens is the part of the prompt reported as served from the provider
+	// cache (prompt_tokens_details.cached_tokens); 0 reports none.
+	CachedTokens int
 
 	// FailFirst answers the first N requests with HTTP 503, then OverloadFirst
 	// requests answer 200 with only a temporary API error, then BreakFirst
@@ -303,6 +306,9 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			prompt = 10
 		}
 		usage = map[string]any{"prompt_tokens": prompt, "completion_tokens": 2, "total_tokens": prompt + 2}
+		if f.CachedTokens > 0 {
+			usage["prompt_tokens_details"] = map[string]any{"cached_tokens": f.CachedTokens}
+		}
 	}
 
 	if !body.Stream {
