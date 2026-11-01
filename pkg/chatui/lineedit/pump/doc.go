@@ -19,6 +19,7 @@
 //	term := lineedit.NewTerminal(rw{p, os.Stdout}, "> ")
 //	p.Bind(term)                                     // before the first Read
 //	stop := pump.WatchSize(term, fd, nil)            // window size -> editor; defer stop()
+//	// or pump.WatchSizeLogger(term, fd, nil, logger) to keep its log lines off slog.Default()
 //	p.ResetFirstByte()                               // before each term.ReadLine()
 //
 // New(in, term, hooks) is NewPump + Bind for callers that already have the

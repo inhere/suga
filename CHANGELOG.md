@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- `pkg/chatui/lineedit/pump` 新增 `WatchSizeLogger(term, fd, onChange, logger)`：与 `WatchSize` 相同，但尺寸记录与读取失败的日志写到传入的 logger（nil 即 `slog.Default()`），宿主不必为此替换进程默认 logger；`WatchSize` 行为不变。
+
 ## [0.54.0] - 2026-11-01
 
 本版新增会话回退与分叉：chat 的 `:rewind N [files|conversation|both]` 把文件、对话或两者回到第 N 个用户轮之前，`:fork N` 从第 N 轮之前分叉出新会话；并继续把伪终端冒烟迁到 Go。
