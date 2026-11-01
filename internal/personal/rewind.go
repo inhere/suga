@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/inhere/suga/internal/personal/store"
@@ -70,6 +71,9 @@ type RewindResult struct {
 	DroppedTasks []tasks.Info
 	// Notice is the text queued for the model; empty when nothing was queued.
 	Notice string
+	// Warnings are non-fatal problems the caller should show (the rewind stands):
+	// the fold meta reset failed after the record was written.
+	Warnings []string
 }
 
 // rewindFileStat tallies a file outcome the way UndoResult does.
@@ -79,12 +83,13 @@ type rewindFileStat struct {
 	deleted       []string
 	skipped       []string
 	unrecoverable []string
+	failures      []string // restore_failed items (also counted in skipped)
 }
 
 func (s rewindFileStat) undoResult(sid string) UndoResult {
 	files := append(append([]string(nil), s.restored...), s.deleted...)
 	return UndoResult{SessionID: sid, Turns: s.turns, Restored: len(s.restored), Deleted: len(s.deleted),
-		Skipped: len(s.skipped), Unrecoverable: len(s.unrecoverable), Files: files}
+		Skipped: len(s.skipped), Unrecoverable: len(s.unrecoverable), Files: files, Failures: s.failures}
 }
 
 func tallyRewindFiles(steps []rewindFileStep, items []RewindFileItem) rewindFileStat {
@@ -104,6 +109,9 @@ func tallyRewindFiles(steps []rewindFileStep, items []RewindFileItem) rewindFile
 			st.deleted = append(st.deleted, it.Path)
 		case RewindFileConflict:
 			st.skipped = append(st.skipped, it.Path)
+			if strings.HasPrefix(it.Reason, rewindReasonRestoreFailed) {
+				st.failures = append(st.failures, it.Path+": "+it.Reason)
+			}
 		case RewindFileUnrecoverable:
 			st.unrecoverable = append(st.unrecoverable, it.Path)
 		}
@@ -189,13 +197,14 @@ func (r *Runner) applyRewind(ctx context.Context, snapshots *SessionSnapshots, s
 
 // runRewind executes a verified plan; the caller holds the session. The
 // failure table of the design (flow 1, step 4):
-//   - the file part returns an error: the conversation part is not run; the
+//   - the file part returns a whole-operation error (checkpoint state, lock, IO): the conversation part is not run; the
 //     restored files are still reported to the model like an undo;
-//   - skipped or unrecoverable files: the conversation part still runs;
+//   - a single item failing to restore, skipped or unrecoverable files: the
+//     conversation part still runs and they are listed;
 //   - the rewind record cannot be written after files were restored: the model is
 //     told the files changed, the error goes to the caller (retry conversation only);
 //   - the record is written but the meta reset fails: Warn only, the next turn
-//     recomputes its projection from the masked history.
+//     recomputes its projection from the masked history (Warn plus Result.Warnings).
 func (r *Runner) runRewind(ctx context.Context, core *UndoCore, plan RewindPlan, steps []rewindFileStep, ut userTurn, res *RewindResult) error {
 	wctx := context.WithoutCancel(ctx)
 	sid := plan.SessionID
@@ -239,6 +248,7 @@ func (r *Runner) runRewind(ctx context.Context, core *UndoCore, plan RewindPlan,
 	if err := r.cfg.Repository.PatchSessionMeta(wctx, sid, map[string]any{metaFoldBoundary: 0, metaFoldActive: false}); err != nil {
 		// The entry is written; the next turn projects from the masked history anyway.
 		slog.Warn("rewind: reset fold meta", "session_id", sid, "err", err)
+		res.Warnings = append(res.Warnings, fmt.Sprintf("reset fold meta: %v", err))
 	}
 	if r.rec != nil {
 		r.rec.prefix.clearRequest(sid)

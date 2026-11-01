@@ -440,12 +440,11 @@ func TestRewindFilesOnlyOutcomes(t *testing.T) {
 }
 
 func TestRewindFailureBranches(t *testing.T) {
-	t.Run("file part errors: the conversation part does not run, restored files are noted", func(t *testing.T) {
+	t.Run("a single item failing to restore does not stop the conversation part", func(t *testing.T) {
 		f := newRewindFix(t)
-		t1, t2, _ := f.threeWrites(t)
-		_ = t1
-		// Remove the snapshot blob of t2's b.txt step (the plan only reads
-		// meta): restoring it fails after t3 was already rolled back.
+		_, t2, _ := f.threeWrites(t)
+		// Remove one snapshot blob (the plan only reads meta): restoring that
+		// item fails while the others succeed.
 		var removed bool
 		_ = filepath.WalkDir(filepath.Join(f.snapshots.dir, f.sid, "snapshots", t2), func(path string, d os.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && d.Name() == "before" && !removed {
@@ -454,18 +453,21 @@ func TestRewindFailureBranches(t *testing.T) {
 			}
 			return nil
 		})
-		p := f.plan(t, "2", RewindScopeBoth)
-		res, err := f.apply(t, p)
-		if !removed {
-			t.Skip("no before blob to remove")
+		assert.Require(t, assert.True(t, removed))
+		res, err := f.apply(t, f.plan(t, "2", RewindScopeBoth))
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, res.Conversation)
+		assert.Len(t, f.records(t), 1)
+		var failed []RewindFileItem
+		for _, it := range res.Files {
+			if strings.HasPrefix(it.Reason, rewindReasonRestoreFailed) {
+				failed = append(failed, it)
+			}
 		}
-		assert.Err(t, err)
-		assert.False(t, res.Conversation)
-		assert.Len(t, f.records(t), 0)
-		assert.NotEmpty(t, res.Files)
-		q := f.queue(t)
-		assert.Require(t, assert.Len(t, q, 1))
-		assert.Eq(t, "", q[0].Kind) // the :undo-style note of the restored files
+		assert.Require(t, assert.Len(t, failed, 1))
+		assert.Eq(t, RewindFileConflict, failed[0].Action)
+		assert.StrContains(t, res.Notice, "跳过 1 个冲突")
+		assert.StrContains(t, res.Notice, failed[0].Path)
 	})
 	t.Run("skipped files do not stop the conversation part", func(t *testing.T) {
 		f := newRewindFix(t)
@@ -503,6 +505,8 @@ func TestRewindFailureBranches(t *testing.T) {
 		assert.True(t, res.Conversation)
 		assert.Len(t, f.records(t), 1)
 		assert.Len(t, f.queue(t), 1)
+		assert.Len(t, res.Warnings, 1)
+		assert.StrContains(t, res.Warnings[0], "fold meta")
 	})
 }
 
