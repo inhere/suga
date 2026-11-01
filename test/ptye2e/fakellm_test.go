@@ -35,6 +35,9 @@ import (
 //	empty-final  file_write of WritePath, then an empty streamed completion
 //	        after the tool result (the resamples too).
 //
+//	writev  a user message containing "write vK" gets a file_write of WritePath
+//	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
+//
 // Not ported yet (used by scripts that are still Python): refs, image,
 // deferred, demo, loop*, nudge, session, preferred and the sub-agent paths.
 type fakeLLM struct {
@@ -99,6 +102,8 @@ type fakeRequest struct {
 	// Step the tool results since the last user message.
 	Seen []string
 	Step int
+	// Msgs is every message of the request in full (rewind plan T0).
+	Msgs []fakeMsg
 }
 
 type fakeMessage struct {
@@ -270,6 +275,7 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		texts = append(texts, m.text())
 	}
 	req.Messages = strings.Join(texts, "\n")
+	req.Msgs = captureMessages(body.Messages)
 	if lastTool >= 0 {
 		req.ToolText = body.Messages[lastTool].text()
 		if len(req.ToolText) > 300 {
@@ -339,6 +345,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if step < len(calls) {
 			call = &calls[step]
 		}
+	case "writev":
+		call = f.writevCall(user, step, req.Tools)
 	case "refs":
 		call = f.refsCall(step)
 	case "loop", "loop-edit", "loop-fail":
