@@ -20,16 +20,27 @@ import (
 // A window that did not change costs one ioctl and nothing else; a size that cannot
 // be read leaves the editor with its default width, which decides how every line of
 // the chat is laid out, so it is worth a log line. Without a terminal or with a
-// negative fd there is nothing to watch and stop does nothing.
+// negative fd there is nothing to watch and stop does nothing. Its log lines go to
+// slog.Default(); WatchSizeLogger takes the logger instead.
 func WatchSize(t *lineedit.Terminal, fd int, onChange func(width, height int)) (stop func()) {
+	return WatchSizeLogger(t, fd, onChange, nil)
+}
+
+// WatchSizeLogger is WatchSize with its own logger (nil means slog.Default()): a
+// host whose default logger writes to the terminal it draws on, or that keeps the
+// size notes out of its log, passes one instead of swapping the process default.
+func WatchSizeLogger(t *lineedit.Terminal, fd int, onChange func(width, height int), log *slog.Logger) (stop func()) {
 	if t == nil || fd < 0 {
 		return func() {}
+	}
+	if log == nil {
+		log = slog.Default()
 	}
 	lastWidth := 0
 	apply := func() {
 		width, height, err := term.GetSize(fd)
 		if err != nil || width <= 0 {
-			slog.Warn("read the terminal size; the chat keeps its default line width",
+			log.Warn("read the terminal size; the chat keeps its default line width",
 				"fd", fd, "err", err)
 			return
 		}
@@ -37,7 +48,7 @@ func WatchSize(t *lineedit.Terminal, fd int, onChange func(width, height int)) (
 			return
 		}
 		lastWidth = width
-		slog.Info("terminal size", "fd", fd, "width", width, "height", height)
+		log.Info("terminal size", "fd", fd, "width", width, "height", height)
 		_ = t.SetSize(width, height)
 		if onChange != nil {
 			onChange(width, height)

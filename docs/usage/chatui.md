@@ -22,6 +22,7 @@
 - `ResetFirstByte()`：每次开始新的一行读取（`ReadLine` 之前）调用，让这次读取重新做“首字节活动握手”；不调用则 `OnFirstByte` 整个泵生命周期只跑一次。
 - 冲刷：`FlushTerminalInput(fd)` 之后调用 `DefaultHooks.AdvanceEpoch()`，泵已读到但未交给编辑器的旧字节会被丢弃。
 - `WatchSize(term, fd, onChange)`：立即并在每次窗口变化时把大小设给编辑器（Unix SIGWINCH，Windows 轮询）；返回 `stop`。无终端或 `fd<0` 时什么也不做。
+- `WatchSizeLogger(term, fd, onChange, logger)`：同上，日志写到传入的 logger（nil 即 `slog.Default()`）；宿主的默认 logger 会写到自己正在绘制的终端时用它。
 - 其他：`WaitTerminalInput`、`FlushTerminalInput`、`RestoreOutputProcessing` / `ClearOutputProcessing`（原始输入会清掉输出标志，导致换行不回车）、常量 `EscWaitTimeout`、`PasteNewlineTimeout`、`WaitInputSupported`。
 
 ## 最小接入（无 steer 的宿主）
