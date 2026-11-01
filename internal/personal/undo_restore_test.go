@@ -61,7 +61,7 @@ func TestUndoContentRecovery(t *testing.T) {
 
 		result, err := f.core.Undo(f.ctx, "undo-rest", 1, false)
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, 2, result.Restored)
+		assert.Eq(t, 1, result.Restored) // two writes to one path count once (suga-y027)
 		assert.Eq(t, 0, result.Skipped)
 		content, err := os.ReadFile(f.path)
 		assert.Require(t, assert.NoErr(t, err))

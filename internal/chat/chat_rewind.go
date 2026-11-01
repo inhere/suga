@@ -190,10 +190,33 @@ func rewindActionLabel(tr i18n.Translator, action personal.RewindFileAction) str
 	return tr.T("cmd.rewind.action." + string(action))
 }
 
+// rewindReasonCodes are the reason codes of personal/rewind_files*.go with a
+// catalog text (cmd.rewind.reason.<code>); anything else is shown as it is.
+var rewindReasonCodes = map[string]bool{
+	"content_changed": true, "cascade": true, "root_untrusted": true, "cleared": true,
+	"no_snapshot": true, "snapshots_off": true, "not_restorable": true, "snapshot_incomplete": true,
+	"file_missing": true, "not_regular_file": true, "snapshot_hash_missing": true, "unchanged": true, "unreadable": true,
+}
+
+// restoreFailedPrefix starts "restore_failed: <error text>"; the error text is kept.
+const restoreFailedPrefix = "restore_failed"
+
+// rewindReasonText turns a rewind reason code into the catalog text. An unknown
+// code is returned unchanged; restore_failed keeps the error text after it.
+func rewindReasonText(tr i18n.Translator, reason string) string {
+	if rewindReasonCodes[reason] {
+		return tr.T("cmd.rewind.reason." + reason)
+	}
+	if rest, ok := strings.CutPrefix(reason, restoreFailedPrefix); ok && (rest == "" || strings.HasPrefix(rest, ": ")) {
+		return tr.T("cmd.rewind.reason.restore_failed") + rest
+	}
+	return reason
+}
+
 func rewindFileRows(tr i18n.Translator, items []personal.RewindFileItem) string {
 	var b strings.Builder
 	for _, item := range items {
-		fmt.Fprintf(&b, "  %s %s%s\n", rewindActionLabel(tr, item.Action), cleanText(item.Path), reasonSuffix(item.Reason))
+		fmt.Fprintf(&b, "  %s %s%s\n", rewindActionLabel(tr, item.Action), cleanText(item.Path), reasonSuffix(rewindReasonText(tr, item.Reason)))
 	}
 	return b.String()
 }
@@ -226,10 +249,12 @@ func BuildRewindResult(tr i18n.Translator, plan personal.RewindPlan, res persona
 	var b strings.Builder
 	b.WriteString(tr.T("cmd.rewind.result.header") + "\n")
 	if scopeHas(plan.Scope, personal.RewindScopeFiles) {
-		if len(res.Files) == 0 {
+		// One row per path (the last step of a path decides), like the counts.
+		files := personal.DedupeRewindFiles(res.Files)
+		if len(files) == 0 {
 			b.WriteString("  " + tr.T("cmd.rewind.result.no_files") + "\n")
 		}
-		b.WriteString(rewindFileRows(tr, res.Files))
+		b.WriteString(rewindFileRows(tr, files))
 	}
 	if res.Conversation {
 		b.WriteString("  " + tr.T("cmd.rewind.result.conversation") + "\n")
