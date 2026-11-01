@@ -28,8 +28,15 @@ import (
 // turn it would be taken as a steer.
 func promptReady(t *testing.T, s *ptytest.Session, mark int) {
 	t.Helper()
-	until(t, s, "next prompt is up", `(?:\n|↳ )❯`, mark)
+	// OSC sequences (the console title ConPTY writes on windows-latest) may sit
+	// between the line break and the prompt; on a miss the tail is logged.
+	if !until(t, s, "next prompt is up", `(?:\n|↳ )`+oscRun+`❯`, mark) {
+		t.Logf("next prompt is up: text tail %q", tail(s.Since(mark)))
+	}
 }
+
+// oscRun matches any run of OSC sequences (ESC ] ... BEL or ST).
+const oscRun = `(?:\x1b\][^\a\x1b]*(?:\a|\x1b\\))*`
 
 var anySpace = regexp.MustCompile(`\s+`)
 
@@ -58,7 +65,7 @@ func outputLine(t *testing.T, s *ptytest.Session, name, pattern string, mark int
 	// windows-latest runner pwsh sets the console title ("Administrator: ...") and
 	// ConPTY writes it on the output's line, which Text keeps. On a miss the text
 	// and raw tail are logged so the cause shows in CI.
-	ok := s.Expect(`(?m)^(?:\x1b\][^\a\x1b]*(?:\a|\x1b\\))*`+pattern+`\r*$`, mark, 15*time.Second)
+	ok := s.Expect(`(?m)^`+oscRun+pattern+`\r*$`, mark, 15*time.Second)
 	check(t, name, ok)
 	if !ok {
 		t.Logf("%s: text tail %q", name, tail(s.Since(mark)))
