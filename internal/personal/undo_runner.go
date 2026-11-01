@@ -77,3 +77,15 @@ func (r *Runner) heldLockForUndo() func(string) bool {
 		return ok
 	}
 }
+
+// RewindPlan is the Runner adapter of the rewind preview (see rewind.go): a
+// read-only plan that takes no gate and no lock.
+func (r *Runner) RewindPlan(ctx context.Context, snapshots *SessionSnapshots, sessionsRoot, sid, target string, scope RewindScope) (RewindPlan, error) {
+	return r.planRewind(ctx, snapshots, sessionsRoot, sid, target, scope)
+}
+
+// ApplyRewind executes a previewed plan under the session gate and lock; it
+// returns ErrRewindStale when the session no longer matches the preview.
+func (r *Runner) ApplyRewind(ctx context.Context, snapshots *SessionSnapshots, sessionsRoot string, plan RewindPlan) (RewindResult, error) {
+	return r.applyRewind(ctx, snapshots, sessionsRoot, plan)
+}
