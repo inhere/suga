@@ -53,7 +53,16 @@ func trimSpace(s string) string { return strings.TrimSpace(s) }
 // processing back on adds one (the editor writes CR LF itself).
 func outputLine(t *testing.T, s *ptytest.Session, name, pattern string, mark int) bool {
 	t.Helper()
-	return until(t, s, name, `(?m)^`+pattern+`\r*$`, mark)
+	// A local command starts a fresh shell, and pwsh on a cold CI runner can take
+	// well over the usual 15s; on a miss the text and raw tail are logged so the
+	// cause (slow start or a line that is not the bare output) shows in CI.
+	ok := s.Expect(`(?m)^`+pattern+`\r*$`, mark, 45*time.Second)
+	check(t, name, ok)
+	if !ok {
+		t.Logf("%s: text tail %q", name, tail(s.Since(mark)))
+		t.Logf("%s: raw tail %q", name, tail(s.RawText()))
+	}
+	return ok
 }
 
 // waitRequest polls the fake model's request log from index from on and returns
