@@ -140,7 +140,6 @@ smoke-chat: smoke-go
 	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
 	python3 -I scripts/ptysmoke/chat_deferred_native.py --bin tmp/smoke/suga --work tmp/smoke-deferred
 	python3 -I scripts/ptysmoke/chat_pretool.py --bin tmp/smoke/suga --work tmp/smoke-pretool
-	python3 -I scripts/ptysmoke/chat_interrupt.py --bin tmp/smoke/suga --work tmp/smoke-interrupt
 	python3 -I scripts/ptysmoke/chat_images.py --bin tmp/smoke/suga --work tmp/smoke-images
 	python3 -I scripts/ptysmoke/chat_read_image.py --bin tmp/smoke/suga --work tmp/smoke-read-image
 	python3 -I scripts/ptysmoke/chat_send_image.py --bin tmp/smoke/suga --work tmp/smoke-send-image
@@ -148,23 +147,15 @@ smoke-chat: smoke-go
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
 	python3 -I scripts/ptysmoke/chat_agent.py --bin tmp/smoke/suga --work tmp/smoke-agent
 	python3 -I scripts/ptysmoke/chat_spinner.py --bin tmp/smoke/suga --work tmp/smoke-spinner
-	python3 -I scripts/ptysmoke/chat_resume.py --bin tmp/smoke/suga --work tmp/smoke-resume
 	python3 -I scripts/ptysmoke/chat_resume_cwd.py --bin tmp/smoke/suga --work tmp/smoke-resume-cwd
 	python3 -I scripts/ptysmoke/chat_tool_ctrlc.py --bin tmp/smoke/suga --work tmp/smoke-tool-ctrlc
 	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
-	python3 -I scripts/ptysmoke/chat_adddir.py --bin tmp/smoke/suga --work tmp/smoke-adddir
-	python3 -I scripts/ptysmoke/chat_adddir_cmds.py --bin tmp/smoke/suga --work tmp/smoke-adddir-cmds
-	python3 -I scripts/ptysmoke/chat_bang.py --bin tmp/smoke/suga --work tmp/smoke-bang
 	python3 -I scripts/ptysmoke/chat_paste.py --bin tmp/smoke/suga --work tmp/smoke-paste
 	python3 -I scripts/ptysmoke/chat_win32input.py --bin tmp/smoke/suga --work tmp/smoke-win32input
 	python3 -I scripts/ptysmoke/chat_history.py --bin tmp/smoke/suga --work tmp/smoke-history
-	python3 -I scripts/ptysmoke/chat_budget.py --bin tmp/smoke/suga --work tmp/smoke-budget
-	python3 -I scripts/ptysmoke/chat_loop_guard.py --bin tmp/smoke/suga --work tmp/smoke-loop-guard
 	python3 -I scripts/ptysmoke/chat_nudge.py --bin tmp/smoke/suga --work tmp/smoke-nudge
-	python3 -I scripts/ptysmoke/chat_refs.py --bin tmp/smoke/suga --work tmp/smoke-refs
 	python3 -I scripts/ptysmoke/chat_tool_lines.py --bin tmp/smoke/suga --work tmp/smoke-toollines
 	python3 -I scripts/ptysmoke/chat_session_message.py --bin tmp/smoke/suga --work tmp/smoke-session-message
-	python3 -I scripts/ptysmoke/chat_delivery.py --bin tmp/smoke/suga --work tmp/smoke-delivery
 	python3 -I scripts/ptysmoke/preferred_tools.py --bin tmp/smoke/suga --work tmp/smoke-preferred-tools
 
 ## demo-cast: record the chat demo (docs/demo/suga-chat.cast) with the fake model (Linux/macOS)

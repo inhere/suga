@@ -67,8 +67,21 @@ type fakeLLM struct {
 	WritePath, WriteBody       string // edit mode "附加" / adddir / empty-final: file_write target
 	ReadPath                   string // adddir mode: file_read target
 
+	// Batch 3 additions (suga-hb8v); their behaviour lives in fakellm_batch3_test.go.
+	//
+	// FailFrom answers request N and later with HTTP 503 (0 = off), FailCount of
+	// them (<= 0: every later one): the first steps of a turn run, then it fails.
+	FailFrom, FailCount int
+	// refs mode: every user message gets file_refs for RefName on RefFile, then on
+	// RefDir (defaults Load, svc/svc.go, ".").
+	RefName, RefFile, RefDir string
+	// loop modes: the successful command of loop-edit (default echo SMOKE_LOOP_SHELL)
+	// and the failing one of loop-fail (default false).
+	LoopCommand, LoopFailCommand string
+
 	mu       sync.Mutex
 	served   int
+	arrived  int // requests received, counted before the delay (served counts after it)
 	requests []fakeRequest
 }
 
@@ -81,6 +94,11 @@ type fakeRequest struct {
 	Messages string   // the text of every message the model received, one per line
 	Tools    []string // names of the tools offered
 	ToolText string   // the last tool result (first 300 bytes)
+	// Batch 3 additions: Seen is one short token per message of the request
+	// (fakellm.py message_token: "user:<head>", "a:file_edit", "tool:edited ..."),
+	// Step the tool results since the last user message.
+	Seen []string
+	Step int
 }
 
 type fakeMessage struct {
@@ -204,6 +222,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	f.countArrival()
+
 	// step counts the tool results since the last user message: the step of this
 	// turn. lastTool/lastAssistant tell whether the step's result is already in.
 	user, step := "", 0
@@ -234,7 +254,10 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	toolDone := lastTool > lastAssistant
 
-	req := fakeRequest{Model: body.Model, Stream: body.Stream, LastRole: body.Messages[len(body.Messages)-1].Role, User: user}
+	req := fakeRequest{Model: body.Model, Stream: body.Stream, LastRole: body.Messages[len(body.Messages)-1].Role, User: user, Step: step}
+	for _, m := range body.Messages {
+		req.Seen = append(req.Seen, m.token())
+	}
 	for _, tl := range body.Tools {
 		name := tl.Function.Name
 		if name == "" {
@@ -266,6 +289,10 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 
 	if n <= f.FailFirst {
+		http.Error(w, `{"error":{"message":"overloaded"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	if f.failsFrom(n) {
 		http.Error(w, `{"error":{"message":"overloaded"}}`, http.StatusServiceUnavailable)
 		return
 	}
@@ -312,6 +339,10 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if step < len(calls) {
 			call = &calls[step]
 		}
+	case "refs":
+		call = f.refsCall(step)
+	case "loop", "loop-edit", "loop-fail":
+		call = f.loopCall(step)
 	case "empty-final":
 		if !toolDone {
 			call = &toolCall{"file_write", map[string]any{"path": f.WritePath, "content": f.WriteBody}}
