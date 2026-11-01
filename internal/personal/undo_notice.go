@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 )
@@ -38,6 +39,9 @@ type pendingUndoNotice struct {
 	Files         []string `json:"files,omitempty"`
 	Forced        bool     `json:"forced"`
 	EventID       int64    `json:"event_id,omitempty"`
+	// Kind is noticeKindRewind for a conversation rewind notice and empty for an
+	// undo notice (and for queues written before rewind existed).
+	Kind string `json:"kind,omitempty"`
 }
 
 func undoNoticeMessage(text string) agentcore.Message {
@@ -116,6 +120,56 @@ func appendUndoNotice(ctx context.Context, repo *store.Store, sessionID string, 
 	return repo.PatchSessionMeta(ctx, sessionID, map[string]any{undoNoticeQueueKey: notices})
 }
 
+// returnUndoNotice puts a notice whose injection failed back: an undo notice at
+// the tail as before, a rewind notice at the head so it is still the first one
+// delivered.
+func returnUndoNotice(ctx context.Context, repo *store.Store, sessionID string, notice pendingUndoNotice) error {
+	if notice.Kind != noticeKindRewind {
+		return appendUndoNotice(ctx, repo, sessionID, notice)
+	}
+	return updateUndoQueue(ctx, repo, sessionID, func(queue []pendingUndoNotice) []pendingUndoNotice {
+		return append([]pendingUndoNotice{notice}, queue...)
+	})
+}
+
+// pushRewindNotice queues a rewind notice at the head, so it is delivered on the
+// next turn, and keeps the undo notices already queued behind it. Rewind
+// notices still waiting are superseded: their bodies are put in front of the new
+// body (labelled, in order) and they leave the queue, so their events never get
+// an entry_seq. Only the new item's counts and paths are kept. It returns the
+// queued item.
+func pushRewindNotice(ctx context.Context, repo *store.Store, sessionID string, notice pendingUndoNotice, tr i18n.Translator) (pendingUndoNotice, error) {
+	notice.Kind = noticeKindRewind
+	err := updateUndoQueue(ctx, repo, sessionID, func(queue []pendingUndoNotice) []pendingUndoNotice {
+		var kept []pendingUndoNotice
+		var superseded []string
+		for _, q := range queue {
+			if q.Kind == noticeKindRewind {
+				superseded = append(superseded, q.Text)
+				continue
+			}
+			kept = append(kept, q)
+		}
+		notice.Text = mergeRewindTexts(tr, superseded, notice.Text)
+		return append([]pendingUndoNotice{notice}, kept...)
+	})
+	return notice, err
+}
+
+// updateUndoQueue rewrites the pending queue (read, change, write). The callers
+// hold the session gate, like appendUndoNotice.
+func updateUndoQueue(ctx context.Context, repo *store.Store, sessionID string, fn func([]pendingUndoNotice) []pendingUndoNotice) error {
+	session, err := repo.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	queue, err := decodeUndoNotices(session.Meta[undoNoticeQueueKey])
+	if err != nil {
+		return err
+	}
+	return repo.PatchSessionMeta(ctx, sessionID, map[string]any{undoNoticeQueueKey: fn(queue)})
+}
+
 func takeUndoNotice(ctx context.Context, repo *store.Store, sessionID string) (pendingUndoNotice, bool, error) {
 	session, err := repo.GetSession(ctx, sessionID)
 	if err != nil {
@@ -167,13 +221,13 @@ func (r *Runner) injectUndoNotice(ctx context.Context, sessionID, turnID string)
 	entries, err := r.cfg.Repository.AppendEntries(context.WithoutCancel(ctx), sessionID,
 		store.NewEntry{TurnID: turnID, Type: store.EntryUser, JSON: raw})
 	if err != nil {
-		if qerr := appendUndoNotice(context.WithoutCancel(ctx), r.cfg.Repository, sessionID, notice); qerr != nil {
+		if qerr := returnUndoNotice(context.WithoutCancel(ctx), r.cfg.Repository, sessionID, notice); qerr != nil {
 			slog.Warn("return undo notice", "session_id", sessionID, "err", qerr)
 		}
 		return ctxItem{}, false, fmt.Errorf("store undo notice: %w", err)
 	}
 	if len(entries) == 0 {
-		if qerr := appendUndoNotice(context.WithoutCancel(ctx), r.cfg.Repository, sessionID, notice); qerr != nil {
+		if qerr := returnUndoNotice(context.WithoutCancel(ctx), r.cfg.Repository, sessionID, notice); qerr != nil {
 			slog.Warn("return undo notice", "session_id", sessionID, "err", qerr)
 		}
 		return ctxItem{}, false, fmt.Errorf("store undo notice: no entry returned")

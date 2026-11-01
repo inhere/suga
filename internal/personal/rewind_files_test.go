@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -260,8 +261,10 @@ func TestRewindFilesApplyKeepsGoingAfterFailure(t *testing.T) {
 	// Corrupt the b.txt before-image path identity: a real restore error.
 	steps[0].Item.Meta.RealRel = "../escape"
 	got, err := f.core.applyRewindFiles(f.ctx, f.sid, steps)
-	assert.Err(t, err)
+	assert.NoErr(t, err) // one failing item is a result, not an abort
 	assert.Eq(t, 2, len(got))
+	assert.Eq(t, RewindFileConflict, got[0].Action)
+	assert.True(t, strings.HasPrefix(got[0].Reason, rewindReasonRestoreFailed+": "))
 	assert.Eq(t, RewindFileDelete, got[1].Action) // the rest still ran
 	assert.Eq(t, SnapshotStatePartial, f.state(t, t1))
 	assert.False(t, errors.Is(err, ErrRewindBusy))

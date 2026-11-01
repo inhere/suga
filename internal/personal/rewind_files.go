@@ -32,6 +32,9 @@ const (
 	rewindReasonContent       = "content_changed" // changed after the snapshot
 	rewindReasonCascade       = "cascade"         // an earlier path step conflicted
 	rewindReasonUnchanged     = "unchanged"       // already in the wanted state
+	// rewindReasonRestoreFailed prefixes the reason of an item whose restore
+	// returned an error (followed by the error text).
+	rewindReasonRestoreFailed = "restore_failed"
 )
 
 // RewindFileItem is one file line of a rewind plan or result.
@@ -237,9 +240,10 @@ func (u *UndoCore) planRewindItem(session Session, turnID string, item Checkpoin
 // applyRewindFiles runs steps (computed by the caller under the session lock
 // just before) newest first and returns what actually happened. Unrecoverable
 // steps are reported without calling restoreItem. A failing restoreItem does
-// not stop the loop (like :undo); its error is joined into the returned one
-// after the remaining steps ran and the turn is marked partial. Checkpoint
-// state is written only for turns that have a snapshot directory. The caller
+// not stop the loop (like :undo): its error becomes that item's result (a
+// conflict with reason restore_failed) and the turn is marked partial. Checkpoint
+// state is written only for turns that have a snapshot directory. Only a
+// whole-operation error (writing the checkpoint state) is returned. The caller
 // invokes OnFilesRestored with the restored paths.
 func (u *UndoCore) applyRewindFiles(ctx context.Context, sid string, steps []rewindFileStep) ([]RewindFileItem, error) {
 	if err := u.validate(); err != nil {
@@ -250,10 +254,9 @@ func (u *UndoCore) applyRewindFiles(ctx context.Context, sid string, steps []rew
 		return nil, err
 	}
 	var (
-		results  []RewindFileItem
-		failures []error
-		order    []string            // turns with a snapshot dir, in step order
-		done     = map[string]bool{} // turn -> every step resolved
+		results []RewindFileItem
+		order   []string            // turns with a snapshot dir, in step order
+		done    = map[string]bool{} // turn -> every step resolved
 	)
 	for _, step := range steps {
 		turn := step.View.TurnID
@@ -286,10 +289,10 @@ func (u *UndoCore) applyRewindFiles(ctx context.Context, sid string, steps []rew
 			}
 		}
 		if restoreErr != nil {
-			failures = append(failures, restoreErr)
-			if res.Reason == "" {
-				res.Reason = restoreErr.Error()
-			}
+			// A single failing item is a result, not an abort: it is reported as
+			// a conflict with the error text (counted as a failure by the
+			// caller) and the turn stays partial.
+			res.Action, res.Reason = RewindFileConflict, rewindReasonRestoreFailed+": "+restoreErr.Error()
 		}
 		if restoreErr != nil || outcome.unresolved {
 			done[turn] = false
@@ -305,5 +308,5 @@ func (u *UndoCore) applyRewindFiles(ctx context.Context, sid string, steps []rew
 			return results, fmt.Errorf("set checkpoint %s state: %w", turn, err)
 		}
 	}
-	return results, errors.Join(failures...)
+	return results, nil
 }

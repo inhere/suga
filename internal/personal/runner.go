@@ -426,6 +426,9 @@ type Runner struct {
 	// that pins the model request to be identical with and without the ledger
 	// sets it (issue suga-r72b); production paths never do.
 	withoutAdmitLedger bool
+	// rewindApplyHook injects a failure into runRewind after the file part ran
+	// and before the rewind record is written. Tests only; nil in production.
+	rewindApplyHook func(stage string) error
 	// forkHook is called by Fork with "files" (attachments copied, transaction
 	// not opened) and "created" (committed); an error takes the failure path. Used only by tests to inject failures (仅测试注入失败用);
 	// production paths leave it nil.
