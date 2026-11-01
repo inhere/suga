@@ -96,6 +96,26 @@ func (s *Store) CountTurns(ctx context.Context, sessionID string) (int, error) {
 	return n, nil
 }
 
+// CountTurnsSkipping counts a session's turns outside the masked intervals skip.
+// A turn is masked when it has entries and all of them are masked; a turn with
+// no entry at all counts as before. It is CountTurns when skip is empty.
+func (s *Store) CountTurnsSkipping(ctx context.Context, sessionID string, skip SeqRanges) (int, error) {
+	if len(skip) == 0 {
+		return s.CountTurns(ctx, sessionID)
+	}
+	masked, margs := skip.maskedSQL("e.seq")
+	// idx_turns_session lists the turns; each EXISTS probes the entries of that
+	// one turn through idx_entries_turn and stops at the first match.
+	q := `SELECT COUNT(1) FROM turns t WHERE t.session_id = ? AND (
+		NOT EXISTS (SELECT 1 FROM entries e WHERE e.turn_id = t.id AND e.session_id = t.session_id)
+		OR EXISTS (SELECT 1 FROM entries e WHERE e.turn_id = t.id AND e.session_id = t.session_id AND NOT ` + masked + `))`
+	var n int
+	if err := s.db.QueryRowContext(ctx, q, append([]any{sessionID}, margs...)...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count turns: %w", err)
+	}
+	return n, nil
+}
+
 // UpdateTurn writes status, stop_reason and ended_at (state_json is owned by
 // UpsertTurnState and left untouched).
 func (s *Store) UpdateTurn(ctx context.Context, t Turn) error {

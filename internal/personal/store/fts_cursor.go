@@ -146,6 +146,14 @@ func fingerprintEntrySearch(q EntrySearch) (searchFingerprint, error) {
 	writeFingerprintField(h, "since", formatTime(q.Since))
 	writeFingerprintField(h, "until", formatTime(q.Until))
 	writeFingerprintField(h, "cwd_prefix", q.CWDPrefix)
+	// Written only when it excludes something, so a search without the option
+	// keeps the fingerprint it had before the option existed.
+	if ex := q.ExcludeSession.normalized(); ex.active() {
+		writeFingerprintField(h, "exclude_session", ex.SessionID)
+		for _, r := range ex.Ranges {
+			writeFingerprintField(h, "exclude_range", strconv.FormatInt(r.Lo, 10)+":"+strconv.FormatInt(r.Hi, 10))
+		}
+	}
 	for _, id := range canonicalSearchStrings(q.SessionIDs) {
 		writeFingerprintField(h, "session_id", id)
 	}
