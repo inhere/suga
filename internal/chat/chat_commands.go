@@ -385,6 +385,20 @@ func (s *chatState) runChatCommand(line string) bool {
 		} else {
 			s.runUndo(command)
 		}
+	case isRewindCommand(line):
+		// :rewind [N [files|conversation|both]]: no argument lists the turns.
+		if command, ok := parseRewindCommand(line); !ok {
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), rewindCmd))
+		} else {
+			s.runRewind(command)
+		}
+	case isForkCommand(line):
+		// :fork N: a new session from before turn N; this chat stays where it is.
+		if target, ok := parseForkCommand(line); !ok {
+			fmt.Fprintln(s.source, commandUsageText(s.tr(), forkCmd))
+		} else {
+			s.runFork(target)
+		}
 	default:
 		return false
 	}
