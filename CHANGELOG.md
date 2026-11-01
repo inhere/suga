@@ -4,6 +4,18 @@
 
 ## [未发布]
 
+### 新增
+
+- chat 新命令 `:rewind` 与 `:fork`（会话回退与分叉）：
+  - `:rewind` 不带参数列出可回退的用户轮；`:rewind N [files|conversation|both]` 先预览再确认（`chat.undo_confirm` 控制，无终端时取消）后执行，范围默认 `both`：`files` 按快照恢复文件，`conversation` 让模型不再看到该轮及之后的对话（历史仍保留，可用 `inspect` 查看），`both` 两者都做。只回会话时，下一轮请求里会带“磁盘文件没有回退”的通知；快照已被清理的文件在预览里列为“无法恢复”。回合进行中输入的 `:rewind` / `:fork` 不会当作插话，而是放回输入行。
+  - `:fork N` 从第 N 个用户轮之前分叉出一个新会话，当前对话不变（chat 不切换会话），用 `suga chat --resume <新会话ID>` 继续。
+- 回退只追加一条 `rewind` 记录并屏蔽区间，不改 DDL、不删历史。`sugasdk.Entries` 会返回这个新类型 `rewind`，宿主若按类型分支处理记录，需要识别（或忽略）它。
+- 在有回退记录的会话上，sugasdk 反映的是回退后的可见状态：`Session.Card` 的 `LatestSummary`、plan、`SegmentCount`、`Turns` 都不计被屏蔽的部分；`Run` 与 `Compact` 使用回退后的可见历史。没有回退记录的会话行为不变。
+
+### 兼容性
+
+- 回滚到不认识 `rewind` 的旧版本时，旧二进制会忽略这些记录：被回退的两条分支会拼接成一条上下文，旧版本下的压缩（compaction）还会把本应屏蔽的区间永久写进摘要。回滚前建议先用 `:fork` 把要保留的会话分叉出来。
+
 ## [0.53.0] - 2026-10-31
 
 本版新增 chat 常驻指标行、sugasdk 只读记录与 trace 接口、外部来源守卫覆盖子 agent、压缩新增三个旋钮，并把 chat 的工具行、等待行与输入字节泵抽成公开包 `pkg/chatui` 供 xhen 复用。
