@@ -36,7 +36,11 @@ func TestChatPTYSmokeHistoryScope(t *testing.T) {
 		inA := startHistoryChat(t, binary, server.URL, home, projectA, "project")
 		expect(t, inA, `❯ `, inA.Mark())
 		inA.SendLine("alpha one")
-		expect(t, inA, `收到：alpha one`, inA.Mark())
+		replied := inA.Mark()
+		expect(t, inA, `收到：alpha one`, replied)
+		// The next line is typed only once the prompt is back: a line sent while
+		// the reply is still being drawn can be lost on Windows ConPTY.
+		promptReady(t, inA, replied)
 		inA.SendLine("alpha two")
 		expect(t, inA, `收到：alpha two`, inA.Mark())
 		exitChat(t, inA)
@@ -75,7 +79,11 @@ func TestChatPTYSmokeHistoryScope(t *testing.T) {
 		inA := startHistoryChat(t, binary, server.URL, home, projectA, "all")
 		expect(t, inA, `❯ `, inA.Mark())
 		inA.SendLine("alpha one")
-		expect(t, inA, `收到：alpha one`, inA.Mark())
+		replied := inA.Mark()
+		expect(t, inA, `收到：alpha one`, replied)
+		// The next line is typed only once the prompt is back: a line sent while
+		// the reply is still being drawn can be lost on Windows ConPTY.
+		promptReady(t, inA, replied)
 		inA.SendLine("alpha two")
 		expect(t, inA, `收到：alpha two`, inA.Mark())
 		exitChat(t, inA)

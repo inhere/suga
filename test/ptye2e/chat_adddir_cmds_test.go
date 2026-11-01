@@ -147,12 +147,21 @@ func TestChatAddDirCommands(t *testing.T) {
 		promptReady(t, s, m)
 		m = s.Mark()
 		s.SendLine("只写：再写一次")
-		askedAgain := s.Expect(`\[n\] 拒绝：`, m, 15*time.Second) &&
-			strings.Contains(unspaced(s.Since(m)), unspaced("授权访问 "+shared+"？"))
+		// suga prints the canonical (long) path; on a Windows runner the test's
+		// temp dir can be an 8.3 short name (C:\Users\RUNNER~1\...), so either
+		// form of the directory counts (suga-y5dk).
+		askedAgain := s.Expect(`\[n\] 拒绝：`, m, 15*time.Second)
+		if askedAgain {
+			askedAgain = false
+			for _, dir := range pathForms(shared) {
+				if strings.Contains(unspaced(s.Since(m)), unspaced("授权访问 "+dir+"？")) {
+					askedAgain = true
+				}
+			}
+		}
 		check(t, "the write after :rm-dir asks again", askedAgain)
 		if !askedAgain {
-			// Intermittent on windows-latest only (suga-y5dk): log what was shown.
-			t.Logf("asks again: want %q; text tail %q", "授权访问 "+shared+"？", tail(s.Since(m)))
+			t.Logf("asks again: want %q (any of %q); text tail %q", "授权访问 <dir>？", pathForms(shared), tail(s.Since(m)))
 		}
 		s.SendLine("n")
 		until(t, s, "the write after :rm-dir is refused", `用户拒绝授权访问 `, m)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -147,4 +148,15 @@ func killChat(t *testing.T, pid int) {
 	if err != nil {
 		t.Fatalf("kill chat %d: %v", pid, err)
 	}
+}
+
+// pathForms is p and, when it differs, p with symlinks and Windows 8.3 short
+// names resolved (filepath.EvalSymlinks expands both): a path the test built
+// from a temp dir may be printed by suga in its canonical form.
+func pathForms(p string) []string {
+	forms := []string{p}
+	if real, err := filepath.EvalSymlinks(p); err == nil && real != p {
+		forms = append(forms, real)
+	}
+	return forms
 }
