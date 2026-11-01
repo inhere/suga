@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.54.0] - 2026-11-01
+
+本版新增会话回退与分叉：chat 的 `:rewind N [files|conversation|both]` 把文件、对话或两者回到第 N 个用户轮之前，`:fork N` 从第 N 轮之前分叉出新会话；并继续把伪终端冒烟迁到 Go。
+
 ### 新增
 
 - chat 新命令 `:rewind` 与 `:fork`（会话回退与分叉）：
@@ -15,6 +19,10 @@
 ### 兼容性
 
 - 回滚到不认识 `rewind` 的旧版本时，旧二进制会忽略这些记录：被回退的两条分支会拼接成一条上下文，旧版本下的压缩（compaction）还会把本应屏蔽的区间永久写进摘要。回滚前建议先用 `:fork` 把要保留的会话分叉出来。
+
+### 变更
+
+- 伪终端冒烟迁移第三批（suga-hb8v）：`chat_adddir`、`chat_adddir_cmds`、`chat_bang`、`chat_budget`、`chat_delivery`、`chat_interrupt`、`chat_loop_guard`、`chat_refs`、`chat_resume` 迁到 Go（`test/ptye2e`），对应 Python 脚本删除；Windows 上用控制台事件模拟 SIGTERM 的辅助进程在 chat 控制台关闭前先脱离，不再被 CTRL_CLOSE 杀掉。
 
 ## [0.53.0] - 2026-10-31
 
@@ -1296,7 +1304,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.53.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.54.0...HEAD
+[0.54.0]: https://github.com/inhere/suga/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/inhere/suga/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/inhere/suga/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/inhere/suga/compare/v0.50.0...v0.51.0
