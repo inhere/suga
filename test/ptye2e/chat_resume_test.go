@@ -91,6 +91,7 @@ func TestChatResume(t *testing.T) {
 	// previewChecks is what a chat continuing the session shows above its first prompt.
 	previewChecks := func(s *ptytest.Session, name string) {
 		until(t, s, name+": ❯ prompt", `❯ `, 0)
+		t.Logf("DBG3 %q", tail(s.Text()))
 		text := s.Text()
 		before := text
 		if cut := strings.Index(text, "❯ "); cut >= 0 {

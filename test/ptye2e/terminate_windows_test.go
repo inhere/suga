@@ -48,8 +48,10 @@ func TestConsoleCtrlBreakHelper(t *testing.T) {
 	if r, _, err := attach.Call(uintptr(pid)); r == 0 {
 		t.Fatalf("AttachConsole(%d): %v", pid, err)
 	}
-	// The helper shares the console, so it must not die of its own event.
-	handler.Call(0, 1)
+	// The helper shares the console, so it must not die of its own event: a handler
+	// that reports the event as handled (SetConsoleCtrlHandler(NULL, TRUE) only
+	// ignores CTRL_C, not CTRL_BREAK).
+	handler.Call(syscall.NewCallback(func(uint32) uintptr { return 1 }), 1)
 	const ctrlBreakEvent = 1
 	if r, _, err := generate.Call(ctrlBreakEvent, 0); r == 0 {
 		t.Fatalf("GenerateConsoleCtrlEvent: %v", err)

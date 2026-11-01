@@ -91,6 +91,7 @@ func TestChatAddDirCommands(t *testing.T) {
 		s.SendLine("只读：看看外面的说明")
 		check(t, "outside read: question asked", s.Expect(`\[n\] 拒绝：`, m, 15*time.Second) &&
 			regexp.MustCompile(regexp.QuoteMeta("授权访问 "+outsideReal+"？[r] 只读 [w] 读写 [n] 拒绝：")).MatchString(unwrapped(s.Since(m))))
+		t.Logf("DBG1 want=%q got=%q", "授权访问 "+outsideReal, tail(s.Since(m)))
 		check(t, "outside read: the tool is held back until the answer", !s.Contains(cmdsReadMark, m))
 		s.SendLine("r")
 		until(t, s, "outside read: r authorizes it and the read runs", cmdsReadMark, m)
