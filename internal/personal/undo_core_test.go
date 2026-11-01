@@ -25,6 +25,10 @@ func (g *undoTestGate) Acquire(ctx context.Context) (func(), error) {
 	return func() {}, nil
 }
 
+func (g *undoTestGate) AcquireUnlessBusy(ctx context.Context) (func(), error) {
+	return g.Acquire(ctx)
+}
+
 func TestUndoCoreGateLockAndRootTrust(t *testing.T) {
 	ctx := context.Background()
 	repo := openObserveRepo(t)

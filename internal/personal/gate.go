@@ -129,6 +129,42 @@ func (g sessionGate) Acquire(ctx context.Context) (release func(), err error) {
 	}
 }
 
+// AcquireUnlessBusy is Acquire for the rewind/fork operations: a regular
+// holder (a turn, Compact) makes it fail at once with ErrRewindBusy instead
+// of waiting, because rewinding under a running turn would race its writes.
+// A preemptible holder (the idle consolidation) is asked to yield and waited
+// for, exactly as Acquire does; free gates are taken directly. It also fails
+// when ctx ends while waiting for the preempted holder.
+func (g sessionGate) AcquireUnlessBusy(ctx context.Context) (release func(), err error) {
+	g.r.gateMu.Lock()
+	defer g.r.gateMu.Unlock()
+	for {
+		st := g.stateLocked()
+		if !st.held {
+			return g.takeLocked(st, false), nil
+		}
+		// preempt is non-nil only for a preemptible holder. Re-checked each
+		// round: a Run may take the gate between the release and our wakeup.
+		if st.preempt == nil {
+			return nil, ErrRewindBusy
+		}
+		preemptLocked(st)
+		st.waiters++
+		freed := st.freed
+		g.r.gateMu.Unlock()
+		select {
+		case <-freed:
+		case <-ctx.Done():
+		}
+		g.r.gateMu.Lock()
+		st.waiters--
+		g.dropLocked(st)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+}
+
 // TryAcquire takes the gate only when it is free right now.
 func (g sessionGate) TryAcquire() (release func(), ok bool) {
 	g.r.gateMu.Lock()

@@ -101,6 +101,9 @@ const (
 // session ID is carried in the context because the existing gate is per-session.
 type UndoGate interface {
 	Acquire(context.Context) (func(), error)
+	// AcquireUnlessBusy is Acquire that fails with ErrRewindBusy while a
+	// non-preemptible holder (a turn) has the gate; see sessionGate.
+	AcquireUnlessBusy(context.Context) (func(), error)
 }
 
 // UndoCore owns the provider-independent checkpoint boundary. It only reads
@@ -218,6 +221,32 @@ func (u *UndoCore) withSession(ctx context.Context, sessionID string, fn func() 
 		if err != nil {
 			if errors.Is(err, process.ErrSessionLocked) {
 				return fmt.Errorf("%w: %s", ErrSessionBusy, sessionID)
+			}
+			return err
+		}
+		defer lock.Close()
+	}
+	return fn()
+}
+
+// withSessionUnlessBusy is withSession for rewind/fork: same gate-then-file-lock
+// order, but the gate is taken with AcquireUnlessBusy and a held cross-process
+// lock is reported as ErrRewindBusy. Never call withSession inside fn: the gate
+// is not reentrant. A nil Gate (CLI) skips the in-process gate.
+func (u *UndoCore) withSessionUnlessBusy(ctx context.Context, sessionID string, fn func() error) error {
+	if u.Gate != nil {
+		gateCtx := context.WithValue(ctx, undoSessionIDKey{}, sessionID)
+		release, err := u.Gate.AcquireUnlessBusy(gateCtx)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
+	if u.LockRoot != "" && (u.HeldLock == nil || !u.HeldLock(sessionID)) {
+		lock, err := process.AcquireSessionLockContext(ctx, u.LockRoot, sessionID, 0)
+		if err != nil {
+			if errors.Is(err, process.ErrSessionLocked) {
+				return fmt.Errorf("%w: %s", ErrRewindBusy, sessionID)
 			}
 			return err
 		}
