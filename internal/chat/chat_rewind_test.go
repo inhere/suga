@@ -80,7 +80,7 @@ func TestBuildRewindPlanAndResult(t *testing.T) {
 	}}
 	got := BuildRewindPlan(testTranslator, plan, "2")
 	assert.StrContains(t, got, "恢复 a.txt")
-	assert.StrContains(t, got, "跳过 b.txt  content_changed")
+	assert.StrContains(t, got, "跳过 b.txt  快照之后被改动过")
 	assert.NotContains(t, got, "\x1b")
 	assert.StrContains(t, got, "未送达的后台任务通知将被丢弃")
 
@@ -167,4 +167,46 @@ func TestRunningTurnPutsRewindAndForkBack(t *testing.T) {
 			assert.Eq(t, []string{"干活"}, h.cast.prompts())
 		})
 	}
+}
+
+// TestRewindReasonText: reason codes are shown as catalog text in zh and en; an
+// unknown code stays as it is and restore_failed keeps the error text (suga-449r).
+func TestRewindReasonText(t *testing.T) {
+	en, err := i18n.New(i18n.LanguageEN)
+	assert.Require(t, assert.NoErr(t, err))
+	codes := []string{"content_changed", "cascade", "root_untrusted", "cleared", "no_snapshot", "snapshots_off",
+		"not_restorable", "snapshot_incomplete", "file_missing", "not_regular_file", "snapshot_hash_missing",
+		"unchanged", "unreadable"}
+	for _, code := range codes {
+		t.Run(code, func(t *testing.T) {
+			zhText, enText := rewindReasonText(testTranslator, code), rewindReasonText(en, code)
+			assert.NotEq(t, code, zhText)
+			assert.NotEq(t, code, enText)
+			assert.NotEq(t, zhText, enText)
+		})
+	}
+	t.Run("restore_failed keeps the error text", func(t *testing.T) {
+		assert.Eq(t, "恢复失败: disk full", rewindReasonText(testTranslator, "restore_failed: disk full"))
+		assert.Eq(t, "restore failed: disk full", rewindReasonText(en, "restore_failed: disk full"))
+	})
+	t.Run("unknown code is unchanged", func(t *testing.T) {
+		assert.Eq(t, "purged", rewindReasonText(testTranslator, "purged"))
+		assert.Eq(t, "restore_failedX", rewindReasonText(testTranslator, "restore_failedX"))
+		assert.Eq(t, "", rewindReasonText(testTranslator, ""))
+	})
+}
+
+// TestBuildRewindResultOneRowPerPath: a path written by several turns is one
+// row in the result, decided by the last step (suga-y027).
+func TestBuildRewindResultOneRowPerPath(t *testing.T) {
+	plan := personal.RewindPlan{Scope: personal.RewindScopeFiles}
+	res := personal.RewindResult{Files: []personal.RewindFileItem{
+		{Path: "a.txt", Action: personal.RewindFileRestore},
+		{Path: "b.txt", Action: personal.RewindFileRestore},
+		{Path: "a.txt", Action: personal.RewindFileRestore},
+	}}
+	out := BuildRewindResult(testTranslator, plan, res)
+	assert.Eq(t, 1, strings.Count(out, "a.txt"))
+	assert.Eq(t, 1, strings.Count(out, "b.txt"))
+	assert.Eq(t, 3, len(res.Files)) // the per-step results are not modified
 }

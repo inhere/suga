@@ -60,6 +60,8 @@ func (u *UndoCore) Undo(ctx context.Context, sessionQuery string, n int, force b
 			return err
 		}
 		selected := selectUndoRows(rows, n)
+		// Counts and Files are per path: see pathTally.
+		tally := newPathTally()
 		for _, row := range selected {
 			if !row.HasSnapshots() {
 				continue
@@ -71,19 +73,8 @@ func (u *UndoCore) Undo(ctx context.Context, sessionQuery string, n int, force b
 			for i := len(row.Items) - 1; i >= 0; i-- {
 				item := row.Items[i]
 				outcome, restoreErr := u.restoreItem(ctx, session, sessionID, row.TurnID, item, force)
-				if outcome.action == CheckpointActionRestore || outcome.action == CheckpointActionDelete {
-					result.Files = append(result.Files, outcome.path)
-				}
-				switch outcome.action {
-				case CheckpointActionRestore:
-					result.Restored++
-				case CheckpointActionDelete:
-					result.Deleted++
-				case CheckpointActionUnrecoverable:
-					result.Unrecoverable++
-				default:
-					result.Skipped++
-				}
+				tally.add(RewindFileItem{TurnID: row.TurnID, Path: outcome.path, Action: checkpointToFileAction(outcome.action)})
+				tally.sync(&result)
 				if restoreErr != nil {
 					result.Failures = append(result.Failures, restoreErr.Error())
 					fullyUndone = false

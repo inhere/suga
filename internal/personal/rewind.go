@@ -101,21 +101,18 @@ func tallyRewindFiles(steps []rewindFileStep, items []RewindFileItem) rewindFile
 			st.turns++
 		}
 	}
+	// One outcome per path (the last entry wins), see pathTally.
+	tally := newPathTally()
 	for _, it := range items {
-		switch it.Action {
-		case RewindFileRestore:
-			st.restored = append(st.restored, it.Path)
-		case RewindFileDelete:
-			st.deleted = append(st.deleted, it.Path)
-		case RewindFileConflict:
-			st.skipped = append(st.skipped, it.Path)
-			if strings.HasPrefix(it.Reason, rewindReasonRestoreFailed) {
-				st.failures = append(st.failures, it.Path+": "+it.Reason)
-			}
-		case RewindFileUnrecoverable:
-			st.unrecoverable = append(st.unrecoverable, it.Path)
+		tally.add(it)
+		if it.Action == RewindFileConflict && strings.HasPrefix(it.Reason, rewindReasonRestoreFailed) {
+			st.failures = append(st.failures, it.Path+": "+it.Reason)
 		}
 	}
+	st.restored = tally.paths(RewindFileRestore)
+	st.deleted = tally.paths(RewindFileDelete)
+	st.skipped = tally.paths(RewindFileConflict)
+	st.unrecoverable = tally.paths(RewindFileUnrecoverable)
 	return st
 }
 
