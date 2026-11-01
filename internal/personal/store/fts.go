@@ -125,6 +125,10 @@ type EntrySearch struct {
 	// Until is an exclusive upper bound on entry creation time. Zero means no
 	// upper bound.
 	Until time.Time
+	// ExcludeSession drops one session's masked rows (the rows a conversation
+	// rewind hid) from the hits; other sessions are untouched. The zero value
+	// excludes nothing, which is what sugasdk and the CLI search with.
+	ExcludeSession ExcludeSession
 	// Cursor is a process-local snapshot position. Invalid or expired cursors
 	// are ignored by SearchEntriesPage, which starts a fresh query.
 	Cursor string
@@ -160,12 +164,46 @@ func (s *Store) SearchEntries(ctx context.Context, q EntrySearch) ([]EntryHit, e
 // one more than the snapshot cap so the caller can distinguish truncation from
 // an exactly-full result without changing the normal page limit.
 func (s *Store) searchEntries(ctx context.Context, q EntrySearch, requestedLimit int) ([]EntryHit, error) {
-	terms := strings.Fields(q.Query)
+	sqlText, args, terms, matchTerms, err := buildEntrySearch(q, requestedLimit)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search entries: %w", err)
+	}
+	defer rows.Close()
+	out := []EntryHit{}
+	for rows.Next() {
+		var (
+			h       EntryHit
+			text    string
+			created string
+		)
+		if err := rows.Scan(&h.SessionID, &h.Seq, &h.Role, &text, &created); err != nil {
+			return nil, err
+		}
+		h.CreatedAt = parseTime(created)
+		if len(matchTerms) > 0 {
+			h.Snippet = text
+		} else {
+			h.Snippet = likeSnippet(text, terms[0])
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// buildEntrySearch builds the SQL and args of one bounded search, plus the
+// whitespace terms and the subset long enough for the trigram MATCH. It is split
+// from searchEntries so a test can EXPLAIN the exact statement that runs.
+func buildEntrySearch(q EntrySearch, requestedLimit int) (sqlText string, args []any, terms, matchTerms []string, err error) {
+	terms = strings.Fields(q.Query)
 	if len(terms) == 0 {
-		return nil, errors.New("search query is required")
+		return "", nil, nil, nil, errors.New("search query is required")
 	}
 	if err := validateSearchKinds(q.Kinds); err != nil {
-		return nil, err
+		return "", nil, nil, nil, err
 	}
 	limit := requestedLimit
 	if limit <= 0 {
@@ -176,7 +214,7 @@ func (s *Store) searchEntries(ctx context.Context, q EntrySearch, requestedLimit
 		limit = min(limit, maxSearchLimit)
 	}
 
-	matchTerms := make([]string, 0, len(terms))
+	matchTerms = make([]string, 0, len(terms))
 	likeTerms := make([]string, 0, len(terms))
 	for _, term := range terms {
 		if utf8.RuneCountInString(term) >= minMatchRunes {
@@ -186,10 +224,7 @@ func (s *Store) searchEntries(ctx context.Context, q EntrySearch, requestedLimit
 		}
 	}
 
-	var (
-		cols, where, order string
-		args               []any
-	)
+	var cols, where, order string
 	if len(matchTerms) > 0 {
 		// Column 3 is text; up to 64 tokens (trigram: ~64 runes) of context.
 		cols = `snippet(entries_fts, 3, '', '', '…', 64)`
@@ -241,41 +276,23 @@ func (s *Store) searchEntries(ctx context.Context, q EntrySearch, requestedLimit
 		where = joinWhere(where, `e.created_at < ?`)
 		args = append(args, formatTime(q.Until))
 	}
+	if ex := q.ExcludeSession.normalized(); ex.active() {
+		condition, exArgs := ex.condition()
+		where = joinWhere(where, condition)
+		args = append(args, exArgs...)
+	}
 	// Search results must not recursively contain the two retrieval tools'
 	// own transcripts, while other tool results remain searchable.
 	where = joinWhere(where, `NOT (f.role = ? AND COALESCE(json_extract(e.json, '$.ToolCall.Name'), '') IN (?, ?))`)
 	args = append(args, EntryTool, "session_search", "recall")
 	// MATCH, snippet() and bm25() take the FTS hidden column, which is named
 	// after the table (entries_fts) and resolves through the alias f.
-	sqlText := `SELECT f.session_id, f.seq, f.role, ` + cols + `, e.created_at
+	sqlText = `SELECT f.session_id, f.seq, f.role, ` + cols + `, e.created_at
 		FROM entries_fts AS f
 		JOIN entries AS e ON e.session_id = f.session_id AND e.seq = f.seq
 		JOIN sessions AS ss ON ss.id = f.session_id
 		WHERE ` + where + ` ORDER BY ` + order + fmt.Sprintf(` LIMIT %d`, limit)
-	rows, err := s.db.QueryContext(ctx, sqlText, args...)
-	if err != nil {
-		return nil, fmt.Errorf("search entries: %w", err)
-	}
-	defer rows.Close()
-	out := []EntryHit{}
-	for rows.Next() {
-		var (
-			h       EntryHit
-			text    string
-			created string
-		)
-		if err := rows.Scan(&h.SessionID, &h.Seq, &h.Role, &text, &created); err != nil {
-			return nil, err
-		}
-		h.CreatedAt = parseTime(created)
-		if len(matchTerms) > 0 {
-			h.Snippet = text
-		} else {
-			h.Snippet = likeSnippet(text, terms[0])
-		}
-		out = append(out, h)
-	}
-	return out, rows.Err()
+	return sqlText, args, terms, matchTerms, nil
 }
 
 // HasSearchableEntries reports whether the scope of q holds any searchable entry
