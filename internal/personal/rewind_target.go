@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
@@ -47,6 +48,8 @@ type userTurn struct {
 	// FirstSeq is the seq of the turn's first entry of any type: a context_update
 	// the turn wrote at its start comes before the request and is rewound with it.
 	FirstSeq int64
+	// Summary is the first non-empty line of the request, trimmed, for listings.
+	Summary string
 }
 
 // cutFor is the cut_seq of a rewind to the turn: the last entry before it (the
@@ -137,6 +140,7 @@ func (r *Runner) classifyTurns(ctx context.Context, sessionID string) ([]turnCla
 		default:
 			ordinal++
 			c.Ordinal = ordinal
+			c.Summary = firstLine(m.Content)
 		}
 		byID[t.ID] = len(out)
 		out = append(out, c)
@@ -202,4 +206,41 @@ func (r *Runner) rewindPreconditions(ctx context.Context, sessionID string) erro
 		return fmt.Errorf("%w: %d running", ErrRewindTasksRunning, running)
 	}
 	return nil
+}
+
+// RewindTurn is one user turn as `:rewind` lists it.
+type RewindTurn struct {
+	// Ordinal is the 1-based position among the user turns, oldest first.
+	Ordinal int
+	TurnID  string
+	// Summary is the first non-empty line of the request.
+	Summary   string
+	StartedAt time.Time
+}
+
+// RewindTurns lists the session's user turns a rewind or fork can target, oldest
+// first: a read-only adapter over userTurns for the chat listing.
+func (r *Runner) RewindTurns(ctx context.Context, sessionID string) ([]RewindTurn, error) {
+	if r == nil || r.cfg.Repository == nil {
+		return nil, errors.New("personal runner is not configured")
+	}
+	turns, err := r.userTurns(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RewindTurn, 0, len(turns))
+	for _, t := range turns {
+		out = append(out, RewindTurn{Ordinal: t.Ordinal, TurnID: t.Turn.ID, Summary: t.Summary, StartedAt: t.Turn.StartedAt})
+	}
+	return out, nil
+}
+
+// firstLine is the first non-blank line of text, trimmed.
+func firstLine(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
 }

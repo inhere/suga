@@ -203,10 +203,10 @@ func (t *turnInput) insert(line string) {
 		return
 	}
 	// :undo and :checkpoints are never steering either: they read and change the
-	// session's files, so the line goes back to the input line and runs at the
+	// session's files (:rewind and :fork the session's history too), so the line goes back to the input line and runs at the
 	// next prompt, after the turn. External delivery bypasses insert and stays
 	// ordinary model input.
-	if isUndoCommand(text) || isCheckpointCommand(text) {
+	if isUndoCommand(text) || isCheckpointCommand(text) || isRewindCommand(text) || isForkCommand(text) {
 		t.state.render.Hint(t.state.tr().T("status.undo.busy"))
 		t.state.source.putBackLine(line)
 		return

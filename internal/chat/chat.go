@@ -646,7 +646,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			// Show a code block of the last answer in full (:code [N]).
 			render.ShowCode(strings.TrimPrefix(line, codeCmd))
 			continue
-		case isImageCommand(line), isModelCommand(line), isQueueCommand(line), isTasksCommand(line),
+		case isImageCommand(line), isModelCommand(line), isRewindCommand(line), isForkCommand(line), isQueueCommand(line), isTasksCommand(line),
 			isSkillsCommand(line), isContextCommand(line),
 			line == ":help", strings.HasPrefix(line, ":help "), line == ":usage":
 			// The reference, this session's usage and its background tasks

@@ -223,3 +223,20 @@ func TestRewindPreconditions(t *testing.T) {
 		assert.True(t, errors.Is(err, store.ErrSessionNotFound))
 	})
 }
+
+// TestRewindTurns: the exported listing carries the ordinal, the turn id and the
+// first non-empty line of the request, over the same turns userTurns keeps.
+func TestRewindTurns(t *testing.T) {
+	f := newMaskFixture(t)
+	f.mixedSession("s")
+	f.turn("s", "multi", store.TurnCompleted)
+	f.msg("s", "multi", "user", "\n  first line  \nsecond line")
+	got, err := f.runner.RewindTurns(f.ctx, "s")
+	assert.NoErr(t, err)
+	assert.Eq(t, 4, len(got))
+	assert.Eq(t, RewindTurn{Ordinal: 1, TurnID: "u1", Summary: "first typed request", StartedAt: got[0].StartedAt}, got[0])
+	assert.Eq(t, "second typed request", got[1].Summary)
+	assert.Eq(t, "multi", got[3].TurnID)
+	assert.Eq(t, "first line", got[3].Summary)
+	assert.Eq(t, 4, got[3].Ordinal)
+}
