@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 会话 rewind 与 fork 实施计划
 
-> 状态：Draft 0.8 / 待人工计划批准
+> 状态：Draft 0.8 / 已批准（用户 2026-10-31 经 gofer web：“好的。批准 0.8；push。”，即接受 0.4–0.8 纠正修订并批准 0.8）
 
 ## 修订记录
 
