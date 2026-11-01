@@ -41,7 +41,7 @@ func resumeReply() string {
 //
 //	first chat: banner, prompt, no last reply on a new session, the turn answers, the second
 //	  turn reached the model (fake Arrived, counted before the delay so it is deterministic)
-//	killed chat (Session.Close) -> session id
+//	killed chat (hard kill by pid, see killChat) -> session id
 //	for `--resume <id>` and `--session-id <id>` (preview, text up to the first prompt):
 //	  label above the first prompt / before the reply / reply keeps ▣ before it / last lines
 //	  shown / head not shown / truncation hint "已截断前 N 行，完整记录见 suga inspect trace <id>" /
@@ -77,24 +77,24 @@ func TestChatResume(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	first.SendLine("第二句")
 	check(t, "the second turn reached the model", fake.WaitArrived(2, 15*time.Second))
-	_ = first.Close() // killed mid-turn: nothing resets the running status
-
-	listing, _, _ := sugaRun(t, binary, work, env, "session", "list", "--json", "-n", "1")
-	sid := ""
-	if m := sessionJSONID.FindStringSubmatch(listing); m != nil {
-		sid = m[1]
-	}
-	if !check2(t, "session id", sid != "") {
+	// Killed mid-turn: nothing resets the running status.
+	banner := chatSessionID.FindStringSubmatch(first.Text())
+	if !check2(t, "session id", banner != nil) {
 		return
 	}
+	sid := banner[1]
+	killChat(t, chatPID(t, binary, work, env, sid))
+	listing, _, _ := sugaRun(t, binary, work, env, "session", "list", "--json", "-n", "1")
+	listed := sessionJSONID.FindStringSubmatch(listing)
+	check(t, "the killed chat's session is the listed one", listed != nil && listed[1] == sid)
 
 	// previewChecks is what a chat continuing the session shows above its first prompt.
 	previewChecks := func(s *ptytest.Session, name string) {
-		until(t, s, name+": ❯ prompt", `❯ `, 0)
-		t.Logf("DBG3 %q", tail(s.Text()))
+		// "❯" without the space: ConPTY drops the trailing space of an idle prompt.
+		until(t, s, name+": ❯ prompt", `❯`, 0)
 		text := s.Text()
 		before := text
-		if cut := strings.Index(text, "❯ "); cut >= 0 {
+		if cut := strings.Index(text, "❯"); cut >= 0 {
 			before = text[:cut]
 		}
 		marker, reply := strings.Index(before, "▣"), strings.Index(before, fmt.Sprintf("SMOKE line %02d", resumeOmitted+1))
@@ -135,7 +135,7 @@ func TestChatResume(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	byID.SendLine("第四句")
 	check(t, "the killed turn reached the model", fake.WaitArrived(4, 15*time.Second))
-	_ = byID.Close()
+	killChat(t, chatPID(t, binary, work, env, sid))
 
 	// `suga run --resume` takes the session lock itself, so it recovers the session
 	// too; the notice goes to stderr and stdout keeps the answer.

@@ -99,8 +99,9 @@ func TestChatBudget(t *testing.T) {
 		until(t, s, "prompt", `❯ `, m)
 		s.SendLine("耗尽会话")
 		until(t, s, "session budget wraps up", `session budget 100%`, m)
-		until(t, s, "session wrap-up reason", `本轮因 token 预算用尽收尾`, m)
-		t.Logf("DBG2 %q", tail(s.Since(m)))
+		// \s*: the status line is wider than the 100 columns here, and ConPTY may put a
+		// space where it wraps.
+		until(t, s, "session wrap-up reason", `本轮因 token 预算用\s*尽收尾`, m)
 		until(t, s, "session wrap-up turn ends", budgetStatus, m)
 		time.Sleep(300 * time.Millisecond)
 		requests := len(fake.Requests())

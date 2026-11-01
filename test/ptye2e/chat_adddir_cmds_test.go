@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -42,8 +43,14 @@ const (
 // no 已授权.
 func TestChatAddDirCommands(t *testing.T) {
 	binary := buildSuga(t)
-	// The three directories live under one temp root, like the Python work dir.
-	root := t.TempDir()
+	// The directories live under one short temp root (like the Python work dir): the
+	// authorization question names a path and must stay within the 100 columns, or
+	// it wraps at a point that depends on the random temp name.
+	root, err := os.MkdirTemp("", "ad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	mk := func(name string) string {
 		p := filepath.Join(root, name)
 		if err := os.MkdirAll(p, 0o700); err != nil {
@@ -90,8 +97,7 @@ func TestChatAddDirCommands(t *testing.T) {
 		m = s.Mark()
 		s.SendLine("只读：看看外面的说明")
 		check(t, "outside read: question asked", s.Expect(`\[n\] 拒绝：`, m, 15*time.Second) &&
-			regexp.MustCompile(regexp.QuoteMeta("授权访问 "+outsideReal+"？[r] 只读 [w] 读写 [n] 拒绝：")).MatchString(unwrapped(s.Since(m))))
-		t.Logf("DBG1 want=%q got=%q", "授权访问 "+outsideReal, tail(s.Since(m)))
+			strings.Contains(unspaced(s.Since(m)), unspaced("授权访问 "+outsideReal+"？[r] 只读 [w] 读写 [n] 拒绝：")))
 		check(t, "outside read: the tool is held back until the answer", !s.Contains(cmdsReadMark, m))
 		s.SendLine("r")
 		until(t, s, "outside read: r authorizes it and the read runs", cmdsReadMark, m)
@@ -142,7 +148,7 @@ func TestChatAddDirCommands(t *testing.T) {
 		m = s.Mark()
 		s.SendLine("只写：再写一次")
 		check(t, "the write after :rm-dir asks again", s.Expect(`\[n\] 拒绝：`, m, 15*time.Second) &&
-			regexp.MustCompile(regexp.QuoteMeta("授权访问 "+shared+"？")).MatchString(unwrapped(s.Since(m))))
+			strings.Contains(unspaced(s.Since(m)), unspaced("授权访问 "+shared+"？")))
 		s.SendLine("n")
 		until(t, s, "the write after :rm-dir is refused", `用户拒绝授权访问 `, m)
 		_, statErr := os.Stat(writePath)

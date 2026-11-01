@@ -5,6 +5,7 @@ package ptye2e
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -29,11 +30,12 @@ func promptReady(t *testing.T, s *ptytest.Session, mark int) {
 	until(t, s, "next prompt is up", `(?:\n|↳ )❯`, mark)
 }
 
-var unwrapBreaks = regexp.MustCompile(`\r*\n`)
+var anySpace = regexp.MustCompile(`\s+`)
 
-// unwrapped is text with the terminal's line wraps taken out: CR LF, or CR CR LF
-// while a running turn's read keeps output processing on.
-func unwrapped(text string) string { return unwrapBreaks.ReplaceAllString(text, "") }
+// unspaced is text with every run of whitespace removed, for matching a long line
+// the terminal may have wrapped: CR LF, or CR CR LF while a running turn's read
+// keeps output processing on, and ConPTY may add padding spaces at the wrap.
+func unspaced(text string) string { return anySpace.ReplaceAllString(text, "") }
 
 var chatSessionID = regexp.MustCompile(`session id: ((?:sess_|sg_|s_)\S+)`)
 
@@ -120,4 +122,19 @@ func chatPID(t *testing.T, binary, work string, env []string, session string) in
 	}
 	t.Fatalf("no chat process for session %s in %q", session, out)
 	return 0
+}
+
+// killChat ends the chat process hard (SIGKILL on Unix, TerminateProcess on
+// Windows): nothing in chat runs on the way out, so a session left running stays
+// running, like after a crash. Session.Close is not the same on Windows: closing
+// the pseudo console sends the process a close event and chat shuts down cleanly.
+func killChat(t *testing.T, pid int) {
+	t.Helper()
+	proc, err := os.FindProcess(pid)
+	if err == nil {
+		err = proc.Kill()
+	}
+	if err != nil {
+		t.Fatalf("kill chat %d: %v", pid, err)
+	}
 }
