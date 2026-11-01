@@ -73,6 +73,7 @@ jobs:
         go test -coverprofile="profile.cov" ${{ matrix.os == 'ubuntu-latest' && matrix.go_version == 'stable' && '-race' || '' }} ./...
 
     - name: Run Go pty smoke
-      timeout-minutes: 5
-      run: go test -tags ptye2e -count=1 ./test/ptye2e/
+      # The suite takes ~5 min on a Windows runner since smoke batch 3 (v0.54.0 hit the old 5-min cap).
+      timeout-minutes: 15
+      run: go test -tags ptye2e -count=1 -timeout 14m ./test/ptye2e/
 
