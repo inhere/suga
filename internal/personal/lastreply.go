@@ -34,6 +34,19 @@ func (r *Runner) LastReply(ctx context.Context, sessionID string) (string, bool,
 	if err != nil {
 		return "", false, fmt.Errorf("read session replies: %w", err)
 	}
+	masked, err := r.maskedRanges(ctx, sessionID)
+	if err != nil {
+		return "", false, err
+	}
+	entries = dropMasked(entries, masked)
+	// After a rewind the session's LastTurnID may name a turn that is masked; the
+	// turn that matters is then the one of the newest visible message.
+	if len(masked) > 0 {
+		sess.LastTurnID, err = r.lastVisibleTurn(ctx, sessionID, masked, sess.LastTurnID)
+		if err != nil {
+			return "", false, err
+		}
+	}
 	for i := len(entries) - 1; i >= 0; i-- {
 		var m agentcore.Message
 		// An assistant message that only asked for tools carries no content, and
@@ -81,4 +94,20 @@ func (r *Runner) turnUnfinished(ctx context.Context, sess Session, laterAssistan
 		}
 	}
 	return laterAssistant
+}
+
+// lastVisibleTurn is the turn of the newest unmasked message entry of a rewound
+// session, or fallback when there is none. A rewind that dropped a failed or
+// cancelled last turn must not leave that turn's status behind as "the last turn
+// did not end normally".
+func (r *Runner) lastVisibleTurn(ctx context.Context, sessionID string, masked store.SeqRanges, fallback string) (string, error) {
+	recent, err := r.cfg.Repository.RecentEntriesSkipping(ctx, sessionID,
+		[]string{store.EntryUser, store.EntryAssistant, store.EntryTool}, masked, 1)
+	if err != nil {
+		return "", fmt.Errorf("read last visible turn: %w", err)
+	}
+	if len(recent) == 0 || recent[0].TurnID == "" {
+		return fallback, nil
+	}
+	return recent[0].TurnID, nil
 }

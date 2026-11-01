@@ -114,19 +114,26 @@ func (r *Runner) SessionCard(ctx context.Context, sessionID string) (SessionCard
 	}
 	// A handoff entry and a segment record both hold a summary; the newest one
 	// with a body is the session's latest summary, whichever type it is.
-	recents, err := r.cfg.Repository.RecentEntries(ctx, sessionID,
-		[]string{store.EntryHandoff, store.EntryCompaction}, sessionCardSummaryCandidates)
+	// All four entry-derived fields skip the rewound conversation's masked
+	// interval, so a card never shows a summary, plan or count from a turn the
+	// model no longer remembers (visible.go).
+	masked, err := r.maskedRanges(ctx, sessionID)
+	if err != nil {
+		return SessionCard{}, fmt.Errorf("session card: %w", err)
+	}
+	recents, err := r.cfg.Repository.RecentEntriesSkipping(ctx, sessionID,
+		[]string{store.EntryHandoff, store.EntryCompaction}, masked, sessionCardSummaryCandidates)
 	if err != nil {
 		return SessionCard{}, fmt.Errorf("session card summary: %w", err)
 	}
 	fillCardSummary(recents, &card)
-	if err := r.fillCardPlan(ctx, &card); err != nil {
+	if err := r.fillCardPlan(ctx, &card, masked); err != nil {
 		return SessionCard{}, err
 	}
-	if card.SegmentCount, err = r.cfg.Repository.CountEntriesByType(ctx, sessionID, store.EntryCompaction); err != nil {
+	if card.SegmentCount, err = r.cfg.Repository.CountEntriesByTypeSkipping(ctx, sessionID, store.EntryCompaction, masked); err != nil {
 		return SessionCard{}, fmt.Errorf("session card segments: %w", err)
 	}
-	if card.Turns, err = r.cfg.Repository.CountTurns(ctx, sessionID); err != nil {
+	if card.Turns, err = r.cfg.Repository.CountTurnsSkipping(ctx, sessionID, masked); err != nil {
 		return SessionCard{}, fmt.Errorf("session card turns: %w", err)
 	}
 	// Last activity is the newest entry of the log; a session that never stored
@@ -190,8 +197,8 @@ func fillCardSummary(entries []store.Entry, card *SessionCard) {
 // fillCardPlan sets the open steps of the session's latest plan and when it was
 // recorded. The plan is decoded by latestPlanModel and its open steps are the
 // nudge rules' (openPlanSteps), so a card and a nudge finding never disagree.
-func (r *Runner) fillCardPlan(ctx context.Context, card *SessionCard) error {
-	entry, err := r.cfg.Repository.LatestEntry(ctx, card.SessionID, store.EntryPlan)
+func (r *Runner) fillCardPlan(ctx context.Context, card *SessionCard, masked store.SeqRanges) error {
+	entry, err := r.cfg.Repository.LatestEntrySkipping(ctx, card.SessionID, store.EntryPlan, masked)
 	if err != nil {
 		return fmt.Errorf("session card plan: %w", err)
 	}
