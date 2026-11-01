@@ -60,11 +60,6 @@ const (
 // the source's title.
 const forkTitleKey = "personal.session.fork_title"
 
-// forkHook is a test seam: called with "files" after the attachments are copied
-// and before the transaction, and with "created" after it committed. An error
-// takes the same failure path as a real one.
-var forkHook func(stage string) error
-
 // ForkResult is what Fork created: the new session and what it holds.
 type ForkResult struct {
 	SessionID string
@@ -149,8 +144,8 @@ func (r *Runner) forkLocked(ctx context.Context, sessionsRoot, sid, target strin
 	if err := copyForkFiles(sessionsRoot, sid, newID, entries); err != nil {
 		return fail(err)
 	}
-	if forkHook != nil {
-		if err := forkHook("files"); err != nil {
+	if r.forkHook != nil {
+		if err := r.forkHook("files"); err != nil {
 			return fail(err)
 		}
 	}
@@ -161,8 +156,8 @@ func (r *Runner) forkLocked(ctx context.Context, sessionsRoot, sid, target strin
 		}
 		return fail(fmt.Errorf("create forked session: %w", err))
 	}
-	if forkHook != nil {
-		if err := forkHook("created"); err != nil {
+	if r.forkHook != nil {
+		if err := r.forkHook("created"); err != nil {
 			return fail(err)
 		}
 	}

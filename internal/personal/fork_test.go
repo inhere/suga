@@ -415,13 +415,12 @@ func TestForkFailureLeavesNothing(t *testing.T) {
 		t.Run("failure at "+stage, func(t *testing.T) {
 			f := setup(t)
 			before := hashSession(t, f, "s")
-			forkHook = func(s string) error {
+			f.runner.forkHook = func(s string) error {
 				if s == stage {
 					return errors.New("injected")
 				}
 				return nil
 			}
-			t.Cleanup(func() { forkHook = nil })
 			_, err := f.fork("s", "6")
 			assert.ErrSubMsg(t, err, "injected")
 			check(t, f, before)
