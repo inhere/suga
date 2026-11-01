@@ -95,7 +95,11 @@ func (r *Runner) buildPackage(ctx context.Context, sessionID, turnID, previous s
 
 // latestPlan returns the session's latest plan entry JSON ("" = none).
 func (r *Runner) latestPlan(ctx context.Context, sessionID string) string {
-	if e, err := r.cfg.Repository.LatestEntry(ctx, sessionID, store.EntryPlan); err == nil && e != nil && len(e.JSON) > 0 {
+	masked, ok := r.maskedOrWarn(ctx, sessionID)
+	if !ok {
+		return ""
+	}
+	if e, err := r.cfg.Repository.LatestEntrySkipping(ctx, sessionID, store.EntryPlan, masked); err == nil && e != nil && len(e.JSON) > 0 {
 		return string(e.JSON)
 	}
 	return ""
@@ -125,6 +129,11 @@ func (r *Runner) recentRequests(ctx context.Context, sessionID, turnID string, n
 	if err != nil {
 		return nil, fmt.Errorf("list user requests: %w", err)
 	}
+	masked, err := r.maskedRanges(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	entries = dropMasked(entries, masked)
 	type request struct {
 		seq  int64
 		text string

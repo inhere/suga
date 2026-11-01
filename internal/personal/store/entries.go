@@ -426,6 +426,14 @@ func (s *Store) RecentEntriesSkipping(ctx context.Context, sessionID string, typ
 	if len(types) == 0 || limit <= 0 {
 		return nil, nil
 	}
+	if len(skip) == 0 {
+		// Nothing is masked: the plain query, whose plan the card benchmark pins.
+		got, err := s.RecentEntries(ctx, sessionID, types, limit)
+		if err != nil || len(got) == 0 {
+			return nil, err
+		}
+		return got, nil
+	}
 	segs := skip.visibleSegments()
 	q := `SELECT ` + entryCols + ` FROM entries WHERE session_id = ? AND seq BETWEEN ? AND ? AND type IN (` +
 		placeholders(len(types)) + `) ORDER BY seq DESC LIMIT ?`
@@ -503,18 +511,21 @@ func (s *Store) EntriesFromSkipping(ctx context.Context, sessionID string, types
 }
 
 // CountEntriesByTypeSkipping is CountEntriesByType over the entries outside
-// skip: one primary-key range count per visible segment.
+// skip. It is CountEntriesByType minus the masked rows, in one query that keeps
+// the plain count's plan (idx_entries_type: the rows of one type are few); a
+// per-segment primary-key range count read every row of the session instead
+// (3ms against 30us on 20k entries). An empty skip is CountEntriesByType.
 func (s *Store) CountEntriesByTypeSkipping(ctx context.Context, sessionID, typ string, skip SeqRanges) (int, error) {
-	total := 0
-	for _, seg := range skip.visibleSegments() {
-		var n int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM entries WHERE session_id = ? AND seq BETWEEN ? AND ? AND type = ?`,
-			sessionID, seg[0], seg[1], typ).Scan(&n); err != nil {
-			return 0, fmt.Errorf("count %s entries: %w", typ, err)
-		}
-		total += n
+	if len(skip) == 0 {
+		return s.CountEntriesByType(ctx, sessionID, typ)
 	}
-	return total, nil
+	masked, margs := skip.maskedSQL("seq")
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM entries WHERE session_id = ? AND type = ? AND NOT `+masked,
+		append([]any{sessionID, typ}, margs...)...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count %s entries: %w", typ, err)
+	}
+	return n, nil
 }
 
 // CountEntriesByType counts a session's entries of one type. The query is a
