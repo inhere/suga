@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 会话 rewind 与 fork 实施计划
 
-> 状态：Draft 0.8 / 已批准（用户 2026-10-31 经 gofer web：“好的。批准 0.8；push。”，即接受 0.4–0.8 纠正修订并批准 0.8）
+> 状态：Draft 0.8 / 已完成（v0.54.0，2026-11-01）；已批准（用户 2026-10-31 经 gofer web：“好的。批准 0.8；push。”，即接受 0.4–0.8 纠正修订并批准 0.8）
 
 ## 修订记录
 
@@ -626,3 +626,11 @@ var ErrRewindStale error // T5 声明
    - CLI、ACP、sugasdk；
    - trace 标注；
    - 跨会话检索排除其他会话的屏蔽区间（设计 R9、R11）。
+
+## 完成总结
+
+- T0–T8 全部合入 main，随 v0.54.0（`1d99a011`）发布：`:rewind N [files|conversation|both]` 与 `:fork N`。
+- 验证：suga-verify 全过（Linux race、CI 模拟、vet/staticcheck、Windows 全量、smoke-chat）；Go ptye2e Linux 89/0、Windows 90/0；各任务计划内反向验证均有效。
+- 实施中按设计修正：单项恢复失败仍回退会话、meta 失败经 `RewindResult.Warnings` 报告（接口追加）；T2 调整 T1 计数查询以保住类型索引（SessionCard ≤3%）。
+- `UNVERIFIED_REAL_ENV: 真实 provider 的 rewind 后请求（复现：真实配置下三轮对话后 :rewind 2 conversation 再发一句，suga inspect trace --json 查看请求）`。
+- 剩余：suga-449r 跳过原因翻译、suga-y027 undo/rewind 按路径去重、suga-fvnm chat_steer 偶发；设计 R9 的 summarize/redo/CLI/ACP/sugasdk/trace 标注。
