@@ -114,6 +114,20 @@ var chatCommandSpecs = []chatCommandSpec{
 		Options:    []string{"force", "-h"},
 	},
 	{
+		Names:      []string{":rewind"},
+		SummaryKey: "cmd.summary.rewind",
+		UsageKey:   "cmd.usage.rewind",
+		TakesArgs:  true,
+		Options:    []string{"files", "conversation", "both", "-h"},
+	},
+	{
+		Names:      []string{":fork"},
+		SummaryKey: "cmd.summary.fork",
+		UsageKey:   "cmd.usage.fork",
+		TakesArgs:  true,
+		Options:    []string{"-h"},
+	},
+	{
 		Names:      []string{":help"},
 		SummaryKey: "cmd.summary.help",
 		UsageKey:   "cmd.usage.help",

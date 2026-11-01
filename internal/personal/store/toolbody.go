@@ -270,6 +270,10 @@ type toolBodyWriter struct {
 	pos    int64 // length after the records written so far
 	dirty  bool
 	closed bool
+	// created is set when opening made the file; dropIfNew then removes it on an
+	// aborted Close(false) instead of truncating it to an empty file.
+	created   bool
+	dropIfNew bool
 }
 
 // openToolBodyWriter opens (creating) the session file for appending.
@@ -302,7 +306,7 @@ func (s *Store) openToolBodyWriter(sessionID string) (*toolBodyWriter, error) {
 			return nil, fmt.Errorf("sync session directory: %w", err)
 		}
 	}
-	return &toolBodyWriter{path: path, file: file, size: info.Size(), pos: info.Size()}, nil
+	return &toolBodyWriter{path: path, file: file, size: info.Size(), pos: info.Size(), created: created}, nil
 }
 
 // WriteRecord appends one record and returns its reference. off/len cover the
@@ -351,7 +355,13 @@ func (w *toolBodyWriter) Close(keep bool) error {
 	if closeErr := w.file.Close(); closeErr != nil {
 		err = closeErr
 	}
-	if !keep {
+	if !keep && w.created && w.dropIfNew {
+		if rmErr := os.Remove(w.path); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) && err == nil {
+			err = fmt.Errorf("remove tool body file: %w", rmErr)
+		}
+		// The session directory this writer may have made goes too, when empty.
+		_ = os.Remove(filepath.Dir(w.path))
+	} else if !keep {
 		if truncErr := os.Truncate(w.path, w.size); truncErr != nil && !errors.Is(truncErr, os.ErrNotExist) {
 			if err == nil {
 				err = fmt.Errorf("truncate tool body file: %w", truncErr)

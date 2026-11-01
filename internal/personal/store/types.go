@@ -45,6 +45,11 @@ const (
 	// admitted call without a tool result and answers it as "state unknown"
 	// instead of replaying it. It is never a model message.
 	EntryAdmit = "admit"
+	// EntryRewind marks a conversation rewind (session rewind design 0.2): its
+	// JSON is {cut_seq, target_turn, scope, files}. The entries with a seq inside
+	// (cut_seq, this record's seq) are masked for the readers that build model
+	// context; nothing is deleted and no seq is reused.
+	EntryRewind = "rewind"
 )
 
 // Event kinds stored in events.kind.
@@ -188,6 +193,10 @@ type NewEntry struct {
 	TurnID string
 	Type   string
 	JSON   json.RawMessage
+	// Seq and CreatedAt are read only by CreateForkedSession, where the caller
+	// maps them beforehand; AppendEntries assigns both itself and ignores them.
+	Seq       int64
+	CreatedAt time.Time
 }
 
 // EntryRef is the minimal entry data a reader needs to link events to

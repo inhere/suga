@@ -58,6 +58,8 @@ var ledgerMessageTypes = []string{store.EntryUser, store.EntryAssistant, store.E
 type Ledger struct {
 	mu   sync.Mutex
 	repo *store.Store
+	// masked looks up the masked intervals of a session (see bindMasked).
+	masked func(ctx context.Context, sessionID string) (store.SeqRanges, error)
 	// dir is the sessions root (<SUGA_HOME>/sessions).
 	dir string
 	// foldCase compares workspace paths case-insensitively (Windows).
@@ -75,6 +77,27 @@ func (l *Ledger) bind(repo *store.Store) {
 	l.mu.Lock()
 	l.repo = repo
 	l.mu.Unlock()
+}
+
+// bindMasked sets the lookup of a session's masked intervals (Runner.maskedRanges).
+// An unbound ledger masks nothing.
+func (l *Ledger) bindMasked(fn func(ctx context.Context, sessionID string) (store.SeqRanges, error)) {
+	l.mu.Lock()
+	l.masked = fn
+	l.mu.Unlock()
+}
+
+// maskedOf returns the masked intervals of the current session of ctx when
+// sessionID is that session, and nil for any other session (only the running
+// conversation forgets its rewound turns, R11).
+func (l *Ledger) maskedOf(ctx context.Context, sessionID string) (store.SeqRanges, error) {
+	l.mu.Lock()
+	fn := l.masked
+	l.mu.Unlock()
+	if fn == nil || sessionID == "" || observeScopeFrom(ctx).sessionID != sessionID {
+		return nil, nil
+	}
+	return fn(ctx, sessionID)
 }
 
 func (l *Ledger) store() (*store.Store, error) {
@@ -121,7 +144,18 @@ func (l *Ledger) Search(ctx context.Context, q native.LedgerQuery) (native.Ledge
 	default:
 		return native.LedgerSearchResult{}, fmt.Errorf("scope %q must be current, workspace or all", q.Scope)
 	}
-	result, err := repo.SearchEntriesPage(ctx, search)
+	// The running conversation never finds its own rewound turns again, in any
+	// scope. The exclusion goes on a copy: HasSearchableEntries below only picks
+	// the wording of the "no history" notice and keeps the full scope.
+	paged := search
+	if current != "" {
+		ranges, err := l.maskedOf(ctx, current)
+		if err != nil {
+			return native.LedgerSearchResult{}, err
+		}
+		paged.ExcludeSession = store.ExcludeSession{SessionID: current, Ranges: ranges}
+	}
+	result, err := repo.SearchEntriesPage(ctx, paged)
 	if err != nil {
 		return native.LedgerSearchResult{}, err
 	}
@@ -259,8 +293,15 @@ func (l *Ledger) readMessages(ctx context.Context, sessionID string, seq int64, 
 	}
 	limit = min(limit, maxRecallMessages)
 	offset = min(max(offset, 0), maxRecallOffset)
-	entries, err := repo.ListEntries(ctx, sessionID, store.EntryFilter{SinceSeq: seq - 1, Types: ledgerMessageTypes, Limit: offset + limit + 1})
+	masked, err := l.maskedOf(ctx, sessionID)
 	if err != nil {
+		return "", err
+	}
+	var entries []store.Entry
+	if masked.Hidden(seq) {
+		// A ref into a masked interval does not exist for the model any more.
+		entries = nil
+	} else if entries, err = repo.EntriesFromSkipping(ctx, sessionID, ledgerMessageTypes, seq, masked, offset+limit+1); err != nil {
 		return "", err
 	}
 	if len(entries) <= offset {
@@ -280,7 +321,15 @@ func (l *Ledger) readMessages(ctx context.Context, sessionID string, seq int64, 
 	}
 	entries = entries[offset:]
 	more := len(entries) > limit
+	// next is the continuation ref: the seq after the last shown entry, unless that
+	// seq is masked, then the first visible entry after the interval (the one extra
+	// entry read above). Without a rewind record it is always last+1, as before.
+	var next int64
 	if more {
+		next = entries[limit-1].Seq + 1
+		if masked.Hidden(next) {
+			next = entries[limit].Seq
+		}
 		entries = entries[:limit]
 	}
 	var b strings.Builder
@@ -288,7 +337,7 @@ func (l *Ledger) readMessages(ctx context.Context, sessionID string, seq int64, 
 		renderEntry(&b, e)
 	}
 	if more {
-		fmt.Fprintf(&b, "[more messages follow; continue with recall(ref=%q)]\n", messageRef(sessionID, entries[len(entries)-1].Seq+1))
+		fmt.Fprintf(&b, "[more messages follow; continue with recall(ref=%q)]\n", messageRef(sessionID, next))
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }

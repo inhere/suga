@@ -42,16 +42,23 @@ func (r *Runner) SelectUndoCheckpoints(ctx context.Context, snapshots *SessionSn
 func (r *Runner) gateForUndo() UndoGate {
 	return undoGate{acquire: func(ctx context.Context) (func(), error) {
 		return r.gate(undoSessionID(ctx)).Acquire(ctx)
+	}, acquireUnlessBusy: func(ctx context.Context) (func(), error) {
+		return r.gate(undoSessionID(ctx)).AcquireUnlessBusy(ctx)
 	}}
 }
 
 // undoGate carries the session ID through context because the existing gate is
 // per-session while UndoGate remains a small provider-independent interface.
 type undoGate struct {
-	acquire func(context.Context) (func(), error)
+	acquire           func(context.Context) (func(), error)
+	acquireUnlessBusy func(context.Context) (func(), error)
 }
 
 func (g undoGate) Acquire(ctx context.Context) (func(), error) { return g.acquire(ctx) }
+
+func (g undoGate) AcquireUnlessBusy(ctx context.Context) (func(), error) {
+	return g.acquireUnlessBusy(ctx)
+}
 
 // undoSessionID is read by the Runner adapter after UndoCore has resolved the
 // session prefix and placed the full ID in the gate context.
@@ -69,4 +76,16 @@ func (r *Runner) heldLockForUndo() func(string) bool {
 		_, ok := r.heldLocks[sessionID]
 		return ok
 	}
+}
+
+// RewindPlan is the Runner adapter of the rewind preview (see rewind.go): a
+// read-only plan that takes no gate and no lock.
+func (r *Runner) RewindPlan(ctx context.Context, snapshots *SessionSnapshots, sessionsRoot, sid, target string, scope RewindScope) (RewindPlan, error) {
+	return r.planRewind(ctx, snapshots, sessionsRoot, sid, target, scope)
+}
+
+// ApplyRewind executes a previewed plan under the session gate and lock; it
+// returns ErrRewindStale when the session no longer matches the preview.
+func (r *Runner) ApplyRewind(ctx context.Context, snapshots *SessionSnapshots, sessionsRoot string, plan RewindPlan) (RewindResult, error) {
+	return r.applyRewind(ctx, snapshots, sessionsRoot, plan)
 }

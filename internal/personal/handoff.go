@@ -121,7 +121,11 @@ func (r *Runner) buildHandoff(ctx context.Context, src Session) (handoffRecord, 
 	if strings.TrimSpace(rec.Summary) == "" {
 		return handoffRecord{}, errors.New("source session has no content to hand off")
 	}
-	if e, err := r.cfg.Repository.LatestEntry(ctx, src.ID, store.EntryPlan); err != nil {
+	masked, err := r.maskedRanges(ctx, src.ID)
+	if err != nil {
+		return handoffRecord{}, err
+	}
+	if e, err := r.cfg.Repository.LatestEntrySkipping(ctx, src.ID, store.EntryPlan, masked); err != nil {
 		return handoffRecord{}, err
 	} else if e != nil && len(e.JSON) > 0 {
 		rec.Plan = e.JSON

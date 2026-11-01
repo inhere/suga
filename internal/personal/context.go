@@ -134,6 +134,14 @@ func (r *Runner) loadHistory(ctx context.Context, sessionID string) (historyView
 	if err != nil {
 		return historyView{}, fmt.Errorf("load session history: %w", err)
 	}
+	// A rewound conversation hides the entries between its cut and the rewind
+	// record (visible.go); dropping them here keeps every later step (adoption,
+	// replay, segment records) from ever seeing them.
+	masked, err := r.maskedRanges(ctx, sessionID)
+	if err != nil {
+		return historyView{}, err
+	}
+	entries = dropMasked(entries, masked)
 	replay := make(map[int64]bool)
 	if len(interrupted) > 0 {
 		for _, e := range entries {
