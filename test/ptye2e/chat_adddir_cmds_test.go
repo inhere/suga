@@ -147,8 +147,13 @@ func TestChatAddDirCommands(t *testing.T) {
 		promptReady(t, s, m)
 		m = s.Mark()
 		s.SendLine("只写：再写一次")
-		check(t, "the write after :rm-dir asks again", s.Expect(`\[n\] 拒绝：`, m, 15*time.Second) &&
-			strings.Contains(unspaced(s.Since(m)), unspaced("授权访问 "+shared+"？")))
+		askedAgain := s.Expect(`\[n\] 拒绝：`, m, 15*time.Second) &&
+			strings.Contains(unspaced(s.Since(m)), unspaced("授权访问 "+shared+"？"))
+		check(t, "the write after :rm-dir asks again", askedAgain)
+		if !askedAgain {
+			// Intermittent on windows-latest only (suga-y5dk): log what was shown.
+			t.Logf("asks again: want %q; text tail %q", "授权访问 "+shared+"？", tail(s.Since(m)))
+		}
 		s.SendLine("n")
 		until(t, s, "the write after :rm-dir is refused", `用户拒绝授权访问 `, m)
 		_, statErr := os.Stat(writePath)
