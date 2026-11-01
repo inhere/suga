@@ -426,6 +426,9 @@ type Runner struct {
 	// that pins the model request to be identical with and without the ledger
 	// sets it (issue suga-r72b); production paths never do.
 	withoutAdmitLedger bool
+	// rewindApplyHook injects a failure into runRewind after the file part ran
+	// and before the rewind record is written. Tests only; nil in production.
+	rewindApplyHook func(stage string) error
 	// deadline is the run's job-deadline state (nil-equivalent when
 	// DeadlineEnv is empty); the deadline hint hook shares it across turns.
 	deadline *deadlineState

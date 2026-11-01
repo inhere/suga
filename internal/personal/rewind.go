@@ -211,6 +211,9 @@ func (r *Runner) runRewind(ctx context.Context, core *UndoCore, plan RewindPlan,
 	var stat rewindFileStat
 	if plan.Scope.hasFiles() {
 		items, ferr := core.applyRewindFiles(ctx, sid, steps)
+		if ferr == nil && r.rewindApplyHook != nil {
+			ferr = r.rewindApplyHook("files_applied") // test-only failure injection
+		}
 		res.Files = items
 		stat = tallyRewindFiles(steps, items)
 		if r.cfg.OnFilesRestored != nil {
