@@ -429,6 +429,10 @@ type Runner struct {
 	// rewindApplyHook injects a failure into runRewind after the file part ran
 	// and before the rewind record is written. Tests only; nil in production.
 	rewindApplyHook func(stage string) error
+	// forkHook is called by Fork with "files" (attachments copied, transaction
+	// not opened) and "created" (committed); an error takes the failure path. Used only by tests to inject failures (仅测试注入失败用);
+	// production paths leave it nil.
+	forkHook func(stage string) error
 	// deadline is the run's job-deadline state (nil-equivalent when
 	// DeadlineEnv is empty); the deadline hint hook shares it across turns.
 	deadline *deadlineState
