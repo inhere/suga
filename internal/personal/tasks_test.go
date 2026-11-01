@@ -23,6 +23,7 @@ type fakeNotices struct {
 	mu       sync.Mutex
 	infos    []tasks.Info
 	returned []tasks.Info
+	listed   []tasks.Info // what List returns
 }
 
 func (f *fakeNotices) set(infos ...tasks.Info) { f.mu.Lock(); f.infos = infos; f.mu.Unlock() }
@@ -40,6 +41,16 @@ func (f *fakeNotices) ReturnNotices(_ string, infos []tasks.Info) {
 	f.returned = append(f.returned, infos...)
 	f.infos = append(append([]tasks.Info(nil), infos...), f.infos...)
 }
+
+// List reports the tasks the test registered with setTasks (none by default).
+func (f *fakeNotices) List(string) []tasks.Info {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]tasks.Info(nil), f.listed...)
+}
+
+// setTasks sets what List returns.
+func (f *fakeNotices) setTasks(infos ...tasks.Info) { f.mu.Lock(); f.listed = infos; f.mu.Unlock() }
 
 // pending reports what a later TakeNotices would hand out.
 func (f *fakeNotices) pending() []tasks.Info {

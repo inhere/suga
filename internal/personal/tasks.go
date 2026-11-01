@@ -21,6 +21,9 @@ type TaskNotices interface {
 	// pending queue (a cancelled or failed turn: its entries do not replay the
 	// notice, see replayablePrefix).
 	ReturnNotices(sessionID string, infos []tasks.Info)
+	// List returns all of the session's tasks, running or ended (tasks.Manager.List).
+	// rewind and fork refuse while one runs (rewindPreconditions).
+	List(sessionID string) []tasks.Info
 }
 
 // turnNotices is the task notices one turn took from the manager, kept so finish
