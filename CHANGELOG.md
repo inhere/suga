@@ -4,9 +4,22 @@
 
 ## [未发布]
 
+## [0.54.1] - 2026-11-01
+
+本版新增 `pump.WatchSizeLogger`（xhen 终端换用 chatui 所需），并修正 `:undo`/`:rewind` 的文件计数与原因文案。
+
 ### 新增
 
 - `pkg/chatui/lineedit/pump` 新增 `WatchSizeLogger(term, fd, onChange, logger)`：与 `WatchSize` 相同，但尺寸记录与读取失败的日志写到传入的 logger（nil 即 `slog.Default()`），宿主不必为此替换进程默认 logger；`WatchSize` 行为不变。
+
+### 修复
+
+- `:undo` 与 `:rewind` 的结果和发给模型的通知按路径计数（suga-y027）：同一文件被多轮写过时不再重复计为“已恢复 N 个文件”、重复列出路径；同一路径以最后执行的那一步（最早一轮的快照）为准，逐条目的检查点状态不变。
+- `:rewind` 预览与结果里跳过/不可恢复的原因显示为中英文文案（suga-449r），不再是 `content_changed` 这类内部代码。
+
+### 变更
+
+- CI 的 Go 伪终端冒烟步骤超时由 5 分钟放宽到 15 分钟；`chat_bang` 等用例在 Windows runner 上容忍 pwsh 写在输出行首的窗口标题序列。
 
 ## [0.54.0] - 2026-11-01
 
@@ -1308,7 +1321,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.54.0...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.54.1...HEAD
+[0.54.1]: https://github.com/inhere/suga/compare/v0.54.0...v0.54.1
 [0.54.0]: https://github.com/inhere/suga/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/inhere/suga/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/inhere/suga/compare/v0.51.0...v0.52.0
