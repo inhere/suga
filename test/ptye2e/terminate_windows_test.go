@@ -55,5 +55,9 @@ func TestConsoleCtrlCHelper(t *testing.T) {
 	if r, _, err := generate.Call(ctrlCEvent, 0); r == 0 {
 		t.Fatalf("GenerateConsoleCtrlEvent: %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	// Detach at once: the chat exits on the event and its pseudo console closes,
+	// and a process still attached then gets CTRL_CLOSE, whose default action
+	// kills it with 0xc000013a. The event is already queued to the chat.
+	free.Call()
+	time.Sleep(200 * time.Millisecond)
 }
