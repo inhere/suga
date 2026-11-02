@@ -4,6 +4,16 @@
 
 ## [未发布]
 
+## [0.54.2] - 2026-11-02
+
+本版修正防注入守卫对自身历史的误拦、Windows 上后台运行时弹出命令窗口，以及 chat 输入框中间换行后文字重复显示。
+
+### 修复
+
+- `session_search` 与 `recall` 的结果不再算外部内容（suga-ihfl）：它们取回的是本会话自己的历史，过去会让“逐字复制外部内容”的守卫拒绝（gofer/ACP）或询问（chat）复用自身文件路径的写文件与执行命令调用，并把会话标为已污染、写记忆需要确认。网页、搜索与 MCP 的原始结果在首次读取时已整段记为外部来源（含之后被外置保存的输出），同一会话里照抄仍会被拦。
+- Windows：suga 自身没有控制台时（由 gofer 等后台程序隐藏启动），`shell_exec`、`code_exec`、监视与后台任务启动的子进程不再各自弹出可见的命令窗口（suga-u02f）；在终端里交互使用时不变。
+- chat 输入框：在已有文字中间插入换行后，换行点之后的内容不再在屏幕上重复显示一次；删除换行合并两行、在换行前删字时也不再残留旧字（suga-e6it）。
+
 ## [0.54.1] - 2026-11-01
 
 本版新增 `pump.WatchSizeLogger`（xhen 终端换用 chatui 所需），并修正 `:undo`/`:rewind` 的文件计数与原因文案。
@@ -1321,7 +1331,8 @@ OpenAI Responses API provider 与网关适配层、`suag trace --web` 时间线�
 
 - 首个标记版本（旧控制面，代码保留在此 tag）。
 
-[未发布]: https://github.com/inhere/suga/compare/v0.54.1...HEAD
+[未发布]: https://github.com/inhere/suga/compare/v0.54.2...HEAD
+[0.54.2]: https://github.com/inhere/suga/compare/v0.54.1...v0.54.2
 [0.54.1]: https://github.com/inhere/suga/compare/v0.54.0...v0.54.1
 [0.54.0]: https://github.com/inhere/suga/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/inhere/suga/compare/v0.52.0...v0.53.0
