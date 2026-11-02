@@ -187,6 +187,15 @@ func (t *Terminal) eraseNPreviousChars(n int) {
 	if t.pos < n {
 		n = t.pos
 	}
+	if t.echo && (hasNewline(t.line[t.pos-n:t.pos]) || hasNewline(t.line[t.pos:])) {
+		// Removing a newline joins rows, and with a newline after the cursor the
+		// cells freed at the end of the edited row are not the end of the input:
+		// blanking after the tail would miss them (suga-e6it). Repaint it all.
+		t.pos -= n
+		t.line = append(t.line[:t.pos], t.line[t.pos+n:]...)
+		t.clearAndRepaintLinePlusNPrevious(t.maxLine)
+		return
+	}
 	oldEnd := t.cellIndex(len(t.line))
 	t.pos -= n
 	t.moveCursorToPos(t.pos)

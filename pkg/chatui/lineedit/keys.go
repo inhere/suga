@@ -423,9 +423,28 @@ func (t *Terminal) addKeyToLine(key rune) {
 	t.line = t.line[:len(t.line)+1]
 	copy(t.line[t.pos+1:], t.line[t.pos:])
 	t.line[t.pos] = key
+	if tail := t.line[t.pos+1:]; t.echo && ((key == '\n' && len(tail) > 0) || hasNewline(tail)) {
+		// A newline goes in before other text, or the text after the cursor spans
+		// rows: rewriting only the tail would leave the old rest of the row on
+		// screen (the rest of a split line showed twice, suga-e6it), so the whole
+		// input is repainted.
+		t.pos++
+		t.clearAndRepaintLinePlusNPrevious(t.maxLine)
+		return
+	}
 	if t.echo {
 		t.writeLine(t.line[t.pos:])
 	}
 	t.pos++
 	t.moveCursorToPos(t.pos)
+}
+
+// hasNewline reports whether line holds a newline (a multi-row input).
+func hasNewline(line []rune) bool {
+	for _, r := range line {
+		if r == '\n' {
+			return true
+		}
+	}
+	return false
 }
