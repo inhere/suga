@@ -24,6 +24,7 @@
   - xhen → gofer：提交 job 并回收结果（HTTP/MCP），用于需要真正干活、耗时、换机器或要看日志的工作；契约待定；
   - gofer → suga：agent 接入（CLI/ACP，`gofer job -a suga`）。
 - 新功能先按上面归属落到对应项目；跨项目需要时扩展连接上的契约，不在另一侧复制一套。
+- suga 可以独立使用：终端 chat 与 ACP（由 gofer、IDE 等拉起）都不依赖 xhen；xhen 经公开包嵌入、gofer 经 agent 接入都只是它的使用方。分工用于加新功能时考虑三个项目如何配合，不删减现有功能。
 
 ## 验证
 
