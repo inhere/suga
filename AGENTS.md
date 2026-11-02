@@ -12,14 +12,18 @@
 - 会话分段与上下文投影（稳定系统提示词、段上下文消息、分段交接、空闲整理、用量上报、`pkg/agentcore/schedule`）：设计 `docs/design/2026-10-11-segments-projection-design.md`，计划 `docs/plans/2026-10-11-segments-projection-plan.md`；用法见 `README.md` 的“Sessions”一节。
 - 任务与进度用 `gofer issue`（数据在 `.gofer/tracker`）和 `gofer plan` 跟踪，经验用 `gofer memory`；阶段结果以 issue/plan 状态和实际验证证据为准。
 
-## 三项目分工（gofer / xhen / suga）
+## 三项目分工（xhen / gofer / suga）
 
-外部世界归 gofer，人归 xhen，执行归 suga（用户 2026-11-02 定）。
+按“谁的意图、谁的机器”切分，主链 xhen（相当于半个你）→ gofer → suga（用户 2026-11-02 定）。
 
-- gofer：外部事件接入与去重、定时（cron）、job 执行槽位与排队、跨机器 worker、job 日志、人工提问与卡片的投递、对外通知、控制台。
-- xhen：主题与人设、原话约束、记忆、委托语义（边界、报告、账本、授权依据）、Today、决策台账、打扰策略（问不问、何时问、问什么由 xhen 决定）。
-- suga：执行引擎——会话与回合、工具执行与审批回调（审批策略由宿主决定）、skills、子 agent、trace。
-- 契约只留薄的两组：xhen ↔ suga 经 suga 公开包（`pkg/sugasdk` 等，进程内）；gofer ↔ suga 经 agent 接入（CLI/ACP，`gofer job -a suga`）。新功能先按上面归属落到对应项目，跨项目需要时扩展契约，而不是在另一侧复制一套。
+- xhen：意图与人。主题与人设、原话约束、记忆、委托语义（边界、报告、账本、授权依据）、Today、决策台账、打扰策略；自己的定时（提醒、委托触发、错过策略）、事件入口与判断、与你对话的通道（终端、IM 收发、桌面通知）。
+- gofer：作业与机器。job 提交、执行槽位与排队、跨机器 worker、job 日志、job 定时、控制台；只管“跑 job”，不管人的日程与对话。
+- suga：执行引擎。会话与回合、工具执行与审批回调（审批策略由宿主决定）、skills、子 agent、trace。
+- 三条连接：
+  - xhen → suga：进程内 SDK（`pkg/sugasdk` 等 suga 公开包），xhen 自己思考与对话的大脑（主题会话、轻量委托）；
+  - xhen → gofer：提交 job 并回收结果（HTTP/MCP），用于需要真正干活、耗时、换机器或要看日志的工作；契约待定；
+  - gofer → suga：agent 接入（CLI/ACP，`gofer job -a suga`）。
+- 新功能先按上面归属落到对应项目；跨项目需要时扩展连接上的契约，不在另一侧复制一套。
 
 ## 验证
 
