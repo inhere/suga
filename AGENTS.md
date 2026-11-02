@@ -12,6 +12,15 @@
 - 会话分段与上下文投影（稳定系统提示词、段上下文消息、分段交接、空闲整理、用量上报、`pkg/agentcore/schedule`）：设计 `docs/design/2026-10-11-segments-projection-design.md`，计划 `docs/plans/2026-10-11-segments-projection-plan.md`；用法见 `README.md` 的“Sessions”一节。
 - 任务与进度用 `gofer issue`（数据在 `.gofer/tracker`）和 `gofer plan` 跟踪，经验用 `gofer memory`；阶段结果以 issue/plan 状态和实际验证证据为准。
 
+## 三项目分工（gofer / xhen / suga）
+
+外部世界归 gofer，人归 xhen，执行归 suga（用户 2026-11-02 定）。
+
+- gofer：外部事件接入与去重、定时（cron）、job 执行槽位与排队、跨机器 worker、job 日志、人工提问与卡片的投递、对外通知、控制台。
+- xhen：主题与人设、原话约束、记忆、委托语义（边界、报告、账本、授权依据）、Today、决策台账、打扰策略（问不问、何时问、问什么由 xhen 决定）。
+- suga：执行引擎——会话与回合、工具执行与审批回调（审批策略由宿主决定）、skills、子 agent、trace。
+- 契约只留薄的两组：xhen ↔ suga 经 suga 公开包（`pkg/sugasdk` 等，进程内）；gofer ↔ suga 经 agent 接入（CLI/ACP，`gofer job -a suga`）。新功能先按上面归属落到对应项目，跨项目需要时扩展契约，而不是在另一侧复制一套。
+
 ## 验证
 
 - 单元测试：`go test -race ./...`；Windows 行为经 gofer exec job 在主机跑 `go test ./...`。
