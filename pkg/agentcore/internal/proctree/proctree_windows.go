@@ -51,6 +51,7 @@ func New(cmd *exec.Cmd) *Tree { return NewLimited(cmd, Limits{}) }
 // CPU time limit is ended by the system and counted by Exceeded.
 func NewLimited(cmd *exec.Cmd, limits Limits) *Tree {
 	p := &Tree{cmd: cmd}
+	hideConsole(cmd)
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return p // fall back to killing the shell alone
@@ -208,4 +209,37 @@ func (p *Tree) limitTerminated() bool {
 	err := windows.QueryInformationJobObject(p.job, windows.JobObjectBasicAccountingInformation,
 		uintptr(unsafe.Pointer(&acct)), uint32(unsafe.Sizeof(acct)), nil)
 	return err == nil && acct.TotalTerminatedProcesses > 0
+}
+
+// procGetConsoleWindow is kernel32!GetConsoleWindow; x/sys/windows does not
+// declare it. The proc is resolved once and never changes.
+var procGetConsoleWindow = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleWindow")
+
+// hasConsole reports whether this process is attached to a console window.
+func hasConsole() bool {
+	if procGetConsoleWindow.Find() != nil {
+		return true // cannot tell: keep the old behavior
+	}
+	hwnd, _, _ := procGetConsoleWindow.Call()
+	return hwnd != 0
+}
+
+// hideConsole keeps a console child from opening its own window when suga runs
+// without a console (started hidden by gofer or another background host): a
+// console program whose parent has no console gets a new, visible one, so every
+// shell_exec flashed a cmd window on the desktop (suga-u02f). With a console
+// (an interactive chat in a terminal) the child keeps sharing it as before. The
+// child's output still goes through the pipes the caller set up.
+func hideConsole(cmd *exec.Cmd) { hideConsoleWhen(cmd, !hasConsole()) }
+
+// hideConsoleWhen sets the no-window flags on cmd when noConsole is true.
+func hideConsoleWhen(cmd *exec.Cmd, noConsole bool) {
+	if !noConsole {
+		return
+	}
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.HideWindow = true
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NO_WINDOW
 }

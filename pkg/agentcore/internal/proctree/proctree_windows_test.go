@@ -160,3 +160,31 @@ func TestWindowsAssignmentFailureEndsShell(t *testing.T) {
 	assert.Eq(t, 0, out.Len(), "the suspended shell never ran anything outside the job")
 	tree.Close()
 }
+
+// TestHideConsoleWhen: without a console of its own suga starts children with no
+// window (suga-u02f); with one the flags stay untouched, and a hidden child's
+// output still reaches the caller's pipe.
+func TestHideConsoleWhen(t *testing.T) {
+	t.Run("no console hides the child window", func(t *testing.T) {
+		cmd := exec.Command("cmd", "/c", "echo hidden-ok")
+		hideConsoleWhen(cmd, true)
+		assert.Require(t, assert.NotNil(t, cmd.SysProcAttr))
+		assert.True(t, cmd.SysProcAttr.HideWindow)
+		assert.True(t, cmd.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW != 0)
+		out, err := cmd.Output()
+		assert.NoErr(t, err)
+		assert.StrContains(t, string(out), "hidden-ok")
+	})
+	t.Run("a console keeps the flags unchanged", func(t *testing.T) {
+		cmd := exec.Command("cmd", "/c", "echo shown")
+		hideConsoleWhen(cmd, false)
+		assert.Nil(t, cmd.SysProcAttr)
+	})
+	t.Run("existing flags are kept", func(t *testing.T) {
+		cmd := exec.Command("cmd", "/c", "echo x")
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED}
+		hideConsoleWhen(cmd, true)
+		assert.True(t, cmd.SysProcAttr.CreationFlags&windows.CREATE_SUSPENDED != 0)
+		assert.True(t, cmd.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW != 0)
+	})
+}
