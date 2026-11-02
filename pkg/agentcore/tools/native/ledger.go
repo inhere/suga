@@ -113,9 +113,14 @@ func (t *SessionSearchTool) Description() string {
 		"rather than trying other words."
 }
 
-// ToolMeta: read-only search; results are external content (taint).
+// ToolMeta: read-only search over the session's own history. The results are
+// not external content: they are this agent's earlier messages and outputs, and
+// marking them external made the external-origin guard refuse writes that copy
+// the agent's own file paths (suga-ihfl). Text that first came from a web, search
+// or MCP result was recorded as external when it was read, so copying it in the
+// same session is still caught.
 func (*SessionSearchTool) ToolMeta() tools.Meta {
-	return tools.Meta{Category: tools.CategorySearch, ReadOnly: true, External: true}
+	return tools.Meta{Category: tools.CategorySearch, ReadOnly: true}
 }
 
 func (t *SessionSearchTool) Schema() api.ToolSchema {
@@ -362,9 +367,13 @@ func (t *RecallTool) Description() string {
 		"holds no stored history has nothing to read."
 }
 
-// ToolMeta: read-only, pages on its own, results are external content.
+// ToolMeta: read-only, pages on its own. Like session_search it returns the
+// session's own history, so its results are not external content (suga-ihfl).
+// A saved output is read back in full here, but the output layer spills only
+// after the origin observer recorded the whole original result, so external text
+// inside it stays known for this session.
 func (*RecallTool) ToolMeta() tools.Meta {
-	return tools.Meta{Category: tools.CategorySearch, ReadOnly: true, External: true, Rereadable: true}
+	return tools.Meta{Category: tools.CategorySearch, ReadOnly: true, Rereadable: true}
 }
 
 func (t *RecallTool) Schema() api.ToolSchema {

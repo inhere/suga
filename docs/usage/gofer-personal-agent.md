@@ -127,7 +127,7 @@ MCP 工具默认一律不放行，由 YAML 中两个 glob 列表控制，条目�
 
 另有三组工具，run、chat、ACP 均有：
 
-- `session_search`（全文检索过往消息、工具结果与摘要）与 `recall`（按 ref 读命中附近的消息，或读已外置输出的带行号文本）：只读，但结果算外部内容，用过即把会话标为已污染。
+- `session_search`（全文检索过往消息、工具结果与摘要）与 `recall`（按 ref 读命中附近的消息，或读已外置输出的带行号文本）：只读；取回的是本会话自己的历史，不算外部内容，不会把会话标为已污染，也不触发“逐字复制外部内容”的写/执行确认（原始网页、搜索或 MCP 结果在首次读取时已记为外部来源，同一会话里照样会被拦）。
 - `suga_manifest`：以 JSON 返回能力清单，等同在主机上跑 `suga inspect manifest --json`（模型、工具及元数据、MCP、skills、记忆后端及选择原因、输出上限）。
 - `memory`：长期记忆，见下节。
 
@@ -155,7 +155,7 @@ ACP 没有内置 undo 命令，但它的文件写操作照常创建快照；可�
 - 范围与后端：用户记忆在 `$SUGA_HOME/memory/user`；项目记忆后端的选择顺序为 `memory.project.backend` > 仓库根 `MEMORY.md`（files，条目在 `.suga/memory/<id>.md`）> 仓库根有 `.gofer/tracker` 时选 gofer > `$SUGA_HOME/projects/<key>/memory`（`<key>` = 仓库目录名 + 完整路径短哈希，如 `suga-5cb0fa32`；旧版本按整条路径生成的目录会在首次使用时自动改名过来）。`memory.user.backend` / `memory.project.backend` 可选 `files`、`exec`（项目另可选 `gofer`），`exec` 需配 `memory.<scope>.command`（可选 `args`、`timeout_sec`）。完整字段见 `config/config.yaml`。
 - 仓库根有 `.gofer/tracker` 且没有 `MEMORY.md` 时，项目记忆自动选 gofer 后端：每条项目记忆写成带 `suga` 标签的 gofer memory（key 形如 `suga-<kind>-<id>`，来源 `suga:<session>`），**会进入该仓库所有 agent 的开场上下文**，所以应简短且对各 agent 都有用；suga 只管理 `suga` 标签条目，不读写、不删除其他 gofer memory。不想写进 gofer 时设 `memory.project.backend: files`。
 - 索引在每段开始时冻结进段上下文消息，本段内写入下一段可见，开启新段时刷新。
-- 污染与确认：会话读过外部内容后（`web_fetch`、`web_search`、MCP 工具、`session_search`、`recall`，以及 `memory.taint_tools`、`memory.taint_on_spill`（缺省 `[shell_exec]`）列出的工具）写记忆需要确认，由 `memory.write_tainted`（`ask` 缺省 / `deny` / `allow`）决定。ACP 下确认走 `session/request_permission`（标题“memory: 会话读过外部内容，确认写入记忆”，可用 `gofer job interactions` / `answer` 处理）；`suga run` 没有交互，直接拒绝；chat 在终端询问。`--read-only` 与 ACP `read_only` mode 下 `memory` 只允许 `get`/`search`；`run` 默认模式可写记忆（它是 suga 自身状态，不是工作区写入）。`memory.write: off` 让工具整体只读。
+- 污染与确认：会话读过外部内容后（`web_fetch`、`web_search`、MCP 工具，以及 `memory.taint_tools`、`memory.taint_on_spill`（缺省 `[shell_exec]`）列出的工具）写记忆需要确认，由 `memory.write_tainted`（`ask` 缺省 / `deny` / `allow`）决定。ACP 下确认走 `session/request_permission`（标题“memory: 会话读过外部内容，确认写入记忆”，可用 `gofer job interactions` / `answer` 处理）；`suga run` 没有交互，直接拒绝；chat 在终端询问。`--read-only` 与 ACP `read_only` mode 下 `memory` 只允许 `get`/`search`；`run` 默认模式可写记忆（它是 suga 自身状态，不是工作区写入）。`memory.write: off` 让工具整体只读。
 
 系统提示词只含稳定内容（身份、使用约定），同一模式下逐字节不变，利于提供方做前缀缓存。环境（系统与 shell、工作区、只读或可写及开启写工具的方法）、项目规则、记忆索引、skills 列表在每段开头的上下文消息里；段内规则变化以“上下文更新”消息追加，并随会话回放。
 

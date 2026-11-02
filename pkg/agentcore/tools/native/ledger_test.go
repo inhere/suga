@@ -42,7 +42,8 @@ func TestLedgerToolMeta(t *testing.T) {
 			m := tools.MetaOf(tool)
 			assert.Eq(t, tools.CategorySearch, m.Category)
 			assert.True(t, m.ReadOnly)
-			assert.True(t, m.External)
+			// The session's own history is not external content (suga-ihfl).
+			assert.False(t, m.External)
 			assert.False(t, m.AgentState)
 		})
 	}
