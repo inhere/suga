@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- SDK：`SessionOptions.NoSessionEnv` 让嵌入方关闭会话变量导出（`SUGA_SESSION_ID`、`SUGA_SESSION_NAME`、`SUGA_TURN_ID`）。会话没在 gofer 登记的宿主（如 xhen）设置它后，会话里执行的 gofer 命令不再报“not a session registered with this gofer server”，模型也不必先删掉这个变量。
+
 ## [0.54.2] - 2026-11-02
 
 本版修正防注入守卫对自身历史的误拦、Windows 上后台运行时弹出命令窗口，以及 chat 输入框中间换行后文字重复显示。

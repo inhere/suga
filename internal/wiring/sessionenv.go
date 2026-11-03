@@ -31,10 +31,14 @@ type sessionEnvProvider struct {
 	// names caches the short name of each session: it is written once and kept
 	// across resumes, so one store read per session is enough.
 	names map[string]string
+	// disabled keeps the variables out of every subprocess (Options.NoSessionEnv):
+	// an embedding host whose sessions gofer does not know, where a
+	// SUGA_SESSION_ID would make the gofer CLI refuse to run.
+	disabled bool
 }
 
-func newSessionEnvProvider() *sessionEnvProvider {
-	return &sessionEnvProvider{names: map[string]string{}}
+func newSessionEnvProvider(disabled bool) *sessionEnvProvider {
+	return &sessionEnvProvider{names: map[string]string{}, disabled: disabled}
 }
 
 // Bind sets the runner the short name comes from (called once the runner of the
@@ -49,6 +53,9 @@ func (p *sessionEnvProvider) Bind(runner *personal.Runner) {
 // A session without a short name gets none (the variable is left unset rather
 // than empty); outside a turn the turn id is left out too.
 func (p *sessionEnvProvider) Pairs(ctx context.Context) []string {
+	if p.disabled {
+		return nil
+	}
 	sessionID, turnID := personal.CurrentTurn(ctx)
 	if sessionID == "" {
 		sessionID = api.SessionIDFrom(ctx)

@@ -40,7 +40,7 @@ func TestSessionEnvPairsInTurn(t *testing.T) {
 	repo, err := store.Open(filepath.Join(t.TempDir(), "store.db"))
 	assert.Require(t, assert.NoErr(t, err))
 	defer func() { _ = repo.Close() }()
-	provider := newSessionEnvProvider()
+	provider := newSessionEnvProvider(false)
 	capture := &envCaptureTool{provider: provider, calls: make(chan []string, 4)}
 	registry := tools.NewRegistry()
 	registry.Register(capture)
@@ -76,10 +76,19 @@ func TestSessionEnvPairsInTurn(t *testing.T) {
 // session of its ctx (a hook or a local command), and another session id is a
 // different value on the next call.
 func TestSessionEnvPairsSessionSwitch(t *testing.T) {
-	provider := newSessionEnvProvider()
+	provider := newSessionEnvProvider(false)
 	for _, session := range []string{"sess-a", "sess-b"} {
 		pairs := provider.Pairs(api.WithSessionID(context.Background(), session))
 		assert.Eq(t, []string{"SUGA_SESSION_ID=" + session}, pairs)
 	}
+	assert.Eq(t, 0, len(provider.Pairs(context.Background())))
+}
+
+// TestSessionEnvDisabled: with Options.NoSessionEnv the provider exports nothing,
+// even for a call that carries a session (an embedding host whose sessions gofer
+// does not know).
+func TestSessionEnvDisabled(t *testing.T) {
+	provider := newSessionEnvProvider(true)
+	assert.Eq(t, 0, len(provider.Pairs(api.WithSessionID(context.Background(), "sess-a"))))
 	assert.Eq(t, 0, len(provider.Pairs(context.Background())))
 }

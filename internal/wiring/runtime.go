@@ -34,6 +34,9 @@ type Options struct {
 	// SessionOrigin is the meta.origin an embedded host records on the sessions
 	// it creates; empty keeps the entry point's own origin (chat, run, ACP).
 	SessionOrigin string
+	// NoSessionEnv keeps SUGA_SESSION_ID, SUGA_SESSION_NAME and SUGA_TURN_ID out
+	// of the session's subprocesses (an embedding host decides; see sessionenv.go).
+	NoSessionEnv bool
 	// ProjectMemoryKey pins the project memory scope for an embedding host. A
 	// non-empty key forces the SUGA_HOME files layout and ignores repository
 	// discovery and memory.project.backend, so hosts can isolate topics safely.
@@ -445,7 +448,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	snapshotter := configuredSnapshotter()
 	// The variables every subprocess of the session gets (its session, short name
 	// and turn): filled at build time, bound to the runner below.
-	sessionEnv := newSessionEnvProvider()
+	sessionEnv := newSessionEnvProvider(opts.NoSessionEnv)
 	var capabilities defaultCapabilities
 	if opts.CLIMode {
 		capabilities, err = buildPersonalCLICapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools)

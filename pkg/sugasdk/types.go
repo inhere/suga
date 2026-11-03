@@ -68,6 +68,12 @@ type SessionOptions struct {
 	// MemoryConfirm approves a memory write of a session that has read external
 	// content. nil refuses such writes.
 	MemoryConfirm func(ctx context.Context, req MemoryConfirmRequest) bool
+	// NoSessionEnv keeps SUGA_SESSION_ID, SUGA_SESSION_NAME and SUGA_TURN_ID out
+	// of the commands the session runs. suga exports them so a gofer CLI started
+	// by the session knows which registered session it runs for; a host whose
+	// sessions are not registered with gofer sets this, otherwise every gofer
+	// command fails with "not a session registered with this gofer server".
+	NoSessionEnv bool
 	// Origin is the session origin recorded on the sessions this engine
 	// creates; empty uses the engine origin, then OriginSDK. Hosts that need
 	// longer retention should pin sessions with Engine.Pin.
