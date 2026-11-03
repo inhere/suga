@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.54.3] - 2026-11-03
+
+本版让嵌入 suga 的宿主可以关闭会话变量导出，修正 xhen 中执行 gofer 命令前都要先删掉 `SUGA_SESSION_ID` 的问题。
+
 ### 新增
 
 - SDK：`SessionOptions.NoSessionEnv` 让嵌入方关闭会话变量导出（`SUGA_SESSION_ID`、`SUGA_SESSION_NAME`、`SUGA_TURN_ID`）。会话没在 gofer 登记的宿主（如 xhen）设置它后，会话里执行的 gofer 命令不再报“not a session registered with this gofer server”，模型也不必先删掉这个变量。
