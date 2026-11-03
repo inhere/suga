@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.54.4] - 2026-11-03
+
+本版让嵌入 suga 的宿主按会话登记读外部内容的工具（`SessionOptions.TaintTools`），供 xhen 对接 gofer 使用。
+
 ### 新增
 
 - SDK：`SessionOptions.TaintTools` 让嵌入方按会话登记“读到它的结果就算读过外部内容”的工具名（通常是宿主自己的 `ExtraTools`），与配置项 `memory.taint_tools` 合并去重，只对该会话生效，不改全局配置。登记后，该会话写记忆会走 `MemoryConfirm`；这类工具不算外部来源，不触发“逐字复制”守卫（要触发请声明 External）。
