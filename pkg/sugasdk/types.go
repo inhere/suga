@@ -74,6 +74,13 @@ type SessionOptions struct {
 	// sessions are not registered with gofer sets this, otherwise every gofer
 	// command fails with "not a session registered with this gofer server".
 	NoSessionEnv bool
+	// TaintTools names tools (typically the host's own ExtraTools) whose results
+	// mark this session as having read external content, like the config key
+	// memory.taint_tools. They are merged with that key (duplicates dropped) for
+	// this session only; the global configuration is not changed. A tool listed
+	// here is not recorded as an external origin, so the verbatim-copy guard
+	// does not apply to it (declare External for that).
+	TaintTools []string
 	// Origin is the session origin recorded on the sessions this engine
 	// creates; empty uses the engine origin, then OriginSDK. Hosts that need
 	// longer retention should pin sessions with Engine.Pin.

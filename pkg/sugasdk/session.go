@@ -95,6 +95,7 @@ func (e *Engine) OpenSession(ctx context.Context, id string, opts SessionOptions
 		SessionOrigin: origin, ProjectMemoryKey: opts.ProjectMemoryKey, ExtraTools: opts.ExtraTools, Hooks: opts.Hooks,
 		HostContext: opts.HostContext, Approver: opts.Approver,
 		MemoryConfirm: memoryConfirmAdapter(opts.MemoryConfirm), NoSessionEnv: opts.NoSessionEnv,
+		TaintTools: opts.TaintTools,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sugasdk: assemble session runtime: %w", err)

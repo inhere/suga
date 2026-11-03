@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/inhere/suga/internal/adddir"
@@ -37,6 +38,9 @@ type Options struct {
 	// NoSessionEnv keeps SUGA_SESSION_ID, SUGA_SESSION_NAME and SUGA_TURN_ID out
 	// of the session's subprocesses (an embedding host decides; see sessionenv.go).
 	NoSessionEnv bool
+	// TaintTools are extra tool names (an embedding host's own tools) that taint
+	// the session like memory.taint_tools; merged with that key, this session only.
+	TaintTools []string
 	// ProjectMemoryKey pins the project memory scope for an embedding host. A
 	// non-empty key forces the SUGA_HOME files layout and ignores repository
 	// discovery and memory.project.backend, so hosts can isolate topics safely.
@@ -426,6 +430,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 
 	settings, taintTools, taintOnSpill := rs.models, rs.taintTools, rs.taintOnSpill
+	// Host-registered taint tools join the configured ones for this runtime only
+	// (a fresh slice: rs.taintTools is shared state of the resolved settings).
+	taintTools = mergeTaintTools(taintTools, opts.TaintTools)
 	memSetup, memPolicy, sessionsDir := rs.memSetup, rs.memPolicy, rs.sessionsDir
 	// Picture limits of one request (images.*): a bad value is a startup error
 	// rather than a silently missing cap.
@@ -888,4 +895,23 @@ func forgetRestoredFiles(reg *tools.Registry) func(paths []string) {
 			}
 		}
 	}
+}
+
+// mergeTaintTools returns configured followed by the host's extra names, without
+// duplicates and blanks, in a new slice.
+func mergeTaintTools(configured, extra []string) []string {
+	if len(extra) == 0 {
+		return configured
+	}
+	seen := make(map[string]bool, len(configured)+len(extra))
+	merged := make([]string, 0, len(configured)+len(extra))
+	for _, name := range append(append([]string(nil), configured...), extra...) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		merged = append(merged, name)
+	}
+	return merged
 }
