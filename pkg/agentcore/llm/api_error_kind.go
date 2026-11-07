@@ -45,9 +45,10 @@ var transientAPIErrorCodes = map[string]bool{
 
 // transientAPIErrorPhrases appear in the message of a temporary failure: some
 // gateways report neither code nor type, only the text ("Our servers are
-// currently overloaded. Please try again later."). They are matched
-// case-insensitively.
-var transientAPIErrorPhrases = []string{"overloaded", "try again later"}
+// currently overloaded. Please try again later."), or report a broken upstream
+// stream as an API error ("Upstream HTTP/2 stream failed", suga-ryy0). They are
+// matched case-insensitively.
+var transientAPIErrorPhrases = []string{"overloaded", "try again later", "stream failed"}
 
 func isContextLengthError(code, typ, msg string) bool {
 	for _, value := range []string{code, typ} {

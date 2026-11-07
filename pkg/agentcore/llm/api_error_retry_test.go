@@ -57,12 +57,14 @@ func TestIsTransientAPIError(t *testing.T) {
 		{"anthropic rate limit type", "", "rate_limit_error", "", true},
 		{"message only: overloaded", "", "", "The server is Overloaded", true},
 		{"message only: try again later", "", "", "Please TRY AGAIN LATER.", true},
+		{"message only: upstream stream failed", "", "", "Upstream HTTP/2 stream failed", true},
 		{"a bad model stays permanent", "invalid_request_error", "", "The model does not exist", false},
 		{"a bad key stays permanent", "invalid_api_key", "authentication_error", "Incorrect API key provided", false},
 		// Only the two phrases above are taken as a message hint: a text that
 		// merely mentions a rate limit without the API's own code or type is left
 		// as a bad response (see transientAPIErrorPhrases).
 		{"a bare rate limit text stays permanent", "", "", "rate limited", false},
+		{"a context length text stays permanent", "", "", "Upstream stream failed: prompt is too long", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -111,6 +113,24 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		assert.Eq(t, "ok", events[1].Delta)
 		assert.Eq(t, 1, report.Retries)
 		assert.Eq(t, apiTransientReason, report.Last)
+	})
+	t.Run("responses: an upstream stream failure is requested again", func(t *testing.T) {
+		// suga-ryy0: the gateway reported a broken upstream HTTP/2 stream as an
+		// error event; it is temporary, so the turn is requested again.
+		body := "data: {\"type\":\"error\",\"error\":{\"message\":\"Upstream HTTP/2 stream failed (request-id: x)\"}}\n"
+		server, hits := scriptedServer(t, "text/event-stream", body, responsesWhole)
+		res, err := responses(server.URL).Stream(context.Background(), req, nil)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int32(2), hits.Load())
+		assert.Eq(t, "ok", res.Content)
+	})
+	t.Run("responses: a message-only upstream stream failure is requested again", func(t *testing.T) {
+		body := "data: {\"type\":\"error\",\"message\":\"Upstream HTTP/2 stream failed\"}\n"
+		server, hits := scriptedServer(t, "text/event-stream", body, responsesWhole)
+		res, err := responses(server.URL).Stream(context.Background(), req, nil)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int32(2), hits.Load())
+		assert.Eq(t, "ok", res.Content)
 	})
 	t.Run("openai: the message alone is enough (no code or type)", func(t *testing.T) {
 		body := "data: {\"error\":{\"message\":\"" + overloadMessage + "\"}}\n"
