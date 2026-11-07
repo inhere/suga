@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+## [0.54.5] - 2026-11-07
+
+### 修复
+
+- Responses API 网关把上游 HTTP/2 流中断报成 API 错误（`Upstream HTTP/2 stream failed`，不带 code/type）时，回合不再直接失败：按临时错误重新请求，重试用尽才报错（suga-ryy0）。
+
 ## [0.54.4] - 2026-11-03
 
 本版让嵌入 suga 的宿主按会话登记读外部内容的工具（`SessionOptions.TaintTools`），供 xhen 对接 gofer 使用。
