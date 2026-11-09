@@ -109,6 +109,14 @@ func retryStream(ctx context.Context, b *backoff, provider string, emit agentcor
 		if err == nil || !errors.As(err, &retryErr) || ctx.Err() != nil {
 			return res, err
 		}
+		// An HTTP error status decides on its own: a 4xx other than 408/429
+		// refuses the request itself, so it is not retried even when its body
+		// reads like a temporary failure (isTransientAPIError treats unknown
+		// errors as temporary).
+		var status *statusError
+		if errors.As(err, &status) && !retryableStatus(status.status) {
+			return res, err
+		}
 		// Both kinds of failure wait the same backoff: a Retry-After the server
 		// sent was already honoured by postWithRetry (which retries 408/429/5xx
 		// before the body is read). The budget (retry.max_elapsed) is checked with

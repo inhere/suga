@@ -60,10 +60,17 @@ func TestIsTransientAPIError(t *testing.T) {
 		{"message only: upstream stream failed", "", "", "Upstream HTTP/2 stream failed", true},
 		{"a bad model stays permanent", "invalid_request_error", "", "The model does not exist", false},
 		{"a bad key stays permanent", "invalid_api_key", "authentication_error", "Incorrect API key provided", false},
-		// Only the two phrases above are taken as a message hint: a text that
-		// merely mentions a rate limit without the API's own code or type is left
-		// as a bad response (see transientAPIErrorPhrases).
-		{"a bare rate limit text stays permanent", "", "", "rate limited", false},
+		// suga-ct2r: only permanent causes are listed; any other error, including
+		// a message nothing recognises, is requested again.
+		{"a bare rate limit text is retried", "", "", "rate limited", true},
+		{"an unknown message is retried", "", "", "Upstream response stream was interrupted", true},
+		{"an unknown code is retried", "some_new_gateway_error", "", "", true},
+		{"a permission type stays permanent", "", "permission_error", "not allowed", false},
+		{"a model not found code stays permanent", "model_not_found", "", "", false},
+		{"a content filter code stays permanent", "content_filter", "", "", false},
+		{"a quota code stays permanent", "insufficient_quota", "", "You exceeded your current quota", false},
+		{"a message naming the api key stays permanent", "", "", "Incorrect API key provided", false},
+		{"a message naming a missing model stays permanent", "", "", "The model gpt-x does not exist", false},
 		{"a context length text stays permanent", "", "", "Upstream stream failed: prompt is too long", false},
 	}
 	for _, c := range cases {
@@ -114,6 +121,31 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		assert.Eq(t, 1, report.Retries)
 		assert.Eq(t, apiTransientReason, report.Last)
 	})
+	t.Run("responses: an upstream stream interruption is requested again", func(t *testing.T) {
+		// suga-ct2r: a wording no list knows is retried as well.
+		body := "data: {\"type\":\"error\",\"error\":{\"message\":\"Upstream response stream was interrupted\"}}\n"
+		server, hits := scriptedServer(t, "text/event-stream", body, responsesWhole)
+		res, err := responses(server.URL).Stream(context.Background(), req, nil)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, int32(2), hits.Load())
+		assert.Eq(t, "ok", res.Content)
+	})
+	t.Run("a 400 is not retried even when its body reads as temporary", func(t *testing.T) {
+		// The HTTP status decides: a refusing 4xx is a rejection, whatever its
+		// body says, so treating unknown errors as temporary never retries it.
+		var n atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			n.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Upstream response stream was interrupted"}}`))
+		}))
+		t.Cleanup(server.Close)
+		_, err := responses(server.URL).Stream(context.Background(), req, nil)
+		assert.Require(t, assert.Err(t, err))
+		assert.Eq(t, int32(1), n.Load())
+		assert.Eq(t, ErrorKindRejected, ErrorKind(err))
+	})
 	t.Run("responses: an upstream stream failure is requested again", func(t *testing.T) {
 		// suga-ryy0: the gateway reported a broken upstream HTTP/2 stream as an
 		// error event; it is temporary, so the turn is requested again.
@@ -161,7 +193,7 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		server, hits := scriptedServer(t, "text/event-stream", openaiOverload)
 		_, err := openai(server.URL).Stream(context.Background(), req, nil)
 		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
-		assert.ErrMsgContains(t, err, "服务端过载，已重试 3 次")
+		assert.ErrMsgContains(t, err, "服务端临时错误，已重试 3 次")
 		assert.ErrMsgContains(t, err, overloadMessage) // the API's own wording stays readable
 		assert.Eq(t, int32(fastRetry.MaxAttempts), hits.Load())
 	})
@@ -198,7 +230,7 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		server, hits := scriptedServer(t, "text/event-stream", claudeOverload)
 		_, err := claude(server.URL).Stream(context.Background(), req, nil)
 		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
-		assert.ErrMsgContains(t, err, "服务端过载，已重试 3 次")
+		assert.ErrMsgContains(t, err, "服务端临时错误，已重试 3 次")
 		assert.ErrMsgContains(t, err, "claude api error: Overloaded")
 		assert.Eq(t, int32(fastRetry.MaxAttempts), hits.Load())
 	})
@@ -233,7 +265,7 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		server, hits := scriptedServer(t, "text/event-stream", responsesOverload)
 		_, err := responses(server.URL).Stream(context.Background(), req, nil)
 		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
-		assert.ErrMsgContains(t, err, "服务端过载，已重试 3 次")
+		assert.ErrMsgContains(t, err, "服务端临时错误，已重试 3 次")
 		assert.Eq(t, int32(fastRetry.MaxAttempts), hits.Load())
 	})
 	t.Run("responses: an invalid request error is not retried", func(t *testing.T) {

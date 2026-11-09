@@ -106,7 +106,7 @@ func TestChatRetry(t *testing.T) {
 	// The overload arrived as an error event inside the stream: the turn is
 	// requested again instead of failing, and nothing was streamed yet, so the
 	// notice carries no "将重新输出".
-	expect(t, s, `↻ 模型请求失败（服务端过载/限流）.*第 1 次`, mark)
+	expect(t, s, `↻ 模型请求失败（服务端临时错误）.*第 1 次`, mark)
 	expect(t, s, `↻ 模型请求失败（stream broken）.*将重新输出`, mark)
 	expect(t, s, `▣ `+reply, mark)
 	expect(t, s, `tokens · `, mark)

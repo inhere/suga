@@ -84,14 +84,23 @@ func TestErrorKindOfHTTPStatuses(t *testing.T) {
 		assert.Eq(t, true, ShouldFallback(err))
 	})
 
-	t.Run("a 200 with an api error body is a bad response", func(t *testing.T) {
-		// A gateway answering 200 with an error object: nothing about the
-		// provider is known, so it is not worth another model.
-		server := sseServer(t, http.StatusOK, `{"error":{"message":"rate limited"}}`, nil)
+	t.Run("a 200 with a permanent api error body is a bad response", func(t *testing.T) {
+		// A gateway answering 200 with a permanent error object: retrying or
+		// another model of the same request would only fail the same way.
+		server := sseServer(t, http.StatusOK, `{"error":{"type":"invalid_request_error","message":"bad request"}}`, nil)
 		provider := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: server.URL, Model: "m", Retry: fastRetry})
 		_, err := provider.Generate(context.Background(), req)
 		assert.Require(t, assert.Err(t, err))
 		assert.Eq(t, ErrorKindBadResponse, ErrorKind(err))
 		assert.Eq(t, false, ShouldFallback(err))
+	})
+	t.Run("a 200 with an unknown api error body is transient", func(t *testing.T) {
+		// suga-ct2r: an error nothing marks as permanent is treated as
+		// temporary; once the retries run out it is provider_transient.
+		server := sseServer(t, http.StatusOK, `{"error":{"message":"rate limited"}}`, nil)
+		provider := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: server.URL, Model: "m", Retry: fastRetry})
+		_, err := provider.Generate(context.Background(), req)
+		assert.Require(t, assert.Err(t, err))
+		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
 	})
 }

@@ -107,6 +107,13 @@ func ErrorKind(err error) string {
 	if errors.As(err, &readErr) {
 		return ErrorKindTransient
 	}
+	// A refusing HTTP status (4xx other than 408/429) decides before its body:
+	// retryStream does not retry it, so it is a rejection even when the body
+	// reads like a temporary failure (suga-ct2r).
+	var refused *statusError
+	if errors.As(err, &refused) && !retryableStatus(refused.status) {
+		return ErrorKindRejected
+	}
 	if isAPITransientError(err) {
 		return ErrorKindTransient
 	}

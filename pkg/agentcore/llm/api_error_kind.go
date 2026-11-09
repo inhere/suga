@@ -7,12 +7,17 @@ import (
 )
 
 // This file holds the API error object a provider reports inside a stream event
-// or a response body, and its classification: a temporary server side failure
-// (overloaded, rate limited, an internal error) is worth requesting again,
-// anything else (invalid_request_error, a bad model, a content filter) would
-// only come back the same way. The temporary case travels as an
-// apiTransientError, which retryStream retries and ErrorKind reports as
-// ErrorKindTransient once the attempts run out.
+// or a response body, and its classification. Only the errors that would come
+// back the same way are permanent: a context that does not fit, an exhausted
+// quota, a bad key or missing permission, an invalid request or model, a content
+// filter. Everything else - overloaded, rate limited, a server error, a broken
+// upstream stream, or any message not recognised - is treated as temporary
+// (suga-ct2r): gateways word their failures in ever new ways, and requesting
+// again within the retry budget costs less than ending a long task. The
+// temporary case travels as an apiTransientError, which retryStream retries and
+// ErrorKind reports as ErrorKindTransient once the attempts run out. An HTTP
+// error status still decides on its own (see retryStream): a 4xx other than 408
+// and 429 is never retried, whatever its body says.
 
 // apiError is the error object of a provider: OpenAI carries code and type next
 // to the message, Anthropic only the type (overloaded_error, api_error,
@@ -28,27 +33,29 @@ func (e *apiError) empty() bool {
 	return e == nil || (e.Message == "" && e.Code == "" && e.Type == "")
 }
 
-// transientAPIErrorCodes are the API error codes and types that name a
-// temporary server side failure: OpenAI's server_is_overloaded, server_error,
-// rate_limit_exceeded and slow_down, plus Anthropic's overloaded_error, its
-// generic api_error and rate_limit_error. Both fields are looked up, because
-// OpenAI sets either one and Anthropic only type.
-var transientAPIErrorCodes = map[string]bool{
-	"server_is_overloaded": true,
-	"server_error":         true,
-	"rate_limit_exceeded":  true,
-	"slow_down":            true,
-	"overloaded_error":     true,
-	"api_error":            true,
-	"rate_limit_error":     true,
+// permanentAPIErrorCodes are the API error codes and types that name a request
+// that would fail the same way again: invalid requests and models, bad keys and
+// missing permissions, content filters. Both fields are looked up, because
+// OpenAI sets either one and Anthropic only type. Quota codes are recognised by
+// hasQuotaMarker and context length by isContextLengthError.
+var permanentAPIErrorCodes = map[string]bool{
+	"invalid_request_error":    true,
+	"invalid_api_key":          true,
+	"authentication_error":     true,
+	"permission_error":         true,
+	"permission_denied":        true,
+	"unauthorized":             true,
+	"not_found_error":          true,
+	"model_not_found":          true,
+	"content_filter":           true,
+	"content_policy_violation": true,
+	"invalid_prompt":           true,
 }
 
-// transientAPIErrorPhrases appear in the message of a temporary failure: some
-// gateways report neither code nor type, only the text ("Our servers are
-// currently overloaded. Please try again later."), or report a broken upstream
-// stream as an API error ("Upstream HTTP/2 stream failed", suga-ryy0). They are
-// matched case-insensitively.
-var transientAPIErrorPhrases = []string{"overloaded", "try again later", "stream failed"}
+// permanentAPIErrorPhrases mark a permanent failure in a message that carries
+// no code or type (a gateway that only forwards the text). They are matched
+// case-insensitively.
+var permanentAPIErrorPhrases = []string{"api key", "does not exist", "content policy", "content filter", "unauthorized", "permission denied"}
 
 func isContextLengthError(code, typ, msg string) bool {
 	for _, value := range []string{code, typ} {
@@ -62,10 +69,11 @@ func isContextLengthError(code, typ, msg string) bool {
 
 const contextLengthHint = "上下文超长，可 :compact 或开新会话"
 
-// isTransientAPIError reports whether an API error is worth requesting again:
-// its code or type names a temporary failure, or - without a usable code or
-// type - its message asks the caller to come back later. Everything else is
-// permanent: requesting it again would only get the same error.
+// isTransientAPIError reports whether an API error is worth requesting again.
+// It lists the permanent failures and treats every other error as temporary
+// (suga-ct2r): a context that does not fit, an exhausted quota, a permanent
+// code or type, or a message naming a permanent cause are not retried; an
+// unknown error is.
 func isTransientAPIError(code, typ, msg string) bool {
 	if isContextLengthError(code, typ, msg) {
 		return false
@@ -75,16 +83,16 @@ func isTransientAPIError(code, typ, msg string) bool {
 		// resets in hours or days - so it is not retried (ErrorKindQuota).
 		return false
 	}
-	if transientAPIErrorCodes[strings.ToLower(code)] || transientAPIErrorCodes[strings.ToLower(typ)] {
-		return true
+	if permanentAPIErrorCodes[strings.ToLower(code)] || permanentAPIErrorCodes[strings.ToLower(typ)] {
+		return false
 	}
 	lower := strings.ToLower(msg)
-	for _, phrase := range transientAPIErrorPhrases {
+	for _, phrase := range permanentAPIErrorPhrases {
 		if strings.Contains(lower, phrase) {
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // apiTransientError is an API error the server itself reported as temporary
@@ -102,7 +110,7 @@ func (e *apiTransientError) Unwrap() error { return e.err }
 // in its retry line). It differs from the "stream broken" of a cut stream: there,
 // part of an answer was already streamed and is void; here the provider refused
 // the request before answering anything.
-const apiTransientReason = "服务端过载/限流"
+const apiTransientReason = "服务端临时错误"
 
 // retryReason implements retryableStreamError.
 func (e *apiTransientError) retryReason() string { return apiTransientReason }
@@ -110,7 +118,7 @@ func (e *apiTransientError) retryReason() string { return apiTransientReason }
 // giveUp implements retryableStreamError: the failure of an overload or rate
 // limit that outlived every attempt of the request, naming how many were made.
 func (e *apiTransientError) giveUp(provider string, attempts int) error {
-	return fmt.Errorf("%s 服务端过载，已重试 %d 次: %w", provider, attempts, e)
+	return fmt.Errorf("%s 服务端临时错误，已重试 %d 次: %w", provider, attempts, e)
 }
 
 // isAPITransientError reports whether err is (or wraps) an apiTransientError;
