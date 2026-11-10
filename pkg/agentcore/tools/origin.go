@@ -7,16 +7,19 @@ import (
 )
 
 // External-origin tracking (suga-42m8): text a web or MCP tool brought into the
-// context is remembered as hashes of its 12-byte windows, so an approval can
+// context is remembered as hashes of its 40-byte windows, so an approval can
 // tell that the arguments of a write or exec call carry a verbatim piece of it
 // (the practical prompt-injection signal: the model copies a fetched command
 // straight into shell_exec or file_write).
 const (
-	// OriginWindow is the shortest verbatim piece that counts as copied.
-	OriginWindow = 12
+	// OriginWindow is the shortest verbatim piece that counts as copied. 12 bytes
+	// (until suga-we1v) matched common phrases a model writes on its own
+	// ("API definitions", " credentials: ") once a spec had been fetched; a
+	// copied command or script is usually far longer than 40 bytes.
+	OriginWindow = 40
 	// originMinSignificant is how many non-space bytes a window needs. A window
 	// of spaces and punctuation ("  ----------") says nothing about origin.
-	originMinSignificant = 8
+	originMinSignificant = 32
 	// originMaxHashes caps the windows kept per session (about 10 MB). When a
 	// new result does not fit, the oldest results are forgotten first.
 	originMaxHashes = 256 * 1024

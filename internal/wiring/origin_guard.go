@@ -50,7 +50,7 @@ func (o *originObserver) ExecuteTool(ctx context.Context, call agentcore.ToolCal
 }
 
 // originGuard stops a write or exec call whose arguments carry a verbatim piece
-// (12 bytes or more) of an external tool result, even with tools.approval: auto.
+// (OriginWindow bytes or more) of an external tool result, even with tools.approval: auto.
 // In chat the person is asked once for that call; everywhere else nobody can be
 // asked, so the call is refused with the reason. Read-only and agent-state tools
 // are not checked. The decision then goes on to the wrapped approver, so rules

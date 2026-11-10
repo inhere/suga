@@ -18,9 +18,10 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
-// taintFeature is the >= 12 byte text the first host tool returns and the
-// Execute tool later receives verbatim.
-const taintFeature = "feature-text-from-the-outside-9731"
+// taintFeature is the text the first host tool returns and the Execute tool
+// later receives verbatim; it is longer than tools.OriginWindow (40 bytes), so
+// copying it counts.
+const taintFeature = "feature-text-from-the-outside-9731-copied-verbatim-into-the-call"
 
 // hostTool is a minimal host tool with configurable meta.
 type hostTool struct {
