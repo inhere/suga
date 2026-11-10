@@ -100,10 +100,10 @@ func TestSubAgentExternalOriginGuard(t *testing.T) {
 		workspace := manifestConfig(t)
 		srv, bodies := scriptedChildServer(t, []string{
 			childToolCall("c1", "host_page", map[string]any{"url": "https://example.invalid"}),
-			childToolCall("c2", "host_write", map[string]any{"value": writeValue}),
+			childToolCall("c2", "host_exec", map[string]any{"value": writeValue}),
 		})
 		setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k", "base_url": srv.URL}})
-		stub := &hostStubTool{name: "host_write", meta: tools.Meta{Category: tools.CategoryEdit}}
+		stub := &hostStubTool{name: "host_exec", meta: tools.Meta{Category: tools.CategoryExecute}}
 		s := &subAgents{workspace: workspace, ruleCWD: workspace, settings: appconfig.AgentSettings{MaxSteps: 6},
 			extraTools: []agentcore.Tool{hostPageTool{}, stub}}
 		runner, closeIt, err := s.build("explore")

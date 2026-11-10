@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -115,6 +116,18 @@ type OriginHit struct {
 // in the string values of args (nested maps and lists included). Whitespace runs
 // are compared as one space.
 func (o *ExternalOrigin) Find(session string, args map[string]any) (OriginHit, bool) {
+	return o.find(session, args, false)
+}
+
+// FindIgnoringURLs is Find with every http(s) URL in args left out of the
+// comparison (suga-we1v): a file write that names a fetched page's URL in a
+// comment or a config is not a copied instruction, while a command that runs
+// a fetched URL is still checked with Find.
+func (o *ExternalOrigin) FindIgnoringURLs(session string, args map[string]any) (OriginHit, bool) {
+	return o.find(session, args, true)
+}
+
+func (o *ExternalOrigin) find(session string, args map[string]any, ignoreURLs bool) (OriginHit, bool) {
 	if o == nil || len(args) == 0 {
 		return OriginHit{}, false
 	}
@@ -127,6 +140,9 @@ func (o *ExternalOrigin) Find(session string, args map[string]any) (OriginHit, b
 	var hit OriginHit
 	var found bool
 	visitStrings(args, func(v string) bool {
+		if ignoreURLs {
+			v = originURL.ReplaceAllString(v, " ")
+		}
 		norm := normalizeOrigin(v)
 		for i, h := range originWindowHashes(norm) {
 			if h == 0 {
@@ -141,6 +157,9 @@ func (o *ExternalOrigin) Find(session string, args map[string]any) (OriginHit, b
 	})
 	return hit, found
 }
+
+// originURL matches an http(s) URL up to whitespace, a quote or a bracket.
+var originURL = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>()\[\]{}]+`)
 
 // originSnippetBytes is how much of a copied piece a prompt shows.
 const originSnippetBytes = 48

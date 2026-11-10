@@ -78,7 +78,13 @@ func (g *originGuard) Decide(ctx context.Context, call agentcore.ToolCall, tool 
 	if meta.ReadOnly || meta.AgentState {
 		return g.inner.Decide(ctx, call, tool)
 	}
-	hit, ok := g.origin.Find(api.SessionIDFrom(ctx), call.Arguments)
+	// A file write or edit may name a fetched page's URL (a comment, a config);
+	// only commands and other tools keep URLs in the comparison (suga-we1v).
+	find := g.origin.Find
+	if meta.Category == tools.CategoryEdit {
+		find = g.origin.FindIgnoringURLs
+	}
+	hit, ok := find(api.SessionIDFrom(ctx), call.Arguments)
 	if !ok {
 		return g.inner.Decide(ctx, call, tool)
 	}
