@@ -1,0 +1,472 @@
+{
+ "artifact_type": "review_ledger",
+ "schema_version": "2.1.0",
+ "candidate_progression": "DOCUMENT_REVISION",
+ "candidate": {
+  "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+  "commit": "113fa5f5990057684d170a840d5c4b0ddc846290",
+  "subject_path": "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+  "document_revision": "0.2"
+ },
+ "author_id": "author-main",
+ "required_rounds": [
+  1
+ ],
+ "required_sections": [
+  "修订记录",
+  "背景与目标",
+  "名词",
+  "范围与非目标",
+  "已确认事实与规范",
+  "总体方案",
+  "架构",
+  "关键流程",
+  "安全、数据、运维与回滚",
+  "决策",
+  "待确认事项",
+  "结论与人工计划 Gate"
+ ],
+ "required_axes": [
+  "Standards/Governance",
+  "Spec/Executability"
+ ],
+ "receipts": [
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "113fa5f5990057684d170a840d5c4b0ddc846290",
+    "subject_path": "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r1",
+   "session_id": "reviewer-standards-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md",
+    "source_report_commit_oid": "54b126e4f62e1e2a51c9b6c04ab95301dc996adc",
+    "source_report_blob_oid": "9c0ab0e02474358297a893c09f7fce59967ed9f5",
+    "direct_repo_paths": [
+     "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+     "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+    "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only）在任何档位生效",
+    "外部内容不得借裁决或审批放宽获得执行权"
+   ],
+   "findings": [
+    {
+     "finding_id": "S1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "trust 放行规则 ask 使保护路径硬限制失效",
+     "impact": "[SECURITY] trust 放行规则 ask 使保护路径硬限制失效",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "保护路径在任何档位受保护",
+     "necessary_causal_chain": [
+      "ClampAllow 在 chat/ACP 降为 Ask",
+      "trust 规定 ask→放行",
+      ".git/.suga/规则文件可写"
+     ],
+     "minimal_owner": [
+      "设计 A/B/C 与安全一节"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "S2",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "配置 tools.approval: trust 作用范围未定，模型可经 config set 提升档位",
+     "impact": "[AUTHORITY] 配置 tools.approval: trust 作用范围未定，模型可经 config set 提升档位",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "模型不能提升档位",
+     "necessary_causal_chain": [
+      "run 下 suga config set",
+      "后续会话变 trust"
+     ],
+     "minimal_owner": [
+      "设计 A/B/C 与安全一节"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "S3",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "裁决输入只把片段标为不可信，参数中的同一载荷可诱导 allow",
+     "impact": "[SECURITY] 裁决输入只把片段标为不可信，参数中的同一载荷可诱导 allow",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "裁决不被注入",
+     "necessary_causal_chain": [
+      "参数摘要含外部原文",
+      "注入诱导 allow",
+      "无人值守入口放行"
+     ],
+     "minimal_owner": [
+      "设计 A/B/C 与安全一节"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "S4",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "禁读只覆盖 4 个工具且工具名错误，file_refs/file_edit 等仍泄露",
+     "impact": "[SECURITY] 禁读只覆盖 4 个工具且工具名错误，file_refs/file_edit 等仍泄露",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": ".env 不进上下文",
+     "necessary_causal_chain": [
+      "file_refs 逐行返回内容",
+      "未覆盖"
+     ],
+     "minimal_owner": [
+      "设计 A/B/C 与安全一节"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "S5",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "代码组织偏离理由与用量记录依赖",
+     "impact": "代码组织偏离理由与用量记录依赖",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S6",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "与前序设计冲突未声明替代",
+     "impact": "与前序设计冲突未声明替代",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "ask_on_external_origin 组合语义",
+     "impact": "ask_on_external_origin 组合语义",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S8",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "验证要求与 AGENTS.md",
+     "impact": "验证要求与 AGENTS.md",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S9",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "使用方兼容说明",
+     "impact": "使用方兼容说明",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S10",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "子 agent 继承",
+     "impact": "子 agent 继承",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S11",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "决策重复与 review budget",
+     "impact": "决策重复与 review budget",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "113fa5f5990057684d170a840d5c4b0ddc846290",
+    "subject_path": "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r1",
+   "session_id": "reviewer-spec-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md",
+    "source_report_commit_oid": "54b126e4f62e1e2a51c9b6c04ab95301dc996adc",
+    "source_report_blob_oid": "6c8acaf6f25f9ef3168d42c6aa41745104ce3c63",
+    "direct_repo_paths": [
+     "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+     "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+    "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only）在任何档位生效",
+    "外部内容不得借裁决或审批放宽获得执行权"
+   ],
+   "findings": [
+    {
+     "finding_id": "F1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "裁决缓存按工具+片段区分，恶意调用沿用 allow",
+     "impact": "[SECURITY] 裁决缓存按工具+片段区分，恶意调用沿用 allow",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "裁决逐次判断",
+     "necessary_causal_chain": [
+      "同片段不同调用",
+      "命中缓存 allow"
+     ],
+     "minimal_owner": [
+      "设计 A/B/C 与安全一节"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "F2",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "ClampAllow 的 Ask 与默认 ask 不可区分，trust 放行保护路径",
+     "impact": "[SECURITY] ClampAllow 的 Ask 与默认 ask 不可区分，trust 放行保护路径",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "保护路径受保护",
+     "necessary_causal_chain": [
+      "同 S1"
+     ],
+     "minimal_owner": [
+      "设计 A/B/C 与安全一节"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "F3",
+     "severity": "HIGH",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "ctx 无用户请求",
+     "impact": "ctx 无用户请求",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F4",
+     "severity": "HIGH",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "ExternalOrigin 不存原文",
+     "impact": "ExternalOrigin 不存原文",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F5",
+     "severity": "HIGH",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "裁决 provider 装配路径",
+     "impact": "裁决 provider 装配路径",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F6",
+     "severity": "HIGH",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "ask_outside_dirs 放行矛盾",
+     "impact": "ask_outside_dirs 放行矛盾",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "配置作用范围与 ACP 上限",
+     "impact": "配置作用范围与 ACP 上限",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F8",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "trust 与 --allow-write",
+     "impact": "trust 与 --allow-write",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F9",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "入口适用矩阵与 MemoryConfirm",
+     "impact": "入口适用矩阵与 MemoryConfirm",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F10",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "禁读匹配规则",
+     "impact": "禁读匹配规则",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F11",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "工具名与覆盖",
+     "impact": "工具名与覆盖",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F12",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "SDK ReadDeny 传递",
+     "impact": "SDK ReadDeny 传递",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F13",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "表述矛盾",
+     "impact": "表述矛盾",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F14",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "子 agent/ACP 裁决与开关",
+     "impact": "子 agent/ACP 裁决与开关",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F15",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "引用误差",
+     "impact": "引用误差",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F16",
+     "severity": "LOW",
+     "disposition": "DEFERRED_ENHANCEMENT",
+     "evidence": "内置列表补项",
+     "impact": "内置列表补项",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  }
+ ],
+ "dependency_edges": [
+  {
+   "from": "已确认事实与规范",
+   "to": "总体方案"
+  },
+  {
+   "from": "总体方案",
+   "to": "关键流程"
+  },
+  {
+   "from": "总体方案",
+   "to": "安全、数据、运维与回滚"
+  }
+ ],
+ "global_invariants": [
+  "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+  "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only）在任何档位生效",
+  "外部内容不得借裁决或审批放宽获得执行权"
+ ],
+ "open_core_blockers": [
+  "S1",
+  "S2",
+  "S3",
+  "S4",
+  "F1",
+  "F2"
+ ],
+ "status": "BLOCKED"
+}
