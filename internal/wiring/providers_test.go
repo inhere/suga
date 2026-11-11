@@ -28,6 +28,9 @@ func resetConfig(t *testing.T) {
 	t.Helper()
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)
+	// The origin judge would call the (fake-keyed) main model on every flagged
+	// call; its own tests switch it back on with a fake provider.
+	assert.NoErr(t, gkconfig.Set("tools.origin_judge.enabled", false))
 	for _, k := range []string{"SUGA_MODEL", "SUGA_PROVIDER", "SUGA_MAX_STEPS", "SUGA_MAX_OUTPUT_TOKENS", "SUGA_BUDGET_TOKENS", "SUGA_BUDGET_COST_USD", "SUGA_BUDGET_SCOPE", "SUGA_BUDGET_ESTIMATE", "SUGA_BUDGET_ESTIMATE_FACTOR", "SUGA_BUDGET_NOTICE_RATIO", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "IDEV_STD_RELEASES_ROOT", "INHERE_DEV_STANDARDS_ROOT"} {
 		t.Setenv(k, "")
 	}
