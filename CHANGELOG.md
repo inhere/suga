@@ -4,6 +4,20 @@
 
 ## [未发布]
 
+### 新增
+
+- 审批档位：`chat`、`run`、`acp` 增 `--approve ask|auto|trust`（`--yolo` 即 `--approve trust`），SDK 增 `SessionOptions.ApprovalMode`。`trust` 放开“需要人确认”类检查（规则与默认动作的 ask、MCP 默认拒绝/询问、外部来源检查、非家目录/根目录的危险删除、污染后的记忆写入），chat/run 下隐含 `--allow-write`；保护路径、规则 `deny`、`--read-only`、宿主 Approver 与敏感路径禁读照旧。`trust` 只能由启动参数或 SDK 设定，`tools.approval` 仍只取 `ask|auto`。stream-json `session` 行、`turn_context` 与 chat 横幅显示档位，被放行的调用记 `approval=trust`（suga-kkh4）。
+- 外部来源裁决：外部来源初筛命中后由小模型（`models.judge`，未配置时 `models.compact` 或主模型，固定 `thinking: minimal`）判断调用是否在照做外部内容的指令：`allow` 继续、`deny` 拒绝并说明、`ask` 在 chat 询问（其他入口拒绝），出错或超时按原规则处理；trace 记 `origin_judge`、`origin_judge_reason`、`origin_judge_tokens`。`tools.origin_judge.enabled`（缺省 true）、`tools.origin_judge.timeout`（缺省 45s）只能写在配置文件里（suga-f5la）。
+- 敏感路径禁读：读类工具与 `file_edit` 在任何档位都拒读 `.env*`、`~/.ssh`、`~/.aws/credentials` 等凭据文件（内置列表见 `docs/usage/gofer-personal-agent.md`），列目录与查找只标注、搜索跳过；`tools.read_deny` 追加、`tools.read_deny_defaults: false` 关闭内置列表，SDK 增 `SessionOptions.ReadDeny`（suga-4t8i）。
+
+### 变更
+
+- 默认行为变化：外部来源裁决默认开启（无人值守入口在裁决 allow 时不再一律拒绝）；敏感路径禁读默认开启（模型读 `.env` 等会被拒）。关闭方法：配置文件中 `tools.origin_judge.enabled: false`、`tools.read_deny_defaults: false`。
+
+### 修复
+
+- ACP 下对一次写入回答 allow_always 后，会话规则不再放行保护路径（`.git`、`.suga`、`$SUGA_HOME`、规则文件），写入这些路径时重新询问（suga-flei）。
+
 ## [0.54.10] - 2026-11-11
 
 > 自 v0.54.9 摘取发布（发布分支只含下面这一项修复）；main 上同期的安全计划改动不在此版本中。
