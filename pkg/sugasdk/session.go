@@ -20,6 +20,7 @@ import (
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/memory"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 // OriginSDK is the session origin the SDK records when no origin is configured.
@@ -90,12 +91,16 @@ func (e *Engine) OpenSession(ctx context.Context, id string, opts SessionOptions
 	if origin == "" {
 		origin = OriginSDK
 	}
+	approval, err := tools.ParseApprovalMode(string(opts.ApprovalMode))
+	if err != nil {
+		return nil, fmt.Errorf("sugasdk: %w", err)
+	}
 	rt, err := wiring.Open(ctx, wiring.Options{
 		Workspace: abs, RuleCWD: abs, Model: model, AllowWrite: opts.AllowWrite,
 		SessionOrigin: origin, ProjectMemoryKey: opts.ProjectMemoryKey, ExtraTools: opts.ExtraTools, Hooks: opts.Hooks,
 		HostContext: opts.HostContext, Approver: opts.Approver,
 		MemoryConfirm: memoryConfirmAdapter(opts.MemoryConfirm), NoSessionEnv: opts.NoSessionEnv,
-		TaintTools: opts.TaintTools,
+		TaintTools: opts.TaintTools, ApprovalMode: approval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sugasdk: assemble session runtime: %w", err)

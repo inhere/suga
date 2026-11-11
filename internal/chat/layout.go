@@ -89,6 +89,9 @@ type BannerInfo struct {
 	// Translator is the host UI catalog; nil preserves legacy Chinese output.
 	Translator i18n.Translator
 	WriteTools bool
+	// ApprovalMode is the start-up approval tier ("ask", "auto", "trust"); a
+	// non-empty value adds one banner line so a trusted session is never silent.
+	ApprovalMode string
 }
 
 // BuildBanner builds the chat header: the model in use, the commands, and
@@ -112,11 +115,19 @@ func BuildBanner(info BannerInfo) []LayoutLine {
 	if info.WriteTools {
 		tools = t.T("status.banner.write_tools")
 	}
-	return []LayoutLine{
+	lines := []LayoutLine{
 		{Text: head, Color: color.Cyan},
 		{Text: t.T("status.banner.help"), Color: color.Gray},
 		{Text: tools, Color: color.Gray},
 	}
+	switch info.ApprovalMode {
+	case "":
+	case "trust":
+		lines = append(lines, LayoutLine{Text: t.T("status.banner.approval_trust"), Color: color.Yellow})
+	default:
+		lines = append(lines, LayoutLine{Text: t.T("status.banner.approval", map[string]any{"mode": info.ApprovalMode}), Color: color.Gray})
+	}
+	return lines
 }
 
 // LastReplyInfo is what the preview of a continued session's last reply shows

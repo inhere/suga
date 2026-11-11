@@ -71,6 +71,9 @@ func (r *Runner) recordTurnContext(ctx context.Context, model Session, seg, eff 
 	if r.cfg.Version != "" {
 		e.Attrs["version"] = r.cfg.Version
 	}
+	if r.cfg.ApprovalMode != "" {
+		e.Attrs["approval_mode"] = string(r.cfg.ApprovalMode)
+	}
 	// The preferred tools this turn's environment section listed, in
 	// configuration order. Names only: the declaration's scenario text,
 	// command paths, MCP arguments and secrets stay out of the trace (design

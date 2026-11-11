@@ -63,7 +63,7 @@ func TestApprovalPolicyDefaultsAndLegacyIsolation(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			policy := compileApprovalPolicy(tc.mode, tc.chatAuto, false, loaded, nil)
+			policy := compileApprovalPolicy(tc.mode, tc.chatAuto, false, loaded, nil, tools.ApprovalModeDefault)
 			action, hit, _ := policy.Decide(tc.target, tc.meta)
 			assert.Eq(t, tc.want, action)
 			assert.Nil(t, hit)
@@ -71,12 +71,12 @@ func TestApprovalPolicyDefaultsAndLegacyIsolation(t *testing.T) {
 	}
 
 	legacy := []approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}}
-	cli := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, legacy)
+	cli := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, legacy, tools.ApprovalModeDefault)
 	action, hit, _ := cli.Decide(mcpTarget, tools.Meta{})
 	assert.Eq(t, approvalrules.Allow, action)
 	assert.Eq(t, approvalrules.SourceLegacy, hit.Source)
 
-	acp := compileApprovalPolicy(approvalrules.ModeACP, false, false, loaded, nil)
+	acp := compileApprovalPolicy(approvalrules.ModeACP, false, false, loaded, nil, tools.ApprovalModeDefault)
 	action, hit, _ = acp.Decide(mcpTarget, tools.Meta{})
 	assert.Eq(t, approvalrules.Ask, action)
 	assert.Nil(t, hit)
@@ -90,13 +90,13 @@ func TestApprovalPolicyExplicitDenyOverridesLegacyAndReadOnlyClamp(t *testing.T)
 		}}},
 	}
 	legacy := []approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}}
-	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, legacy)
+	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, legacy, tools.ApprovalModeDefault)
 	action, hit, _ := policy.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
 
 	loaded.User.Rules[0].Action = approvalrules.Allow
-	readOnly := compileApprovalPolicy(approvalrules.ModeRun, false, true, loaded, legacy)
+	readOnly := compileApprovalPolicy(approvalrules.ModeRun, false, true, loaded, legacy, tools.ApprovalModeDefault)
 	action, hit, _ = readOnly.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
@@ -112,13 +112,13 @@ func TestCompileCLIApprovalPolicyLoadsRulesAndKeepsACPSeparate(t *testing.T) {
 	userFile := filepath.Join(home, appconfig.ApprovalRulesFileName)
 	assert.NoErr(t, os.WriteFile(userFile, []byte("rules:\n  - tool: srv/query\n    action: deny\n"), 0o600))
 
-	cli, err := compileCLIApprovalPolicy(workspace, approvalrules.ModeRun, false, false)
+	cli, err := compileCLIApprovalPolicy(workspace, approvalrules.ModeRun, false, false, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoError(t, err))
 	action, hit, _ := cli.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
 
-	acp, err := compileACPApprovalPolicy(workspace, false)
+	acp, err := compileACPApprovalPolicy(workspace, false, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoError(t, err))
 	action, hit, _ = acp.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
@@ -127,7 +127,7 @@ func TestCompileCLIApprovalPolicyLoadsRulesAndKeepsACPSeparate(t *testing.T) {
 	// The ACP result above comes only from the explicit deny; removing the file
 	// demonstrates that the legacy allowlist itself is not read by ACP.
 	assert.NoErr(t, os.Remove(userFile))
-	acp, err = compileACPApprovalPolicy(workspace, false)
+	acp, err = compileACPApprovalPolicy(workspace, false, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoError(t, err))
 	action, hit, _ = acp.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Ask, action)
@@ -137,7 +137,7 @@ func TestCompileCLIApprovalPolicyLoadsRulesAndKeepsACPSeparate(t *testing.T) {
 	// authorizes an MCP call without changing native tool registration.
 	legacyPolicy := compileApprovalPolicy(approvalrules.ModeRun, false, false,
 		ApprovalRules{Settings: appconfig.DefaultApprovalRulesSettings()},
-		[]approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}})
+		[]approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}}, tools.ApprovalModeDefault)
 	gate := newCLIMCPGateWithPolicy(legacyPolicy)
 	assert.NoErr(t, gate.Decide(context.Background(), agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query")))
 }
@@ -148,7 +148,7 @@ func TestCLIMCPGateAskFailsClosedWithoutTerminal(t *testing.T) {
 		User: ApprovalRuleSource{Rules: []approvalrules.Rule{{
 			Source: approvalrules.SourceUser, Index: 1, Tool: "srv/query", Action: approvalrules.Ask,
 		}}},
-	}, []approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}})
+	}, []approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}}, tools.ApprovalModeDefault)
 	gate := newCLIMCPGateWithPolicy(policy)
 	err := gate.Decide(context.Background(), agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query"))
 	assert.ErrIs(t, err, tools.ErrDenied)

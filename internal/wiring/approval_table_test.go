@@ -137,9 +137,9 @@ func TestApprovalTable(t *testing.T) {
 	t.Cleanup(gkconfig.Reset)
 	assert.NoErr(t, gkconfig.Set("tools.auto_allow", []string{"srv/srv_*"}))
 	assert.NoErr(t, gkconfig.Set("tools.read_only_allow", []string{"srv/srv_*"}))
-	runGate, err := newCLIMCPGate(false)
+	runGate, err := newCLIMCPGate(false, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoErr(t, err))
-	readOnlyGate, err := newCLIMCPGate(true)
+	readOnlyGate, err := newCLIMCPGate(true, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoErr(t, err))
 	// This table covers the old approval matrix; the scoped persistence path has
 	// dedicated coverage and is intentionally disabled for the matrix answers.

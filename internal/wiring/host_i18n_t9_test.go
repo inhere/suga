@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 	"runtime"
 	"testing"
 
@@ -49,7 +50,7 @@ func TestHostNoticesEnglish(t *testing.T) {
 		chat := testChatApprover(nil, true, asker, ws, nil)
 		chat.translator = tr
 		call := agentcore.ToolCall{CallID: "c1", Name: "shell_exec", Arguments: map[string]any{"command": danger}}
-		err := guardDangerous(chat).Decide(context.Background(), call, shell)
+		err := guardDangerous(chat, tools.ApprovalModeDefault).Decide(context.Background(), call, shell)
 		assert.ErrMsgContains(t, err, "用户拒绝执行危险删除")
 		assert.Require(t, assert.Len(t, asker.questions, 1))
 		assert.StrContains(t, asker.questions[0].Details[0], "Command: "+danger)

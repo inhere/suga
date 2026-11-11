@@ -47,7 +47,7 @@ func connectAppACPWith(t *testing.T, client acp.Client) *acp.ClientSideConnectio
 	agentToClientR, agentToClientW := io.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- RunPersonalACP(ctx, clientToAgentR, agentToClientW) }()
+	go func() { done <- RunPersonalACP(ctx, clientToAgentR, agentToClientW, "") }()
 	conn := acp.NewClientSideConnection(client, clientToAgentW, agentToClientR)
 	t.Cleanup(func() {
 		cancel()

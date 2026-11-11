@@ -14,7 +14,7 @@ import (
 
 // newGatedRegistry puts the CLI approver in front of registry, as the runtime does.
 func newGatedRegistry(registry *tools.Registry, readOnly bool) (*tools.Approval, error) {
-	gate, err := newCLIMCPGate(readOnly)
+	gate, err := newCLIMCPGate(readOnly, tools.ApprovalModeDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func TestCLIMCPGateReadOnlyAllowValidation(t *testing.T) {
 			assert.NoErr(t, gkconfig.Set("tools.read_only_allow", tc.value))
 			// The list is validated in both modes, so a typo surfaces before any read-only job.
 			for _, readOnly := range []bool{true, false} {
-				_, err := newCLIMCPGate(readOnly)
+				_, err := newCLIMCPGate(readOnly, tools.ApprovalModeDefault)
 				assert.True(t, err != nil && strings.Contains(err.Error(), "tools.read_only_allow") && strings.Contains(err.Error(), tc.want))
 			}
 		})

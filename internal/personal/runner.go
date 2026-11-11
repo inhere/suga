@@ -53,6 +53,9 @@ type Config struct {
 	// sessions it creates (wiring.Options.Origin). Empty keeps the entry
 	// point's own default (chat, run, ACP).
 	SessionOrigin string
+	// ApprovalMode is the start-up approval tier, recorded in each turn_context
+	// event (attr approval_mode); "" (the entry point's default) records nothing.
+	ApprovalMode tools.ApprovalMode
 	// Vision is the live capability of the current model: view_image leaves the
 	// tool table of a model that cannot see images, and a :model switch updates
 	// this gate instead of rebuilding the tools. nil = the model can see.

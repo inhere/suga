@@ -66,8 +66,9 @@ type originGuard struct {
 // guardExternalOrigin wraps approver (which may already be a wrapper of the
 // chat approver chat; nil outside chat); a nil approver stays nil (deny all)
 // and the guard is off with tools.ask_on_external_origin: false.
-func guardExternalOrigin(approver tools.Approver, chat *chatApprover, origin *tools.ExternalOrigin) tools.Approver {
-	if approver == nil || !askOnExternalOrigin() {
+func guardExternalOrigin(approver tools.Approver, chat *chatApprover, origin *tools.ExternalOrigin, approval tools.ApprovalMode) tools.Approver {
+	// trust does not check external origin at all (design A table, item 3).
+	if approver == nil || !askOnExternalOrigin() || approval == tools.ApprovalModeTrust {
 		return approver
 	}
 	return &originGuard{inner: approver, chat: chat, origin: origin}

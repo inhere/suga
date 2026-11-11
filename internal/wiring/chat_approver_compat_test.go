@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 	"testing"
 
 	gkconfig "github.com/gookit/config/v2"
@@ -13,7 +14,7 @@ func TestChatApprovalRulesDisabledKeepsToolNameFallback(t *testing.T) {
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)
 	assert.NoErr(t, gkconfig.Set("tools.approval_rules", map[string]any{"enabled": false, "persist_ask": true}))
-	gate, err := newCLIMCPGate(false)
+	gate, err := newCLIMCPGate(false, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoErr(t, err))
 	asker := &scriptedAsker{answers: []string{"a"}}
 	approver := newChatApprover(chatApproverOptions{gate: gate, asker: asker, workspace: t.TempDir()})

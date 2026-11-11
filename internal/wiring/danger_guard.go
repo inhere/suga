@@ -32,15 +32,18 @@ type hardDangerChecker interface {
 type dangerGuard struct {
 	inner tools.Approver
 	chat  *chatApprover // nil outside chat
+	// approval is the start-up tier: trust hands a non-hard dangerous delete to
+	// inner instead of refusing/confirming it here (hard targets stay refused).
+	approval tools.ApprovalMode
 }
 
 // guardDangerous wraps approver; a nil approver stays nil (deny all).
-func guardDangerous(approver tools.Approver) tools.Approver {
+func guardDangerous(approver tools.Approver, approval tools.ApprovalMode) tools.Approver {
 	if approver == nil {
 		return nil
 	}
 	chat, _ := approver.(*chatApprover)
-	return &dangerGuard{inner: approver, chat: chat}
+	return &dangerGuard{inner: approver, chat: chat, approval: approval}
 }
 
 func (g *dangerGuard) Decide(ctx context.Context, call agentcore.ToolCall, tool agentcore.Tool) error {
@@ -62,6 +65,12 @@ func (g *dangerGuard) Decide(ctx context.Context, call agentcore.ToolCall, tool 
 	tools.ReportDanger(ctx, reason)
 	if hard {
 		return tools.Denied(hardDeleteRefusal(reason))
+	}
+	if g.approval == tools.ApprovalModeTrust {
+		// trust lifts the confirmation, not the other checks: the call still goes
+		// through the wrapped approver, so an explicit deny rule or an SDK host
+		// Approver keeps its say. It is never allowed here directly.
+		return g.inner.Decide(ctx, call, tool)
 	}
 	if g.chat == nil {
 		return tools.Denied("已拒绝危险删除：" + reason + "。这类命令不会自动执行：删除工作区内的文件请用 file_remove（可恢复），" +

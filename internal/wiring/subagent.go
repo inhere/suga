@@ -123,7 +123,7 @@ func (s *subAgents) childPolicy() approvalPolicy {
 	policy := approvalPolicy{
 		Mode:      approvalrules.ModeRun,
 		Workspace: s.workspace,
-		Defaults:  defaultApprovalDefaults(approvalrules.ModeRun, false),
+		Defaults:  defaultApprovalDefaults(approvalrules.ModeRun, false, tools.ApprovalModeDefault),
 	}
 	if s.policySnapshot != nil {
 		policy = s.policySnapshot()
@@ -135,7 +135,7 @@ func (s *subAgents) childPolicy() approvalPolicy {
 		policy.Workspace = s.workspace
 	}
 	if policy.Defaults.Native == "" {
-		policy.Defaults = defaultApprovalDefaults(policy.Mode, false)
+		policy.Defaults = defaultApprovalDefaults(policy.Mode, false, policy.Approval)
 	}
 	return cloneApprovalPolicy(policy)
 }
@@ -173,7 +173,7 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	// is not reused: a child may run in the background, and a question about its
 	// call would arrive detached from what the person is looking at.
 	origin := tools.NewExternalOrigin()
-	approval := tools.NewApproval(registry, guardExternalOrigin(newPolicyApprover(policy), nil, origin))
+	approval := tools.NewApproval(registry, guardExternalOrigin(newPolicyApprover(policy), nil, origin, policy.Approval))
 	approval.SetDisabled(subAgentDisabledHints(registry))
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	if err != nil {

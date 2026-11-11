@@ -32,6 +32,14 @@ type approvalPolicy struct {
 	ReadOnly bool
 	Rules    []approvalrules.Rule
 	Defaults approvalDefaults
+	// Baseline is what Defaults would be without the start-up tier (chat: the
+	// configured tools.approval). Only trustReleasedDefault reads it, to tell a
+	// default allow that trust opened from one that was always an allow.
+	Baseline approvalDefaults
+	// Approval is the start-up approval tier (--approve/--yolo, SDK option); ""
+	// keeps the entry point's own behaviour. Defaults already reflect it; the
+	// approvers read it to let an unprotected ask through in trust mode.
+	Approval tools.ApprovalMode
 
 	// RuleSource retains the loaded files for diagnostics exposed by the
 	// manifest. It is the same snapshot used to compile Rules, so static and
@@ -57,7 +65,7 @@ type approvalPolicy struct {
 // defaultApprovalDefaults returns the defaults fixed by the approval design.
 // A read-only or agent-state tool is still allow-by-default, but an explicit
 // rule can change that result before this fallback is consulted.
-func defaultApprovalDefaults(mode approvalrules.Mode, chatAuto bool) approvalDefaults {
+func defaultApprovalDefaults(mode approvalrules.Mode, chatAuto bool, approval tools.ApprovalMode) approvalDefaults {
 	defaults := approvalDefaults{
 		Native:     approvalrules.Allow,
 		MCP:        approvalrules.Deny,
@@ -77,15 +85,16 @@ func defaultApprovalDefaults(mode approvalrules.Mode, chatAuto bool) approvalDef
 		// run keeps its existing non-interactive default: native tools run and
 		// MCP tools remain denied unless a legacy allowlist entry matches.
 	}
-	return defaults
+	return applyApprovalTier(defaults, approval)
 }
 
 // compileApprovalPolicy merges file rules with the supplied entry-point rules.
 // The caller supplies legacy rules only for chat/run; this deliberate seam is
 // what keeps tools.auto_allow and tools.read_only_allow out of ACP.
-func compileApprovalPolicy(mode approvalrules.Mode, chatAuto, readOnly bool, loaded ApprovalRules, legacy []approvalrules.Rule) approvalPolicy {
+func compileApprovalPolicy(mode approvalrules.Mode, chatAuto, readOnly bool, loaded ApprovalRules, legacy []approvalrules.Rule, approval tools.ApprovalMode) approvalPolicy {
 	compiled := approvalPolicy{
-		Mode: mode, ReadOnly: readOnly, Defaults: defaultApprovalDefaults(mode, chatAuto),
+		Mode: mode, ReadOnly: readOnly, Defaults: defaultApprovalDefaults(mode, chatAuto, approval), Approval: approval,
+		Baseline:   defaultApprovalDefaults(mode, chatAuto, tools.ApprovalModeDefault),
 		RuleSource: loaded, Workspace: loaded.Workspace, AlwaysPrefixTokens: loaded.Settings.AlwaysPrefixTokens,
 		PersistAsk: loaded.Settings.PersistAsk, compiled: true,
 		rulesEnabled: loaded.Settings.Enabled,
@@ -106,7 +115,7 @@ func compileApprovalPolicy(mode approvalrules.Mode, chatAuto, readOnly bool, loa
 
 // compileCLIApprovalPolicy loads user/project rules and compiles the legacy MCP
 // allowlist for exactly the chat/run entry points.
-func compileCLIApprovalPolicy(workspace string, mode approvalrules.Mode, chatAuto, readOnly bool) (approvalPolicy, error) {
+func compileCLIApprovalPolicy(workspace string, mode approvalrules.Mode, chatAuto, readOnly bool, approval tools.ApprovalMode) (approvalPolicy, error) {
 	loaded, err := LoadApprovalRules(workspace)
 	if err != nil {
 		return approvalPolicy{}, err
@@ -115,18 +124,18 @@ func compileCLIApprovalPolicy(workspace string, mode approvalrules.Mode, chatAut
 	if err != nil {
 		return approvalPolicy{}, err
 	}
-	return compileApprovalPolicy(mode, chatAuto, readOnly, loaded, legacy), nil
+	return compileApprovalPolicy(mode, chatAuto, readOnly, loaded, legacy, approval), nil
 }
 
 // compileACPApprovalPolicy intentionally has no legacy parameter. ACP's MCP
 // default is ask (or deny in read-only mode at its own entry gate), independent
 // of the CLI's auto_allow/read_only_allow configuration.
-func compileACPApprovalPolicy(workspace string, readOnly bool) (approvalPolicy, error) {
+func compileACPApprovalPolicy(workspace string, readOnly bool, approval tools.ApprovalMode) (approvalPolicy, error) {
 	loaded, err := LoadApprovalRules(workspace)
 	if err != nil {
 		return approvalPolicy{}, err
 	}
-	return compileApprovalPolicy(approvalrules.ModeACP, false, readOnly, loaded, nil), nil
+	return compileApprovalPolicy(approvalrules.ModeACP, false, readOnly, loaded, nil, approval), nil
 }
 
 // targetFor turns the tool call into the protocol-neutral identity consumed by
@@ -157,11 +166,19 @@ type policyApprover struct{ policy approvalPolicy }
 func newPolicyApprover(policy approvalPolicy) tools.Approver { return &policyApprover{policy: policy} }
 
 func (a *policyApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool agentcore.Tool) error {
-	action, hit, _ := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+	target := a.policy.targetFor(call, tool)
+	action, hit, protected := a.policy.Decide(target, tools.MetaOf(tool))
 	if hit != nil {
 		tools.ReportRule(ctx, hit.Summary(), "")
 	}
 	if action == approvalrules.Allow {
+		if a.policy.trustReleasedDefault(action, hit, target.MCP, tools.MetaOf(tool)) {
+			tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
+		}
+		return nil
+	}
+	if a.policy.trustReleasesAsk(action, protected) {
+		tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
 		return nil
 	}
 	if hit != nil {

@@ -57,8 +57,8 @@ type cliMCPGate struct {
 // newCLIMCPGate builds the CLI dispatch approver. It loads the user/project
 // rules here because OpenCLI calls this gate before assembling the registry;
 // ACP uses Open directly and therefore never enters this legacy path.
-func newCLIMCPGate(readOnly bool) (*cliMCPGate, error) {
-	policy, err := compileCLIApprovalPolicy(appconfig.ResolveWorkspacePath(), approvalrules.ModeRun, false, readOnly)
+func newCLIMCPGate(readOnly bool, approval tools.ApprovalMode) (*cliMCPGate, error) {
+	policy, err := compileCLIApprovalPolicy(appconfig.ResolveWorkspacePath(), approvalrules.ModeRun, false, readOnly, approval)
 	if err != nil {
 		return nil, err
 	}

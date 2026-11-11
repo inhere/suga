@@ -38,7 +38,7 @@ func TestApprovalRuleAttrsUseWiredPolicyAndObservePath(t *testing.T) {
 		Workspace: t.TempDir(), Settings: appconfig.DefaultApprovalRulesSettings(),
 		User: ApprovalRuleSource{Rules: []approvalrules.Rule{{Source: approvalrules.SourceUser, Index: 3, Tool: "act", Action: approvalrules.Allow}}},
 	}
-	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, nil)
+	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, nil, tools.ApprovalModeDefault)
 	registry := tools.NewRegistry()
 	registry.Register(t10ObservedTool{})
 	runner, err := personal.New(personal.Config{
@@ -65,7 +65,7 @@ func TestDeniedApprovalRuleAttrsUseWiredPolicy(t *testing.T) {
 		Workspace: t.TempDir(), Settings: appconfig.DefaultApprovalRulesSettings(),
 		User: ApprovalRuleSource{Rules: []approvalrules.Rule{{Source: approvalrules.SourceProject, Index: 2, Tool: "act", Action: approvalrules.Deny}}},
 	}
-	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, nil)
+	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, nil, tools.ApprovalModeDefault)
 	registry := tools.NewRegistry()
 	registry.Register(t10ObservedTool{})
 	runner, err := personal.New(personal.Config{

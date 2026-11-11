@@ -16,21 +16,32 @@ import (
 )
 
 func newACPCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
+	var approve string
+	var yolo bool
 	acp := capp.NewCmd("acp", "Serve an ACP session over stdio", func(c *capp.Cmd) error {
 		if len(c.RemainArgs()) != 0 {
 			return fmt.Errorf("suga acp does not accept arguments")
 		}
-		if err := RunPersonalACP(ctx, stdin, stdout); err != nil {
+		// The tier is fixed for the whole process: the client cannot change it.
+		approval, err := wiring.ResolveApprovalMode(approve, yolo)
+		if err != nil {
+			return err
+		}
+		if err := RunPersonalACP(ctx, stdin, stdout, approval); err != nil {
 			return fmt.Errorf("acp: %w", err)
 		}
 		return nil
 	})
 	acp.SetOutput(stderr)
+	acp.StringVar(&approve, "approve", "", approveFlagUsage)
+	acp.BoolVar(&yolo, "yolo", false, yoloFlagUsage)
 	return acp
 }
 
 // RunPersonalACP serves the same persistent personal runner used by CLI over stdio.
-func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) error {
+// approval is the process-wide tier (suga acp --approve/--yolo; "" = today's
+// behaviour).
+func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer, approval tools.ApprovalMode) error {
 	// Background tasks belong to the ACP process, not a prompt: each prompt
 	// opens its own runtime, while a task keeps running across turns (its end
 	// notice goes into the session's next prompt). session/cancel cancels the
@@ -71,7 +82,7 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 		// read_only also limits the memory tool to get/search; memory writes of
 		// a tainted session are confirmed through the gate's permission request.
 		runtime, err := wiring.Open(ctx, wiring.Options{Workspace: workspace, RuleCWD: workspace, AllowWrite: !readOnly,
-			MemoryReadOnly: readOnly, MemoryConfirm: memoryConfirm, Servers: servers, Hooks: hooks, Approver: approver,
+			MemoryReadOnly: readOnly, MemoryConfirm: memoryConfirm, ApprovalMode: approval, Servers: servers, Hooks: hooks, Approver: approver,
 			Tasks: taskManager})
 		if err != nil {
 			return acpserver.Runtime{}, err
@@ -109,7 +120,7 @@ func RunPersonalACP(ctx context.Context, input io.Reader, output io.Writer) erro
 				return option.Ref(), nil
 			}}
 		return rt, nil
-	}, promptImage, acpserver.WithTranslator(translator))
+	}, promptImage, acpserver.WithTranslator(translator), acpserver.WithApprovalMode(approval))
 }
 
 // promptImageCapability reads the configured providers and model roles and

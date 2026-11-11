@@ -52,6 +52,10 @@ type Options struct {
 	// ReadOnly (OpenCLI only) narrows the MCP gate to tools.read_only_allow and
 	// overrides AllowWrite.
 	ReadOnly bool
+	// ApprovalMode is the start-up approval tier (--approve/--yolo for chat, run
+	// and ACP; the SDK option). "" keeps each entry point's own behaviour. It
+	// never comes from configuration.
+	ApprovalMode tools.ApprovalMode
 	// Servers are extra MCP servers (from --mcp-config or the ACP session).
 	Servers []mcp.ServerSettings
 	// PreferredTools is the runtime discovery snapshot shown in segment context.
@@ -147,6 +151,9 @@ func (m ModelOption) Ref() string { return m.Provider + "/" + m.Model }
 
 type Runtime struct {
 	Runner *personal.Runner
+	// ApprovalMode is the start-up tier this runtime was opened with ("" = the
+	// entry point's default); chat shows it in the banner.
+	ApprovalMode tools.ApprovalMode
 	// Registry is the base tool registry (lets ACP tell MCP tools apart).
 	Registry *tools.Registry
 	// PreferredTools is the startup discovery snapshot used by prompt and
@@ -245,7 +252,7 @@ func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
 	opts.CLIMode = true
 	// The run approver is the compiled policy; it has no terminal, so ask
 	// decisions fail closed as tool denials while the turn can continue.
-	gate, err := newCLIMCPGate(opts.ReadOnly)
+	gate, err := newCLIMCPGate(opts.ReadOnly, opts.ApprovalMode)
 	if err != nil {
 		return nil, err
 	}
@@ -265,9 +272,13 @@ func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
 		if err != nil {
 			return nil, err
 		}
+		// An explicit tier overrides tools.approval (ask / auto / trust).
+		configAuto := auto
+		auto = chatAutoFor(opts.ApprovalMode, auto)
 		// Keep mode-scoped file rules aligned with the interactive entry point.
 		gate.policy.Mode = approvalrules.ModeChat
-		gate.policy.Defaults = defaultApprovalDefaults(approvalrules.ModeChat, auto)
+		gate.policy.Defaults = defaultApprovalDefaults(approvalrules.ModeChat, auto, opts.ApprovalMode)
+		gate.policy.Baseline = defaultApprovalDefaults(approvalrules.ModeChat, configAuto, tools.ApprovalModeDefault)
 		asker = tools.NewBindableAsker()
 		// The outside-directory question needs the tool's static read roots (a
 		// path under one needs no authorization) and the session's added-directory
@@ -297,7 +308,10 @@ func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
 			return nil, err
 		}
 	}
-	opts.AllowWrite = (opts.AllowWrite || configWrite) && !opts.ReadOnly
+	// trust implies --allow-write in chat and run; --read-only still wins.
+	opts.AllowWrite = (opts.AllowWrite || configWrite || opts.ApprovalMode == tools.ApprovalModeTrust) && !opts.ReadOnly
+	// Memory-write confirmation (chat's asker, run's nil) is lifted by trust.
+	opts.MemoryConfirm = trustMemoryConfirm(opts.ApprovalMode, opts.MemoryConfirm)
 	opts.Servers, opts.Hooks, opts.Approver = servers, nil, approver
 	rt, err := Open(ctx, opts)
 	if err != nil {
@@ -379,7 +393,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		approval = *opts.approvalPolicy
 	} else {
 		var policyErr error
-		approval, policyErr = compileACPApprovalPolicy(workspace, opts.ReadOnly || opts.MemoryReadOnly)
+		approval, policyErr = compileACPApprovalPolicy(workspace, opts.ReadOnly || opts.MemoryReadOnly, opts.ApprovalMode)
 		if policyErr != nil {
 			return nil, policyErr
 		}
@@ -588,7 +602,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// Text copied from a web or MCP result into a write or exec call is asked
 	// about again (guardExternalOrigin); originObserver feeds it the results.
 	origin := tools.NewExternalOrigin()
-	approvalLayer := tools.NewApproval(capabilities.Registry, guardExternalOrigin(guardDangerous(opts.Approver), chatApproverOf(opts.Approver), origin))
+	approvalLayer := tools.NewApproval(capabilities.Registry, guardExternalOrigin(guardDangerous(opts.Approver, opts.ApprovalMode), chatApproverOf(opts.Approver), origin, opts.ApprovalMode))
 	approvalLayer.SetDisabled(disabledToolHints(capabilities.Registry, opts))
 	vis, err := newToolVisibility(capabilities.Registry, &originObserver{inner: approvalLayer, origin: origin}, contextWindow,
 		preferredMCPToolNames(capabilities.Registry, preferredTools))
@@ -718,6 +732,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Workspace:          workspace,
 		Version:            buildVersion,
 		Mode:               runMode(allowWrite),
+		ApprovalMode:       opts.ApprovalMode,
 		// chat shows what a file tool changed (chat.diff): its tool_call events then
 		// carry the change on disk (internal/diffview). run, ACP and stream-json keep
 		// file text out of their events; ACP builds its own diff for its client.
@@ -811,7 +826,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			slog.Warn("resident context", "notice", notice)
 		}
 	}
-	rt := &Runtime{Runner: runner, Registry: capabilities.Registry, PreferredTools: preferredTools,
+	rt := &Runtime{Runner: runner, ApprovalMode: opts.ApprovalMode, Registry: capabilities.Registry, PreferredTools: preferredTools,
 		Translator: translator, Language: language,
 		Resident: resident,
 		// :skills lists what the registry holds right now; :context reports the
@@ -828,15 +843,16 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		approvalLayer: approvalLayer,
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string, clamped, pathProtected bool) {
 			target := approval.targetFor(call, tool)
-			policyAction, hit, _ := approval.Decide(target, tools.MetaOf(tool))
+			policyAction, hit, protected := approval.Decide(target, tools.MetaOf(tool))
 			if hit != nil {
 				rule = hit.Summary()
 			}
 			scope = approvalScopeKey(approval, call, tool)
-			// clamped stays false until trust mode reads it; pathProtected lets ACP
-			// keep an always rule from allowing a control-plane path.
+			// clamped (allow downgraded for a protected path) is what trust must not
+			// release; pathProtected lets ACP keep an always rule from allowing a
+			// control-plane path.
 			pathProtected = approvalrules.IsProtectedPath(target, approval.Workspace, approval.SugaHome, approval.RuleFiles...)
-			return string(policyAction), rule, scope, false, pathProtected
+			return string(policyAction), rule, scope, protected, pathProtected
 		},
 		repo: repo, capabilities: capabilities, ContextWindow: contextWindow, Budget: budget,
 		Thinking: settings.Main.ThinkingLevel(), tools: toolRegistry, approval: approval,

@@ -57,6 +57,9 @@ type Options struct {
 	Asker *tools.BindableAsker
 	// WriteTools tells the banner whether file_write/shell_exec are available.
 	WriteTools bool
+	// ApprovalMode is the start-up approval tier (--approve/--yolo) the banner
+	// names; "" (the configured default) adds no line.
+	ApprovalMode string
 	// Markdown renders the model's text as terminal markdown (config
 	// chat.markdown, on by default). Only a colored terminal uses it: a pipe,
 	// a redirected output or NO_COLOR keeps the raw text.
@@ -412,7 +415,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		Color: color, ErrColor: colorEnabledFor(stderr),
 		Provider: runner.ProviderName(), Model: runner.Model(),
 		Thinking: opts.Thinking, ContextWindow: opts.ContextWindow,
-		WriteTools: opts.WriteTools, Markdown: opts.Markdown, Spinner: opts.Spinner,
+		WriteTools: opts.WriteTools, ApprovalMode: opts.ApprovalMode, Markdown: opts.Markdown, Spinner: opts.Spinner,
 		Workspace:     workspace,
 		AgentProgress: opts.AgentProgress,
 		AgentTasks:    agentTasks,

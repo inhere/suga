@@ -92,7 +92,7 @@ func newChatApproval(t *testing.T, auto bool, asker tools.Asker) (*tools.Approva
 	for _, name := range []string{"gofer_issue_list", "gofer_issue_close"} {
 		registry.Register(newServerStubTool("gofer", name))
 	}
-	gate, err := newCLIMCPGate(false)
+	gate, err := newCLIMCPGate(false, tools.ApprovalModeDefault)
 	assert.Require(t, assert.NoErr(t, err))
 	return tools.NewApproval(registry, testChatApprover(gate, auto, asker, "/work", nil)), stubs
 }
@@ -409,7 +409,7 @@ func TestChatAlwaysDoesNotCoverProtectedPaths(t *testing.T) {
 	workspace := t.TempDir()
 	t.Setenv("SUGA_HOME", t.TempDir())
 	policy := approvalPolicy{Mode: approvalrules.ModeChat, Workspace: workspace,
-		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false)}
+		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false, tools.ApprovalModeDefault)}
 	// "a" = always for the root file; "n" answers the protected-path question.
 	asker := &scriptedAsker{answers: []string{"a", "n"}}
 	approver := newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), asker: asker, workspace: workspace})

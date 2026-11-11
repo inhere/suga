@@ -104,6 +104,8 @@ type Agent struct {
 	// translator is the host UI catalog of the notices this agent sends itself
 	// (session/list hints, session/load notes); nil keeps the Chinese text.
 	translator i18n.Translator
+	// approval is the process-wide approval tier (WithApprovalMode).
+	approval tools.ApprovalMode
 	// promptImage declares ContentBlock::Image in initialize (design 0.3, ACP
 	// second phase): true when the configuration holds any vision-capable
 	// model, decided before the first session exists. A prompt that ends up on a
@@ -308,7 +310,7 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 	}()
 
 	hook := &permissionHook{conn: a.connection(), sessionID: req.SessionId, cwd: cwd, readOnly: readOnly,
-		session: always}
+		session: always, approval: a.approval}
 	runtime, err := a.open(turnCtx, cwd, readOnly, servers, hook)
 	if err != nil {
 		return acp.PromptResponse{}, err
