@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 设计
 
-> 状态：Draft 0.4 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
+> 状态：Draft 0.5 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
 
 ## 修订记录
 
@@ -11,6 +11,7 @@
 | 0.2 | 2026-11-10 | Claude | 记录用户对 Q1–Q4 的选择（2026-11-10：“Q1–Q4 按推荐”），转为决策 |
 | 0.3 | 2026-11-10 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-10-trust-mode-origin-judge-read-deny/`），以收窄为主，见下表 |
 | 0.4 | 2026-11-10 | Claude | 处理第 2 轮（两轴 PASS）的纠正项，见第二张表 |
+| 0.5 | 2026-11-10 | Claude | 处理第 3 轮（纠正确认轮，两轴 PASS）的 F23、F24、S15：`file_write` 快照照常、只是结果不含旧内容；ACP 判定扩返回保护标记；出处更正；记录既有缺陷 F22 另立 issue `suga-flei`；未经复核 |
 
 0.3 的处理（按类自查范围：A 的放开项与保护路径、档位来源；B 的输入、装配与信任边界；C 的工具覆盖与匹配规则；前序设计替代；验证）：
 
@@ -97,6 +98,7 @@
 - **入口 Approver**：run 用 `newPolicyApprover`，ask 转 Denied（`internal/wiring/approval_policy.go:152-171`）；chat 用 `newChatApprover`（`chat_approver.go:82`）；ACP 用 `permissionHook`（`internal/acpserver/policy.go:117,183`），无连接或失败按拒绝；SDK 透传宿主 Approver（`pkg/sugasdk/session.go:93-99`）。子 agent 只有只读工具，审批器为父策略快照的 `newPolicyApprover`，无人可问（`internal/wiring/subagent.go:122,176`）。
 - **默认动作**：run 原生 Allow、MCP Deny；chat 原生 Ask（auto 时 Allow）、MCP Deny；ACP 原生 Ask、MCP Ask；只读与 AgentState 工具一律 Allow（`approval_policy.go:60-81`）。`tools.approval` 只在 chat 读取（`runtime.go:261-270`）。
 - **保护路径**：`ClampAllow` 在 chat/ACP 把保护路径的 allow 降为 Ask，在 run/子 agent 降为 Deny；有两个调用处：规则命中时 `rules.Policy.Decide` 返回 `(Ask, 命中规则)`（`pkg/agentcore/tools/rules/rules.go:162-164`），默认动作时 `approval_policy.go:198-202`（`rules.go:261-305`）。两处降级后的 Ask 都与普通 ask 不可区分。
+- **既有缺陷（范围外）**：ACP 下回答一次 allow_always 后，会话规则会覆盖保护路径 ask（`internal/acpserver/policy.go:301-311`），与本设计无关，另立 issue `suga-flei` 修复；本设计的“保护路径 ask 在 ACP 下询问”以该修复为前提。
 - **其他硬限制**：危险删除 hard 目标任何入口拒绝（`internal/wiring/danger_guard.go:46-71`）；`file_remove` 拒删根与 `.git`、家目录（`native/remove.go:143-151`）；`--read-only` 使写工具不注册（`approval.go:111-115`）；hooks 的 deny 与失败一律拒绝，allow 不跳过审批。
 - **写权限**：`--allow-write` 由 `run`/`chat` 共用 flag 提供（`internal/cli/run.go:260`）；gofer 需要写时手工加 `--allow-write`（`docs/usage/gofer-personal-agent.md:165`）。
 - **确认类检查**：规则 ask；危险删除非 hard 目标（chat 要求输入 yes，其他入口拒绝）；外部来源防护（chat 询问一次，其他入口拒绝，`origin_guard.go`）；`memory.write_tainted: ask`（`memory_runtime.go:132-143`；SDK 下由宿主 `MemoryConfirm` 决定，nil 即拒绝）；`chat.ask_outside_dirs`（`chat_approver.go:483`）。
@@ -181,7 +183,7 @@
 - 作用：
   - 直接读取（`file_read` 含图片、`view_image`、`file_symbols`、`file_refs` 指定文件）：经 `resolveRead` 拒绝，错误写明“被 tools.read_deny 禁止”；
   - `file_edit`：在 `FileEditTool.Execute` 中、`readFileInRoot` 之前显式调用同一禁读判定，命中即拒绝，因此不能编辑禁读文件，也不会回显原文；
-  - `file_write`：整体覆写不需要读，仍可写；写禁读文件时结果与快照差异不带旧内容；
+  - `file_write`：整体覆写不需要读，仍可写；写禁读文件时快照照常保存（可撤销），返回模型的结果不含旧内容；
   - 遍历（`file_list`、`file_find`）：照常列出文件名并标注“禁读”；
   - 内容搜索（`file_grep`、`file_refs` 跨文件）：跳过禁读文件，结果末尾注明跳过数。
 - 任何档位（含 `trust`）都生效；对 xhen（read roots 为全盘）同样生效。
@@ -193,8 +195,8 @@
 
 - **A**：
   - 档位类型：`pkg/agentcore/tools`（`ApprovalMode`，供 SDK 与 wiring 共用）；
-  - 策略与守卫：`pkg/agentcore/tools/rules/rules.go`（`ClampAllow` 与 `Policy.Decide` 返回降级标记）、`pkg/agentcore/tools/approval.go`（审批结果带标记）、`internal/wiring/approval_policy.go`（按档位编译默认动作、区分保护路径 ask）、`origin_guard.go`、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`；
-  - 参数：`internal/cli/run.go`（chat/run 共用 flag 绑定）、`internal/cli/acp.go`；ACP 档位经 `wiring.Options` 传入每个 prompt 的 `Open`（`internal/acpserver/policy.go` 按档位处理 ask）；
+  - 策略与守卫：`pkg/agentcore/tools/rules/rules.go`（`ClampAllow` 与 `Policy.Decide` 返回降级标记）、`pkg/agentcore/tools/approval.go`（新增审批来源 `trust` 与 `origin_judge*` 报告字段）、`internal/wiring/approval_policy.go`（按档位编译默认动作、区分保护路径 ask）、`origin_guard.go`、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`；
+  - 参数：`internal/cli/run.go`（chat/run 共用 flag 绑定）、`internal/cli/acp.go`；ACP 档位经 `wiring.Options` 传入每个 prompt 的 `Open`（`internal/acpserver/policy.go` 按档位处理 ask；ACP 侧 `PolicyDecision` 现只返回三个字符串，扩为同时返回保护标记）；
   - SDK：`pkg/sugasdk/types.go`（`ApprovalMode`）→ `wiring.Options`；
   - 输出：`internal/output/streamjson.go`、`internal/personal/observe.go`。
   - 偏离说明（GR108、SR2004）：审批策略与两个守卫现已位于 `internal/wiring`（前序设计确立的 owner），本设计沿用现有 owner 只增加档位分支，不新建包；把它们整体迁出 wiring 是另一项重构，不在本设计范围。
@@ -276,7 +278,7 @@ file_edit → resolveWrite → read_deny 判定 → 读原文并编辑 / 拒绝
 - **D8** 对前序设计的替代，均只在 `trust` 档下：
   - `2026-10-16-approval-rules-design.md`（行 68、93 与其 D8）“危险删除在 auto/always 下不绕过”→ 放行非 hard 目标；同一设计中 MCP 默认 Deny/Ask → 放行；
   - `2026-10-10-state-memory-extensibility-design.md` D7（行 264）“会话被污染后写入需确认”→ chat/run/acp 下放行（SDK 仍由宿主 `MemoryConfirm` 决定）；
-  - 其余（`2026-10-09-chat-write-approval-design.md` 中 `tools.approval` 只作用于 chat、保护路径降级）保持不变。
+  - 其余保持不变：`2026-10-09-chat-write-approval-design.md` 中 `tools.approval` 只作用于 chat；`2026-10-16-approval-rules-design.md`（行 190-191）中保护路径降级。
 - **D9**（Q4）禁读内置列表默认开启。
 
 ## 待确认事项

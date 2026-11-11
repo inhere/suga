@@ -4,14 +4,15 @@
  "candidate_progression": "DOCUMENT_REVISION",
  "candidate": {
   "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
-  "commit": "d50f631fc5fa6cf3b10c9a94d46aa2c7ec05879e",
+  "commit": "900536a6fa9b1cde86a4138a3a002eb3625e07eb",
   "subject_path": "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
-  "document_revision": "0.3"
+  "document_revision": "0.4"
  },
  "author_id": "author-main",
  "required_rounds": [
   1,
-  2
+  2,
+  3
  ],
  "required_sections": [
   "修订记录",
@@ -461,8 +462,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md",
-    "source_report_commit_oid": "e0ad71462ad4f70a151c7a7880e4bc45f5f65332",
-    "source_report_blob_oid": "06546f6a2344daf5790d30b0e060fc1812f1cb2b",
+    "source_report_commit_oid": "8ac0f32fd7642bef54865b520e268a6240a2f261",
+    "source_report_blob_oid": "e7c528e355cf1c4fde8b2e21ec5d690ba2bf1641",
     "direct_repo_paths": [
      "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
      "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md"
@@ -551,8 +552,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md",
-    "source_report_commit_oid": "e0ad71462ad4f70a151c7a7880e4bc45f5f65332",
-    "source_report_blob_oid": "4c81a9af6b37ac40559e699aa19df5663b09b1cf",
+    "source_report_commit_oid": "8ac0f32fd7642bef54865b520e268a6240a2f261",
+    "source_report_blob_oid": "8abe9c757b1c22fa17a3c0b02fb179d994276acc",
     "direct_repo_paths": [
      "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
      "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md"
@@ -632,6 +633,170 @@
      "disposition": "CORE_CORRECTIVE",
      "evidence": "子 agent、取消、架构补列、回退、SDK 展开",
      "impact": "子 agent、取消、架构补列、回退、SDK 展开",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "900536a6fa9b1cde86a4138a3a002eb3625e07eb",
+    "subject_path": "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "document_revision": "0.4"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r3",
+   "session_id": "reviewer-standards-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md",
+    "source_report_commit_oid": "8ac0f32fd7642bef54865b520e268a6240a2f261",
+    "source_report_blob_oid": "e7c528e355cf1c4fde8b2e21ec5d690ba2bf1641",
+    "direct_repo_paths": [
+     "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+     "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+    "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only）在任何档位生效",
+    "外部内容不得借裁决或审批放宽获得执行权"
+   ],
+   "findings": [
+    {
+     "finding_id": "S15",
+     "severity": "LOW",
+     "disposition": "DEFERRED_ENHANCEMENT",
+     "evidence": "D8 末项保护路径降级出处",
+     "impact": "D8 末项保护路径降级出处",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "900536a6fa9b1cde86a4138a3a002eb3625e07eb",
+    "subject_path": "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "document_revision": "0.4"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r3",
+   "session_id": "reviewer-spec-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+    "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md",
+    "source_report_commit_oid": "8ac0f32fd7642bef54865b520e268a6240a2f261",
+    "source_report_blob_oid": "8abe9c757b1c22fa17a3c0b02fb179d994276acc",
+    "direct_repo_paths": [
+     "docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md",
+     "docs/review/2026-11-10-trust-mode-origin-judge-read-deny/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+    "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only）在任何档位生效",
+    "外部内容不得借裁决或审批放宽获得执行权"
+   ],
+   "findings": [
+    {
+     "finding_id": "F22",
+     "severity": "MEDIUM",
+     "disposition": "OUT_OF_SCOPE",
+     "evidence": "既有缺陷：ACP allow_always 会话规则覆盖保护路径 ask，另立 issue",
+     "impact": "既有缺陷：ACP allow_always 会话规则覆盖保护路径 ask，另立 issue",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F23",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "file_write 快照措辞",
+     "impact": "file_write 快照措辞",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F24",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "ACP PolicyDecision 带不出保护标记；approval.go 说明",
+     "impact": "ACP PolicyDecision 带不出保护标记；approval.go 说明",
      "recommendation": "按报告建议修订设计，下一版复核"
     }
    ],
