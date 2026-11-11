@@ -15,6 +15,7 @@ import (
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
+	approvalrules "github.com/inhere/suga/pkg/agentcore/tools/rules"
 )
 
 // nativeStubTool is a native tool that records whether it ran.
@@ -399,4 +400,52 @@ func TestChatApproverReportsSource(t *testing.T) {
 	rep, err = run(approval, "file_write")
 	assert.Error(t, err)
 	assert.Eq(t, tools.AskedAndDenied, rep.Source)
+}
+
+// TestChatAlwaysDoesNotCoverProtectedPaths (suga-flei): an "always" answer for a
+// workspace-root file must not silence the question for a protected control-plane
+// path such as .git/hooks; ClampAllow keeps that Ask in chat.
+func TestChatAlwaysDoesNotCoverProtectedPaths(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("SUGA_HOME", t.TempDir())
+	policy := approvalPolicy{Mode: approvalrules.ModeChat, Workspace: workspace,
+		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false)}
+	// "a" = always for the root file; "n" answers the protected-path question.
+	asker := &scriptedAsker{answers: []string{"a", "n"}}
+	approver := newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), asker: asker, workspace: workspace})
+	write := func(p string) error {
+		return approver.Decide(context.Background(), agentcore.ToolCall{Name: "file_write", Arguments: map[string]any{"path": p}}, &nativeStubTool{name: "file_write"})
+	}
+	assert.NoErr(t, write("notes.txt"))
+	assert.Len(t, asker.questions, 1)
+	// Another root file is covered by the always rule: no new question.
+	assert.NoErr(t, write("other.txt"))
+	assert.Len(t, asker.questions, 1)
+	// The protected path asks again (and the "n" answer denies it).
+	assert.ErrIs(t, write(".git/hooks/pre-commit"), tools.ErrDenied)
+	assert.Len(t, asker.questions, 2)
+}
+
+// TestACPPolicyReportsProtectedPath (suga-flei): the closure handed to the ACP
+// permission hook reports a control-plane target as pathProtected, so the hook
+// can keep an always rule from allowing it; clamped stays false in this version.
+func TestACPPolicyReportsProtectedPath(t *testing.T) {
+	resetConfig(t)
+	setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k"}})
+	assert.NoErr(t, gkconfig.Set("model", "openai/gpt-4o"))
+	t.Setenv("SUGA_HOME", t.TempDir())
+	workspace := t.TempDir()
+	rt, err := Open(context.Background(), Options{Workspace: workspace})
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = rt.Close() })
+	assert.Require(t, assert.NotNil(t, rt.ACPPolicy))
+	write := func(p string) bool {
+		call := agentcore.ToolCall{Name: "file_write", Arguments: map[string]any{"path": p}}
+		_, _, _, clamped, protected := rt.ACPPolicy(call, &nativeStubTool{name: "file_write"})
+		assert.False(t, clamped)
+		return protected
+	}
+	assert.True(t, write(".git/hooks/pre-commit"))
+	assert.True(t, write(filepath.Join(workspace, ".suga", "rules.yaml")))
+	assert.False(t, write("notes.txt"))
 }
