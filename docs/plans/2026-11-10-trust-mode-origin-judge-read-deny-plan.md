@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 实施计划
 
-> 状态：Draft 0.2
+> 状态：Draft 0.3
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-11-10 | Claude | 初稿：实施 `docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md` 0.5（A 审批档位与可信模式、B 外部来源裁决、C 敏感路径禁读），并先修既有缺陷 `suga-flei` |
 | 0.2 | 2026-11-10 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/`），见下表 |
+| 0.3 | 2026-11-10 | Claude | 处理第 2 轮（两轴 PASS）的纠正项，见第二张表 |
 
 0.2 的处理（按类自查范围：trust 的编译层与各守卫的放行方式；T0 的落点与顺序；签名变更的全部调用点；新文件落点；验证与授权）：
 
@@ -34,6 +35,20 @@
 | S10 | 新逻辑落新文件：`internal/wiring/approval_mode.go`、`internal/personal/turn_prompt.go` |
 | S11 | SR1301 用例映射到任务；timeout 校验与 2 KB 截断落到 T5；baseline 表述更正 |
 
+0.3 的处理（第 2 轮）：
+
+| 评审项 | 处理 |
+|---|---|
+| F15 | ACP 的 `PolicyDecision` 同时返回 `clamped`（被 ClampAllow 降级，供 trust 判定，与其他入口一致）与 `pathProtected`（`IsProtectedPath`，只供会话 always 规则判定）；两义分名 |
+| F16 | 档位经 `acpserver` 的 `Options`/`ServeOption` 传入 `server.go:310` 构造的 `permissionHook`，`server.go` 入 T2 owner；run 的 MCP 门 `newCLIMCPGate` 增档位参数，`cli_mcp.go` 入 T2 owner |
+| F17 | 禁读参数同时加到 `nativeEnvWithSnapshot`，调用点补 `capabilities.go:102`、`runtime_build.go:161`；`runtime_build.go` 入 T6 owner；补“经 `wiring.Open` 的主会话 `file_read .env` 被拒”用例 |
+| F18 | banner 取值链 `internal/cli/chat.go:93`、`internal/chat/chat.go:415`、`internal/chat/render.go:740` 入 T2 owner |
+| F19 | `Judge` 先断言 `api.StreamingProvider`，支持则 `Stream`，否则 `Generate` |
+| F20 | `refs_context.go` 入 T6；禁读只对文件生效，目录参数照常解析，列出时逐项标注 |
+| F21 | `approval_mode` 写在回合开始事件 attrs，值来自 `Options.ApprovalMode`；`approval=trust` 写在工具审批事件；`turn_prompt` 复用 `store.ListEntries` 与 `isInjectedItem` |
+| S12、F22 | 保留“新键不可写”，在 Gate 注明为计划新增；理由改准：只防止模型关闭裁决与内置禁读列表；`tools.ask_on_external_origin` 仍可写，列入剩余工作 |
+| S13 | 给 gofer 会话的说明随 G1 发版一起发出 |
+
 ## 计划工作声明
 
 - 思考模式：`RIGOROUS`（SR1408）。
@@ -41,12 +56,12 @@
 - Scope freeze：只改 suga 仓库：
   - 代码：
     - `pkg/agentcore/tools`（`rules/rules.go`、`approval.go`、新文件 `approval_mode.go`）、`pkg/agentcore/api/session.go`；
-    - `pkg/agentcore/tools/native`（`readroots.go`、`file_read.go`、`file_read_image.go`、`file_list.go`、`find.go`、`grep.go`、`refs.go`、`file_symbols.go`、`view_image.go`、`edit.go`、`file.go`、`env.go` 或 Env 定义所在文件）；
+    - `pkg/agentcore/tools/native`（`readroots.go`、`file_read.go`、`file_read_image.go`、`file_list.go`、`find.go`、`grep.go`、`refs.go`、`refs_context.go`、`file_symbols.go`、`view_image.go`、`edit.go`、`file.go`、Env 定义所在文件）；
     - `internal/config`（`providers.go`、`settings_registry.go`、新文件 `read_deny.go`）；
     - `internal/wiring`（`approval_policy.go`、`cli_mcp.go`、`chat_approver.go`、`origin_guard.go`、`danger_guard.go`、`memory_runtime.go`、`runtime.go`、`runtime_build.go`、`capabilities.go`、`subagent.go`、`manifest.go`、新文件 `approval_mode.go`）；
     - 新包 `internal/originjudge`；
     - `internal/personal`（`runner.go` 调用点、新文件 `turn_prompt.go`、`observe.go`）；
-    - `internal/cli`（`run.go`、`acp.go`）、`internal/acpserver`（`policy.go`、`server.go`、`memory_confirm.go`）、`internal/output/streamjson.go`、`internal/chat/layout.go`、`internal/i18n/catalog`；
+    - `internal/cli`（`run.go`、`acp.go`、`chat.go`）、`internal/acpserver`（`policy.go`、`server.go`、`memory_confirm.go`）、`internal/output/streamjson.go`、`internal/chat`（`layout.go`、`chat.go`、`render.go`）、`internal/i18n/catalog`；
     - `pkg/sugasdk`（`types.go`、`session.go`）；
     - 以上各自测试、`test/ptye2e/`、`scripts/ptysmoke/`（如需新场景）、`scripts/acpprobe/acp_probe.py`、新目录 `scripts/eval/originjudge/`；
   - 文档与记录：`README.md`、`docs/usage/gofer-personal-agent.md`、`CHANGELOG.md`、`.gofer/tracker/`、本计划与 `docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/`。
@@ -77,12 +92,12 @@
   - 测试类主机 job：Windows `go test -p 1`（走代理下载模块）；
   - 真实验证：`acp_probe` 与裁决评测使用隔离的临时 SUGA_HOME，读取真实 `config.yaml` 与 `.env` 但不复制；评测记录只保存 decision 与经 `redact.Secrets` 的理由，不保存请求原文；
   - 网络：GOPROXY；评测与 acp_probe 调用已配置的模型 provider；
-  - 消息：T8 完成后给 gofer 监督会话发一封接口变化说明（gofer mail）；
+  - 消息：G1 发版时给 gofer 监督会话发一封接口变化说明（gofer mail），不早于新版本安装；
   - 实施分工：T0–T6 由 sonnet 子 agent 实施；T7、T8 由我完成。
   - 不覆盖：推送、打 tag、发版、安装（G1 另行授权）。
 - `host_or_non_offline_action=REQUIRED`
   - 主机 gofer job：建、合、清 worktree，Windows 测试，acp_probe，裁决评测。
-  - 网络：GOPROXY 与模型 provider 调用；发往 gofer 会话的一封说明。
+  - 网络：GOPROXY 与模型 provider 调用；G1 时发往 gofer 会话的一封说明。
 
 ## 输入与批准证据
 
@@ -138,10 +153,11 @@ func ParseApprovalMode(s string) (ApprovalMode, error)
 func WithTurnPrompt(ctx context.Context, prompt string) context.Context
 func TurnPromptFrom(ctx context.Context) string // 未设置为 ""
 
-// internal/acpserver（T0）
-type PolicyDecision func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string, protected bool)
-//   protected：目标路径是否为保护路径（runtime.go 闭包内 rules.IsProtectedPath 判定，与是否降级无关）
-//   permissionHook：会话 allow/always 规则命中且 protected 时不放行，回到询问
+// internal/acpserver（T0 增 pathProtected；T2 增 clamped）
+type PolicyDecision func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string, clamped, pathProtected bool)
+//   clamped：被 ClampAllow 降级（与其他入口的 protected 同义），trust 只放行 clamped=false 的 ask
+//   pathProtected：目标路径为保护路径（闭包内 rules.IsProtectedPath），只用于会话 always 规则：命中且 pathProtected 时不放行，回到询问
+//   T0 先以 clamped 恒为 false 扩签名，T2 填实
 
 // internal/wiring（T2）——新文件 approval_mode.go
 //   Options.ApprovalMode tools.ApprovalMode
@@ -156,11 +172,14 @@ type PolicyDecision func(call agentcore.ToolCall, tool agentcore.Tool) (action, 
 type Material struct{ InjectedText, Tool, Category string; Args map[string]any; Snippet, Source string }
 type Input struct{ UserRequest string; Untrusted Material }
 type Verdict struct{ Decision, Reason string; InTokens, OutTokens int } // Decision: allow|deny|ask
-func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // 用 p.Stream 收集完整回复；严格解析；ctx 取消返回 ctx.Err()
+func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error)
+//   p 实现 api.StreamingProvider 时用 Stream 收集完整回复，否则 Generate；严格解析；ctx 取消返回 ctx.Err()
 
 // pkg/agentcore/tools/native（T6）
 //   Env 增 ReadDeny ReadDenyList（值类型，含已展开的模式）；func (l ReadDenyList) Denied(absPath string) bool
-//   nativeEnv(workspace, dirs, readDeny)：调用点 capabilities.go:452/456、runtime.go:508/549/846、subagent.go:236、manifest.go:598
+//   nativeEnv(workspace, dirs, readDeny) 与 nativeEnvWithSnapshot(workspace, dirs, snapshotter, readDeny)：
+//   调用点 capabilities.go:102/452/456、runtime_build.go:161、runtime.go:508/549/846、subagent.go:236、manifest.go:598
+//   禁读只对文件生效：目录参数照常解析，遍历时逐项判定
 
 // pkg/sugasdk（T2/T6）
 //   SessionOptions.ApprovalMode tools.ApprovalMode；SessionOptions.ReadDeny []string
@@ -232,22 +251,22 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
 - **动作**：
   1. `ClampAllow` 与 `Policy.Decide` 增返回 `protected`；`approvalPolicy.Decide` 返回 `(action, hit, protected)`；5 处调用点同步（只传递，行为不变）。
   2. `ApprovalMode`、`ParseApprovalMode`；审批来源增 `trust`；`ApprovalReport` 增裁决字段。
-  3. `api.WithTurnPrompt/TurnPromptFrom`；`turn_prompt.go`：用户回合返回本回合请求；注入回合（`RunRequest.Injected`）从会话 transcript 取最近一条非注入用户消息，没有则 ""；`Runner.Run` 在回合开始调用并写入 ctx。
+  3. `api.WithTurnPrompt/TurnPromptFrom`；`turn_prompt.go`：用户回合返回本回合请求；注入回合（`RunRequest.Injected`）用 `store.ListEntries` 读会话条目、以 `isInjectedItem` 排除注入项，取最近一条用户消息，没有则 ""；`Runner.Run` 在回合开始调用并写入 ctx。
 - **测试**：`protected` 在默认动作、宽泛 allow 规则命中保护路径两条路径为 true，非保护路径为 false；`ParseApprovalMode` 表驱动；用户回合、注入回合、跨进程恢复后（新 Runner 读同一库）的 `TurnPromptFrom`。
 - **反向验证**：去掉 `Policy.Decide` 的标记传递后，“宽泛 allow 规则命中 .git”用例失败。
 - **完成标准**：`layering_test.go` 与现有审批测试全过（行为不变）；容器 race、Windows 通过；合入 main。
 
 ### T0 前提修复：ACP always 会话规则不放行保护路径（suga-flei，sonnet）
 
-- **Owner**：`internal/acpserver/policy.go`、`server.go`（`PolicyDecision` 类型）、`internal/wiring/runtime.go`（ACPPolicy 闭包）、`internal/wiring/chat_approver.go` 的测试文件；各自测试。
-- **动作**：`PolicyDecision` 增返回 `protected`（闭包内用 `rules.IsProtectedPath` 判定目标路径）；`permissionHook.Decide` 中会话规则（`sessionPolicy`）给出 allow 且 `protected` 时不放行，回到 RequestPermission 询问；reject_always 照旧。
+- **Owner**：`internal/acpserver/policy.go`、`server.go`（`PolicyDecision` 类型）、`internal/wiring/runtime.go`（ACPPolicy 闭包）、`internal/wiring/chat_approver.go` 的测试文件；各自测试（含 `PolicyDecision` 的测试替身）。
+- **动作**：`PolicyDecision` 扩为返回 `clamped`（本任务恒 false，T2 填实）与 `pathProtected`（闭包内用 `rules.IsProtectedPath` 判定目标路径）；`permissionHook.Decide` 中会话规则（`sessionPolicy`）给出 allow 且 `pathProtected` 时不放行，回到 RequestPermission 询问；reject_always 照旧。
 - **测试**：ACP 对根目录文件回答 allow_always 后写 `.git/hooks/x` 仍发起询问；非保护路径的 always 照旧放行；chat 对根目录文件选 always 后写 `.git/hooks/x` 仍询问（证明 ClampAllow 已保护，只加用例）。
 - **反向验证**：去掉 `permissionHook` 中的 protected 判断后，ACP 询问用例失败。
 - **完成标准**：容器 race、`make smoke-chat`、Windows 通过，合入 main。
 
 ### T2 A：档位贯穿四个入口（sonnet）
 
-- **Owner**：`internal/wiring/approval_mode.go`（新）、`approval_policy.go`、`origin_guard.go`（trust 跳过）、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`、`runtime.go`、`subagent.go`；`internal/cli/run.go`、`acp.go`；`internal/acpserver/policy.go`、`memory_confirm.go`；`internal/output/streamjson.go`；`internal/personal/observe.go`；`internal/chat/layout.go`、`internal/i18n/catalog`；`internal/config/settings_registry.go`；`pkg/sugasdk/types.go`、`session.go`；各自测试与 `test/ptye2e/` 新场景。
+- **Owner**：`internal/wiring/approval_mode.go`（新）、`approval_policy.go`、`cli_mcp.go`（`newCLIMCPGate` 增档位参数）、`origin_guard.go`（trust 跳过）、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`、`runtime.go`（含 ACPPolicy 闭包填 `clamped`）、`subagent.go`；`internal/cli/run.go`、`acp.go`、`chat.go`；`internal/acpserver/policy.go`、`server.go`（`Options` 增档位，`server.go:310` 构造 `permissionHook` 时传入）、`memory_confirm.go`；`internal/output/streamjson.go`；`internal/personal/observe.go`；`internal/chat/layout.go`、`chat.go`、`render.go`、`internal/i18n/catalog`；`internal/config/settings_registry.go`；`pkg/sugasdk/types.go`、`session.go`；各自测试与 `test/ptye2e/` 新场景。
 - **动作**：
   1. 参数：`chat`、`run` 共用 flag 增 `--approve`、`--yolo`；`suga acp` 改为接受这两个参数；冲突报错；经 `ParseApprovalMode` 进入 `wiring.Options.ApprovalMode`；chat 缺省取配置 `tools.approval`。
   2. 编译层（`approval_mode.go`）：`defaultApprovalDefaults` 增档位参数——auto/trust 时原生默认 Allow（ACP auto 也是原生 Allow、MCP 照旧 Ask）；trust 时 MCP 默认 Allow；read-only 下的 MCP 判定与 `ClampAllow` 在默认动作之后照旧作用。
@@ -256,9 +275,10 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
   5. originGuard：trust → 跳过检查（裁决不调用）。
   6. 记忆确认：chat 入口的确认函数、run 入口（现为 nil）、ACP `memory_confirm` 在 trust 下返回允许；SDK 不包装。
   7. 写权限：chat/run 下 trust 隐含 AllowWrite；与 `--read-only` 同给时 `--read-only` 为准并打印提示；SDK 不改；ACP `read_only` 会话模式照旧。
-  8. ACP：`acp.go` 闭包捕获档位，传入每个 prompt 的 `wiring.Options` 与 `permissionHook` 构造。
+  8. ACP：`acp.go` 解析档位，经 `acpserver.Options` 交给 server，`server.go:310` 构造 `permissionHook` 时带入；同时进入每个 prompt 的 `wiring.Options`；`permissionHook` 对 `(Ask, clamped=false)` 在 trust 下放行。
+  8a. run 的 MCP：`newCLIMCPGate` 增档位参数，trust 时 MCP 默认 Allow（read-only 下照旧拒绝）。
   9. 子 agent：`subagent.go` 继承父档位快照。
-  10. 记录：`SessionLine` 增 `approval_mode`；observe attrs `approval_mode`、`approval=trust`；chat `BannerInfo` 显示档位（i18n 文案）。
+  10. 记录：`SessionLine` 增 `approval_mode`；回合开始事件 attrs 写 `approval_mode`（值来自 `Options.ApprovalMode`）；工具审批事件写 `approval=trust`；chat `BannerInfo` 显示档位（取值链 `internal/cli/chat.go:93` → `internal/chat/chat.go:415` → `render.go:740`，i18n 文案）。
 - **测试**：
   - GR110：`suga run --yolo`、`--approve trust`、`--approve x` 报错、与 `--yolo` 冲突、`suga acp --approve trust`、`suga config set tools.approval trust` 报错；
   - 入口 × 档位 × 5 项表驱动；
@@ -272,13 +292,13 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
 
 ### T6 C：敏感路径禁读（sonnet，与 T2 同波，T2 合入后 rebase 合入）
 
-- **Owner**：`internal/config/read_deny.go`（新：列表、内置项、`~`/`$SUGA_HOME` 展开、glob 校验）、`settings_registry.go`（两键不可写）；`pkg/agentcore/tools/native`（Env 的 `ReadDenyList` 与 `Denied`；`readroots.go` 的 `resolveRead` 判定；`file_list.go`、`find.go` 标注；`grep.go`、`refs.go`（跨文件跳过与计数，上下文读取同样判定）；`file_symbols.go`（单文件与目录遍历）；`view_image.go`、`file_read_image.go`；`edit.go`（`readFileInRoot` 前显式判定）；`file.go`（写禁读文件时结果不含旧内容，快照照常））；`internal/wiring/capabilities.go`（`nativeEnv` 增参数）及调用点 `runtime.go:508/549/846`、`subagent.go:236`、`manifest.go:598`；`pkg/sugasdk/types.go`（`ReadDeny`，`~` 在 wiring 合并时展开）；各自测试。
+- **Owner**：`internal/config/read_deny.go`（新：列表、内置项、`~`/`$SUGA_HOME` 展开、glob 校验）、`settings_registry.go`（两键不可写）；`pkg/agentcore/tools/native`（Env 的 `ReadDenyList` 与 `Denied`；`readroots.go` 的 `resolveRead` 判定（只对文件）；`file_list.go`、`find.go` 标注；`grep.go`、`refs.go`、`refs_context.go`（跨文件跳过与计数，上下文读取同样判定）；`file_symbols.go`（单文件与目录遍历）；`view_image.go`、`file_read_image.go`；`edit.go`（`readFileInRoot` 前显式判定）；`file.go`（写禁读文件时结果不含旧内容，快照照常））；`internal/wiring/capabilities.go`（`nativeEnv` 与 `nativeEnvWithSnapshot` 增参数）及调用点 `capabilities.go:102`、`runtime_build.go:161`、`runtime.go:508/549/846`、`subagent.go:236`、`manifest.go:598`；`pkg/sugasdk/types.go`（`ReadDeny`，`~` 在 wiring 合并时展开）；各自测试。
 - **动作**：按设计 C 节逐项实现；错误文本“被 tools.read_deny 禁止”；匹配：绝对路径、符号链接两端、Windows 不区分大小写与 `/` 统一、`!` 例外后者覆盖前者；判定为 Env 中值的方法，无包级状态。
 - **测试**：
   - 每个工具一例：`file_read`、`view_image`、图片分支、`file_symbols` 单文件与目录、`file_refs` 单文件与跨文件、`file_grep`、`file_list`、`file_find`、`file_edit` 拒绝、`file_write` 结果不含旧内容且快照存在；
   - 匹配：`**/.env` 与 `.env.example` 例外、`~/.ssh/id_rsa`、符号链接指向 `.env`、Windows 大小写（主机）；
   - `tools.read_deny_defaults: false` 关闭内置；SDK `ReadDeny` 追加且 `~` 展开；非法 glob 启动报错；`suga config set tools.read_deny_defaults false` 报错；
-  - trust 档下仍禁读；子 agent 中仍禁读。
+  - trust 档下仍禁读；子 agent 中仍禁读；经 `wiring.Open` 装配的主会话 `file_read .env` 被拒；目录参数（如 `file_list ~/.ssh`）照常列出并逐项标注。
 - **反向验证**：去掉 `resolveRead` 判定后 `file_read .env` 用例失败；去掉 `edit.go` 判定后 `file_edit` 用例失败。
 - **完成标准**：容器 race、Windows 通过，合入 main。
 
@@ -286,7 +306,7 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
 
 - **Owner**：新包 `internal/originjudge` 及测试；`internal/config/providers.go`（`ModelSettings.Judge`）、`settings_registry.go`（`models.judge`；`tools.origin_judge.enabled`、`tools.origin_judge.timeout`，后两者不可写）；`internal/wiring/runtime_build.go`（构建 judge provider；回退 compact 以延迟取值的函数注入，因 compact 在 `runtime.go:662` 才构建）、`origin_guard.go`（命中后调用）、`runtime.go`（注入一处）；`internal/personal/observe.go`（裁决 attrs）；`test/ptye2e/` 新场景。
 - **动作**：
-  1. `Judge`：按设计拼装提示词（用户请求截断 2 KB 为可信部分，"" 渲染为“未知”；注入回合正文、工具名与类别、参数（每值截断 1 KB、`redact.Secrets`）、命中片段与来源为不可信块）；用 `p.Stream` 收集完整回复；只接受 `{"decision","reason"}`；返回 token 用量。
+  1. `Judge`：按设计拼装提示词（用户请求截断 2 KB 为可信部分，"" 渲染为“未知”；注入回合正文、工具名与类别、参数（每值截断 1 KB、`redact.Secrets`）、命中片段与来源为不可信块）；provider 实现 `api.StreamingProvider` 时用 `Stream` 收集完整回复，否则 `Generate`；只接受 `{"decision","reason"}`；返回 token 用量。
   2. originGuard：初筛命中且 enabled → 带超时调用；allow 继续、deny 拒绝带理由、ask 时 chat 询问（问题带理由）其他拒绝；超时/不可用/解析失败按 v0.54.8；ctx 取消返回取消错误中止回合。
   3. attrs：`origin_judge`、`origin_judge_reason`（脱敏、截断 200 字）、`origin_judge_tokens`；不计入预算。
   4. 开关组合：`ask_on_external_origin=false` 关闭整体；`enabled=false` 同 v0.54.8；trust 跳过（T2 已做）；`timeout` 须为正时长，否则启动报错。
@@ -312,8 +332,8 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
 ### T8 文档与收尾（我）
 
 - **Owner**：`README.md`、`docs/usage/gofer-personal-agent.md`、`CHANGELOG.md`、`.gofer/tracker/`。
-- **动作**：写明 `--approve`/`--yolo`、裁决、禁读、默认变化与关闭方法、gofer 配置中传 `--approve trust` 的示例；关闭 `suga-flei`、`suga-kkh4`、`suga-f5la`、`suga-4t8i`；给 gofer 监督会话发一封接口变化说明。
-- **完成标准**：文档 grep 可见新参数与配置键；issue 已关闭；说明已发出。
+- **动作**：写明 `--approve`/`--yolo`、裁决、禁读、默认变化与关闭方法、gofer 配置中传 `--approve trust` 的示例；关闭 `suga-flei`、`suga-kkh4`、`suga-f5la`、`suga-4t8i`；起草给 gofer 监督会话的接口变化说明（G1 发版时发出）。
+- **完成标准**：文档 grep 可见新参数与配置键；issue 已关闭；说明草稿就绪。
 
 ## 回滚与恢复
 
@@ -324,8 +344,10 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
 ## 人工 Gate
 
 - **设计批准**：已获（见“输入与批准证据”）。
-- **计划批准**：两轴 PASS 后，你本人：“批准 suga 安全计划 <版本>，T0–T6 用 sonnet，开始实施”。差异说明：T0（`suga-flei`）在设计中列为范围外的既有缺陷，本计划将其纳入，因为设计中“ACP 下保护路径照常询问”以它为前提。
-- **G1 发版**：T8 完成后，你本人授权推送、打 tag、安装与上传镜像（版本号届时给出）。
+- **计划批准**：两轴 PASS 后，你本人：“批准 suga 安全计划 <版本>，T0–T6 用 sonnet，开始实施”。与设计的差异说明：
+  - T0（`suga-flei`）在设计中列为范围外的既有缺陷，本计划将其纳入，因为设计中“ACP 下保护路径照常询问”以它为前提；
+  - 计划新增：`tools.origin_judge.*` 与 `tools.read_deny*` 不可经 `suga config set` 修改，防止模型关闭裁决与内置禁读列表；既有的 `tools.ask_on_external_origin` 仍可修改（列入剩余工作）。
+- **G1 发版**：T8 完成后，你本人授权推送、打 tag、安装与上传镜像（版本号届时给出）；安装后发出给 gofer 会话的说明。
 
 ## 可追溯性
 
@@ -340,4 +362,4 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error) // �
 ## 完成 Gate 与剩余工作
 
 - 完成 Gate：T0–T8 合入或完成；目标 1–6 有证据；进度记录完整。
-- 剩余：只对高风险动作检查的收窄；xhen 接入新档位与禁读（xhen 侧）；gofer 对 input_required 的退出码（gofer 侧）。
+- 剩余：只对高风险动作检查的收窄；`tools.ask_on_external_origin` 等既有安全开关可被模型经 `suga config set` 关闭（需另立设计）；xhen 接入新档位与禁读（xhen 侧）；gofer 对 input_required 的退出码（gofer 侧）。
