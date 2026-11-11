@@ -15,6 +15,7 @@ import (
 	"github.com/inhere/suga/internal/personal/process"
 	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
+	"github.com/inhere/suga/pkg/agentcore/api"
 	"github.com/inhere/suga/pkg/agentcore/redact"
 	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
@@ -570,6 +571,8 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	// The automatic-reply depth of this turn (design session_message D3): the
 	// session_message tool reads it and sends h+1.
 	ctx = WithTurnHops(ctx, req.Hops)
+	// The person's request of this turn, for layers that judge a call against it.
+	ctx = api.WithTurnPrompt(ctx, r.turnPrompt(ctx, model.ID, req))
 	// Refused tool calls are counted per turn in ctx (see denial.go).
 	ctx, denials := withTurnDenials(ctx)
 	// The run-scoped usage is counted at the observe layer and published after

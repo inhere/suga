@@ -827,7 +827,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		},
 		approvalLayer: approvalLayer,
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string) {
-			policyAction, hit := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
+			policyAction, hit, _ := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
 			if hit != nil {
 				rule = hit.Summary()
 			}

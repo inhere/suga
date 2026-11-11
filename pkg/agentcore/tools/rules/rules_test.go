@@ -60,7 +60,7 @@ func TestPolicyDecide(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := Policy{Rules: tt.rules, Default: tt.def}
-			got, rule := policy.Decide(tt.target)
+			got, rule, _ := policy.Decide(tt.target)
 			assert.Eq(t, tt.wantAction, got)
 			assert.Eq(t, tt.wantRule, rule != nil)
 			if rule != nil {

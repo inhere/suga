@@ -64,7 +64,7 @@ func TestApprovalPolicyDefaultsAndLegacyIsolation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			policy := compileApprovalPolicy(tc.mode, tc.chatAuto, false, loaded, nil)
-			action, hit := policy.Decide(tc.target, tc.meta)
+			action, hit, _ := policy.Decide(tc.target, tc.meta)
 			assert.Eq(t, tc.want, action)
 			assert.Nil(t, hit)
 		})
@@ -72,12 +72,12 @@ func TestApprovalPolicyDefaultsAndLegacyIsolation(t *testing.T) {
 
 	legacy := []approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}}
 	cli := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, legacy)
-	action, hit := cli.Decide(mcpTarget, tools.Meta{})
+	action, hit, _ := cli.Decide(mcpTarget, tools.Meta{})
 	assert.Eq(t, approvalrules.Allow, action)
 	assert.Eq(t, approvalrules.SourceLegacy, hit.Source)
 
 	acp := compileApprovalPolicy(approvalrules.ModeACP, false, false, loaded, nil)
-	action, hit = acp.Decide(mcpTarget, tools.Meta{})
+	action, hit, _ = acp.Decide(mcpTarget, tools.Meta{})
 	assert.Eq(t, approvalrules.Ask, action)
 	assert.Nil(t, hit)
 }
@@ -91,13 +91,13 @@ func TestApprovalPolicyExplicitDenyOverridesLegacyAndReadOnlyClamp(t *testing.T)
 	}
 	legacy := []approvalrules.Rule{{Source: approvalrules.SourceLegacy, Index: 1, Tool: "srv/query", Action: approvalrules.Allow}}
 	policy := compileApprovalPolicy(approvalrules.ModeRun, false, false, loaded, legacy)
-	action, hit := policy.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
+	action, hit, _ := policy.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
 
 	loaded.User.Rules[0].Action = approvalrules.Allow
 	readOnly := compileApprovalPolicy(approvalrules.ModeRun, false, true, loaded, legacy)
-	action, hit = readOnly.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
+	action, hit, _ = readOnly.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
 }
@@ -114,13 +114,13 @@ func TestCompileCLIApprovalPolicyLoadsRulesAndKeepsACPSeparate(t *testing.T) {
 
 	cli, err := compileCLIApprovalPolicy(workspace, approvalrules.ModeRun, false, false)
 	assert.Require(t, assert.NoError(t, err))
-	action, hit := cli.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
+	action, hit, _ := cli.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
 
 	acp, err := compileACPApprovalPolicy(workspace, false)
 	assert.Require(t, assert.NoError(t, err))
-	action, hit = acp.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
+	action, hit, _ = acp.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Deny, action)
 	assert.Eq(t, approvalrules.SourceUser, hit.Source)
 
@@ -129,7 +129,7 @@ func TestCompileCLIApprovalPolicyLoadsRulesAndKeepsACPSeparate(t *testing.T) {
 	assert.NoErr(t, os.Remove(userFile))
 	acp, err = compileACPApprovalPolicy(workspace, false)
 	assert.Require(t, assert.NoError(t, err))
-	action, hit = acp.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
+	action, hit, _ = acp.Decide(approvalrules.Target{Tool: "query", MCP: true, MCPServer: "srv"}, tools.Meta{})
 	assert.Eq(t, approvalrules.Ask, action)
 	assert.Nil(t, hit)
 
@@ -152,4 +152,48 @@ func TestCLIMCPGateAskFailsClosedWithoutTerminal(t *testing.T) {
 	gate := newCLIMCPGateWithPolicy(policy)
 	err := gate.Decide(context.Background(), agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query"))
 	assert.ErrIs(t, err, tools.ErrDenied)
+}
+
+// approvalPolicy.Decide reports protected for both clamp sites: a broad allow
+// rule matching a protected path, and the default action (no rule matched).
+func TestApprovalPolicyDecideReportsProtected(t *testing.T) {
+	workspace, sugaHome := t.TempDir(), t.TempDir()
+	broadAllow := []approvalrules.Rule{{Tool: "file_write", Path: []string{"**"}, Root: workspace, Action: approvalrules.Allow}}
+	newPolicy := func(rules []approvalrules.Rule, native approvalrules.Action) approvalPolicy {
+		return approvalPolicy{
+			Mode: approvalrules.ModeChat, Workspace: workspace, SugaHome: sugaHome, Rules: rules,
+			Defaults: approvalDefaults{Native: native},
+		}
+	}
+	target := func(path string) approvalrules.Target {
+		// targetFor fills Workspace/SugaHome in real calls; the rule-path clamp reads them from the target.
+		return approvalrules.Target{Tool: "file_write", Root: workspace, Path: path, Workspace: workspace, SugaHome: sugaHome}
+	}
+	t.Run("allow rule on protected path", func(t *testing.T) {
+		action, hit, protected := newPolicy(broadAllow, approvalrules.Ask).Decide(target(".git/hooks/x"), tools.Meta{})
+		assert.Eq(t, approvalrules.Ask, action)
+		assert.NotNil(t, hit)
+		assert.True(t, protected)
+	})
+	t.Run("allow rule on ordinary path", func(t *testing.T) {
+		action, _, protected := newPolicy(broadAllow, approvalrules.Ask).Decide(target("docs/a.txt"), tools.Meta{})
+		assert.Eq(t, approvalrules.Allow, action)
+		assert.False(t, protected)
+	})
+	t.Run("default allow on protected path", func(t *testing.T) {
+		action, hit, protected := newPolicy(nil, approvalrules.Allow).Decide(target(".git/hooks/x"), tools.Meta{})
+		assert.Eq(t, approvalrules.Ask, action)
+		assert.Nil(t, hit)
+		assert.True(t, protected)
+	})
+	t.Run("default allow on ordinary path", func(t *testing.T) {
+		action, _, protected := newPolicy(nil, approvalrules.Allow).Decide(target("docs/a.txt"), tools.Meta{})
+		assert.Eq(t, approvalrules.Allow, action)
+		assert.False(t, protected)
+	})
+	t.Run("ordinary ask is not protected", func(t *testing.T) {
+		action, _, protected := newPolicy(nil, approvalrules.Ask).Decide(target(".git/hooks/x"), tools.Meta{})
+		assert.Eq(t, approvalrules.Ask, action)
+		assert.False(t, protected)
+	})
 }

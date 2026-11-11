@@ -142,12 +142,12 @@ func TestPolicyDecideCommandRule(t *testing.T) {
 	}
 
 	t.Run("safe allow wins", func(t *testing.T) {
-		got, rule := policy.Decide(Target{Tool: "shell_exec", Shell: ShellSh, Command: "go test ./pkg"})
+		got, rule, _ := policy.Decide(Target{Tool: "shell_exec", Shell: ShellSh, Command: "go test ./pkg"})
 		assert.Eq(t, Allow, got)
 		assert.NotNil(t, rule)
 	})
 	t.Run("unsafe command does not use allow", func(t *testing.T) {
-		got, rule := policy.Decide(Target{Tool: "shell_exec", Shell: ShellSh, Command: "go test ./... && echo done"})
+		got, rule, _ := policy.Decide(Target{Tool: "shell_exec", Shell: ShellSh, Command: "go test ./... && echo done"})
 		assert.Eq(t, Deny, got)
 		assert.NotNil(t, rule)
 		assert.Eq(t, 1, rule.Index)

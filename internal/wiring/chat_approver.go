@@ -139,7 +139,7 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 	if a.usePolicy {
 		scope = a.scopeFor(call, tool)
 		a.mu.Lock()
-		action, hit = a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+		action, hit, _ = a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
 		a.mu.Unlock()
 		if hit != nil {
 			reportScope := ""
@@ -274,7 +274,7 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 func (a *chatApprover) previewAsk(call agentcore.ToolCall, tool agentcore.Tool) (tools.Question, bool) {
 	if a.usePolicy {
 		a.mu.Lock()
-		action, _ := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+		action, _, _ := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
 		a.mu.Unlock()
 		if action != approvalrules.Ask {
 			return tools.Question{}, false
