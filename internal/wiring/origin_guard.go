@@ -124,7 +124,8 @@ func (g *originGuard) Decide(ctx context.Context, call agentcore.ToolCall, tool 
 		v, err := g.judge.run(ctx, originjudge.Input{
 			UserRequest: api.TurnPromptFrom(ctx),
 			Untrusted: originjudge.Material{
-				Tool: call.Name, Category: string(meta.Category), Args: call.Arguments,
+				InjectedText: api.InjectedTurnTextFrom(ctx),
+				Tool:         call.Name, Category: string(meta.Category), Args: call.Arguments,
 				Snippet: hit.Snippet, Source: hit.Tool,
 			},
 		})

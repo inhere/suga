@@ -11,8 +11,9 @@ import (
 	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
-// promptProbeTool records the turn prompt its call's ctx carries.
-type promptProbeTool struct{ seen []string }
+// promptProbeTool records the turn prompt and the injected turn text its call's
+// ctx carries.
+type promptProbeTool struct{ seen, injected []string }
 
 func (t *promptProbeTool) Name() string        { return "probe" }
 func (t *promptProbeTool) Description() string { return "turn prompt probe" }
@@ -22,6 +23,7 @@ func (t *promptProbeTool) Schema() agentcore.ToolSchema {
 func (t *promptProbeTool) ToolMeta() tools.Meta { return tools.Meta{ReadOnly: true} }
 func (t *promptProbeTool) Execute(ctx context.Context, call agentcore.ToolCall) (*agentcore.ToolResult, error) {
 	t.seen = append(t.seen, api.TurnPromptFrom(ctx))
+	t.injected = append(t.injected, api.InjectedTurnTextFrom(ctx))
 	return &agentcore.ToolResult{CallID: call.CallID, Name: call.Name, Content: "ok"}, nil
 }
 
@@ -65,6 +67,8 @@ func TestTurnPromptInRun(t *testing.T) {
 		_, err := runner.Run(ctx, RunRequest{Prompt: "deploy the site"})
 		assert.NoErr(t, err)
 		assert.Eq(t, "deploy the site", probe.lastSeen(t))
+		// A typed turn carries no injected text (suga-xsvv).
+		assert.Eq(t, "", probe.injected[len(probe.injected)-1])
 	})
 
 	t.Run("injected turns take the latest user request, across a restart", func(t *testing.T) {
@@ -79,6 +83,8 @@ func TestTurnPromptInRun(t *testing.T) {
 		_, err = runner.Run(ctx, RunRequest{SessionID: second.SessionID, Prompt: "hook reply one", Injected: true})
 		assert.NoErr(t, err)
 		assert.Eq(t, "second typed request", probe.lastSeen(t))
+		// The injected turn's own text travels as untrusted material (suga-xsvv).
+		assert.Eq(t, "hook reply one", probe.injected[len(probe.injected)-1])
 		_, err = runner.Run(ctx, RunRequest{SessionID: second.SessionID, Prompt: "hook reply two", Injected: true})
 		assert.NoErr(t, err)
 		assert.Eq(t, "second typed request", probe.lastSeen(t))

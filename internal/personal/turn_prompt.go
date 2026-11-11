@@ -5,7 +5,19 @@ import (
 	"log/slog"
 
 	"github.com/inhere/suga/internal/personal/store"
+	"github.com/inhere/suga/pkg/agentcore/api"
 )
+
+// withTurnRequest marks ctx with the person's request of the turn
+// (api.WithTurnPrompt) and, for an injected turn, with its own text as untrusted
+// material (api.WithInjectedTurnText, suga-xsvv).
+func (r *Runner) withTurnRequest(ctx context.Context, sessionID string, req RunRequest) context.Context {
+	ctx = api.WithTurnPrompt(ctx, r.turnPrompt(ctx, sessionID, req))
+	if req.Injected {
+		ctx = api.WithInjectedTurnText(ctx, req.Prompt)
+	}
+	return ctx
+}
 
 // turnPrompt returns the user request a turn acts on. A user turn is its own
 // prompt. An injected turn (RunRequest.Injected: a Stop hook reply, a delivery)

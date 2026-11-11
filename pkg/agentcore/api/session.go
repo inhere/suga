@@ -44,6 +44,24 @@ func TurnPromptFrom(ctx context.Context) string {
 	return prompt
 }
 
+// injectedTurnTextKey carries the body of an injected turn (WithInjectedTurnText).
+type injectedTurnTextKey struct{}
+
+// WithInjectedTurnText marks ctx with the text of an injected turn (verify
+// output, a task notice, a Stop hook reply, a cross-session message): it was
+// not typed by the person, so layers that judge a call treat it as untrusted
+// material, never as the request (see WithTurnPrompt).
+func WithInjectedTurnText(ctx context.Context, text string) context.Context {
+	return context.WithValue(ctx, injectedTurnTextKey{}, text)
+}
+
+// InjectedTurnTextFrom returns the text set by WithInjectedTurnText, or "" for a
+// turn the person typed.
+func InjectedTurnTextFrom(ctx context.Context) string {
+	text, _ := ctx.Value(injectedTurnTextKey{}).(string)
+	return text
+}
+
 // WithTurnID marks ctx with the agent turn the call belongs to. llm.headers
 // expands it as "{{turn_id}}" (a gateway tracing one turn of a long session).
 func WithTurnID(ctx context.Context, id string) context.Context {
