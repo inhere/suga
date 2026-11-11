@@ -54,7 +54,7 @@ func Reload() error {
 
 func isModelSelectionKey(key string) bool {
 	switch key {
-	case "model", "compact_model", "fallback_models", "models.compact", "models.idle", "models.handoff":
+	case "model", "compact_model", "fallback_models", "models.compact", "models.idle", "models.handoff", "models.judge":
 		return true
 	}
 	return false

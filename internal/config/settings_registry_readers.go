@@ -131,7 +131,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 	case "store.body_inline_bytes":
 		settings, err := ReadToolBodySettings()
 		return settings.InlineBytes, gkconfig.Get(key) != nil, err
-	case "model", "compact_model", "fallback_models", "models.compact", "models.idle", "models.handoff":
+	case "model", "compact_model", "fallback_models", "models.compact", "models.idle", "models.handoff", "models.judge":
 		settings, err := ReadModelSettings("")
 		if err != nil {
 			return nil, false, err
@@ -146,10 +146,13 @@ func effectiveConfigValue(key string) (any, bool, error) {
 				return "", false, nil
 			}
 			return settings.Compact.Ref(), true, nil
-		case "models.idle", "models.handoff":
+		case "models.idle", "models.handoff", "models.judge":
 			spec := settings.Idle
-			if key == "models.handoff" {
+			switch key {
+			case "models.handoff":
 				spec = settings.Handoff
+			case "models.judge":
+				spec = settings.Judge
 			}
 			if spec == nil {
 				return "", false, nil
