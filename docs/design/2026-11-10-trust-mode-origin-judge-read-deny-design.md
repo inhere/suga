@@ -1,154 +1,197 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 设计
 
-> 状态：Draft 0.2 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
+> 状态：Draft 0.3 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-11-10 | Claude | 初稿：三项合并设计——审批档位与可信模式（kkh4）、外部来源防护“规则初筛 + 小模型裁决”（f5la）、敏感路径禁读（4t8i） |
-| 0.2 | 2026-11-10 | Claude | 记录用户对 Q1–Q4 的选择（2026-11-10：“Q1–Q4 按推荐”），转为决策 D7–D10 |
+| 0.2 | 2026-11-10 | Claude | 记录用户对 Q1–Q4 的选择（2026-11-10：“Q1–Q4 按推荐”），转为决策 |
+| 0.3 | 2026-11-10 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-10-trust-mode-origin-judge-read-deny/`），以收窄为主，见下表 |
 
-> 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
+0.3 的处理（按类自查范围：A 的放开项与保护路径、档位来源；B 的输入、装配与信任边界；C 的工具覆盖与匹配规则；前序设计替代；验证）：
+
+| 评审项 | 处理 |
+|---|---|
+| S1、F2（阻断） | 保护路径（`ClampAllow`）产生的 ask 单独标记为“保护”，`trust` 不放行：chat/ACP 仍询问，无人可问时拒绝 |
+| S2、F7 | `trust` 不进配置：只能由启动参数（`--approve`/`--yolo`）或 SDK 选项设定；`tools.approval` 仍只取 `ask`/`auto` 且只作用于 chat（保持前序设计）。模型无法用 `suga config set` 提升档位 |
+| S3 | 裁决输入中除用户本回合请求外一律作为不可信材料；无人值守入口的放宽在“兼容”中明示 |
+| S4、F11 | 禁读放进读路径统一入口 `resolveRead`（及遍历类工具的逐文件判定），覆盖 `file_read`、`file_list`、`file_grep`、`file_find`、`file_refs`、`file_symbols`、`view_image`、`file_edit`/`file_write` 的读前比对；工具名更正 |
+| F1（阻断） | 删去裁决缓存 |
+| F3、F4 | 裁决输入改为：本回合用户请求（由 Runner 写入 ctx）、调用的工具名与完整参数（截断）、命中片段与来源；删去“会话目标”与“片段前后扩展” |
+| F5 | 写明装配：wiring 构建 judge 场景 provider 并注入；用量写入审批事件 attrs，不计入会话预算 |
+| F6 | `trust` 不再放开“目录外询问”（从放开项删除） |
+| F8 | `trust` 隐含允许写（`--read-only` 仍优先） |
+| F9 | 增“入口 × 档位”适用矩阵；SDK 下记忆确认仍由宿主 `MemoryConfirm` 决定 |
+| F10、F12、F16 | 写明匹配规则（绝对路径、符号链接两端、Windows 不区分大小写、`!` 例外）、SDK 传递与 `$SUGA_HOME` 展开；内置列表补几项凭据文件 |
+| F13、F14、S7、S10 | 统一表述；写明子 agent、ACP 下的裁决，三个开关的组合语义 |
+| S5、S6 | 代码组织写明偏离理由；列出对前序设计的替代 |
+| S8、S9 | 验证要求与兼容说明补齐 |
+| 原 D6 | 删去（ACP 会话内切换档位不做） |
+| S11、F15 | 决策去重、review budget 写具体；引用更正 |
 
 **思考与范围声明**
 - 思考模式：`RIGOROUS`。
 - 核心目标：
-  1. 可信环境（如 gofer 在 worktree 里跑的编码任务）可以一键放开“需要人确认”类检查，不再因无人可问而整轮卡住；
+  1. 可信环境（如 gofer 在 worktree 里跑的编码任务）可以用启动参数放开“需要人确认”类检查，不再因无人可问而整轮卡住；
   2. 外部来源防护的误报不再直接结束回合：逐字命中后由小模型判断这次调用是在执行用户任务还是在听外部内容的话；
   3. 读类工具不能把 `.env`、`~/.ssh` 这类敏感文件读进上下文与 trace。
-- scope freeze：只做下文 A、B、C；不改审批规则文件格式、不改 hooks 语义、不改危险命令的判定规则本身。
-- 新机制按 `DEFER_OR_REQUEST` 处理；review budget 按 SR1408。
-- 暴露度（SR1409）：高。依据：suga 已公开发布（tag `v0.54.8`），gofer 以 `run`/`acp` 派活、xhen 以 SDK 嵌入；本设计改变安全边界（放开检查、引入模型裁决、拒读文件）。走两轴独立评审与 ledger，评审目录 `docs/review/2026-11-10-trust-mode-origin-judge-read-deny/`。
+- scope freeze：只做下文 A、B、C；不改审批规则文件格式、不改 hooks 语义、不改危险命令判定规则、不做 ACP 会话内切换档位。
+- 新机制按 `DEFER_OR_REQUEST` 处理；review budget：最多 8 轮（第 1 轮 discovery、第 2 轮 confirmation，其后仅在有开放 `CORE_BLOCKING` 时继续）。
+- 暴露度（SR1409）：高。依据：suga 已公开发布（tag `v0.54.8`），gofer 以 `run`/`acp` 派活、xhen 以 SDK 嵌入；本设计改变安全边界。两轴独立评审与 ledger，评审目录 `docs/review/2026-11-10-trust-mode-origin-judge-read-deny/`。
 - 停止条件：无开放的 `CORE_BLOCKING`。
 
 ## 背景与目标
 
 现状（证据见“已确认事实”）：
-- 审批只有 `tools.approval: ask|auto` 两档，且只影响 chat 下原生工具的默认动作；`run` 无人可问，凡“需要问”的一律拒绝；同一回合被拒 3 次即结束（`DenialLimit`）。gofer 派的编码任务因此常在“本可放行”的调用上整轮停下，而 job 仍 exit 0。
-- 外部来源防护（`originGuard`）按逐字窗口判定“照抄外部内容”。v0.54.7/0.54.8 已把窗口提到 40 字节、写文件不比对 URL，但规则本身两头不准：常见片段仍会误报，模型稍作改写即可绕过。
-- 读类工具只有“路径须在工作区或 read roots 内”的约束；xhen 把 read roots 放开到全盘后，`.env` 中的 token 可被读入上下文与 trace（xhen gofer 对接设计 0.3 评审 S11）。
+- 审批只有 `tools.approval: ask|auto` 两档，且只作用于 chat；`run` 无人可问，凡“需要问”的一律拒绝；同一回合被拒 3 次即结束（`DenialLimit`）。gofer 派的编码任务因此常在“本可放行”的调用上整轮停下，而 job 仍 exit 0。
+- 外部来源防护按逐字窗口判定“照抄外部内容”。v0.54.7/0.54.8 已把窗口提到 40 字节、写文件不比对 URL，但规则本身两头不准：常见片段仍会误报，模型稍作改写即可绕过。
+- 读类工具只约束“路径须在工作区或 read roots 内”；xhen 把 read roots 放开到全盘后，`.env` 中的 token 可被读入上下文与 trace。
 
 用户可见结果：
-- `suga run --yolo …`（或 `--approve trust`）在可信环境下不再因“需要确认”而拒绝；任何模式下仍不会删除家目录、根目录，不会读 `.env`、`~/.ssh`。
-- 下载过网页后，模型写自己的代码、提交信息不再被拦；照抄网页里的指令去执行时，裁决模型给出拒绝或询问，并说明理由。
-- `file_read .env` 返回“该路径被禁止读取（tools.read_deny）”，列目录与搜索结果中不出现被禁止文件的内容。
+- `suga run --yolo …`（即 `--approve trust`）在可信环境下不再因“需要确认”而拒绝；任何档位下读类工具都不读 `.env`、`~/.ssh` 等，也不会删除家目录、根目录。
+- 下载过网页后，模型写自己的代码、提交信息不再被拦；照抄网页里的指令去执行时，裁决给出拒绝或询问，并说明理由。
+- `file_read .env` 返回“该路径被禁止读取（tools.read_deny）”；列目录与查找只显示文件名并标注“禁读”，搜索跳过这些文件。
 
 ## 名词
 
-- **审批档位（approval mode）**：一次会话的审批严格程度，`ask` / `auto` / `trust` 三档。
+- **审批档位**：一次会话的审批严格程度：`ask` / `auto` / `trust`。
+- **确认类检查**：结果为“需要问人”的检查；无人可问时变为拒绝。
 - **硬限制**：任何档位都生效、不能被规则或档位放开的检查。
-- **初筛**：现有的逐字窗口匹配（`ExternalOrigin.Find`/`FindIgnoringURLs`）。
-- **裁决**：初筛命中后，由小模型对“这次调用是否在执行外部内容中的指令”给出 `allow`/`deny`/`ask`。
-- **禁读路径**：`tools.read_deny` 列出的 glob，读类工具对其拒绝。
+- **保护路径 ask**：`ClampAllow` 把指向 SUGA_HOME、工作区 `.git`、`.suga`、规则文件的 allow 规则降级产生的 ask。
+- **初筛**：现有逐字窗口匹配（`ExternalOrigin.Find`/`FindIgnoringURLs`）。
+- **裁决**：初筛命中后，由小模型对这次调用给出 `allow`/`deny`/`ask`。
+- **禁读路径**：`tools.read_deny` 与内置缺省列表中的 glob。
 
 ## 范围与非目标
 
 范围：
-- A 审批档位与可信模式：`--approve ask|auto|trust`、`--yolo`、配置 `tools.approval` 增加 `trust`；`run`、`chat`、`acp`、SDK 四个入口一致。
+- A 审批档位与可信模式：`--approve ask|auto|trust`、`--yolo`；`chat`、`run`、`acp` 与 SDK。
 - B 外部来源裁决：`originGuard` 命中后调用裁决模型。
-- C 敏感路径禁读：`tools.read_deny` 与内置缺省列表，作用于 `file_read`、`file_list`、`grep`、`find`。
+- C 敏感路径禁读：`tools.read_deny`、内置缺省列表、原生读类工具。
 
 非目标：
-- 不做沙箱、网络隔离、按命令内容解析 shell（`shell_exec cat .env` 不在 C 的覆盖内，见“安全”）。
-- 不把裁决扩展到所有工具调用（只在初筛命中时调用）；“只对高风险动作做检查”的收窄列为后续。
-- 不改 gofer：job 在回合因拒绝结束时的退出码属 gofer，另提。
-- 不改 xhen 的审批协调器；xhen 通过 SDK 新字段自行选择。
+- 不做沙箱、网络隔离、按命令内容解析 shell（`shell_exec cat .env` 不在 C 的覆盖内）。
+- 不做 ACP 会话内切换档位。
+- 不把裁决扩展到所有调用；“只对高风险动作检查”的收窄列为后续。
+- 不改 gofer：回合因拒绝结束时 job 的退出码属 gofer，另提。
+- 不改 xhen 的审批协调器；xhen 经 SDK 新字段自行选择。
 
 ## 已确认事实与规范
 
 - **调用链**：注册表自外向内 observe → output（`redact.Secrets`）→ visibility → originObserver → Approval → base（`internal/personal/runner.go:463-468`，`internal/wiring/runtime.go:580-594`）。审批器包装固定为 `guardExternalOrigin(guardDangerous(入口 Approver), chatApproverOf(...), origin)`（`runtime.go:591`）。
-- **入口 Approver**：run 用 `newPolicyApprover`，ask 转 Denied（`approval_policy.go:152-171`）；chat 用 `newChatApprover`（`chat_approver.go:33`）；ACP 用 `permissionHook`（`internal/acpserver/policy.go:117,183`），失败或无连接按拒绝；SDK 透传宿主 Approver（`pkg/sugasdk/session.go:93-99`）。子 agent 用父策略快照、强制 run（`internal/wiring/subagent.go:122,176`）。
-- **默认动作**：run 原生 Allow、MCP Deny；chat 原生 Ask（auto 时 Allow）、MCP Deny；ACP 原生 Ask、MCP Ask；只读与 AgentState 工具一律 Allow（`approval_policy.go:60-81`）。
-- **既有硬限制**：
-  - `ClampAllow`：对 SUGA_HOME、工作区 `.git`、`.suga`、规则文件的 allow 规则降级（`pkg/agentcore/tools/rules/rules.go:261-305`）；
-  - 危险删除：hard 目标（家目录、根目录、工作区父目录、工作区外）任何入口都拒绝（`internal/wiring/danger_guard.go:46-71`，`native/danger.go`）；
-  - `file_remove` 拒删工作区根、add-dir 根、`.git`、家目录（`native/remove.go:143-151`）；
-  - `--read-only` 优先于一切（写工具不注册，`approval.go:111-115`）；
-  - hooks 的 deny 与失败一律拒绝，allow 不跳过审批（`internal/hooks/hooks.go`）。
-- **非硬的确认类检查**：审批规则中的 ask、`chat.ask_outside_dirs`（`chat_approver.go:483`）、危险删除的非 hard 目标（chat 要求输入 yes，其他入口拒绝）、外部来源防护（chat 询问一次，其他入口拒绝，`origin_guard.go:93-99`）、记忆写入 `memory.write_tainted: ask`（`memory_runtime.go:132-143`）。
-- **CLI**：chat 与 run 共用 `--read-only`、`--allow-write`、`--add-dir` 等（`internal/cli/run.go:249-270`）；没有审批档位参数；`suga acp` 无参数，会话 mode 为 default/read_only（`acpserver/config_options.go:31`）。
-- **辅助模型**：已有场景模型 `models.compact`/`models.idle`/`models.handoff`，经 `buildScenarioProvider`（`internal/wiring/runtime_build.go:76`）构建，`scenarioProvider` 依次回退 场景 → compact → 主模型（`internal/personal/compact.go:494`），`generateQuietly` 发非流式消费调用并记用量（`compact.go:464`，`runner.go:470-477`）。
-- **读路径**：读类工具只经 `resolveRead`/`resolveRooted` 限定在工作区或 read roots（`pkg/agentcore/tools/native/readroots.go:95-127`）；无拒读列表；内联返回给模型的 `file_read` 内容不经 `redact`（`output.go:150-156`）。
-- **记录**：拒绝记 `denial` 事件；stream-json `input_required` 带 `denied_tools`（`internal/output/streamjson.go:181-192`）；审批来源常量 rule/user/always/user_denied（`approval.go:194-200`）。
-- **前序设计**：`docs/design/2026-10-09-chat-write-approval-design.md`、`docs/design/2026-10-16-approval-rules-design.md`。
-- **规范**：SR1301、SR1403、SR1405、GR107、GR108、GR109、GR110、SR2003、SR2004；分层守卫 `pkg/agentcore/layering_test.go`（`pkg/agentcore` 不得依赖 `internal/*`）。
+- **入口 Approver**：run 用 `newPolicyApprover`，ask 转 Denied（`internal/wiring/approval_policy.go:152-171`）；chat 用 `newChatApprover`（`chat_approver.go:82`）；ACP 用 `permissionHook`（`internal/acpserver/policy.go:117,183`），无连接或失败按拒绝；SDK 透传宿主 Approver（`pkg/sugasdk/session.go:93-99`）。子 agent 只有只读工具，审批器为父策略快照的 `newPolicyApprover`，无人可问（`internal/wiring/subagent.go:122,176`）。
+- **默认动作**：run 原生 Allow、MCP Deny；chat 原生 Ask（auto 时 Allow）、MCP Deny；ACP 原生 Ask、MCP Ask；只读与 AgentState 工具一律 Allow（`approval_policy.go:60-81`）。`tools.approval` 只在 chat 读取（`runtime.go:261-270`）。
+- **保护路径**：`ClampAllow` 在 chat/ACP 把保护路径的 allow 降为 Ask，在 run/子 agent 降为 Deny，降级后的 Ask 不带规则命中信息（`pkg/agentcore/tools/rules/rules.go:261-305`，`approval_policy.go:198-202`）。
+- **其他硬限制**：危险删除 hard 目标任何入口拒绝（`internal/wiring/danger_guard.go:46-71`）；`file_remove` 拒删根与 `.git`、家目录（`native/remove.go:143-151`）；`--read-only` 使写工具不注册（`approval.go:111-115`）；hooks 的 deny 与失败一律拒绝，allow 不跳过审批。
+- **写权限**：`--allow-write` 由 `run`/`chat` 共用 flag 提供（`internal/cli/run.go:260`）；gofer 需要写时手工加 `--allow-write`（`docs/usage/gofer-personal-agent.md:165`）。
+- **确认类检查**：规则 ask；危险删除非 hard 目标（chat 要求输入 yes，其他入口拒绝）；外部来源防护（chat 询问一次，其他入口拒绝，`origin_guard.go`）；`memory.write_tainted: ask`（`memory_runtime.go:132-143`；SDK 下由宿主 `MemoryConfirm` 决定，nil 即拒绝）；`chat.ask_outside_dirs`（`chat_approver.go:483`）。
+- **ctx 内容**：工具调用时 ctx 带 session ID、turn ID（`pkg/agentcore/api/session.go:20-37`），不带用户请求。
+- **外部来源记录**：`ExternalOrigin` 只存窗口哈希与来源名，不存原文（`pkg/agentcore/tools/origin.go`）。
+- **辅助模型**：场景模型 `models.compact`/`models.idle`/`models.handoff`（`internal/config/providers.go:156-166`），`buildScenarioProvider`（`internal/wiring/runtime_build.go:76`）构建；回退与用量记录在 `personal.Runner` 内（`internal/personal/compact.go:464,494`），审批链在 Runner 之前装配。
+- **读路径**：`resolveRead` 是原生读类工具的路径解析入口，调用方为 `file_read`（含图片分支）、`file_list`、`file_grep`、`file_refs`、`file_symbols`、`view_image`、`file_guard`（写/改前的读比对），`file_find` 经遍历（`pkg/agentcore/tools/native/readroots.go:95-127` 及各工具文件）；内联返回模型的 `file_read` 内容不经 `redact`（`output.go:150-156`）。
+- **记录出口**：拒绝记 `denial` 事件；stream-json 首行 `session`、回合结束 `input_required` 带 `denied_tools`（`internal/output/streamjson.go:25,181-192`）；审批来源 rule/user/always/user_denied（`approval.go:194-200`）。
+- **前序设计**：`docs/design/2026-10-09-chat-write-approval-design.md`、`docs/design/2026-10-16-approval-rules-design.md`（替代关系见“决策”D8）。
+- **规范**：SR1301、SR1403、SR1405、SR1409、GR107、GR108、GR110、SR2003、SR2004；`pkg/agentcore` 不得依赖 `internal/*`（`pkg/agentcore/layering_test.go`）。
 
 ## 总体方案
 
 ### A 审批档位与可信模式（suga-kkh4）
 
-三档，一个概念贯穿四个入口：
+| 档位 | 含义 |
+|---|---|
+| `ask` | 确认类检查询问人；无人可问时拒绝 |
+| `auto` | 原生工具默认放行；确认类检查照旧（即现有 `tools.approval: auto`） |
+| `trust` | 在 `auto` 之上，把下表“放开”的确认类检查改为放行；硬限制照旧；隐含允许写 |
 
-| 档位 | 含义 | 与现状关系 |
-|---|---|---|
-| `ask` | 需要确认的调用询问人；无人可问时拒绝 | chat 现有默认；run 的“ask 转拒绝”即此档 |
-| `auto` | 原生工具默认放行；规则中的 ask、外部来源、危险删除非 hard 目标、目录外写入等确认类检查照旧 | 现有 `tools.approval: auto` |
-| `trust` | 在 `auto` 之上，把所有**确认类**检查改为放行；**硬限制**照旧 | 新增 |
+**设定来源**（`trust` 只能由启动方给出）：
+- `chat`、`run`、`acp` 增 `--approve <ask|auto|trust>`；`--yolo` 等价于 `--approve trust`；同时出现时报错。
+- 配置 `tools.approval` 仍只取 `ask|auto` 且只作用于 chat（不变）；`trust` 不能写进配置。
+- SDK：`SessionOptions.ApprovalMode`（空即现状）。
+- ACP：`suga acp --approve <…>` 定整个进程的档位，客户端不能修改；gofer 在 agent 配置的 args 中传入。
 
-- 入口参数：`chat`、`run`、`acp` 增 `--approve <ask|auto|trust>`；`--yolo` 等价于 `--approve trust`。配置 `tools.approval` 取值扩为 `ask|auto|trust`。命令行优先于配置。
-- run 的缺省档位保持现状语义（原生放行、无人可问即拒绝），记为 `auto`；chat 缺省 `ask`；ACP 缺省 `ask`，并新增会话配置项 `approval_mode`（ACP `set_config_option`），客户端可在会话内切换，但只能在 `--approve` 设定的上限之内（`suga acp --approve auto` 时客户端不能切到 `trust`）。
-- SDK：`SessionOptions.ApprovalMode`（空为 `ask`，即现状）。`trust` 时 suga 外层的 originGuard/dangerGuard 的确认类分支放行；宿主 Approver 仍被调用（宿主自己的策略不被绕过）。
-- `trust` 放开的确认类检查（逐项）：
-  1. 审批规则中命中 `ask` 的调用 → 放行（规则中显式 `deny` 仍拒绝）；
-  2. MCP 工具的默认 Deny/Ask → 放行；
-  3. 外部来源防护 → 不检查（B 的裁决也不调用）；
-  4. 危险删除的非 hard 目标 → 放行；
-  5. `chat.ask_outside_dirs` → 放行（读写范围本身仍按 read roots / add-dir / `--allow-write`）；
-  6. `memory.write_tainted: ask` → 放行。
-- `trust` 不放开的硬限制：`--read-only`、`ClampAllow`（SUGA_HOME、`.git`、`.suga`、规则文件）、危险删除 hard 目标、`file_remove` 拒删根、hooks 的 deny、规则中的显式 deny、C 的禁读路径、secret 脱敏、`DenialLimit`。
-- 可见性：chat 状态行显示 `trust`；trace 的回合事件写 `approval_mode`；stream-json 开头的 `session` 行带 `approval_mode`；ACP 会话配置项可读。被 `trust` 放行的、原本会询问的调用在事件 attrs 写 `approval=trust`。
-- 子 agent 继承父会话档位（目前子 agent 只读，影响限于外部来源检查与 MCP）。
+**入口 × 档位**：
+
+| 入口 | 缺省 | `--approve ask` | `--approve auto` | `--approve trust` |
+|---|---|---|---|---|
+| chat | 按配置（ask） | ask | auto | trust |
+| run | 现状（原生放行，ask 即拒绝） | 同缺省 | 同缺省 | trust |
+| acp | 现状（原生与 MCP 询问客户端） | 同缺省 | 原生放行，MCP 照旧询问 | trust |
+| SDK | 现状（宿主 Approver） | 同缺省 | 同缺省 | trust（只放开 suga 外层守卫） |
+
+**`trust` 放开的确认类检查**：
+
+| # | 检查 | chat/run/acp | SDK |
+|---|---|---|---|
+| 1 | 审批规则命中 ask（非保护路径） | 放行 | 不适用（宿主 Approver 决定） |
+| 2 | MCP 工具默认 Deny/Ask | 放行 | 不适用 |
+| 3 | 外部来源防护（含 B 的裁决） | 不检查 | 不检查 |
+| 4 | 危险删除的非 hard 目标 | 放行 | 放行 |
+| 5 | `memory.write_tainted: ask` | 放行 | 不适用（宿主 `MemoryConfirm` 决定） |
+
+**`trust` 不放开的硬限制**：`--read-only`；保护路径 ask（chat/ACP 询问，无人可问时拒绝）；危险删除 hard 目标；`file_remove` 拒删根；hooks 的 deny；规则中的显式 deny；C 的禁读；目录范围（`read roots`、`--add-dir`，`chat.ask_outside_dirs` 照旧询问）；secret 脱敏；`DenialLimit`。
+- 写权限：`trust` 隐含 `--allow-write`；与 `--read-only` 同时给出时以 `--read-only` 为准并提示。
+- 子 agent：继承父会话档位快照；子 agent 只有只读工具，实际只影响第 2 项（MCP）。
+- 可见性：chat 状态行显示 `trust`；stream-json `session` 行带 `approval_mode`；回合事件 attrs 写 `approval_mode`；被 `trust` 放行、原本会询问的调用写 `approval=trust`。
 
 ### B 外部来源裁决（suga-f5la）
 
-- 初筛不变（40 字节窗口，写/改文件忽略 URL）。命中后：
-  1. 档位为 `trust`：不检查（见 A）；
-  2. 否则调用裁决模型，得到 `allow`/`deny`/`ask` 与一句理由；
-  3. `allow` → 交给内层审批器继续（不再因外部来源询问）；`deny` → 拒绝并把理由返回模型；`ask` → chat 询问人（问题里带理由），其他入口拒绝。
-- 裁决输入（由 suga 拼装，不含会话全文）：
-  - 用户本回合的原始请求（截断到 2 KB）与会话目标（若有）；
-  - 待执行调用：工具名、类别、参数摘要（每个字符串值截断到 1 KB，经 `redact.Secrets`）；
-  - 命中的外部片段（前后各扩展到 512 字节）与来源工具名；
-  - 外部片段放在明确标注的“不可信材料”块中，提示词要求只按固定 JSON 输出：`{"decision":"allow|deny|ask","reason":"…"}`。
-- 输出解析失败、超时（缺省 20 秒）、模型不可用：按现状处理（chat 询问人，其他入口拒绝），并在事件 attrs 记 `origin_judge=error`。
-- 模型：新增场景 `models.judge`，回退顺序与其他场景一致（judge → compact → 主模型）。
-- 配置：`tools.origin_judge.enabled`（缺省 `true`）、`tools.origin_judge.timeout`（缺省 `20s`）。关闭时行为同 v0.54.8。
-- 记录：事件 attrs 写 `origin_judge=allow|deny|ask|error`、`origin_judge_reason`（脱敏、截断）；用量按 `purpose=origin_judge` 记入。
-- 同一回合内对“同一工具 + 同一命中片段”的裁决结果缓存，避免重试或模型重复调用时反复裁决。
+**开关组合**：`tools.ask_on_external_origin: false` → 整个防护关闭（同现状）；为 `true` 时初筛照旧，命中后若 `tools.origin_judge.enabled: true`（缺省）则裁决，否则同 v0.54.8；档位 `trust` → 不检查。
+
+**流程**：初筛命中 → 裁决 → `allow` 交给内层审批器继续；`deny` 拒绝并把理由返回模型；`ask` 时 chat 询问人（问题带理由），其他入口拒绝。超时（缺省 20 秒）、模型不可用、输出解析失败、回合已取消 → 按 v0.54.8 处理（chat 询问，其他入口拒绝），事件 attrs 记 `origin_judge=error`。不缓存裁决结果，每次命中单独裁决。
+
+**输入**（不含会话全文）：
+- 可信部分：本回合用户请求原文（截断到 2 KB）。Runner 在发起回合时写入 ctx（`api.WithTurnPrompt`，`pkg/agentcore/api`），无此值时（如 SDK 宿主未经 Runner）只给“未知”。
+- 不可信部分（整体放进标注为“不可信材料”的块）：工具名与类别、完整参数（每个字符串值截断到 1 KB，经 `redact.Secrets`）、命中片段与来源工具名。
+- 提示词规则：只有当这次调用不依赖外部材料中的指令、而是用户请求本身所需时才 `allow`；拿不准就 `ask`；只输出 `{"decision":"allow|deny|ask","reason":"…"}`，其他输出视为解析失败。
+
+**模型与装配**：新增场景 `models.judge`；未配置时依次用 `models.compact`、主模型。`internal/wiring` 在装配审批链时用 `buildScenarioProvider` 构建 judge provider，连同超时注入 `originGuard`；裁决逻辑（拼装、调用、解析）在领域包 `internal/originjudge`。用量（输入/输出 token）写入该次审批事件 attrs（`origin_judge_tokens`），不计入会话预算与 `turn_usage`。
+
+**范围**：chat、run、acp、SDK 一致；子 agent 只有只读工具，防护不检查，裁决不发生。
+
+**记录**：事件 attrs 写 `origin_judge=allow|deny|ask|error`、`origin_judge_reason`（脱敏、截断 200 字）。
 
 ### C 敏感路径禁读（suga-4t8i）
 
-- 配置 `tools.read_deny`：glob 列表，`~` 展开为家目录；与内置缺省列表合并（`tools.read_deny_defaults: false` 可关闭内置列表）。
-- 内置缺省列表：`**/.env`、`**/.env.*`（`.env.example`、`.env.sample`、`.env.template` 除外）、`~/.ssh/**`、`~/.aws/credentials`、`~/.gnupg/**`、`~/.netrc`、`~/.docker/config.json`、`$SUGA_HOME/.env`。
+- 配置 `tools.read_deny`（glob 列表）与内置缺省列表合并；`tools.read_deny_defaults: false` 关闭内置列表。SDK：`SessionOptions.ReadDeny []string` 追加到配置结果（不能删除内置项）。
+- 内置缺省列表：
+  - `**/.env`、`**/.env.*`，例外 `!**/.env.example`、`!**/.env.sample`、`!**/.env.template`；
+  - `~/.ssh/**`、`~/.aws/credentials`、`~/.gnupg/**`、`~/.netrc`、`~/.docker/config.json`、`~/.git-credentials`、`~/.config/gh/hosts.yml`、`~/.kube/config`、`~/.npmrc`、`~/.pypirc`；
+  - `$SUGA_HOME/.env`。
+- 匹配规则：
+  - 模式中的 `~` 与 `$SUGA_HOME` 在 `internal/config` 加载时展开为绝对路径；以 `**/` 开头的模式匹配任意目录下的文件名；
+  - 被判定的路径是解析后的绝对路径（`filepath.Clean`），对符号链接同时判定链接路径与目标路径，任一命中即禁读；
+  - Windows 不区分大小写，路径分隔符统一为 `/` 后匹配；
+  - 列表按顺序，`!` 开头为例外，后出现的覆盖前面的（同 gitignore 规则）。
 - 作用：
-  - `file_read`：命中即拒绝，错误写明“被 tools.read_deny 禁止”；
-  - `file_list`/`find`：照常列出文件名（名字不是机密），在条目上标注“禁读”；
-  - `grep`：跳过命中文件，结果末尾注明“已跳过 N 个禁读文件”。
-- SDK：`SessionOptions.ReadDeny []string`，与配置合并（只能加，不能删内置项；宿主要关闭内置项需走配置）。
-- 硬限制：任何档位（含 `trust`）都生效。
-- 已知不覆盖：`shell_exec` 中 `cat .env` 之类命令（不解析 shell）；在“安全”中说明，由档位与审批规则另行约束。
+  - 直接读取（`file_read` 含图片、`view_image`、`file_symbols`、`file_refs` 指定文件、`file_edit`/`file_write` 的读前比对）：经 `resolveRead` 拒绝，错误写明“被 tools.read_deny 禁止”；`file_edit` 因此不能编辑禁读文件，`file_write` 整体覆写不需要读，仍可写；
+  - 遍历（`file_list`、`file_find`）：照常列出文件名并标注“禁读”；
+  - 内容搜索（`file_grep`、`file_refs` 跨文件）：跳过禁读文件，结果末尾注明跳过数。
+- 任何档位（含 `trust`）都生效；对 xhen（read roots 为全盘）同样生效。
+- 已知不覆盖：`shell_exec`（如 `cat .env`）。`ask`/`auto` 档 shell 仍走审批规则；`trust` 档下可经 shell 读取，文档写明。
 
 ## 架构
 
 代码组织（参照 suga 现有分层；`pkg/agentcore` 不得依赖 `internal/*`）：
 
 - **A**：
-  - 档位类型与解析：`internal/config`（`ApprovalMode`，`tools.approval` 取值扩展，设置注册表 `settings_registry.go`）；
-  - 策略：`internal/wiring/approval_policy.go`（按档位编译默认动作与 ask 的处理）、`origin_guard.go`/`danger_guard.go`（`trust` 时确认类分支放行）、`chat_approver.go`（`ask_outside_dirs`、记忆确认）；
-  - 参数：`internal/cli/run.go`（chat/run 共用 flag 绑定）、`internal/cli/acp.go`（`--approve`）、`internal/acpserver/config_options.go`（会话配置项与上限）；
-  - SDK：`pkg/sugasdk/types.go`（`SessionOptions.ApprovalMode`）→ `wiring.Options`；
-  - 输出：`internal/output/streamjson.go`（`session` 行）、`internal/personal/observe.go`（attrs）。
+  - 档位类型：`pkg/agentcore/tools`（`ApprovalMode`，供 SDK 与 wiring 共用）；
+  - 策略与守卫：`internal/wiring/approval_policy.go`（按档位编译默认动作；保护路径 ask 单独标记，需 `rules.ClampAllow` 返回标记）、`origin_guard.go`、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`；
+  - 参数：`internal/cli/run.go`（chat/run 共用 flag 绑定）、`internal/cli/acp.go`；ACP 档位经 `wiring.Options` 传入每个 prompt 的 `Open`（`internal/acpserver/policy.go` 按档位处理 ask）；
+  - SDK：`pkg/sugasdk/types.go`（`ApprovalMode`）→ `wiring.Options`；
+  - 输出：`internal/output/streamjson.go`、`internal/personal/observe.go`。
+  - 偏离说明（GR108、SR2004）：审批策略与两个守卫现已位于 `internal/wiring`（前序设计确立的 owner），本设计沿用现有 owner 只增加档位分支，不新建包；把它们整体迁出 wiring 是另一项重构，不在本设计范围。
 - **B**：
-  - 裁决逻辑放新领域包 `internal/originjudge`（拼装输入、调用 provider、解析与缓存、超时），对外只暴露 `Judge(ctx, Input) (Verdict, error)`；
-  - `internal/wiring` 只装配：构建 `models.judge` 场景 provider，注入 `originGuard`（GR108）；
-  - 场景模型配置：`internal/config/providers.go`（`ModelSettings.Judge`）。
+  - 领域包 `internal/originjudge`：`Judge(ctx, provider, Input) (Verdict, error)`，只依赖 `pkg/agentcore/api` 与 `pkg/agentcore/redact`，不依赖 `internal/personal`；
+  - `internal/wiring`：构建 judge provider（`runtime_build.go`）并注入 `originGuard`；
+  - 配置：`internal/config/providers.go`（`ModelSettings.Judge`）、设置注册表（`tools.origin_judge.*`）；
+  - 回合请求：`pkg/agentcore/api`（`WithTurnPrompt`/`TurnPromptFrom`），`internal/personal` 在回合开始时写入。
 - **C**：
-  - 匹配：`pkg/agentcore/tools/native/readroots.go` 增禁读判定（与 `resolveRead` 同处），`file_read`/`list`/`grep`/`find` 调用；
-  - 配置与缺省列表：`internal/config`；装配经 native 工具环境传入（`internal/wiring/capabilities.go`）；
+  - 匹配：`pkg/agentcore/tools/native/readroots.go`（禁读判定与 `resolveRead` 同处，遍历类工具共用判定函数）；
+  - 配置与缺省列表、展开：`internal/config`；经 native 工具环境传入的全部调用点（含子 agent）由 `internal/wiring/capabilities.go` 统一设置；
   - SDK：`SessionOptions.ReadDeny`。
-- **测试**：每个入口至少一个经真实分发的 CLI 测试（GR110：`suga run --yolo`、`suga acp --approve`）；ptye2e 冒烟增 chat 中 `--approve trust` 状态行与外部来源裁决询问场景（假模型）。
 
 ## 关键流程
 
@@ -156,53 +199,69 @@
 工具调用 → Approval
   ├─ disabled（--read-only 等）→ 拒绝
   ├─ originGuard（非只读、非 AgentState）
-  │    ├─ 档位 trust → 跳过
+  │    ├─ 档位 trust 或 ask_on_external_origin=false → 跳过
   │    ├─ 初筛未命中 → 继续
-  │    └─ 命中 → 裁决（enabled 时）
+  │    └─ 命中 → origin_judge.enabled ? 裁决 : 现状
   │         ├─ allow → 继续
   │         ├─ deny → 拒绝（理由给模型）
   │         └─ ask / 出错 → chat 询问人；其他入口拒绝
   ├─ dangerGuard（shell_exec 删除）
   │    ├─ hard 目标 → 拒绝（任何档位）
   │    └─ 非 hard → trust 放行；chat 要求 yes；其他拒绝
-  └─ 入口 Approver（规则：deny 优先；ask → trust 放行 / chat 询问 / 其他拒绝；默认动作按档位）
+  └─ 入口 Approver
+       ├─ 规则 deny → 拒绝
+       ├─ 保护路径 ask → chat/ACP 询问；其他拒绝（任何档位）
+       ├─ 其他 ask → trust 放行；chat/ACP 询问；其他拒绝
+       └─ 默认动作按入口与档位
 
-读类工具 → resolveRead（工作区 / read roots）→ read_deny 判定 → 读取 / 拒绝 / 标注
+读类工具 → resolveRead（工作区 / read roots / add-dir）→ read_deny 判定 → 读取 / 拒绝 / 标注 / 跳过
 ```
 
 ## 安全、数据、运维与回滚
 
 - **SR1301**：
-  - 鉴权：`trust` 只能由启动方（命令行、配置、SDK 宿主、ACP 启动参数）设定；ACP 客户端只能在启动上限之内切换，模型无法改变档位；
-  - 注入防护：裁决提示把外部片段作为不可信材料隔离，只接受固定 JSON；解析失败按现状处理（不放宽）；裁决模型看不到会话全文，降低被注入面；
-  - 秘密：裁决输入经 `redact.Secrets`；禁读阻止 `.env` 等进入上下文与 trace；
-  - 入参校验：`--approve` 只接受三个值；`read_deny` glob 启动时校验，非法项报错；
-  - 资源归属：不涉及。
+  - 鉴权：`trust` 只能由启动方（命令行、SDK 宿主）设定，不进配置、ACP 客户端与模型都不能修改；
+  - 注入防护：裁决输入中除用户请求外全部视为不可信材料，只接受固定 JSON；出错按现状处理，不放宽；不缓存裁决；
+  - 秘密：裁决输入经 `redact.Secrets`；禁读阻止凭据文件进入上下文与 trace；
+  - 入参校验：`--approve` 只接受三个值，与 `--yolo` 同时出现报错；`read_deny` glob 启动时校验，非法项报错；
+  - 资源归属：不适用。
 - **风险与限制**：
-  - `trust` 下模型可执行任意命令（受硬限制约束）；仅用于可信环境，文档与状态行明示；
-  - 裁决模型可能误判：`allow` 误判即放过一次注入；以 `ask` 为不确定时的推荐输出，提示词要求“拿不准就 ask”；
-  - 禁读不覆盖 `shell_exec`：`ask`/`auto` 档下 shell 仍走审批规则；`trust` 档下可通过 shell 读取，这是可信模式的含义之一，文档写明。
-- **数据**：无表结构变化；裁决结果写 trace 事件 attrs。
-- **运维**：裁决每次命中增加一次小模型调用（通常 < 2 秒），只在初筛命中时发生；配置可关闭。
-- **兼容**：不加参数时 chat/run/acp/SDK 行为与 v0.54.8 一致，默认变化只有两处：C 的内置禁读列表开启（D10）与 B 的裁决开启（D9）。
-- **回滚**：`tools.origin_judge.enabled: false`、`tools.read_deny_defaults: false` 可单独关闭 B、C 的默认行为；A 不加参数即无变化；整体回滚为 revert 对应版本。
+  - `trust` 下模型可执行任意命令（受硬限制约束），只用于可信环境；
+  - 裁决模型可能误判：误判 `allow` 即放过一次照抄外部指令的调用；缓解：提示词“拿不准就 ask”、输入隔离、真实模型注入用例评测（见验证）；
+  - 禁读不覆盖 `shell_exec`。
+- **兼容与使用方变化**：
+  - 不加参数时，chat/run/acp/SDK 的审批行为与 v0.54.8 一致；
+  - 默认变化一：B 默认开启。run、ACP、SDK 这些无人值守入口，从“初筛命中即拒绝”变为“裁决 allow 时放行”，这是用户选定的取舍（D7）；
+  - 默认变化二：C 默认开启。xhen（全盘 read roots）与 gofer 任务中，模型读 `.env` 等会被拒；
+  - SDK 的裁决模型取自 SUGA_HOME 配置（与主模型同一配置来源）；SDK 宿主的 `MemoryConfirm` 不受 `trust` 影响；
+  - stream-json `session` 行新增 `approval_mode` 字段（新增字段，旧解析器忽略）；
+  - 发版时向 xhen（同会话维护）与 gofer 会话说明：新参数、SDK 新字段、默认变化与关闭方法。
+- **数据**：无表结构变化；裁决结果写审批事件 attrs。
+- **运维**：裁决每次命中增加一次小模型调用（只在初筛命中时）。
+- **回滚**：`tools.origin_judge.enabled: false`、`tools.read_deny_defaults: false` 分别关闭 B、C 的默认行为；A 不加参数即无变化；整体回滚为 revert 对应版本。
+- **验证要求**（计划中落实）：
+  - 单元与经真实分发的 CLI 测试（GR110）：`suga run --yolo`、`suga acp --approve`、参数冲突；
+  - 入口 × 档位 × 5 项放开与硬限制的表驱动用例，含保护路径在 `trust` 下仍询问/拒绝的反向验证；
+  - ptye2e：chat `--approve trust` 状态行、外部来源裁决询问场景（假模型），用 `suga inspect trace --json` 断言 attrs，并做反向验证；
+  - ACP：`scripts/acpprobe/acp_probe.py` 验证 `--approve trust` 与 `approval_mode`；
+  - 裁决的真实 provider 评测：一组用例（正常引用、照抄指令、改写指令、提示词注入裁决模型），记录 allow/deny/ask 分布；
+  - 禁读：各工具、符号链接、Windows 大小写（主机 Windows 测试）。
 
 ## 决策
 
-- **D1** 审批档位为单一概念 `ask|auto|trust`，四入口一致；`--yolo` 为 `--approve trust` 的别名。
-- **D2** `trust` 只放开确认类检查，硬限制列表固定（见 A）；规则中的显式 deny 仍有效。
-- **D3** 外部来源防护保留逐字初筛，命中后由场景模型 `models.judge` 裁决；出错按现状处理，不放宽。
-- **D4** 裁决逻辑独立成领域包 `internal/originjudge`，wiring 只装配。
-- **D5** 禁读为硬限制，作用于四个读类工具，列表名可见、内容不可读；不解析 shell。
-- **D6** ACP 客户端只能在启动参数给定的上限内切换档位。
-- **D7**（Q1）参数为 `--approve ask|auto|trust`，`--yolo` 为 `--approve trust` 的别名；不采用 `never|auto|on|off`。
-- **D8**（Q2）`trust` 只放开 A 中列出的 6 项确认类检查；规则中的显式 deny、`ClampAllow` 对 `.git`/`.suga`/SUGA_HOME/规则文件的降级等硬限制不动。
-- **D9**（Q3）外部来源裁决默认开启（`tools.origin_judge.enabled: true`）。
-- **D10**（Q4）禁读内置列表默认开启（`tools.read_deny_defaults: true`）。
+- **D1**（Q1）审批档位为 `ask|auto|trust`；参数 `--approve`，`--yolo` 为 `--approve trust` 的别名；不采用 `never|auto|on|off`。
+- **D2**（Q2）`trust` 只放开 A 表中 5 项确认类检查；硬限制（含保护路径 ask、规则显式 deny、目录范围）不动；`trust` 隐含允许写。
+- **D3** `trust` 只能由启动方设定，不进配置，ACP 客户端与模型都不能修改。
+- **D4** 外部来源防护保留逐字初筛，命中后由场景模型 `models.judge` 裁决；出错按现状处理；不缓存。
+- **D5** 裁决逻辑独立成领域包 `internal/originjudge`，wiring 只装配；用户请求经 ctx 传入。
+- **D6** 禁读为硬限制，经 `resolveRead` 与遍历判定覆盖原生读类工具；文件名可见、内容不可读；不解析 shell。
+- **D7**（Q3）外部来源裁决默认开启。
+- **D8** 对前序设计的替代：`2026-10-09-chat-write-approval-design.md` 中“危险删除在 auto/always 下不绕过”在 `trust` 档下改为放行非 hard 目标；`2026-10-16-approval-rules-design.md` 中 MCP 默认 Deny/Ask 在 `trust` 档下改为放行；其余（`tools.approval` 只作用于 chat、保护路径降级）保持不变。
+- **D9**（Q4）禁读内置列表默认开启。
 
 ## 待确认事项
 
-无。Q1–Q4 已由用户选定（2026-11-10：“Q1–Q4 按推荐”），见 D7–D10。
+无。Q1–Q4 已由用户选定（2026-11-10：“Q1–Q4 按推荐”），见 D1、D2、D7、D9。0.3 对 Q2 落地的收窄（目录范围不放开、保护路径 ask 不放行、`trust` 不进配置）是评审发现的安全修正，在批准时一并确认。
 
 ## 结论与人工计划 Gate
 
