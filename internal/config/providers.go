@@ -158,10 +158,10 @@ func (s ModelSpec) APIModel() string {
 // overrides (models.idle / models.handoff); nil means the scenario falls back
 // to the compact model, then the turn's own model.
 type ModelSettings struct {
-	Main      ModelSpec
-	Compact   *ModelSpec
-	Idle      *ModelSpec
-	Handoff   *ModelSpec
+	Main    ModelSpec
+	Compact *ModelSpec
+	Idle    *ModelSpec
+	Handoff *ModelSpec
 	// Judge is models.judge, the model of the external-origin judge; nil falls
 	// back to the compact model, then the main model (wiring decides).
 	Judge     *ModelSpec
