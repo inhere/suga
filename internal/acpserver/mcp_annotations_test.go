@@ -131,9 +131,9 @@ func TestMCPReadOnlyHintKeepsApproverRules(t *testing.T) {
 	client := &testACPClient{selected: "allow"}
 	hook := newTableHook(t, t.TempDir(), false, client)
 	hook.lookup = func(string) agentcore.Tool { return tool }
-	hook.policy = PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string) {
+	hook.policy = PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
 		policyAsked = true
-		return "ask", "", "mcp:gofer/gofer_work_list"
+		return "ask", "", "mcp:gofer/gofer_work_list", false, false
 	})
 	call := agentcore.ToolCall{CallID: "mcp-2", Name: "gofer_work_list"}
 	ctx := context.Background()

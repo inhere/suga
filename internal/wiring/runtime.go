@@ -154,7 +154,7 @@ type Runtime struct {
 	PreferredTools []PreferredToolStatus
 	// ACPPolicy exposes the same compiled policy to the ACP permission hook
 	// without coupling the internal wiring package to the ACP server package.
-	ACPPolicy func(agentcore.ToolCall, agentcore.Tool) (action, rule, scope string)
+	ACPPolicy func(agentcore.ToolCall, agentcore.Tool) (action, rule, scope string, clamped, pathProtected bool)
 	// Translator is the immutable host UI catalog. It is never passed to agentcore.
 	Translator i18n.Translator
 	// Language is the resolved startup UI language.
@@ -826,13 +826,17 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			return BuildContextReport(resident(rctx), deferred, loaded)
 		},
 		approvalLayer: approvalLayer,
-		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string) {
-			policyAction, hit, _ := approval.Decide(approval.targetFor(call, tool), tools.MetaOf(tool))
+		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string, clamped, pathProtected bool) {
+			target := approval.targetFor(call, tool)
+			policyAction, hit, _ := approval.Decide(target, tools.MetaOf(tool))
 			if hit != nil {
 				rule = hit.Summary()
 			}
 			scope = approvalScopeKey(approval, call, tool)
-			return string(policyAction), rule, scope
+			// clamped stays false until trust mode reads it; pathProtected lets ACP
+			// keep an always rule from allowing a control-plane path.
+			pathProtected = approvalrules.IsProtectedPath(target, approval.Workspace, approval.SugaHome, approval.RuleFiles...)
+			return string(policyAction), rule, scope, false, pathProtected
 		},
 		repo: repo, capabilities: capabilities, ContextWindow: contextWindow, Budget: budget,
 		Thinking: settings.Main.ThinkingLevel(), tools: toolRegistry, approval: approval,
