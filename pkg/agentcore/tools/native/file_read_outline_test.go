@@ -289,6 +289,10 @@ func TestFileReadRanges(t *testing.T) {
 			"==> b.txt <==\n[offset 2 is past the end: the file has 1 lines]",
 			execTool(t, tool, map[string]any{"paths": []any{"a.txt:4-5", "b.txt"}, "offset": 2, "limit": 1}))
 	})
+	t.Run("entries joined in one path string are read as paths", func(t *testing.T) {
+		out := execTool(t, tool, map[string]any{"path": "a.txt:2-2,b.txt:1-1"})
+		assert.Eq(t, "==> a.txt:2-2 <==\n2\ttwo\n\n==> b.txt:1-1 <==\n1\tbee", out)
+	})
 	t.Run("a span past the end is reported in place", func(t *testing.T) {
 		out := execTool(t, tool, map[string]any{"path": "a.txt:1-2,9-12"})
 		assert.Eq(t, "1\tone\n2\ttwo\n[span 9-12: offset 9 is past the end: the file has 5 lines]", out)
@@ -347,6 +351,29 @@ func TestFileReadRangesAbsolutePath(t *testing.T) {
 
 // TestSplitReadItem covers the suffix rule itself, including the paths whose
 // colon is not a span.
+// TestSplitJoinedPaths: one path argument that joins several entries with
+// commas is read as those entries; spans and plain names stay whole.
+func TestSplitJoinedPaths(t *testing.T) {
+	cases := []struct {
+		name string
+		arg  string
+		want []string
+	}{
+		{"entries with spans", "src/a.ts:60-100,src/b.ts:40-90,src/c.ts:35-90", []string{"src/a.ts:60-100", "src/b.ts:40-90", "src/c.ts:35-90"}},
+		{"entries with comma and space", "a.ts, b.ts, c.ts", []string{"a.ts", "b.ts", "c.ts"}},
+		{"several spans of one entry stay together", "b.go:40-60,90-110", []string{"b.go:40-60,90-110"}},
+		{"spans and entries mixed", "a.go:1-2,5-6,b.go:3-4", []string{"a.go:1-2,5-6", "b.go:3-4"}},
+		{"a file name with a bare comma stays whole", "a,b.txt", []string{"a,b.txt"}},
+		{"no comma", "a.go:1-2", []string{"a.go:1-2"}},
+		{"a mistyped span is not split", "a.txt:1-2,x", []string{"a.txt:1-2,x"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Eq(t, c.want, splitJoinedPaths(c.arg))
+		})
+	}
+}
+
 func TestSplitReadItem(t *testing.T) {
 	t.Run("no suffix", func(t *testing.T) {
 		for _, arg := range []string{"a.go", "dir/a.go", `D:\src\a.go`, "C:/src/a.go", "a.go:", "a.go:v1"} {

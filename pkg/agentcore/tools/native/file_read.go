@@ -590,10 +590,12 @@ func readPathItems(args map[string]any) ([]readItem, error) {
 func readPathArgs(args map[string]any) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	add := func(p string) {
-		if p != "" && !seen[p] {
-			seen[p] = true
-			out = append(out, p)
+	add := func(joined string) {
+		for _, p := range splitJoinedPaths(joined) {
+			if p != "" && !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
 		}
 	}
 	if p, _ := args["path"].(string); p != "" {
@@ -629,6 +631,47 @@ func readPathArgs(args map[string]any) ([]string, error) {
 		return nil, fmt.Errorf("at most %d paths per call, got %d", maxReadPaths, len(out))
 	}
 	return out, nil
+}
+
+// splitJoinedPaths splits one path argument that joins several entries with
+// commas - "a.ts:60-100,b.ts:40-90" or "a.ts, b.ts" - into its entries. Models
+// often send that instead of a paths array; read whole, the first entry's span
+// stays in the path and the call fails. A segment that starts with a digit is
+// another span of the entry before it ("b.go:40-60,90-110"). The argument is
+// split only when it is clearly a list: every later entry looks like a path
+// (holds ".", "/" or "\\"), and the argument holds ", " or its first entry ends
+// in a line span; a file name with a bare comma ("a,b.txt") stays whole, and a
+// mistyped span ("a.txt:1-2,x") is still reported as one.
+func splitJoinedPaths(arg string) []string {
+	if !strings.Contains(arg, ",") {
+		return []string{arg}
+	}
+	var entries []string
+	for _, seg := range strings.Split(arg, ",") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		if len(entries) > 0 && seg[0] >= '0' && seg[0] <= '9' {
+			entries[len(entries)-1] += "," + seg
+			continue
+		}
+		entries = append(entries, seg)
+	}
+	if len(entries) < 2 {
+		return []string{arg}
+	}
+	for _, e := range entries[1:] {
+		if !strings.ContainsAny(e, `./\`) {
+			return []string{arg}
+		}
+	}
+	if !strings.Contains(arg, ", ") {
+		if first, err := splitReadItem(entries[0]); err != nil || len(first.ranges) == 0 {
+			return []string{arg}
+		}
+	}
+	return entries
 }
 
 // readLineWindow returns lines [offset, offset+limit) of f with line numbers,
