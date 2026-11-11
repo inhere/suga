@@ -76,27 +76,34 @@ func (b *backoff) maxElapsed() time.Duration { return b.policy.MaxElapsed }
 // share it, so the whole request - not each attempt - is bounded by
 // retry.max_elapsed.
 type retryBudget struct {
-	start time.Time
+	start time.Time // the first failure; zero until a request attempt has failed
 	limit time.Duration
 }
 
 type retryBudgetKey struct{}
 
 // ensureRetryBudget installs the request's retry budget unless it is already
-// installed; the first of retryStream/postWithRetry to run marks the start.
+// installed. The clock does not start here but at the first failure (see
+// overBudget): a long answer that streamed for minutes before the upstream cut
+// it must still get its retries, instead of finding the budget spent by the
+// attempt itself (2026-11-11: "已重试 1 次" after a long codex stream broke).
 func ensureRetryBudget(ctx context.Context, b *backoff) context.Context {
 	if _, ok := ctx.Value(retryBudgetKey{}).(*retryBudget); ok {
 		return ctx
 	}
-	return context.WithValue(ctx, retryBudgetKey{}, &retryBudget{start: time.Now(), limit: b.maxElapsed()})
+	return context.WithValue(ctx, retryBudgetKey{}, &retryBudget{limit: b.maxElapsed()})
 }
 
 // overBudget reports whether waiting wait would pass the request's retry
-// budget, i.e. the next attempt is not worth making.
+// budget, i.e. the next attempt is not worth making. It is called only after an
+// attempt failed, so the first call starts the budget's clock.
 func overBudget(ctx context.Context, wait time.Duration) bool {
 	budget, _ := ctx.Value(retryBudgetKey{}).(*retryBudget)
 	if budget == nil || budget.limit <= 0 {
 		return false
+	}
+	if budget.start.IsZero() {
+		budget.start = time.Now()
 	}
 	return time.Since(budget.start)+wait > budget.limit
 }

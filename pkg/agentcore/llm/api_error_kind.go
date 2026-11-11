@@ -118,7 +118,7 @@ func (e *apiTransientError) retryReason() string { return apiTransientReason }
 // giveUp implements retryableStreamError: the failure of an overload or rate
 // limit that outlived every attempt of the request, naming how many were made.
 func (e *apiTransientError) giveUp(provider string, attempts int) error {
-	return fmt.Errorf("%s 服务端临时错误，已重试 %d 次: %w", provider, attempts, e)
+	return fmt.Errorf("%s 服务端临时错误，共请求 %d 次: %w", provider, attempts, e)
 }
 
 // isAPITransientError reports whether err is (or wraps) an apiTransientError;
