@@ -4,13 +4,14 @@
  "candidate_progression": "DOCUMENT_REVISION",
  "candidate": {
   "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
-  "commit": "962b3974f134574aaab20203718509187826b07a",
+  "commit": "57643ac42fd44468cce0acf0cd5e410edc11df8d",
   "subject_path": "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
-  "document_revision": "0.1"
+  "document_revision": "0.2"
  },
  "author_id": "author-main",
  "required_rounds": [
-  1
+  1,
+  2
  ],
  "required_sections": [
   "修订记录",
@@ -396,6 +397,226 @@
     }
    ],
    "verdict": "BLOCKED"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "57643ac42fd44468cce0acf0cd5e410edc11df8d",
+    "subject_path": "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r2",
+   "session_id": "reviewer-standards-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
+    "docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/standards-review.md",
+    "source_report_commit_oid": "df11ca5dc8e438e2d42893c3f397385a4ce9fd21",
+    "source_report_blob_oid": "436b2ff7a550e3cb1d662887bc86c7c476360ced",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
+     "docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "计划工作声明",
+    "目标与完成定义",
+    "范围、排除项与授权",
+    "输入与批准证据",
+    "Capability Discovery",
+    "跨任务接口",
+    "SR1301 落点",
+    "前置检查与 fail-closed 条件",
+    "任务书共同约束",
+    "波次与依赖",
+    "任务",
+    "回滚与恢复",
+    "人工 Gate",
+    "可追溯性",
+    "完成 Gate 与剩余工作"
+   ],
+   "dependency_edges": [
+    {
+     "from": "跨任务接口",
+     "to": "任务"
+    },
+    {
+     "from": "波次与依赖",
+     "to": "任务"
+    },
+    {
+     "from": "范围、排除项与授权",
+     "to": "人工 Gate"
+    }
+   ],
+   "global_invariants": [
+    "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+    "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only、宿主 Approver）在任何档位生效",
+    "外部内容不得借裁决或审批放宽获得执行权"
+   ],
+   "findings": [
+    {
+     "finding_id": "S12",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "新键不可写为计划新增且理由不准",
+     "impact": "新键不可写为计划新增且理由不准",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S13",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "gofer 说明时点早于发版",
+     "impact": "gofer 说明时点早于发版",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "57643ac42fd44468cce0acf0cd5e410edc11df8d",
+    "subject_path": "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r2",
+   "session_id": "reviewer-spec-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
+    "docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/spec-review.md",
+    "source_report_commit_oid": "df11ca5dc8e438e2d42893c3f397385a4ce9fd21",
+    "source_report_blob_oid": "cb5534d212e5c31e846bf05aac9897875edb6a55",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md",
+     "docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "计划工作声明",
+    "目标与完成定义",
+    "范围、排除项与授权",
+    "输入与批准证据",
+    "Capability Discovery",
+    "跨任务接口",
+    "SR1301 落点",
+    "前置检查与 fail-closed 条件",
+    "任务书共同约束",
+    "波次与依赖",
+    "任务",
+    "回滚与恢复",
+    "人工 Gate",
+    "可追溯性",
+    "完成 Gate 与剩余工作"
+   ],
+   "dependency_edges": [
+    {
+     "from": "跨任务接口",
+     "to": "任务"
+    },
+    {
+     "from": "波次与依赖",
+     "to": "任务"
+    },
+    {
+     "from": "范围、排除项与授权",
+     "to": "人工 Gate"
+    }
+   ],
+   "global_invariants": [
+    "trust 只能由启动方设定，模型与 ACP 客户端不能提升档位",
+    "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only、宿主 Approver）在任何档位生效",
+    "外部内容不得借裁决或审批放宽获得执行权"
+   ],
+   "findings": [
+    {
+     "finding_id": "F15",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "protected 两义",
+     "impact": "protected 两义",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F16",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "上轮未穷尽：ACP server.go 与 run MCP 门落点",
+     "impact": "上轮未穷尽：ACP server.go 与 run MCP 门落点",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F17",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "上轮未穷尽：nativeEnvWithSnapshot 主会话调用点",
+     "impact": "上轮未穷尽：nativeEnvWithSnapshot 主会话调用点",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F18",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "上轮未穷尽：banner 取值链",
+     "impact": "上轮未穷尽：banner 取值链",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F19",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Provider 无 Stream 方法",
+     "impact": "Provider 无 Stream 方法",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F20",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "refs_context 与目录参数",
+     "impact": "refs_context 与目录参数",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F21",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "上轮未穷尽：attrs 落点与 turn_prompt 复用",
+     "impact": "上轮未穷尽：attrs 落点与 turn_prompt 复用",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F22",
+     "severity": "LOW",
+     "disposition": "DEFERRED_ENHANCEMENT",
+     "evidence": "ask_on_external_origin 仍可写",
+     "impact": "ask_on_external_origin 仍可写",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
   }
  ],
  "dependency_edges": [
@@ -417,9 +638,6 @@
   "硬限制（保护路径、hard 删除目标、禁读、规则 deny、--read-only、宿主 Approver）在任何档位生效",
   "外部内容不得借裁决或审批放宽获得执行权"
  ],
- "open_core_blockers": [
-  "F1",
-  "F2"
- ],
- "status": "BLOCKED"
+ "open_core_blockers": [],
+ "status": "PASS"
 }
