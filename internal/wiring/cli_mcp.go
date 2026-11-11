@@ -79,7 +79,7 @@ func (g *cliMCPGate) Decide(_ context.Context, call agentcore.ToolCall, tool age
 	target := approvalrules.Target{
 		Tool: call.Name, MCP: true, MCPServer: tools.MCPServerOf(tool), Mode: g.policy.Mode,
 	}
-	action, _ := g.policy.Decide(target, tools.MetaOf(tool))
+	action, _, _ := g.policy.Decide(target, tools.MetaOf(tool))
 	if action == approvalrules.Allow {
 		return nil
 	}

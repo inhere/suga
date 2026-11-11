@@ -90,11 +90,13 @@ func TestRunDefaultPolicyProtectsControlPlanePaths(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			action, hit := policy.Decide(approvalrules.Target{
+			action, hit, protected := policy.Decide(approvalrules.Target{
 				Tool: "file_write", Path: tc.path, Root: workspace, Mode: approvalrules.ModeRun,
 			}, tools.Meta{})
 			assert.Eq(t, tc.want, action)
 			assert.Nil(t, hit)
+			// The default-action clamp reports the protection flag too.
+			assert.Eq(t, tc.want == approvalrules.Deny, protected)
 		})
 	}
 }

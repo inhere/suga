@@ -148,7 +148,11 @@ func (p Policy) Validate() error {
 // Decide returns the strongest matching action and its representative rule.
 // When no rule matches, the policy default is returned and the rule is nil.
 // An unset default is deliberately fail-closed as deny.
-func (p Policy) Decide(target Target) (Action, *Rule) {
+//
+// protected is true when a matched allow rule was downgraded because the target
+// is a protected control-plane path (see ClampAllow); the default action is not
+// clamped here, callers that clamp it report their own flag.
+func (p Policy) Decide(target Target) (Action, *Rule, bool) {
 	var winner *Rule
 	for i := range p.Rules {
 		rule := &p.Rules[i]
@@ -160,13 +164,13 @@ func (p Policy) Decide(target Target) (Action, *Rule) {
 		}
 	}
 	if winner != nil {
-		action := ClampAllow(winner.Action, target, target.Workspace, target.SugaHome, target.RuleFiles...)
-		return action, winner
+		action, protected := ClampAllow(winner.Action, target, target.Workspace, target.SugaHome, target.RuleFiles...)
+		return action, winner, protected
 	}
 	if validAction(p.Default) {
-		return p.Default, nil
+		return p.Default, nil, false
 	}
-	return Deny, nil
+	return Deny, nil, false
 }
 
 // MatchesTool reports whether the rule's tool glob applies to target. It is
@@ -258,14 +262,16 @@ func strength(action Action) int {
 // ClampAllow prevents an approval rule from granting access to suga's own
 // control-plane files. The entry point still decides whether a protected path
 // is askable: chat and ACP can ask, while non-interactive run/sub-agents deny.
-func ClampAllow(action Action, target Target, workspace, sugaHome string, ruleFiles ...string) Action {
+// protected reports that an Allow was downgraded because of the protected path,
+// so later layers can tell this Ask from an ordinary one.
+func ClampAllow(action Action, target Target, workspace, sugaHome string, ruleFiles ...string) (clamped Action, protected bool) {
 	if action != Allow || !IsProtectedPath(target, workspace, sugaHome, ruleFiles...) {
-		return action
+		return action, false
 	}
 	if target.Mode == ModeChat || target.Mode == ModeACP {
-		return Ask
+		return Ask, true
 	}
-	return Deny
+	return Deny, true
 }
 
 // IsProtectedPath reports whether a file target is inside an internal control

@@ -142,7 +142,7 @@ func TestPolicyDecidePathRule(t *testing.T) {
 		},
 		Default: Ask,
 	}
-	action, rule := policy.Decide(Target{Tool: "file_write", Root: root, Path: "ok.txt"})
+	action, rule, _ := policy.Decide(Target{Tool: "file_write", Root: root, Path: "ok.txt"})
 	assert.Eq(t, Deny, action)
 	assert.Require(t, assert.NotNil(t, rule))
 	assert.Eq(t, 2, rule.Index)

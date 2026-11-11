@@ -29,7 +29,10 @@ func TestProtectedPathAndClampAllow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			target := Target{Tool: "file_write", Root: workspace, Path: tc.path, Mode: tc.mode}
 			assert.Eq(t, tc.protected, IsProtectedPath(target, workspace, home, userRules, projectRules))
-			assert.Eq(t, tc.clamped, ClampAllow(Allow, target, workspace, home, userRules, projectRules))
+			got, protected := ClampAllow(Allow, target, workspace, home, userRules, projectRules)
+			assert.Eq(t, tc.clamped, got)
+			// every protected-path case is downgraded, and only those are flagged.
+			assert.Eq(t, tc.protected, protected)
 		})
 	}
 }
@@ -56,7 +59,34 @@ func TestPolicyDecideClampsProtectedAllow(t *testing.T) {
 		Mode:      ModeRun,
 		Workspace: workspace,
 	}
-	action, hit := policy.Decide(target)
+	action, hit, protected := policy.Decide(target)
 	assert.Require(t, assert.NotNil(t, hit))
 	assert.Eq(t, Deny, action)
+	assert.True(t, protected)
+}
+
+// A broad allow rule that matches a protected path is downgraded and flagged;
+// the same rule on an ordinary path stays allowed and unflagged.
+func TestPolicyDecideReportsProtectedFlag(t *testing.T) {
+	workspace := t.TempDir()
+	policy := Policy{Rules: []Rule{{Tool: "file_write", Path: []string{"**"}, Root: workspace, Action: Allow}}}
+	target := func(mode Mode, path string) Target {
+		return Target{Tool: "file_write", Root: workspace, Path: path, Mode: mode, Workspace: workspace}
+	}
+	t.Run("protected path in chat asks", func(t *testing.T) {
+		action, _, protected := policy.Decide(target(ModeChat, ".git/hooks/x"))
+		assert.Eq(t, Ask, action)
+		assert.True(t, protected)
+	})
+	t.Run("ordinary path", func(t *testing.T) {
+		action, _, protected := policy.Decide(target(ModeChat, "docs/a.txt"))
+		assert.Eq(t, Allow, action)
+		assert.False(t, protected)
+	})
+	t.Run("default action is not clamped here", func(t *testing.T) {
+		action, hit, protected := (Policy{Default: Allow}).Decide(target(ModeChat, ".git/hooks/x"))
+		assert.Eq(t, Allow, action)
+		assert.Nil(t, hit)
+		assert.False(t, protected)
+	})
 }

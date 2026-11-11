@@ -157,7 +157,7 @@ type policyApprover struct{ policy approvalPolicy }
 func newPolicyApprover(policy approvalPolicy) tools.Approver { return &policyApprover{policy: policy} }
 
 func (a *policyApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool agentcore.Tool) error {
-	action, hit := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+	action, hit, _ := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
 	if hit != nil {
 		tools.ReportRule(ctx, hit.Summary(), "")
 	}
@@ -172,8 +172,10 @@ func (a *policyApprover) Decide(ctx context.Context, call agentcore.ToolCall, to
 
 // Decide applies explicit rules first and then the category-specific default.
 // An ACP/run/chat caller can translate Ask into its own interaction mechanism;
-// this layer only computes the stable policy result.
-func (p approvalPolicy) Decide(target approvalrules.Target, meta tools.Meta) (approvalrules.Action, *approvalrules.Rule) {
+// this layer only computes the stable policy result. protected is true when an
+// allow (a rule's or the default) was downgraded because the target is a
+// protected control-plane path; the Ask or Deny then differs from an ordinary one.
+func (p approvalPolicy) Decide(target approvalrules.Target, meta tools.Meta) (approvalrules.Action, *approvalrules.Rule, bool) {
 	if target.Mode == "" {
 		target.Mode = p.Mode
 	}
@@ -186,19 +188,20 @@ func (p approvalPolicy) Decide(target approvalrules.Target, meta tools.Meta) (ap
 	case meta.ReadOnly:
 		defaultAction = p.Defaults.ReadOnly
 	}
-	action, hit := (approvalrules.Policy{Rules: p.Rules, Default: defaultAction}).Decide(target)
+	action, hit, protected := (approvalrules.Policy{Rules: p.Rules, Default: defaultAction}).Decide(target)
 	if p.ReadOnly && target.MCP && (hit == nil || hit.Source != approvalrules.SourceLegacy) {
 		// --read-only keeps its old MCP boundary: only the explicitly configured
 		// read_only_allow legacy entries can grant an MCP call.
-		return approvalrules.Deny, hit
+		return approvalrules.Deny, hit, false
 	}
 	if hit != nil {
-		return action, hit
+		return action, hit, protected
 	}
 	// The default run policy also has to protect the control plane. ClampAllow
 	// used to run only for explicit rules, which let a no-rules run write into
 	// .git, .suga, SUGA_HOME, or an approval-rules file.
-	return approvalrules.ClampAllow(action, target, p.Workspace, p.SugaHome, p.RuleFiles...), nil
+	action, protected = approvalrules.ClampAllow(action, target, p.Workspace, p.SugaHome, p.RuleFiles...)
+	return action, nil, protected
 }
 
 // approvalScopeKey gives ACP and chat the same coarse session-rule identity.
