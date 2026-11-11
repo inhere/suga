@@ -98,18 +98,19 @@ func TestACPTrustThroughServeOption(t *testing.T) {
 }
 
 func TestACPTrustHookDecide(t *testing.T) {
-	decide := func(t *testing.T, policy PolicyDecision, hook *permissionHook, path string) (error, *tools.ApprovalReport) {
+	decide := func(t *testing.T, policy PolicyDecision, hook *permissionHook, path string) (*tools.ApprovalReport, error) {
 		t.Helper()
 		call := agentcore.ToolCall{CallID: "c-" + path, Name: "file_write", Arguments: map[string]any{"path": path}}
 		assert.Require(t, assert.NoErr(t, hook.BeforeTool(context.Background(), &agentcore.ToolEvent{RunID: "run", Call: &call}, nil)))
 		ctx, report := tools.WithApprovalReport(context.Background())
-		return hook.Decide(ctx, call, nil), report
+		err := hook.Decide(ctx, call, nil)
+		return report, err
 	}
 	t.Run("the approval is recorded as trust and no request is sent", func(t *testing.T) {
 		client := &testACPClient{selected: "reject"}
 		hook := newTableHook(t, t.TempDir(), false, client)
 		hook.policy, hook.approval = trustPolicy(), tools.ApprovalModeTrust
-		err, report := decide(t, hook.policy, hook, "notes.txt")
+		report, err := decide(t, hook.policy, hook, "notes.txt")
 		assert.NoErr(t, err)
 		assert.Eq(t, tools.ApprovedByTrust, report.Source)
 		client.mu.Lock()
@@ -121,7 +122,7 @@ func TestACPTrustHookDecide(t *testing.T) {
 		hook := newTableHook(t, t.TempDir(), false, client)
 		hook.policy, hook.approval, hook.session = trustPolicy(), tools.ApprovalModeTrust, newSessionPolicy()
 		hook.session.add("file_write:**", "allow")
-		assert.Error(t, func() error { err, _ := decide(t, hook.policy, hook, ".git/config"); return err }())
+		assert.Error(t, func() error { _, err := decide(t, hook.policy, hook, ".git/config"); return err }())
 		client.mu.Lock()
 		assert.Len(t, client.requests, 1)
 		client.mu.Unlock()
@@ -133,7 +134,7 @@ func TestACPTrustHookDecide(t *testing.T) {
 		hook.policy = func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
 			return "deny", "rule", "file_write:**", false, false
 		}
-		err, _ := decide(t, hook.policy, hook, "notes.txt")
+		_, err := decide(t, hook.policy, hook, "notes.txt")
 		assert.Error(t, err)
 	})
 	t.Run("memory confirmation is lifted by trust only", func(t *testing.T) {

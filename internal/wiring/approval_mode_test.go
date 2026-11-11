@@ -105,10 +105,11 @@ func trustTestPolicy(t *testing.T, mode approvalrules.Mode, tier tools.ApprovalM
 	return policy
 }
 
-func approveCall(t *testing.T, approver tools.Approver, call agentcore.ToolCall, tool agentcore.Tool) (error, *tools.ApprovalReport) {
+func approveCall(t *testing.T, approver tools.Approver, call agentcore.ToolCall, tool agentcore.Tool) (*tools.ApprovalReport, error) {
 	t.Helper()
 	ctx, report := tools.WithApprovalReport(context.Background())
-	return approver.Decide(ctx, call, tool), report
+	err := approver.Decide(ctx, call, tool)
+	return report, err
 }
 
 func TestTrustPolicyApprover(t *testing.T) {
@@ -119,28 +120,28 @@ func TestTrustPolicyApprover(t *testing.T) {
 
 	t.Run("an explicit ask is released by trust and recorded", func(t *testing.T) {
 		policy := trustTestPolicy(t, approvalrules.ModeRun, tools.ApprovalModeTrust, false, askShell)
-		err, report := approveCall(t, newPolicyApprover(policy), shellCall, shell)
+		report, err := approveCall(t, newPolicyApprover(policy), shellCall, shell)
 		assert.NoErr(t, err)
 		assert.Eq(t, tools.ApprovedByTrust, report.Source)
 	})
 	t.Run("without trust the same ask is refused", func(t *testing.T) {
 		for _, tier := range []tools.ApprovalMode{"", tools.ApprovalModeAsk, tools.ApprovalModeAuto} {
 			policy := trustTestPolicy(t, approvalrules.ModeRun, tier, false, askShell)
-			err, report := approveCall(t, newPolicyApprover(policy), shellCall, shell)
+			report, err := approveCall(t, newPolicyApprover(policy), shellCall, shell)
 			assert.ErrIs(t, err, tools.ErrDenied)
 			assert.Eq(t, "", report.Source)
 		}
 	})
 	t.Run("an explicit deny stays denied under trust", func(t *testing.T) {
 		policy := trustTestPolicy(t, approvalrules.ModeRun, tools.ApprovalModeTrust, false, denyRemove)
-		err, _ := approveCall(t, newPolicyApprover(policy), agentcore.ToolCall{Name: "file_remove", Arguments: map[string]any{"path": "a.txt"}},
+		_, err := approveCall(t, newPolicyApprover(policy), agentcore.ToolCall{Name: "file_remove", Arguments: map[string]any{"path": "a.txt"}},
 			&nativeStubTool{name: "file_remove"})
 		assert.ErrIs(t, err, tools.ErrDenied)
 	})
 	t.Run("a protected path stays refused under trust", func(t *testing.T) {
 		policy := trustTestPolicy(t, approvalrules.ModeRun, tools.ApprovalModeTrust, false)
 		write := agentcore.ToolCall{Name: "file_write", Arguments: map[string]any{"path": filepath.Join(policy.Workspace, ".git", "config")}}
-		err, _ := approveCall(t, newPolicyApprover(policy), write, &nativeStubTool{name: "file_write"})
+		_, err := approveCall(t, newPolicyApprover(policy), write, &nativeStubTool{name: "file_write"})
 		assert.ErrIs(t, err, tools.ErrDenied)
 	})
 	t.Run("MCP default opens under trust but --read-only still refuses", func(t *testing.T) {
@@ -177,21 +178,21 @@ func TestTrustChatApprover(t *testing.T) {
 
 	t.Run("an explicit ask is released without a question", func(t *testing.T) {
 		asker := &scriptedAsker{}
-		err, report := approveCall(t, chatOf(t, tools.ApprovalModeTrust, asker, askShell), shellCall, shell)
+		report, err := approveCall(t, chatOf(t, tools.ApprovalModeTrust, asker, askShell), shellCall, shell)
 		assert.NoErr(t, err)
 		assert.Len(t, asker.questions, 0)
 		assert.Eq(t, tools.ApprovedByTrust, report.Source)
 	})
 	t.Run("the same ask is put to the person without trust", func(t *testing.T) {
 		asker := &scriptedAsker{answers: []string{"y"}}
-		err, report := approveCall(t, chatOf(t, tools.ApprovalModeAuto, asker, askShell), shellCall, shell)
+		report, err := approveCall(t, chatOf(t, tools.ApprovalModeAuto, asker, askShell), shellCall, shell)
 		assert.NoErr(t, err)
 		assert.Len(t, asker.questions, 1)
 		assert.Eq(t, tools.ApprovedByUser, report.Source)
 	})
 	t.Run("explicit deny is not released", func(t *testing.T) {
 		asker := &scriptedAsker{}
-		err, _ := approveCall(t, chatOf(t, tools.ApprovalModeTrust, asker, denyShell), shellCall, shell)
+		_, err := approveCall(t, chatOf(t, tools.ApprovalModeTrust, asker, denyShell), shellCall, shell)
 		assert.ErrIs(t, err, tools.ErrDenied)
 		assert.Len(t, asker.questions, 0)
 	})
@@ -413,26 +414,26 @@ func TestTrustReleasedDefaultIsTraced(t *testing.T) {
 		return newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), auto: true, asker: &scriptedAsker{}, workspace: policy.Workspace})
 	}
 	t.Run("chat: a write that would have asked", func(t *testing.T) {
-		err, report := approveCall(t, chatOf(t, false), write, writeTool)
+		report, err := approveCall(t, chatOf(t, false), write, writeTool)
 		assert.NoErr(t, err)
 		assert.Eq(t, tools.ApprovedByTrust, report.Source)
 	})
 	t.Run("chat: tools.approval auto already allowed it", func(t *testing.T) {
-		err, report := approveCall(t, chatOf(t, true), write, writeTool)
+		report, err := approveCall(t, chatOf(t, true), write, writeTool)
 		assert.NoErr(t, err)
 		assert.Eq(t, "", report.Source)
 	})
 	t.Run("chat: a read tool is never marked", func(t *testing.T) {
-		err, report := approveCall(t, chatOf(t, false), agentcore.ToolCall{Name: "file_read", Arguments: map[string]any{"path": "a"}}, &nativeStubTool{name: "file_read"})
+		report, err := approveCall(t, chatOf(t, false), agentcore.ToolCall{Name: "file_read", Arguments: map[string]any{"path": "a"}}, &nativeStubTool{name: "file_read"})
 		assert.NoErr(t, err)
 		assert.Eq(t, "", report.Source)
 	})
 	t.Run("run: MCP default opened by trust is marked, native is not", func(t *testing.T) {
 		policy := trustTestPolicy(t, approvalrules.ModeRun, tools.ApprovalModeTrust, false)
-		err, report := approveCall(t, newPolicyApprover(policy), agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query"))
+		report, err := approveCall(t, newPolicyApprover(policy), agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query"))
 		assert.NoErr(t, err)
 		assert.Eq(t, tools.ApprovedByTrust, report.Source)
-		err, report = approveCall(t, newPolicyApprover(policy), write, writeTool)
+		report, err = approveCall(t, newPolicyApprover(policy), write, writeTool)
 		assert.NoErr(t, err)
 		assert.Eq(t, "", report.Source)
 	})

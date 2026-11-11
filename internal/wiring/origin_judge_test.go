@@ -235,10 +235,10 @@ func TestNewOriginJudge(t *testing.T) {
 		assert.Eq(t, "minimal", js.Thinking)
 	})
 	t.Run("compact model is used when models.judge is unset", func(t *testing.T) {
-		s := spec(t)
+		spec(t) // resets the configuration; the settings are read again below
 		assert.NoErr(t, gkconfig.Set("tools.origin_judge.enabled", true))
 		assert.NoErr(t, gkconfig.Set("models.compact", "openai/small"))
-		s = mustModelSettings(t)
+		s := mustModelSettings(t)
 		j, err := newOriginJudge(s, main, personal.EstimateOptions{Mode: personal.EstimateOff})
 		assert.Require(t, assert.NoErr(t, err))
 		p, err := j.provider()
@@ -246,11 +246,11 @@ func TestNewOriginJudge(t *testing.T) {
 		assert.False(t, p == api.Provider(main))
 	})
 	t.Run("models.judge beats compact", func(t *testing.T) {
-		s := spec(t)
+		spec(t) // resets the configuration; the settings are read again below
 		assert.NoErr(t, gkconfig.Set("tools.origin_judge.enabled", true))
 		assert.NoErr(t, gkconfig.Set("models.compact", "openai/small"))
 		assert.NoErr(t, gkconfig.Set("models.judge", "openai/judge-model"))
-		s = mustModelSettings(t)
+		s := mustModelSettings(t)
 		assert.Require(t, assert.NotNil(t, s.Judge))
 		assert.Eq(t, "judge-model", s.Judge.Model)
 		j, err := newOriginJudge(s, main, personal.EstimateOptions{Mode: personal.EstimateOff})
