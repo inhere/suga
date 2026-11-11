@@ -98,22 +98,45 @@ func newOriginJudge(settings appconfig.ModelSettings, main agentcore.Provider, e
 	if !cfg.Enabled {
 		return nil, nil
 	}
-	spec := settings.Judge
-	if spec == nil {
-		spec = settings.Compact
-	}
+	spec, ok := originJudgeSpec(settings)
 	var (
 		once     sync.Once
 		built    agentcore.Provider
 		buildErr error
 	)
 	return &originJudge{timeout: cfg.Timeout, provider: func() (agentcore.Provider, error) {
-		if spec == nil {
+		if !ok {
 			return main, nil
 		}
-		once.Do(func() { built, buildErr = buildProviderWithEstimate(*spec, estimate) })
+		once.Do(func() { built, buildErr = buildProviderWithEstimate(spec, estimate) })
 		return built, buildErr
 	}}, nil
+}
+
+// originJudgeThinking is the thinking level of the judge when models.judge is
+// not set and it falls back to models.compact or the main model: a reasoning
+// main model at its own level took 10-60s per verdict in the 2026-11-11 eval,
+// past the timeout, while minimal judged the same cases alike in about 9s
+// (user 2026-11-11: “裁决回退用 minimal、超时 45 秒”).
+const originJudgeThinking = "minimal"
+
+// originJudgeSpec picks the judge model: models.judge as configured, else
+// models.compact, else the main model, the fallbacks at originJudgeThinking.
+// ok is false only when the main spec names no model (settings built without
+// one, as in some tests); the caller then uses the main provider as it is.
+func originJudgeSpec(settings appconfig.ModelSettings) (appconfig.ModelSpec, bool) {
+	if settings.Judge != nil {
+		return *settings.Judge, true
+	}
+	spec := settings.Main
+	if settings.Compact != nil {
+		spec = *settings.Compact
+	}
+	if spec.Model == "" {
+		return appconfig.ModelSpec{}, false
+	}
+	spec.Thinking = originJudgeThinking
+	return spec, true
 }
 
 // estimateOptionsForBudget disables the estimator when no budget is configured;

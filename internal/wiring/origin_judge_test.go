@@ -219,15 +219,20 @@ func TestNewOriginJudge(t *testing.T) {
 			assert.Err(t, err, bad)
 		}
 	})
-	t.Run("default timeout and main model when nothing else is configured", func(t *testing.T) {
+	t.Run("default timeout and the main model at minimal thinking when nothing else is configured", func(t *testing.T) {
 		s := spec(t)
 		assert.NoErr(t, gkconfig.Set("tools.origin_judge.enabled", true))
 		j, err := newOriginJudge(s, main, personal.EstimateOptions{Mode: personal.EstimateOff})
 		assert.Require(t, assert.NoErr(t, err))
-		assert.Eq(t, 20*time.Second, j.timeout)
+		assert.Eq(t, 45*time.Second, j.timeout)
+		// The main model is rebuilt at minimal thinking, not the session's provider.
 		p, err := j.provider()
 		assert.NoErr(t, err)
-		assert.True(t, p == api.Provider(main))
+		assert.False(t, p == api.Provider(main))
+		js, ok := originJudgeSpec(s)
+		assert.True(t, ok)
+		assert.Eq(t, s.Main.Model, js.Model)
+		assert.Eq(t, "minimal", js.Thinking)
 	})
 	t.Run("compact model is used when models.judge is unset", func(t *testing.T) {
 		s := spec(t)
@@ -252,6 +257,38 @@ func TestNewOriginJudge(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		_, err = j.provider()
 		assert.NoErr(t, err)
+	})
+}
+
+// TestOriginJudgeSpec: models.judge is used as configured; without it the judge
+// falls back to models.compact, else the main model, at minimal thinking (user
+// 2026-11-11: “裁决回退用 minimal、超时 45 秒”).
+func TestOriginJudgeSpec(t *testing.T) {
+	mainSpec := appconfig.ModelSpec{Model: "big", Thinking: "high"}
+	compact := appconfig.ModelSpec{Model: "small", Thinking: "medium"}
+	judge := appconfig.ModelSpec{Model: "judge", Thinking: "low"}
+	t.Run("main model at minimal", func(t *testing.T) {
+		s, ok := originJudgeSpec(appconfig.ModelSettings{Main: mainSpec})
+		assert.True(t, ok)
+		assert.Eq(t, "big", s.Model)
+		assert.Eq(t, "minimal", s.Thinking)
+	})
+	t.Run("compact at minimal", func(t *testing.T) {
+		s, ok := originJudgeSpec(appconfig.ModelSettings{Main: mainSpec, Compact: &compact})
+		assert.True(t, ok)
+		assert.Eq(t, "small", s.Model)
+		assert.Eq(t, "minimal", s.Thinking)
+		assert.Eq(t, "medium", compact.Thinking) // the configured spec is not changed
+	})
+	t.Run("models.judge as configured", func(t *testing.T) {
+		s, ok := originJudgeSpec(appconfig.ModelSettings{Main: mainSpec, Compact: &compact, Judge: &judge})
+		assert.True(t, ok)
+		assert.Eq(t, "judge", s.Model)
+		assert.Eq(t, "low", s.Thinking)
+	})
+	t.Run("no main model", func(t *testing.T) {
+		_, ok := originJudgeSpec(appconfig.ModelSettings{})
+		assert.False(t, ok)
 	})
 }
 

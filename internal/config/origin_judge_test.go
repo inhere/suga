@@ -14,7 +14,7 @@ func TestReadOriginJudgeSettings(t *testing.T) {
 		got, err := ReadOriginJudgeSettings()
 		assert.NoErr(t, err)
 		assert.True(t, got.Enabled)
-		assert.Eq(t, 20*time.Second, got.Timeout)
+		assert.Eq(t, 45*time.Second, got.Timeout)
 	})
 	t.Run("explicit values", func(t *testing.T) {
 		gkconfig.Reset()

@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 实施计划
 
-> 状态：Draft 0.4 / 已批准（用户 2026-11-10：“批准 suga 安全计划 0.4，T0–T6 用 sonnet，开始实施”）
+> 状态：Draft 0.5 / 已批准（0.5 的裁决默认值调整：用户 2026-11-11：“裁决回退用 minimal、超时 45 秒”）；0.4 已批准（用户 2026-11-10：“批准 suga 安全计划 0.4，T0–T6 用 sonnet，开始实施”）
 
 ## 修订记录
 
@@ -11,6 +11,7 @@
 | 0.2 | 2026-11-10 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/`），见下表 |
 | 0.3 | 2026-11-10 | Claude | 处理第 2 轮（两轴 PASS）的纠正项，见第二张表 |
 | 0.4 | 2026-11-10 | Claude | 处理第 3 轮（spec 轴 BLOCKED：F23）与 F24–F26、S14、S15，见第三张表 |
+| 0.5 | 2026-11-11 | Claude | 随设计 0.6：裁决回退到 compact 或主模型时用 `thinking: minimal`，`tools.origin_judge.timeout` 缺省 45 秒（T7 真实评测后用户选定）；实施中由 T5 owner 内修正落实 |
 
 0.2 的处理（按类自查范围：trust 的编译层与各守卫的放行方式；T0 的落点与顺序；签名变更的全部调用点；新文件落点；验证与授权）：
 
@@ -87,7 +88,7 @@
    - `chat`、`run`、`acp` 支持 `--approve ask|auto|trust` 与 `--yolo`（同时出现报错）；SDK 支持 `SessionOptions.ApprovalMode`；`tools.approval` 仍只取 `ask|auto`（写 `trust` 报错）；
    - `trust` 放开设计 A 表 5 项，硬限制全部保持（含保护路径 ask、read-only、规则显式 deny、SDK 宿主 Approver）；chat/run 下隐含 `--allow-write`；
    - 档位可见：chat banner、stream-json `session` 行 `approval_mode`、事件 attrs `approval_mode` 与 `approval=trust`。
-3. **B**：初筛命中后经 `models.judge` 裁决，处理按设计；attrs 记 `origin_judge`、`origin_judge_reason`、`origin_judge_tokens`；`tools.origin_judge.enabled`（缺省 true）、`tools.origin_judge.timeout`（缺省 20s）；两键不可经 `suga config set` 修改。
+3. **B**：初筛命中后经 `models.judge` 裁决，处理按设计；attrs 记 `origin_judge`、`origin_judge_reason`、`origin_judge_tokens`；`tools.origin_judge.enabled`（缺省 true）、`tools.origin_judge.timeout`（缺省 45s，0.5）；未配 `models.judge` 时回退模型用 `thinking: minimal`（0.5）；两键不可经 `suga config set` 修改。
 4. **C**：`tools.read_deny` 与内置列表（`tools.read_deny_defaults` 缺省 true）对设计所列工具生效；SDK `ReadDeny` 追加；两键不可经 `suga config set` 修改。
 5. 合入后 main 上 `go build ./... && go vet ./... && go test -race ./...` 通过；`make smoke-chat`（含 `smoke-go`）通过；主机 Windows `go test -p 1 ./...` 通过。
 6. 真实验证：`acp_probe` 跑 `--approve trust` 三项成立；裁决真实 provider 评测完成，照抄/改写/注入类无一 allow。

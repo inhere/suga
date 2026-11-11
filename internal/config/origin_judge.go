@@ -16,7 +16,7 @@ const (
 )
 
 // DefaultOriginJudgeTimeout bounds one judge call.
-const DefaultOriginJudgeTimeout = 20 * time.Second
+const DefaultOriginJudgeTimeout = 45 * time.Second
 
 // OriginJudgeSettings configures the external-origin judge.
 type OriginJudgeSettings struct {
@@ -25,7 +25,7 @@ type OriginJudgeSettings struct {
 }
 
 // ReadOriginJudgeSettings reads tools.origin_judge.enabled (default true) and
-// tools.origin_judge.timeout (a Go duration, default 20s). A timeout that is not
+// tools.origin_judge.timeout (a Go duration, default 45s). A timeout that is not
 // a positive duration is an error, so a bad value fails startup instead of
 // leaving the judge without a deadline.
 func ReadOriginJudgeSettings() (OriginJudgeSettings, error) {
