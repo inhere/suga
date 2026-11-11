@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 实施计划
 
-> 状态：Draft 0.4
+> 状态：Draft 0.4 / 已批准（用户 2026-11-10：“批准 suga 安全计划 0.4，T0–T6 用 sonnet，开始实施”）
 
 ## 修订记录
 
