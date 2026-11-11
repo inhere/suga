@@ -27,6 +27,23 @@ func SessionIDFrom(ctx context.Context) string {
 	return id
 }
 
+// turnPromptKey is the context key of the turn's user request; unexported so
+// only WithTurnPrompt can set the value.
+type turnPromptKey struct{}
+
+// WithTurnPrompt marks ctx with the user's request of the turn (for an
+// injected turn, the latest earlier user request). Layers that judge a call
+// against what the person asked read it with TurnPromptFrom.
+func WithTurnPrompt(ctx context.Context, prompt string) context.Context {
+	return context.WithValue(ctx, turnPromptKey{}, prompt)
+}
+
+// TurnPromptFrom returns the prompt set by WithTurnPrompt, or "".
+func TurnPromptFrom(ctx context.Context) string {
+	prompt, _ := ctx.Value(turnPromptKey{}).(string)
+	return prompt
+}
+
 // WithTurnID marks ctx with the agent turn the call belongs to. llm.headers
 // expands it as "{{turn_id}}" (a gateway tracing one turn of a long session).
 func WithTurnID(ctx context.Context, id string) context.Context {
