@@ -1,13 +1,14 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 设计
 
-> 状态：Draft 0.1 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
+> 状态：Draft 0.2 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-11-10 | Claude | 初稿：三项合并设计——审批档位与可信模式（kkh4）、外部来源防护“规则初筛 + 小模型裁决”（f5la）、敏感路径禁读（4t8i） |
+| 0.2 | 2026-11-10 | Claude | 记录用户对 Q1–Q4 的选择（2026-11-10：“Q1–Q4 按推荐”），转为决策 D7–D10 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -183,7 +184,7 @@
   - 禁读不覆盖 `shell_exec`：`ask`/`auto` 档下 shell 仍走审批规则；`trust` 档下可通过 shell 读取，这是可信模式的含义之一，文档写明。
 - **数据**：无表结构变化；裁决结果写 trace 事件 attrs。
 - **运维**：裁决每次命中增加一次小模型调用（通常 < 2 秒），只在初筛命中时发生；配置可关闭。
-- **兼容**：不加参数时 chat/run/acp/SDK 行为与 v0.54.8 一致，唯一默认变化是 C 的内置禁读列表与 B 的裁决开启（见待确认 Q3、Q4）。
+- **兼容**：不加参数时 chat/run/acp/SDK 行为与 v0.54.8 一致，默认变化只有两处：C 的内置禁读列表开启（D10）与 B 的裁决开启（D9）。
 - **回滚**：`tools.origin_judge.enabled: false`、`tools.read_deny_defaults: false` 可单独关闭 B、C 的默认行为；A 不加参数即无变化；整体回滚为 revert 对应版本。
 
 ## 决策
@@ -194,14 +195,15 @@
 - **D4** 裁决逻辑独立成领域包 `internal/originjudge`，wiring 只装配。
 - **D5** 禁读为硬限制，作用于四个读类工具，列表名可见、内容不可读；不解析 shell。
 - **D6** ACP 客户端只能在启动参数给定的上限内切换档位。
+- **D7**（Q1）参数为 `--approve ask|auto|trust`，`--yolo` 为 `--approve trust` 的别名；不采用 `never|auto|on|off`。
+- **D8**（Q2）`trust` 只放开 A 中列出的 6 项确认类检查；规则中的显式 deny、`ClampAllow` 对 `.git`/`.suga`/SUGA_HOME/规则文件的降级等硬限制不动。
+- **D9**（Q3）外部来源裁决默认开启（`tools.origin_judge.enabled: true`）。
+- **D10**（Q4）禁读内置列表默认开启（`tools.read_deny_defaults: true`）。
 
 ## 待确认事项
 
-- **Q1 参数命名**：推荐 `--approve ask|auto|trust` + `--yolo`。你提过 `never|auto|on|off`，其中 on/off 语义不直观，推荐采用三档命名。
-- **Q2 `trust` 的放开范围**：是否同意上文 6 项放开、硬限制不动（特别是：规则中的显式 deny 在 `trust` 下仍拒绝；`.git`/`.suga` 的规则降级仍保留）。
-- **Q3 裁决是否默认开启**：推荐默认开启（目的就是减少误报导致的中断）；代价是命中时多一次小模型调用。
-- **Q4 禁读内置列表是否默认开启**：推荐默认开启（列表见 C）。影响：项目里需要模型读 `.env` 的任务会被拒，需要时在配置里关闭内置列表或改用 `.env.example`。
+无。Q1–Q4 已由用户选定（2026-11-10：“Q1–Q4 按推荐”），见 D7–D10。
 
 ## 结论与人工计划 Gate
 
-本设计批准后才写实施计划；批准不授权实施。请先就 Q1–Q4 给出选择，再进入两轴评审。
+本设计经两轴评审并由你批准后才写实施计划；批准不授权实施。
