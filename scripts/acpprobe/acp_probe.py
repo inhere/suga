@@ -243,6 +243,8 @@ def main():
     p.add_argument("--prompt", action="append", default=[], help="a prompt (repeatable, sent in order)")
     p.add_argument("--prompt-with-image", action="append", default=[], metavar="TEXT|FILE",
                    help="a prompt carrying one image block: TEXT|(FILE) — a text part and a base64 image part")
+    p.add_argument("--acp-arg", action="append", default=[],
+                   help="an extra argument for `suga acp` (repeatable), e.g. --acp-arg=--approve --acp-arg=trust")
     p.add_argument("--model", help="the main model of the session (SUGA_MODEL=<provider>/<model>; default keeps the config)")
     p.add_argument("--permission", choices=("allow_once", "allow_always", "reject", "reject_always"),
                    default="allow_once", help="permission option to select for each request")
@@ -269,7 +271,7 @@ def main():
     env.update(read_dotenv(os.path.join(src, ".env")))
     env.update(SUGA_HOME=home, SUGA_CONFIG=os.path.join(src, "config.yaml"), SUGA_HOOKS="off")
 
-    proc = subprocess.Popen([binary, "acp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    proc = subprocess.Popen([binary, "acp", *args.acp_arg], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=open(os.path.join(home, "acp.stderr.log"), "wb"), env=env, cwd=cwd)
     client = Client(proc, args.permission)
     ok = True
@@ -320,6 +322,12 @@ def main():
             e = json.loads(line)
         except ValueError:
             continue
+        a = e.get("attrs") or {}
+        if a.get("approval_mode"):
+            print(f"  trace {e.get('kind')} {e.get('name')} approval_mode={a.get('approval_mode')}")
+        if e.get("kind") == "tool" and a.get("approval"):
+            print(f"  trace tool {e.get('name')} approval={a.get('approval')} status={e.get('status')} "
+                  f"arg={str(a.get('arg', ''))[:80]}")
         if e.get("kind") == "task" or (e.get("kind") == "tool" and e.get("name") in ("shell_exec", "task")):
             a = e.get("attrs") or {}
             print(f"  trace {e.get('kind')} {e.get('name')} status={e.get('status')} "
