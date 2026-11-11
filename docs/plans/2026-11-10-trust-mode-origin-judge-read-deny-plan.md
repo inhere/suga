@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 实施计划
 
-> 状态：Draft 0.3
+> 状态：Draft 0.4
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-11-10 | Claude | 初稿：实施 `docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md` 0.5（A 审批档位与可信模式、B 外部来源裁决、C 敏感路径禁读），并先修既有缺陷 `suga-flei` |
 | 0.2 | 2026-11-10 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-10-trust-mode-origin-judge-read-deny-plan/`），见下表 |
 | 0.3 | 2026-11-10 | Claude | 处理第 2 轮（两轴 PASS）的纠正项，见第二张表 |
+| 0.4 | 2026-11-10 | Claude | 处理第 3 轮（spec 轴 BLOCKED：F23）与 F24–F26、S14、S15，见第三张表 |
 
 0.2 的处理（按类自查范围：trust 的编译层与各守卫的放行方式；T0 的落点与顺序；签名变更的全部调用点；新文件落点；验证与授权）：
 
@@ -49,6 +50,16 @@
 | S12、F22 | 保留“新键不可写”，在 Gate 注明为计划新增；理由改准：只防止模型关闭裁决与内置禁读列表；`tools.ask_on_external_origin` 仍可写，列入剩余工作 |
 | S13 | 给 gofer 会话的说明随 G1 发版一起发出 |
 
+0.4 的处理（第 3 轮）：
+
+| 评审项 | 处理 |
+|---|---|
+| F23（阻断） | `turn_prompt` 取最近用户消息时按 `segment_handoff.go:154` 的过滤，同时排除 `isContextUpdate`、`isSegmentContext`、`isInjectedItem` 与带 `metaInjected`（`suga.injected`）标记的消息；补“连续两个注入回合”“只有注入回合”用例 |
+| F24 | `approval_mode` 写入 `EventTurnContext`（`internal/personal/turncontext.go:57`），值经 `personal.Config` 新字段传入（`runner.go:43`，`runtime.go:720` 赋值）；两文件入 T2 owner |
+| F25 | ACP 档位用新增 `ServeOption`（`WithApprovalMode`，同 `i18n.go:12` 写法）传入 server |
+| F26、S14 | T5 依赖改为 T2、T6 都合入（同改 `runtime_build.go`、`settings_registry.go`） |
+| S15 | 可追溯性表通知改为 G1 |
+
 ## 计划工作声明
 
 - 思考模式：`RIGOROUS`（SR1408）。
@@ -60,7 +71,7 @@
     - `internal/config`（`providers.go`、`settings_registry.go`、新文件 `read_deny.go`）；
     - `internal/wiring`（`approval_policy.go`、`cli_mcp.go`、`chat_approver.go`、`origin_guard.go`、`danger_guard.go`、`memory_runtime.go`、`runtime.go`、`runtime_build.go`、`capabilities.go`、`subagent.go`、`manifest.go`、新文件 `approval_mode.go`）；
     - 新包 `internal/originjudge`；
-    - `internal/personal`（`runner.go` 调用点、新文件 `turn_prompt.go`、`observe.go`）；
+    - `internal/personal`（`runner.go` 调用点与 `Config` 档位字段、新文件 `turn_prompt.go`、`observe.go`、`turncontext.go`）；
     - `internal/cli`（`run.go`、`acp.go`、`chat.go`）、`internal/acpserver`（`policy.go`、`server.go`、`memory_confirm.go`）、`internal/output/streamjson.go`、`internal/chat`（`layout.go`、`chat.go`、`render.go`）、`internal/i18n/catalog`；
     - `pkg/sugasdk`（`types.go`、`session.go`）；
     - 以上各自测试、`test/ptye2e/`、`scripts/ptysmoke/`（如需新场景）、`scripts/acpprobe/acp_probe.py`、新目录 `scripts/eval/originjudge/`；
@@ -238,7 +249,7 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error)
 | 1 | T1 | 无 | 改 `rules.go`、`approval.go`、`approval_policy.go` 与 5 处调用点、`api`、`personal/turn_prompt.go` |
 | 2 | T0 | T1 合入 | 同改 `runtime.go:829` 闭包与 `acpserver/policy.go`，故在 T1 后 |
 | 3 | T2、T6 | T0 合入 | T2 改 wiring 审批、CLI、ACP、chat banner、SDK `ApprovalMode`；T6 改 native、config 禁读、`capabilities.go`、`subagent.go`、`manifest.go`、SDK `ReadDeny`；共同文件 `pkg/sugasdk/types.go`、`settings_registry.go`、`runtime.go`（nativeEnv 调用点）：T2 先合入，T6 rebase 后合入 |
-| 4 | T5 | T2 合入 | 同改 `origin_guard.go`、`settings_registry.go`，顺序执行 |
+| 4 | T5 | T2、T6 合入 | 与 T2 同改 `origin_guard.go`，与 T6 同改 `runtime_build.go`、`settings_registry.go`，顺序执行 |
 | 5 | T7 | T5、T6 合入 | 只加评测脚本与 acp_probe 参数 |
 | 6 | T8 | T7 | 只改文档 |
 | 7 | G1 发版 | 你的授权 | — |
@@ -251,9 +262,9 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error)
 - **动作**：
   1. `ClampAllow` 与 `Policy.Decide` 增返回 `protected`；`approvalPolicy.Decide` 返回 `(action, hit, protected)`；5 处调用点同步（只传递，行为不变）。
   2. `ApprovalMode`、`ParseApprovalMode`；审批来源增 `trust`；`ApprovalReport` 增裁决字段。
-  3. `api.WithTurnPrompt/TurnPromptFrom`；`turn_prompt.go`：用户回合返回本回合请求；注入回合（`RunRequest.Injected`）用 `store.ListEntries` 读会话条目、以 `isInjectedItem` 排除注入项，取最近一条用户消息，没有则 ""；`Runner.Run` 在回合开始调用并写入 ctx。
-- **测试**：`protected` 在默认动作、宽泛 allow 规则命中保护路径两条路径为 true，非保护路径为 false；`ParseApprovalMode` 表驱动；用户回合、注入回合、跨进程恢复后（新 Runner 读同一库）的 `TurnPromptFrom`。
-- **反向验证**：去掉 `Policy.Decide` 的标记传递后，“宽泛 allow 规则命中 .git”用例失败。
+  3. `api.WithTurnPrompt/TurnPromptFrom`；`turn_prompt.go`：用户回合返回本回合请求；注入回合（`RunRequest.Injected`）用 `store.ListEntries` 读会话条目，按 `segment_handoff.go:154` 的过滤排除 `isContextUpdate`、`isSegmentContext`、`isInjectedItem` 以及 Metadata 带 `metaInjected`（`suga.injected`）的消息，取最近一条用户消息，没有则 ""；`Runner.Run` 在回合开始调用并写入 ctx。
+- **测试**：`protected` 在默认动作、宽泛 allow 规则命中保护路径两条路径为 true，非保护路径为 false；`ParseApprovalMode` 表驱动；用户回合、注入回合、跨进程恢复后（新 Runner 读同一库）的 `TurnPromptFrom`；连续两个注入回合时取到的是最近的用户消息而非上一个注入正文；会话只有注入回合时为 ""。
+- **反向验证**：去掉 `Policy.Decide` 的标记传递后，“宽泛 allow 规则命中 .git”用例失败；去掉 `metaInjected` 过滤后“连续两个注入回合”用例失败。
 - **完成标准**：`layering_test.go` 与现有审批测试全过（行为不变）；容器 race、Windows 通过；合入 main。
 
 ### T0 前提修复：ACP always 会话规则不放行保护路径（suga-flei，sonnet）
@@ -266,7 +277,7 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error)
 
 ### T2 A：档位贯穿四个入口（sonnet）
 
-- **Owner**：`internal/wiring/approval_mode.go`（新）、`approval_policy.go`、`cli_mcp.go`（`newCLIMCPGate` 增档位参数）、`origin_guard.go`（trust 跳过）、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`、`runtime.go`（含 ACPPolicy 闭包填 `clamped`）、`subagent.go`；`internal/cli/run.go`、`acp.go`、`chat.go`；`internal/acpserver/policy.go`、`server.go`（`Options` 增档位，`server.go:310` 构造 `permissionHook` 时传入）、`memory_confirm.go`；`internal/output/streamjson.go`；`internal/personal/observe.go`；`internal/chat/layout.go`、`chat.go`、`render.go`、`internal/i18n/catalog`；`internal/config/settings_registry.go`；`pkg/sugasdk/types.go`、`session.go`；各自测试与 `test/ptye2e/` 新场景。
+- **Owner**：`internal/wiring/approval_mode.go`（新）、`approval_policy.go`、`cli_mcp.go`（`newCLIMCPGate` 增档位参数）、`origin_guard.go`（trust 跳过）、`danger_guard.go`、`chat_approver.go`、`memory_runtime.go`、`runtime.go`（含 ACPPolicy 闭包填 `clamped`）、`subagent.go`；`internal/cli/run.go`、`acp.go`、`chat.go`；`internal/acpserver/policy.go`、`server.go`（新增 `ServeOption` `WithApprovalMode`，`server.go:310` 构造 `permissionHook` 时传入）、`memory_confirm.go`；`internal/output/streamjson.go`；`internal/personal/observe.go`、`turncontext.go`、`runner.go`（`Config` 增档位字段）；`internal/chat/layout.go`、`chat.go`、`render.go`、`internal/i18n/catalog`；`internal/config/settings_registry.go`；`pkg/sugasdk/types.go`、`session.go`；各自测试与 `test/ptye2e/` 新场景。
 - **动作**：
   1. 参数：`chat`、`run` 共用 flag 增 `--approve`、`--yolo`；`suga acp` 改为接受这两个参数；冲突报错；经 `ParseApprovalMode` 进入 `wiring.Options.ApprovalMode`；chat 缺省取配置 `tools.approval`。
   2. 编译层（`approval_mode.go`）：`defaultApprovalDefaults` 增档位参数——auto/trust 时原生默认 Allow（ACP auto 也是原生 Allow、MCP 照旧 Ask）；trust 时 MCP 默认 Allow；read-only 下的 MCP 判定与 `ClampAllow` 在默认动作之后照旧作用。
@@ -275,10 +286,10 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error)
   5. originGuard：trust → 跳过检查（裁决不调用）。
   6. 记忆确认：chat 入口的确认函数、run 入口（现为 nil）、ACP `memory_confirm` 在 trust 下返回允许；SDK 不包装。
   7. 写权限：chat/run 下 trust 隐含 AllowWrite；与 `--read-only` 同给时 `--read-only` 为准并打印提示；SDK 不改；ACP `read_only` 会话模式照旧。
-  8. ACP：`acp.go` 解析档位，经 `acpserver.Options` 交给 server，`server.go:310` 构造 `permissionHook` 时带入；同时进入每个 prompt 的 `wiring.Options`；`permissionHook` 对 `(Ask, clamped=false)` 在 trust 下放行。
+  8. ACP：`acp.go` 解析档位，经 `acpserver.WithApprovalMode` 交给 server，`server.go:310` 构造 `permissionHook` 时带入；同时进入每个 prompt 的 `wiring.Options`；`permissionHook` 对 `(Ask, clamped=false)` 在 trust 下放行。
   8a. run 的 MCP：`newCLIMCPGate` 增档位参数，trust 时 MCP 默认 Allow（read-only 下照旧拒绝）。
   9. 子 agent：`subagent.go` 继承父档位快照。
-  10. 记录：`SessionLine` 增 `approval_mode`；回合开始事件 attrs 写 `approval_mode`（值来自 `Options.ApprovalMode`）；工具审批事件写 `approval=trust`；chat `BannerInfo` 显示档位（取值链 `internal/cli/chat.go:93` → `internal/chat/chat.go:415` → `render.go:740`，i18n 文案）。
+  10. 记录：`SessionLine` 增 `approval_mode`；`EventTurnContext`（`turncontext.go:57`）写 `approval_mode`，值经 `personal.Config` 新字段（`runtime.go:720` 由 `Options.ApprovalMode` 赋值）；工具审批事件写 `approval=trust`；chat `BannerInfo` 显示档位（取值链 `internal/cli/chat.go:93` → `internal/chat/chat.go:415` → `render.go:740`，i18n 文案）。
 - **测试**：
   - GR110：`suga run --yolo`、`--approve trust`、`--approve x` 报错、与 `--yolo` 冲突、`suga acp --approve trust`、`suga config set tools.approval trust` 报错；
   - 入口 × 档位 × 5 项表驱动；
@@ -357,7 +368,7 @@ func Judge(ctx context.Context, p api.Provider, in Input) (Verdict, error)
 | A 档位、来源、矩阵、5 项、硬限制、写权限、可见性 | T1、T2 | 分发与表驱动用例、反向用例、ptye2e、acp_probe |
 | B 初筛 + 裁决、输入信任边界、出错与取消、模型回退、记录 | T1（回合请求）、T5、T7 | 假 provider 用例、ptye2e、真实评测 |
 | C 列表、匹配、工具覆盖、SDK | T6 | 各工具用例、Windows |
-| 兼容与使用方说明 | T8 | 文档与通知 |
+| 兼容与使用方说明 | T8、G1 | 文档（T8）与发版时的通知（G1） |
 
 ## 完成 Gate 与剩余工作
 
