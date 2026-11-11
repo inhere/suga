@@ -75,7 +75,7 @@ func (t *FileReadTool) probeImageItem(arg string) imageProbe {
 		return imageProbe{image: true, looksLike: true}
 	}
 	probe := imageProbe{looksLike: imageExts[strings.ToLower(filepath.Ext(arg))]}
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), arg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, arg)
 	if err != nil {
 		return probe
 	}

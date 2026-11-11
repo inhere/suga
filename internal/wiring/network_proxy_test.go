@@ -8,6 +8,7 @@ import (
 	"github.com/gookit/goutil/x/assert"
 
 	appconfig "github.com/inhere/suga/internal/config"
+	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
 
 // TestNetworkProxyWiring covers the runtime side of network.proxy: startup
@@ -24,7 +25,7 @@ func TestNetworkProxyWiring(t *testing.T) {
 		assert.NoErr(t, validateNetworkProxy())
 		assert.True(t, configuredNetworkProxy() == nil)
 		assert.True(t, networkProxyFunc(nil) == nil)
-		assert.True(t, nativeEnv(t.TempDir(), nil).NetworkProxy == nil)
+		assert.True(t, nativeEnv(t.TempDir(), nil, native.ReadDenyList{}).NetworkProxy == nil)
 	})
 	t.Run("configured selector serves the clients and the native tools", func(t *testing.T) {
 		resetConfig(t)
@@ -32,7 +33,7 @@ func TestNetworkProxyWiring(t *testing.T) {
 		assert.NoErr(t, validateNetworkProxy())
 		selector := configuredNetworkProxy()
 		assert.Require(t, assert.True(t, selector != nil))
-		assert.Eq(t, selector, nativeEnv(t.TempDir(), nil).NetworkProxy)
+		assert.Eq(t, selector, nativeEnv(t.TempDir(), nil, native.ReadDenyList{}).NetworkProxy)
 
 		proxyFunc := networkProxyFunc(selector)
 		assert.Require(t, assert.True(t, proxyFunc != nil))

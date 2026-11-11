@@ -20,6 +20,10 @@ type Env struct {
 	// ReadRoots are directories outside the workspace the read-only file tools
 	// may read too (dependency sources, tools.read_roots). Writes never go there.
 	ReadRoots []string
+	// ReadDeny is the compiled tools.read_deny list (plus the host's additions):
+	// the files no read tool returns the content of, in any approval mode. The
+	// zero value denies nothing.
+	ReadDeny ReadDenyList
 	// AddDirs are the additional directories of the session being served
 	// (--add-dir): the tools read the set at every call, because the runtime is
 	// assembled before the session is opened. nil = no additional directory.
@@ -113,7 +117,7 @@ type Spec struct {
 func Catalog() []Spec {
 	return []Spec{
 		{Name: "file_read", New: func(env Env) api.Tool {
-			t := &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.ReadPageBytes, guard: env.Guard}
+			t := &FileReadTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs, maxOut: env.ReadPageBytes, guard: env.Guard}
 			// file_read reads pictures with the same pipeline as view_image (design
 			// 2026-10-23-file-read-images); the host rebinds this instance to the
 			// runtime's live vision gate and session images directory.
@@ -123,19 +127,19 @@ func Catalog() []Spec {
 			return newImageViewTool(env)
 		}},
 		{Name: "file_list", New: func(env Env) api.Tool {
-			return &FileListTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+			return &FileListTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
 		{Name: "file_grep", New: func(env Env) api.Tool {
-			return &FileGrepTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+			return &FileGrepTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
 		{Name: "file_find", New: func(env Env) api.Tool {
-			return &FileFindTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+			return &FileFindTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
 		{Name: "file_symbols", New: func(env Env) api.Tool {
-			return &FileSymbolsTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+			return &FileSymbolsTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
 		{Name: "file_refs", New: func(env Env) api.Tool {
-			return &FileRefsTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs, maxOut: env.RawBytes}
+			return &FileRefsTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs, maxOut: env.RawBytes}
 		}},
 		{Name: "web_fetch", New: func(env Env) api.Tool {
 			t, err := NewWebFetchToolWithSelector(env.FetchAllowPrivate, env.FetchProxy, env.NetworkProxy)
@@ -150,7 +154,7 @@ func Catalog() []Spec {
 			return &FileWriteTool{workspace: env.Workspace, addDirs: env.AddDirs, snapshots: env.Snapshots, guard: env.Guard}
 		}},
 		{Name: "file_edit", New: func(env Env) api.Tool {
-			return &FileEditTool{workspace: env.Workspace, addDirs: env.AddDirs, snapshots: env.Snapshots, guard: env.Guard}
+			return &FileEditTool{workspace: env.Workspace, readDeny: env.ReadDeny, addDirs: env.AddDirs, snapshots: env.Snapshots, guard: env.Guard}
 		}},
 		{Name: "file_remove", New: func(env Env) api.Tool {
 			if env.TrashDir == "" {
@@ -203,7 +207,7 @@ func Catalog() []Spec {
 // newImageViewTool builds the picture reader from env: view_image wraps it as a
 // tool, file_read reads pictures through it.
 func newImageViewTool(env Env) *ViewImageTool {
-	return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, addDirs: env.AddDirs,
+	return &ViewImageTool{workspace: env.Workspace, readRoots: env.ReadRoots, readDeny: env.ReadDeny, addDirs: env.AddDirs,
 		imagesDir: env.ImagesDir, vision: env.Vision, maxSide: env.ImageMaxSide}
 }
 

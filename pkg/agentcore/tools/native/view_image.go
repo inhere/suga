@@ -52,8 +52,9 @@ const (
 // model that can see gets to look at it.
 type ViewImageTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
 	// imagesDir is the session's images directory; a path argument naming one of
 	// its files by ref (images/<sha256>.<ext>, as an omitted image note shows it)
 	// is read from there. Empty = only ordinary paths.
@@ -184,7 +185,7 @@ func (t *ViewImageTool) read(arg string) ([]byte, string, error) {
 			return data, arg, nil
 		}
 	}
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), arg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, arg)
 	if err != nil {
 		return nil, "", err
 	}

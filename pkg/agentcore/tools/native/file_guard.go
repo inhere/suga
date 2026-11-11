@@ -133,7 +133,7 @@ func (t *FileReadTool) readGuarded(item readItem, offset, limit int, outline, si
 	var target readTarget
 	var stamp diskStamp
 	var stamped bool
-	if tg, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), item.path); err == nil {
+	if tg, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, item.path); err == nil {
 		target = tg
 		stamp, stamped = stampOf(tg)
 	}

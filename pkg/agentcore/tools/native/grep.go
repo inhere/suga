@@ -25,9 +25,10 @@ const (
 // expression, in pure Go (no external rg).
 type FileGrepTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
-	maxOut    int      // raw result cap in bytes; 0 = DefaultRawOutputBytes
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
+	maxOut    int          // raw result cap in bytes; 0 = DefaultRawOutputBytes
 }
 
 func (t *FileGrepTool) Name() string { return "file_grep" }
@@ -99,7 +100,7 @@ func (t *FileGrepTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 			}
 		}
 	}
-	start, err := searchStart(t.workspace, withAddDirs(t.readRoots, t.addDirs), args)
+	start, err := searchStart(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, args)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +121,15 @@ func (t *FileGrepTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	full := false
 	regexp2TimedOut := false
 	noIgnore, _ := args["no_ignore"].(bool)
+	deniedFiles := 0 // files skipped because tools.read_deny forbids them
 	walk, err := walkWorkspace(ctx, start.base, start.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
 		if !glob.match(start, rel) {
+			return nil
+		}
+		// Content search never reads a forbidden file; the count tells the model
+		// that something was left out.
+		if start.deniedRel(t.readDeny, rel) {
+			deniedFiles++
 			return nil
 		}
 		if info, err := d.Info(); err != nil || info.Size() > maxSearchFileBytes {
@@ -149,6 +157,7 @@ func (t *FileGrepTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	if hitCount == 0 {
 		content = "no matches"
 	}
+	content += denySkipNote(deniedFiles)
 	if full {
 		content += fmt.Sprintf("\n[stopped at %d results; narrow path/glob or raise max_results]", limit)
 	}
@@ -279,10 +288,10 @@ func formatGrepContext(name string, lines []grepLine, radius int) []string {
 
 // searchStart resolves the optional path argument (default: the workspace),
 // which may also be an absolute path under one of the read roots.
-func searchStart(workspace string, roots []string, args map[string]any) (readTarget, error) {
+func searchStart(workspace string, roots []string, deny ReadDenyList, args map[string]any) (readTarget, error) {
 	p, _ := args["path"].(string)
 	if p == "" {
 		p = "."
 	}
-	return resolveRead(workspace, roots, p)
+	return resolveRead(workspace, roots, deny, p)
 }

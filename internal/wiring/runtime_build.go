@@ -145,20 +145,20 @@ func buildPersonalCapabilitiesWithServers(ctx context.Context, workspace string,
 }
 
 func buildPersonalCapabilitiesWithServersAndSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
-	return buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, nil)
+	return buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, nil, native.ReadDenyList{})
 }
 
 // buildPersonalCapabilitiesWithExtras is buildPersonalCapabilitiesWithServersAndSnapshot
 // with extra, the host's in-process tools (Options.ExtraTools). They are part of
 // the main session in every mode; only sub-agents never get them (subagent.go).
-func buildPersonalCapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
+func buildPersonalCapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool, readDeny native.ReadDenyList) (defaultCapabilities, error) {
 	if allowWrite {
-		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra)
+		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra, readDeny)
 	}
 	// Read-only: only the catalog's read tools, and no MCP (ACP read_only
 	// sessions must not start MCP servers).
 	registry := tools.NewRegistry()
-	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter), false) {
+	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter, readDeny), false) {
 		registry.Register(tool)
 	}
 	if err := registerHostTools(registry, extra); err != nil {
@@ -173,11 +173,11 @@ func buildPersonalCapabilitiesWithExtras(ctx context.Context, workspace string, 
 // buildPersonalCLICapabilitiesWithExtras is the CLI capability build with
 // extra, the host's in-process tools (Options.ExtraTools); nil builds the
 // historical tool set. Open passes them in.
-func buildPersonalCLICapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
+func buildPersonalCLICapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, allowWrite bool, servers []mcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool, readDeny native.ReadDenyList) (defaultCapabilities, error) {
 	if allowWrite {
-		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra)
+		return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, servers, snapshotter, extra, readDeny)
 	}
-	built, err := buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, false, nil, nil, extra)
+	built, err := buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, false, nil, nil, extra, readDeny)
 	if err != nil {
 		return defaultCapabilities{}, err
 	}

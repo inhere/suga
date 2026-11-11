@@ -21,9 +21,10 @@ const (
 // FileListTool lists files in a workspace directory, optionally recursively.
 type FileListTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
-	maxOut    int      // raw result cap in bytes; 0 = DefaultRawOutputBytes
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
+	maxOut    int          // raw result cap in bytes; 0 = DefaultRawOutputBytes
 }
 
 func (t *FileListTool) Name() string { return "file_list" }
@@ -74,7 +75,7 @@ func (t *FileListTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 	if dirArg == "" {
 		dirArg = "."
 	}
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), dirArg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, dirArg)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +91,9 @@ func (t *FileListTool) Execute(_ context.Context, call api.ToolCall) (*api.ToolR
 	list, err := withRoot(target.base, target.abs, func(root *os.Root, rel string) (listing, error) {
 		var out listing
 		ign := newIgnoreMatcher(root, noIgnore)
-		err := listDir(root, ign, rel, "", depth, maxEntries, &out)
+		err := listDir(root, ign, rel, "", depth, maxEntries, &out, func(entryRel string) bool {
+			return target.deniedRel(t.readDeny, filepath.ToSlash(entryRel))
+		})
 		if depth > 1 {
 			out.note = ign.note() // depth 1 enters nothing, so there is nothing to report
 		}
@@ -122,7 +125,11 @@ type listing struct {
 // listDir appends the entries of dir (relative to root) to out, prefixed by
 // prefix, descending while depth > 1 into directories ign does not skip.
 // Symlinks are never followed and os.Root keeps every open inside the root.
-func listDir(root *os.Root, ign *ignoreMatcher, dir, prefix string, depth, maxEntries int, out *listing) error {
+//
+// denied (nil = nothing is denied) tells which file entries tools.read_deny
+// forbids; they stay listed, marked, so the model knows the file exists but
+// cannot read it. Directories are never denied.
+func listDir(root *os.Root, ign *ignoreMatcher, dir, prefix string, depth, maxEntries int, out *listing, denied func(rel string) bool) error {
 	d, err := root.Open(dir)
 	if err != nil {
 		return err
@@ -141,16 +148,23 @@ func listDir(root *os.Root, ign *ignoreMatcher, dir, prefix string, depth, maxEn
 		name := path.Join(prefix, e.Name())
 		switch {
 		case e.Type()&os.ModeSymlink != 0:
-			out.entries = append(out.entries, name+"@")
+			link := name + "@"
+			if denied != nil && denied(filepath.Join(dir, e.Name())) {
+				link += readDenyMark
+			}
+			out.entries = append(out.entries, link)
 		case e.IsDir():
 			out.entries = append(out.entries, name+"/")
 			child := filepath.Join(dir, e.Name())
 			if depth > 1 && !ign.skipDir(filepath.ToSlash(child), e.Name()) {
-				if err := listDir(root, ign, child, name, depth-1, maxEntries, out); err != nil {
+				if err := listDir(root, ign, child, name, depth-1, maxEntries, out, denied); err != nil {
 					return err
 				}
 			}
 		default:
+			if denied != nil && denied(filepath.Join(dir, e.Name())) {
+				name += readDenyMark
+			}
 			out.entries = append(out.entries, name)
 		}
 	}

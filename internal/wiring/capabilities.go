@@ -86,7 +86,7 @@ func buildDefaultCapabilitiesWithServers(ctx context.Context, workspace string, 
 }
 
 func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspace string, dirs *native.AddDirs, additional []toolsmcp.ServerSettings, snapshotter native.Snapshotter) (defaultCapabilities, error) {
-	return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, additional, snapshotter, nil)
+	return buildDefaultCapabilitiesWithExtras(ctx, workspace, dirs, additional, snapshotter, nil, native.ReadDenyList{})
 }
 
 // buildDefaultCapabilitiesWithExtras is buildDefaultCapabilitiesWithServersAndSnapshot
@@ -94,12 +94,12 @@ func buildDefaultCapabilitiesWithServersAndSnapshot(ctx context.Context, workspa
 // caller. They are ordinary tools of the main session: registered after the MCP
 // ones (so a name collision is reported instead of shadowing), and tools.disabled
 // applies to them like to every other tool.
-func buildDefaultCapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, additional []toolsmcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool) (defaultCapabilities, error) {
+func buildDefaultCapabilitiesWithExtras(ctx context.Context, workspace string, dirs *native.AddDirs, additional []toolsmcp.ServerSettings, snapshotter native.Snapshotter, extra []api.Tool, readDeny native.ReadDenyList) (defaultCapabilities, error) {
 	// The language rules shape the symbol and reference tools and the test
 	// command recognition, so they are loaded before the tools are built.
 	loadLangRuleFiles(workspace)
 	registry := tools.NewRegistry()
-	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter), true) {
+	for _, tool := range native.BuildTools(nativeEnvWithSnapshot(workspace, dirs, snapshotter, readDeny), true) {
 		registry.MustRegister(tool)
 	}
 	servers, err := axconfig.ReadMCPServerSettings()
@@ -449,11 +449,14 @@ func trashDir() string {
 // nativeEnv reads the tools.* settings native tools are built with. dirs is
 // the session's additional-directory set (--add-dir), which the tools read at
 // every call, so it may still be empty here (nil = none).
-func nativeEnv(workspace string, dirs *native.AddDirs) native.Env {
-	return nativeEnvWithSnapshot(workspace, dirs, nil)
+//
+// readDeny is the compiled tools.read_deny list (appconfig.LoadReadDeny), which
+// every caller has to pass so no tool set is built without the ban.
+func nativeEnv(workspace string, dirs *native.AddDirs, readDeny native.ReadDenyList) native.Env {
+	return nativeEnvWithSnapshot(workspace, dirs, nil, readDeny)
 }
 
-func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter native.Snapshotter) native.Env {
+func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter native.Snapshotter, readDeny native.ReadDenyList) native.Env {
 	roots, errs := readRoots(workspace)
 	warnReadRootsOnce.Do(func() {
 		for _, err := range errs {
@@ -463,6 +466,7 @@ func nativeEnvWithSnapshot(workspace string, dirs *native.AddDirs, snapshotter n
 	return native.Env{
 		Workspace:         workspace,
 		AddDirs:           dirs,
+		ReadDeny:          readDeny,
 		TrashDir:          trashDir(),
 		ReadRoots:         native.RootPaths(roots),
 		Snapshots:         snapshotter,

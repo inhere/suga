@@ -123,14 +123,14 @@ func TestEnvironmentPrompt(t *testing.T) {
 		p := environmentPrompt(Options{Workspace: "/w"})
 		assert.StrContains(t, p, "Read-only roots outside the workspace")
 		assert.StrContains(t, p, "  - configured: "+dir)
-		assert.Eq(t, []string{dir}, nativeEnv("/w", nil).ReadRoots)
+		assert.Eq(t, []string{dir}, nativeEnv("/w", nil, native.ReadDenyList{}).ReadRoots)
 	})
 	t.Run("no read roots, no section", func(t *testing.T) {
 		resetConfig(t)
 		assert.NoErr(t, gkconfig.Set("tools.dependency_roots", false))
 		assert.NoErr(t, gkconfig.Set("tools.skill_roots", false))
 		assert.NotContains(t, environmentPrompt(Options{Workspace: "/w"}), "Read-only roots")
-		assert.Empty(t, nativeEnv("/w", nil).ReadRoots)
+		assert.Empty(t, nativeEnv("/w", nil, native.ReadDenyList{}).ReadRoots)
 	})
 	t.Run("writable names the shell", func(t *testing.T) {
 		p := environmentPrompt(Options{Workspace: "/w", AllowWrite: true})
@@ -216,7 +216,7 @@ func TestNativeEnvInterpretersReachShellTool(t *testing.T) {
 	assert.NoErr(t, gkconfig.Set("tools.shell", "pwsh"))
 	stubInterpreters(t, []native.Interpreter{{Name: "python", Path: `C:\Python312\python.exe`, Version: "3.12.4"}})
 
-	env := nativeEnv(t.TempDir(), nil)
+	env := nativeEnv(t.TempDir(), nil, native.ReadDenyList{})
 	assert.Eq(t, 1, len(env.Interpreters))
 	for _, tool := range native.BuildTools(env, true) {
 		if tool.Name() != "shell_exec" {

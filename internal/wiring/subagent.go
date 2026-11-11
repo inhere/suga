@@ -24,6 +24,9 @@ import (
 // tools by type, a sub-agent prompt and environment, and the agents.* limits.
 type subAgents struct {
 	workspace, ruleCWD string
+	// readDeny is the parent's tools.read_deny list: a sub-agent's read tools
+	// enforce it as well.
+	readDeny native.ReadDenyList
 	// projectMemoryKey is the parent session's host-pinned project memory scope
 	// (Options.ProjectMemoryKey). Sub-agents get no memory tools, but their
 	// runtime settings still assemble a memory setup; passing the key keeps that
@@ -233,7 +236,7 @@ func (s *subAgents) toolRegistry(kind string) (*tools.Registry, error) {
 		wanted[name] = true
 	}
 	registry := tools.NewRegistry()
-	for _, tool := range native.BuildTools(nativeEnv(s.workspace, s.addDirs), false) {
+	for _, tool := range native.BuildTools(nativeEnv(s.workspace, s.addDirs, s.readDeny), false) {
 		if wanted[tool.Name()] {
 			registry.Register(tool)
 		}

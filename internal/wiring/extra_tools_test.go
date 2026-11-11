@@ -138,7 +138,7 @@ func TestExtraToolsDisabled(t *testing.T) {
 func TestExtraToolsReadOnlyMode(t *testing.T) {
 	resetConfig(t)
 	host := &hostStubTool{name: "host_ping", meta: tools.Meta{Category: tools.CategoryRead, ReadOnly: true}}
-	caps, err := buildPersonalCapabilitiesWithExtras(context.Background(), t.TempDir(), nil, false, nil, nil, []api.Tool{host})
+	caps, err := buildPersonalCapabilitiesWithExtras(context.Background(), t.TempDir(), nil, false, nil, nil, []api.Tool{host}, native.ReadDenyList{})
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = caps.Close() })
 	res, err := caps.Registry.ExecuteTool(context.Background(), api.ToolCall{CallID: "c", Name: "host_ping"})
@@ -151,7 +151,7 @@ func TestExtraToolsReadOnlyMode(t *testing.T) {
 func TestExtraToolsCLIBuilder(t *testing.T) {
 	resetConfig(t)
 	host := &hostStubTool{name: "host_ping", meta: tools.Meta{Category: tools.CategoryRead, ReadOnly: true}}
-	caps, err := buildPersonalCLICapabilitiesWithExtras(context.Background(), t.TempDir(), nil, true, nil, nil, []api.Tool{host})
+	caps, err := buildPersonalCLICapabilitiesWithExtras(context.Background(), t.TempDir(), nil, true, nil, nil, []api.Tool{host}, native.ReadDenyList{})
 	assert.Require(t, assert.NoErr(t, err))
 	t.Cleanup(func() { _ = caps.Close() })
 	res, err := caps.Registry.ExecuteTool(context.Background(), api.ToolCall{CallID: "c", Name: "host_ping"})

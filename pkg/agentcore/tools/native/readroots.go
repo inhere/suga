@@ -92,8 +92,18 @@ func (r readTarget) matchUnder(glob, rel string) bool {
 
 // resolveRead resolves a read-only tool's path argument: inside the workspace
 // as ResolveSandboxedPath does, otherwise an absolute path under one of roots.
-func resolveRead(workspace string, roots []string, arg string) (readTarget, error) {
-	return resolveRooted(workspace, roots, arg, "the read-only roots")
+//
+// deny is tools.read_deny: a file it forbids is refused here, so every tool that
+// reads content through resolveRead is covered; a directory still resolves.
+func resolveRead(workspace string, roots []string, deny ReadDenyList, arg string) (readTarget, error) {
+	target, err := resolveRooted(workspace, roots, arg, "the read-only roots")
+	if err != nil {
+		return readTarget{}, err
+	}
+	if deny.deniedFile(target.abs) {
+		return readTarget{}, errReadDenied(arg)
+	}
+	return target, nil
 }
 
 // resolveWrite resolves a write tool's path argument the same way against the

@@ -32,9 +32,10 @@ const (
 // call reads the files again.
 type FileRefsTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
-	maxOut    int      // raw result cap in bytes; 0 = DefaultRawOutputBytes
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
+	maxOut    int          // raw result cap in bytes; 0 = DefaultRawOutputBytes
 }
 
 func (t *FileRefsTool) Name() string { return "file_refs" }
@@ -127,13 +128,13 @@ func (t *FileRefsTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	}
 	includeTests, _ := call.Arguments["include_tests"].(bool)
 	noIgnore, _ := call.Arguments["no_ignore"].(bool)
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), pathArg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, pathArg)
 	if err != nil {
 		return nil, fmt.Errorf("file_refs: %w", err)
 	}
 	re := codeintel.RefWordRe(name)
 
-	out := &refOut{name: name, qual: qual, dropped: codeintel.NewRefDrops()}
+	out := &refOut{name: name, qual: qual, dropped: codeintel.NewRefDrops(), deny: t.readDeny}
 	// A file argument is searched as that file. Text files without an extractor
 	// use the bare word-boundary fallback; documentation and binary files are
 	// deliberately left out instead of being treated as source.
@@ -214,6 +215,12 @@ func (t *FileRefsTool) walkDir(ctx context.Context, target readTarget, name, qua
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
+		// A forbidden file is never read, not even to look for the name; the
+		// result says how many were skipped.
+		if target.deniedRel(t.readDeny, rel) {
+			out.denied++
+			return nil
+		}
 		if !includeTests && (isTestFileName(d.Name()) || (!codeintel.SupportsSymbols(d.Name()) && codeintel.InTestDir(rel))) {
 			out.tests++
 			return nil
@@ -286,6 +293,8 @@ type refOut struct {
 	binary  int                 // binary files deliberately left out
 
 	tooLarge   int // files over maxSearchFileBytes
+	denied     int // files skipped because tools.read_deny forbids them
+	deny       ReadDenyList
 	approx     bool
 	bareApprox bool // at least one unsupported text file used the bare matcher
 	goRefs     bool // at least one shown match came from the Go parser
@@ -319,7 +328,7 @@ func (o *refOut) render(name, pathArg string, limit, contextLines int, target re
 	lines := make([]string, 0, len(shown)+1)
 	var src *refSourceCache
 	if contextLines > 0 {
-		src = newRefSourceCache(target)
+		src = newRefSourceCache(target, o.deny)
 	}
 	if len(shown) == 0 {
 		lines = append(lines, fmt.Sprintf("no references to %q in %s (%d source file(s) searched)", name, pathArg, o.files))
@@ -339,7 +348,11 @@ func (o *refOut) render(name, pathArg string, limit, contextLines int, target re
 			}
 		}
 	}
-	return strings.Join(append(lines, o.notes(limit)...), "\n")
+	notes := o.notes(limit)
+	if o.denied > 0 {
+		notes = append(notes, strings.TrimPrefix(denySkipNote(o.denied), "\n"))
+	}
+	return strings.Join(append(lines, notes...), "\n")
 }
 
 // notes are what the result says besides the matches themselves.
