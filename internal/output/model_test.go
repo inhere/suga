@@ -20,3 +20,18 @@ func TestWithModel(t *testing.T) {
 		assert.False(t, ok)
 	})
 }
+
+// TestWithApprovalMode pins the "approval_mode" field of the session line: the
+// tier when the run set one, no field at all otherwise (old output unchanged).
+func TestWithApprovalMode(t *testing.T) {
+	t.Run("the session line carries the tier", func(t *testing.T) {
+		line := WithApprovalMode(SessionLine("s1"), "trust")
+		assert.Eq(t, "trust", line["approval_mode"])
+		assert.Eq(t, "session", line["type"])
+	})
+	t.Run("no tier adds no field", func(t *testing.T) {
+		line := WithApprovalMode(SessionLine("s1"), "")
+		_, ok := line["approval_mode"]
+		assert.False(t, ok)
+	})
+}
