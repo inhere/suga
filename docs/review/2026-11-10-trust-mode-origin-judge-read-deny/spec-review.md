@@ -1,156 +1,117 @@
-# 评审报告：suga 可信模式、外部来源裁决与敏感路径禁读 设计（R1 / Spec 轴）
+# 评审报告：suga 可信模式、外部来源裁决与敏感路径禁读 设计（R2 / Spec 轴，confirmation）
 
 ## 1. 评审目标与范围
 
 - 候选四元组：
   - Git root：`/d/work/inhere/my-tools-dev/inhere-tools/suga`
-  - candidate commit：`113fa5f5990057684d170a840d5c4b0ddc846290`（`docs(design): record Q1-Q4 decisions, draft 0.2`；工作区干净，HEAD 即该提交）
+  - candidate commit：`d50f631fc5fa6cf3b10c9a94d46aa2c7ec05879e`（工作区干净）
   - subject：`docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md`
-  - revision：Draft 0.2
-- 评审者：Spec/Executability 轴独立子 agent，第 1 轮全量读，REPORT_ONLY（未修改仓库、未提交）。
+  - revision：Draft 0.3（上轮候选 `113fa5f5` / 0.2）
+- 评审者：Spec/Executability 轴独立子 agent，第 2 轮，REPORT_ONLY（未修改仓库、未提交）。
 - 实际读取范围：
-  - 设计全文（209 行）；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`。
-  - 代码：`internal/wiring/{runtime.go(240-300,370-400,540-620), approval_policy.go(全), chat_approver.go(1-260,470-540), origin_guard.go(全), danger_guard.go(全), subagent.go(100-270), memory_runtime.go(100-175), runtime_build.go(60-110), capabilities.go(452-492), native_tools.go(31-51), manifest.go(590-600)}`；`internal/acpserver/{policy.go(90-330), config_options.go(全), server.go(80-117 grep)}`；`internal/cli/{acp.go(grep), run.go(240-280)}`；`pkg/sugasdk/{session.go(60-140), types.go(41-80)}`；`internal/personal/{runner.go(455-480), compact.go(455-520), observe.go(30-70)}`；`internal/config/settings_registry.go(205,518-530)`；`pkg/agentcore/tools/{origin.go(20-200), approval.go(90-205), output.go(140-160), rules/rules.go(255-275)}`；`pkg/agentcore/tools/native/{readroots.go(全), file.go(208-240), walk.go(95-120), remove.go(140-155), grep.go/find.go/refs.go(grep)}`；`pkg/agentcore/api/*.go`（ctx 键 grep）。
-- 未读：`internal/hooks/hooks.go` 仅 grep；`internal/output/streamjson.go` 仅 1-80 与 175-195；xhen 仓库未读；`docs/design` 前序设计未读。
+  - 设计 0.3 全文（268 行）；上轮 `spec-review.md` 全文；`git diff --stat 113fa5f5..d50f631f`。
+  - 代码：
+    - `pkg/agentcore/tools/rules/rules.go` 130-305（`Policy.Decide`、`ClampAllow`、`IsProtectedPath`）
+    - `internal/wiring/approval_policy.go` 55-215；`chat_approver.go` 140-200、280-295；`origin_guard.go` 60-110；`subagent.go` 50-64、160-250；`runtime.go` 370-395、560-600、665-700（含 446 行主 provider）；`runtime_build.go` 60-110
+    - `internal/personal/runner.go` 495-615；`observe.go` 30-70、295-350
+    - `internal/acpserver/policy.go` 20-35、100-200、285-335；`server.go`（grep OpenRuntime）；`config_options.go`（grep 模式）；`internal/cli/acp.go` 55-90；`internal/cli/run.go` 620-640；注入回合调用点 grep（`nudge.go`、`verify.go`、`contract.go`）
+    - `pkg/sugasdk/types.go` 41-90、`session.go` 85-105
+    - `pkg/agentcore/tools/approval.go` 200-300；`pkg/agentcore/api/session.go`、`provider.go`（grep）；`pkg/agentcore/redact`
+    - `pkg/agentcore/tools/native/`：`readroots.go` 90-135、`file_guard.go` 100-145、`edit.go` 55-120、`file.go` 70-130、285-300、`edit_report.go` 1-40、`grep.go` 275-290、`catalog.go`（工具名）、各文件 `resolveRead(` 调用点 grep
+- 未读：xhen 仓库；`memory_runtime.go`（沿用上轮核对）；未运行测试，均为静态阅读。
 
-## 2. 输入与方法
+## 2. 方法
 
-- 逐条核对设计“已确认事实”中的文件:行引用；对 A/B/C 的每个落点，沿代码追到数据来源与调用者，判断“按设计能否写出唯一实施计划、能否满足用户可见结果与 D1–D10”。
-- 用户已选定的 Q1–Q4（D7–D10）不作为评审对象，仅评其可落地性。
-- 同类问题穷尽列出出现点。
+- 对上轮 F1–F16 逐条核对 0.3 的修法，并沿代码验证修法所依赖的事实与落点是否成立。
+- 对 0.3 新增/改写段落（保护路径标记、入口×档位矩阵、5 项放开表、裁决输入与装配、禁读匹配与工具覆盖）检查是否能写出唯一实施计划。
+- Q1–Q4 选择及 0.3 对 Q2 的收窄取舍不评，只评落地可行性。
 
 ## 3. 验收标准
 
-- 设计引用的代码事实属实；
-- A 的 6 项放开与硬限制列表能在现有审批链上无歧义实现，四入口语义自洽；
-- B 的裁决输入在 originGuard 处可得，provider/用量/回退有确定的装配路径，安全上不留旁路；
-- C 的禁读能覆盖声明的工具与路径形态，SDK/配置/子 agent 都生效；
+- 上轮两项 CORE_BLOCKING 关闭；修法依赖的代码事实属实；
+- A/B/C 各落点可实施且语义唯一；
 - 无开放 CORE_BLOCKING 为 PASS。
 
-## 4. 发现
+## 4. 上轮处置核对表
 
-### 事实核对（概览）
+| 上轮 | 0.3 处理 | 核对结论 |
+|---|---|---|
+| F1 裁决缓存旁路（BLOCKING） | 删去缓存（B 流程“不缓存裁决结果”、SR1301、D4） | **关闭** |
+| F2 ClampAllow 的 Ask 在 trust 下（BLOCKING） | 行为写明：保护路径 ask 不放行，chat/ACP 询问、无人可问拒绝；`ClampAllow` 返回标记 | **关闭**（行为已定）；机制事实不完整，残留见 F17（上轮未穷尽） |
+| F3 回合请求来源 | `api.WithTurnPrompt` 由 Runner 写入；删“会话目标” | 基本关闭：工具执行 ctx 派生自 `Runner.Run` 回合 ctx（`runner.go:565` 起），chat/run/ACP/SDK 都经 `personal.Runner.Run`，可达 originGuard。注入回合未处理，见 F19 |
+| F4 片段前后扩展 | 删去 | **关闭** |
+| F5 judge provider 装配与用量 | wiring 用 `buildScenarioProvider` 构建并注入；用量写审批事件 attrs，不计预算 | **关闭**（可行）：`settings` 与主 provider 在 `runtime.go:446` 已就绪，早于 `:591` 审批链；`buildScenarioProvider` 是纯函数；回退到 compact 需把 `:660` 附近的 compact 构建前移或延迟取值；attrs 经 `ApprovalReport` 加字段 + `observe.go:330-350` 写出可行（拒绝事件同样经此路径） |
+| F6 ask_outside_dirs | 从放开项删除 | **关闭** |
+| F7 trust 进配置 / ACP 档位 | trust 不进配置；ACP 进程级档位，经 `wiring.Options` 传入每个 prompt 的 Open | **关闭**：`internal/cli/acp.go:57-75` 的闭包可直接捕获启动参数写入 `wiring.Options`，无需改 `OpenRuntime` 签名 |
+| F8 trust 与 allow-write | trust 隐含 `--allow-write`，`--read-only` 优先 | CLI 关闭；SDK 与 ACP `read_only` 会话模式未定，见 F20 |
+| F9 SDK 逐项语义 | 矩阵与 SDK 列 | **关闭** |
+| F10 匹配规则 | 绝对路径、符号链接两端、Windows 大小写、`!` 例外 | **关闭**（规则已定义，可实施） |
+| F11 工具覆盖 | 列全工具，放进 `resolveRead` | 读类工具关闭；`file_edit` 的落点事实错误，见 F18（上轮未穷尽） |
+| F12 SDK ReadDeny / `$SUGA_HOME` | 写明 `internal/config` 展开、`capabilities.go` 统一设置 | 基本关闭；SDK 传入项的 `~` 展开落点见 F21 |
+| F13 表述矛盾 | 用户可见结果限定“读类工具” | **关闭** |
+| F14 B 边界 | 子 agent、ACP、开关组合写明 | 基本关闭；“回合已取消”回退见 F21 |
+| F15 引用与文件清单 | 更正 `newChatApprover:82`、子 agent 描述 | 部分：`pkg/agentcore/tools/approval.go` 仍未列入，见 F21 |
+| F16 补凭据文件 | 已补 | 已采纳 |
 
-大部分引用属实：`runtime.go:591` 包装顺序、`approval_policy.go:60-81` 默认动作、`152-171` run 的 ask→Denied、`policy.go:117,183`、`config_options.go:31`、`run.go:249-270`、`runtime_build.go:76`、`compact.go:464/494`、`readroots.go:95-127`、`output.go:150-156`、`streamjson.go:181-192`、`approval.go:194-200`、`danger_guard.go:46-71`、`remove.go:143-151`、`rules.go:261-305`、`origin_guard.go:93-99`、`memory_runtime.go:132-143`、`chat_approver.go:483`。不准确处见 F15。
+## 5. 新发现
 
----
+### F17 — HIGH — CORE_CORRECTIVE（SECURITY；上轮 F2 同类未穷尽）：`ClampAllow` 有两个调用处，规则命中路径产生的保护路径 Ask 带规则信息；设计事实“降级后的 Ask 不带规则命中信息”不成立
 
-### F1 — HIGH — CORE_BLOCKING（SECURITY）：裁决缓存键只含“工具 + 命中片段”，一次 allow 可被同片段的不同调用复用
+- 代码事实：
+  - `rules.Policy.Decide` 在有规则命中时调用 `ClampAllow(winner.Action, …)` 并返回 `(Ask, winner)`，`winner.Action` 为 allow（`pkg/agentcore/tools/rules/rules.go:162-164`）；
+  - `approvalPolicy.Decide` 遇 `hit != nil` 直接返回（`internal/wiring/approval_policy.go:194-196`），只有无命中时才在 `:201` 调 `ClampAllow`；
+  - chat 的“always”答复存为 session 规则（`chat_approver.go:152-154`，`SourceSession`），同样走规则命中路径。
+- 设计：“已确认事实·保护路径”写“降级后的 Ask 不带规则命中信息”；架构只写“需 `rules.ClampAllow` 返回标记”、调用处只点 `approval_policy.go`。
+- 后果：若实现只在 `approval_policy.go:201` 带出标记，而把“规则命中 ask”识别为 `hit != nil && action == Ask`，则用户宽泛 allow 规则（如 `file_write` 不限路径）或 chat 的 always 会话规则命中 `.git/hooks`、`.suga`、规则文件时，被 clamp 成的 Ask 会按 A 第 1 项在 trust 下放行，违反 D2 与硬限制表。
+- 为何不判 BLOCKING：设计对行为的规范性要求（D2、硬限制表、关键流程“保护路径 ask → 任何档位不放行”、验证中的反向用例）已唯一；缺的是机制事实与两个落点，计划阶段可修。但需在批准前改：
+  - 更正事实：两个调用处，规则命中路径的 Ask 带 `winner`；
+  - 写明标记须经 `rules.Policy.Decide` 与 `approvalPolicy.Decide` 两条路径带出（ACP 的 `PolicyDecision` 由 wiring 提供，wiring 侧按标记处理即可）；或等价地规定“trust 只放行 `hit.Action == ask` 的规则 ask”；
+  - 验证用例加“显式 allow 规则 / session always 规则命中保护路径，trust 下仍询问/拒绝”。
 
-- 设计：“同一回合内对‘同一工具 + 同一命中片段’的裁决结果缓存”（设计 L119）。
-- 代码事实：`OriginHit.Snippet` 只是第一个命中窗口起点的前 48 字节（`pkg/agentcore/tools/origin.go:108-113,155,170-181`），与调用其余参数无关。
-- 后果：模型先发一个良性调用（如 `shell_exec echo "<片段S>"`）得到 `allow`，同回合再发 `shell_exec` 把同一片段 S 嵌入真正执行外部指令的命令，缓存命中直接 allow，裁决模型不再看到第二个调用。
-- necessity proof：
-  - core_acceptance：用户可见结果“照抄网页里的指令去执行时，裁决模型给出拒绝或询问”（L35）及 D3“出错按现状处理，不放宽”。
-  - necessary_causal_chain：call1(tool=T, snippet=S, 良性) → judge allow → cache[(T,S)]=allow → call2(tool=T, snippet=S, 恶意参数) → 命中缓存 → 内层审批器（run/auto 原生默认 Allow）放行 → 执行。
-  - minimal_owner：`internal/originjudge` 的缓存键定义（设计 B 节 L119）。
-  - deletion_alternative：PASS（删除缓存即消除旁路，代价是重复调用多一次裁决；或键改为“工具 + 规范化参数全文摘要”）。
-  - scope_effect：收窄，不扩范围。
+### F18 — HIGH — CORE_CORRECTIVE（SECURITY；上轮 F11 同类未穷尽）：`file_edit` 不经 `resolveRead`，按设计落点实现时禁读不覆盖 `file_edit`，且其结果回显文件内容
 
-### F2 — HIGH — CORE_BLOCKING（SECURITY/AUTHORITY）：`ClampAllow` 在 chat/ACP 输出的是 `Ask`，与“规则/默认 ask”不可区分；trust 的“ask→放行”会绕过 D8 声明的硬限制
+- 代码事实：
+  - `file_guard.go:136` 的 `resolveRead` 在 `FileReadTool.readGuarded` 内，属于 `file_read` 读路径，不是“写/改前的读比对”；写前比对 `FileGuard.check`（`file_guard.go:105-122`）只比对时间戳，不调 `resolveRead`；
+  - `FileEditTool.Execute` 用 `writeTargetPath → resolveWrite` 解析路径，再 `readFileInRoot` 读全文（`edit.go:70-80`，`file.go:291-297`）；结果带编辑处前后各 2 行、最多 60 行的片段（`edit_report.go:14-17`）；`old_string` 是否命中也可当作探测。
+- 设计：“已确认事实·读路径”把 `file_guard` 记为“写/改前的读比对”；C 节称“`file_edit`/`file_write` 的读前比对 经 `resolveRead` 拒绝；`file_edit` 因此不能编辑禁读文件”。
+- 后果：禁读只放进 `resolveRead` 时，`file_edit .env` 仍可执行并把 `.env` 片段带进上下文与 trace，核心目标 3 对该工具不成立。
+- 为何不判 BLOCKING：期望结果（`file_edit` 不能编辑禁读文件）写得明确，且验证要求“各工具”；修正只需改事实与 owner：禁读判定须在 `FileEditTool.Execute`（或 `writeTargetPath` 的 edit 调用方）显式调用共用判定函数；`file_write` 不读、不回显，保持可写与设计一致。
 
-- 设计：A 第 1 项“审批规则中命中 ask 的调用 → 放行”，关键流程“ask → trust 放行”（L168）；同时 D8/L100 把 `ClampAllow` 列为 trust 不放开的硬限制。
-- 代码事实：`ClampAllow` 对受保护路径在 `ModeChat`/`ModeACP` 返回 `Ask`，仅 run 返回 `Deny`（`pkg/agentcore/tools/rules/rules.go:261-271`）；`approvalPolicy.Decide` 在无规则命中时返回 `(ClampAllow(...), nil)`（`internal/wiring/approval_policy.go:198-201`），调用方拿到的是 `(Ask, hit=nil)`，与“默认动作 Ask”完全相同；chat 的 trust 以 auto 为基（原生默认 Allow），所以 chat/ACP 下凡是 `file_write/file_edit/file_remove` 指向 `.git`、`.suga`、SUGA_HOME、规则文件的调用，恰好就是经 ClampAllow 变成 Ask 的那一类。
-- 设计未规定 trust 下这类 Ask 如何处理（继续问人？拒绝？），也未要求 Decide 区分 Ask 的来源。按 L168 字面实现即放行，违反 D8；而 run 下同一调用是 Deny，四入口语义也不一致。
-- necessity proof：
-  - core_acceptance：D8“`ClampAllow` 对 `.git`/`.suga`/SUGA_HOME/规则文件的降级等硬限制不动”；D1“四入口一致”。
-  - necessary_causal_chain：chat `--approve trust` → `file_write .suga/approval-rules...`（或 `.git/hooks/pre-commit`）→ Decide 返回 (Ask,nil) → trust 分支把 ask 放行 → 写入控制面文件（模型可改写自己的审批规则）。
-  - minimal_owner：设计 A 节第 1 项与关键流程；实现落在 `approvalPolicy.Decide`（需暴露“clamp 产生的 Ask”）。
-  - deletion_alternative：FAIL（ClampAllow 是用户选定 D8 的硬限制，不能删；只能在设计中写明 trust 下 clamp-Ask 的处理，如“仍询问（chat/ACP）/拒绝（无人可问）”）。
-  - scope_effect：无扩张，仅澄清 A 内既有决策。
+### F19 — MEDIUM — CORE_CORRECTIVE（SECURITY；上轮 F3 未关闭部分）：注入回合的 prompt 被当作“可信的用户请求”
 
-### F3 — HIGH — CORE_CORRECTIVE：裁决输入“用户本回合原始请求、会话目标”在 originGuard 处取不到，设计未给来源；“会话目标”在代码中不存在
+- 代码事实：`Injected: true` 的回合有 `nudge.go:67`、`verify.go:201`（含验证命令输出）、`run.go:633`（后台任务提醒）、`contract.go:101`、跨会话 `session_message`（`Hops`，另一会话的模型撰写）；Runner 在 `runner.go:569` 已能区分 `req.Injected`。
+- 设计 B“输入”只写“本回合用户请求原文”，未说注入回合。按字面实现，验证命令输出或另一会话模型写的文字会进入“可信部分”，而真实用户请求在更早的回合，裁决依据错位。
+- 修法（不扩范围）：注入回合写入 `WithTurnPrompt` 时标“非用户输入”放进不可信块，可信部分取该会话最近一次非注入回合的请求或“未知”。另：SDK 也经 `personal.Runner.Run`（`pkg/sugasdk/session.go`），“SDK 宿主未经 Runner”的情形不存在，可删以免误导。
 
-- originGuard 只拿到 `(ctx, call, tool)`（`origin_guard.go:76`）；ctx 中可取的只有 session id、turn id（`pkg/agentcore/api/session.go:20-37`，`internal/personal/observe.go:46-51`），以及 approval report、purpose 等，无回合 prompt。
-- 全仓库 `internal/personal`、`pkg/agentcore` 无“会话目标/goal”概念（grep 仅 `internal/chat/followup.go`、`subagent.go`、codeintel 规则有 goal 字样）。
-- 需在设计中定：由 `personal.Runner` 在回合开始把用户输入放进 ctx（新增 `api.WithTurnPrompt` 一类键，属 pkg/agentcore，需注意分层）或由 judge 按 session/turn id 查 store；非人工输入（`--injected`、verify 修复轮、后台任务通知唤醒的回合、子 agent 的任务描述由父模型撰写）时“原始请求”取什么；“会话目标”删除或给出定义。
+### F20 — MEDIUM — CORE_CORRECTIVE（AUTHORITY）：“trust 隐含允许写”在 SDK 与 ACP `read_only` 会话模式下的语义未定
 
-### F4 — HIGH — CORE_CORRECTIVE：“命中的外部片段前后各扩展 512 字节”无法实现——ExternalOrigin 只存滚动哈希，不存原文
+- SDK：`SessionOptions.AllowWrite` 由宿主显式给（`types.go:51`，`session.go:94`）。设计只写“trust 隐含 `--allow-write`”。若在 SDK 下也隐含，宿主设 `ApprovalMode=trust, AllowWrite=false`（如只读委托）时会被暴露写与 shell 工具，越过宿主授权；与 SDK 列“只放开 suga 外层守卫”的意图冲突。
+- ACP：客户端可选会话模式 `read_only`（`config_options.go:30-31,102`；`acp.go:73` `AllowWrite: !readOnly`）。设计“`--read-only` 优先”只覆盖 CLI 参数，ACP `read_only` 模式在 trust 下是否仍生效未写（自然解读是生效，但“客户端不能修改档位”易被误读为忽略）。
+- 修法：写明“隐含写只作用于 chat/run；SDK 仍以 `AllowWrite` 为准；ACP 的 `read_only` 会话模式在 trust 下照旧生效”。
 
-- `ExternalOrigin.Record` 只保存窗口哈希（`origin.go:63-105`，`originSource{id, tool, hashes}`），`find` 返回的 `Snippet` 是参数中的 48 字节（`origin.go:170-181`）。外部结果原文在 guard 处不可得，无法向裁决模型展示“外部内容中这段话前后说了什么”。
-- 需在设计中二选一并写明代价：(a) ExternalOrigin 额外保存规范化原文（每结果上限 128 KB，`originMaxResultBytes`，会话内存上限需重算）并返回命中偏移；(b) 只扩展调用参数一侧的上下文（则“外部片段”名不副实，裁决依据变弱）。这决定 pkg/agentcore/tools 是否改动，影响计划拆分。
+### F21 — LOW — CORE_CORRECTIVE：若干小误差与漏列
 
-### F5 — HIGH — CORE_CORRECTIVE：judge provider 的回退链、用量记录与 `purpose` 都在 `personal.Runner` 内部，wiring 在构建审批链时还没有这些对象
+- 子 agent：“实际只影响第 2 项（MCP）”不成立。子 agent 注册表只含白名单 native 工具与 `extraTools`（生产为空，`subagent.go:57-60,235-245`），没有 MCP 工具，trust 对子 agent 无实际效果。
+- “回合已取消 → 按 v0.54.8 处理（拒绝）”：取消应返回 ctx 错误中止回合（与 `acpserver/policy.go:179-183`、chat `asker` 出错时中止的约定一致），否则记 denial 并计入 `DenialLimit`。
+- 架构漏列 `pkg/agentcore/tools/approval.go`（`ApprovalReport` 增加 `origin_judge*` 字段、`approval=trust` 的来源常量）与 `internal/personal/observe.go` 在 B 下的改动；ACP `auto` 需改 `defaultApprovalDefaults` 的 ACP 分支与 `compileACPApprovalPolicy`（现固定 `chatAuto=false`，`approval_policy.go:72-74,124-130`），文件已列但未点出。
+- judge 回退到 `models.compact` 时，compact provider 现构建于审批链之后（`runtime.go:660` 附近 vs `:591`），计划需写明前移或延迟取值。
+- SDK `ReadDeny` 中 `~`/`$SUGA_HOME` 的展开：SDK 项不经配置加载，需在 wiring 调用 `internal/config` 的同一展开函数。
 
-- `scenarioProvider` 的回退（场景→compact→主模型）是 `Runner` 方法（`compact.go:489-503`）；被观测（记用量、价格、model 事件）的 provider 由 `personal.New` 内 `rec.observeProvider` 包装（`runner.go:461-480`）；`withPurpose/purposeKey` 未导出（`observe.go:56-66`）。
-- 审批链在 `runtime.go:591` 构建并作为 `Tools` 传给 `personal.New`，即 originGuard 构建早于 Runner 与被观测 provider。
-- 设计 L116-118 要求“回退顺序一致”“用量按 purpose=origin_judge 记入”，L145 却说“wiring 只装配：构建 models.judge provider 注入 originGuard”。若 wiring 自建未观测 provider，用量/trace/预算都不记；若要记，需延迟绑定（类似 `resident` 的函数变量）或 personal 导出 `ScenarioProvider(name)`/`WithPurpose`。另外预算（`--budget-*`、估算器）是否计入裁决调用未说明。须在设计中定唯一装配路径。
+## 6. 落地可行性核对（问询项）
 
-### F6 — HIGH — CORE_CORRECTIVE：A 第 5 项“`chat.ask_outside_dirs` → 放行”语义自相矛盾
+- `WithTurnPrompt` → originGuard：可达。工具执行 ctx 派生自 `Runner.Run` 的回合 ctx；ACP 每个 prompt、SDK 每次 Run、chat/run 均经此；子 agent 有自己的 Runner 与 prompt（父模型撰写），但其注册表无非只读工具，guard 不触发。
+- `internal/originjudge` 依赖：`api.Provider` 定义在 `pkg/agentcore/api/provider.go`，`redact.Secrets` 在 `pkg/agentcore/redact`，足够；用量从 provider 响应读取即可。
+- ACP 档位传递：闭包捕获即可，无需改 `acpserver.OpenRuntime`；`acp + auto` 落在 `defaultApprovalDefaults` ACP 分支（Native→Allow，MCP 保持 Ask），保护路径经 `ClampAllow` 在 ACP 下仍为 Ask，与矩阵一致。
+- 5 项放开表与矩阵：除 F17、F20 外可唯一实现。
+- 禁读：读类工具全部 `resolveRead` 调用点已核对（`file_read` 三处、`file_read_image`、`view_image`、`file_list`、`file_symbols`、`file_refs`、`grep.go searchStart`、`file_guard.go:136`）；遍历逐文件判定需在 walk 回调中调用共用函数，设计已写；`file_edit` 见 F18。
+- 保护路径在 run 下仍为 Deny（`ClampAllow` 非 chat/ACP 返回 Deny）、`DenialLimit`、`input_required.denied_tools` 不受影响。
 
-- `askOutsideDir` 的“放行”实际是把目录加入会话 add-dir（`chat_approver.go:483-512`，`addDirs.add(..., Writable)`），之后工具才能访问；若只是跳过提问，工具会因路径越界自行拒绝（注释 L494-496），即“放行”无效果。
-- 设计同时写“读写范围本身仍按 read roots / add-dir / `--allow-write`”。两者冲突：要么 trust 自动授权目录（须定 ro 还是 rw——rw 等于放开工作区外写入），要么 trust 下仍问/仍拒（则不是“放行”）。须明确，并说明 run/ACP/SDK 下该项不存在。
+## 7. 结论
 
-### F7 — MEDIUM — CORE_CORRECTIVE（AUTHORITY）：配置 `tools.approval: trust` 的作用入口未定；ACP 初始档位与上限关系未定
+**PASS**（无开放 CORE_BLOCKING）。F1、F2 关闭。建议在批准前修 F17、F18（两项 HIGH，均为修法依赖的代码事实不准，期望行为已明确）；F19、F20 可在 0.4 或计划中写明；F21 计划中落实。
 
-- 现状 `tools.approval` 只被 chat 读取（`runtime.go:262-268`；`toolsApprovalAuto` 仅 chat 与 manifest 调用），且同类的 `tools.allow_write` 明确只作用于 chat，理由是 run 常由共享该配置的 job runner 启动（`runtime.go:289-292`）。
-- 设计 L90“配置 `tools.approval` 取值扩为 ask|auto|trust，命令行优先于配置”与 L91“run 缺省 auto、ACP 缺省 ask”冲突：若配置作用于 run/ACP，共享 SUGA_HOME 中为 chat 写的 `trust` 会让所有 gofer job 与 ACP 会话进入 trust，并绕过 D6 的“启动参数上限”。
-- ACP：`suga acp --approve trust` 时会话初始值是 trust 还是 ask（仅上限为 trust）？gofer 不发 `set_config_option` 时能否得到 trust 取决于此。另需 `acpserver.OpenRuntime` 签名增加档位参数（`server.go:83` 现只有 `readOnly bool`），架构节未列。
+## 8. 剩余风险
 
-### F8 — MEDIUM — CORE_CORRECTIVE：trust 与 `--allow-write`/`tools.allow_write` 的关系未定
-
-- 写工具只有在 `AllowWrite` 时注册（`runtime.go:289-299`），否则调用被 `SetDisabled` 以 ErrDenied 拒绝并计入 DenialLimit（`approval.go:110-114`）。
-- 用户可见结果“`suga run --yolo …` 不再因需要确认而拒绝”（L34）在不带 `--allow-write` 时不成立。须写明：trust 不蕴含 allow-write（文档提示 gofer 同时传），或 trust 蕴含 allow-write（则属于新增授权，需说明）。chat 同理（`tools.allow_write`）。
-
-### F9 — MEDIUM — CORE_CORRECTIVE：SDK `ApprovalMode` 的逐项语义不完整
-
-- SDK 由宿主 Approver 决定一切（`session.go:93-99`，`types.go:66-67`），外层只有 dangerGuard/originGuard（`runtime.go:591`，chat 为 nil 故走“无人可问”分支）。因此：`ask` 与 `auto` 在 SDK 下无差别；6 项中第 1、2、5 项在 SDK 下不存在；第 6 项“memory.write_tainted ask→放行”与宿主自己的 `MemoryConfirm`（`types.go:68-70`）冲突——trust 时是否跳过宿主确认，与 L92“宿主自己的策略不被绕过”矛盾。
-- 需给出“入口 × 6 项”的适用矩阵，并说明 SDK 子 agent 用 ACP 编译策略（`runtime.go:378-385` 的 `compileACPApprovalPolicy` 快照经 `subagent.go:121-139`）时 trust 的继承方式。
-
-### F10 — MEDIUM — CORE_CORRECTIVE（SECURITY）：禁读匹配的对象与路径规范化未定义（符号链接、大小写、绝对/相对）
-
-- 解析是纯词法的：`ResolveSandboxedPath`/`resolveRooted` 不解符号链接（`file.go:208-230`，`readroots.go:115-129`）；工作区内 `cfg -> .env` 或 `k -> ~/.ssh/id_rsa`（若在 read root 内）按 `**/.env` 词法匹配会漏。
-- Windows：`foldPathCase` 仅用于根判定（`pathresolve.go:14`），`globMatch` 用 `path.Match` 区分大小写（`walk.go:95-120`），`.ENV`、`C:\Users\X\.SSH` 会漏。
-- 匹配对象：`~`、`$SUGA_HOME` 展开后是绝对模式，`**/.env` 是相对模式；walk 回调给出的是相对 base（工作区或 read root）的 rel（`grep.go:123`、`find.go:76`），须写明统一用“清理后的绝对路径（斜杠形式）”匹配，以及 xhen 全盘 read root（base 为 `/` 或 `C:\`）时的行为。
-- 内置列表中的“除外”（`.env.example` 等）在 glob 语法中无法表达，须定义例外机制（内置白名单或 `!` 否定），并说明用户配置能否写例外。
-
-### F11 — MEDIUM — CORE_CORRECTIVE：C 的工具覆盖清单与实际工具不一致，遗漏其余接受路径的读工具
-
-- 工具名实为 `file_grep`、`file_find`（`catalog.go:128,131`），设计写作 `grep`、`find`。
-- 调 `resolveRead` 的读工具还有：`file_symbols`（`file_symbols.go:112`）、`file_refs`（`refs.go:130`，输出匹配行文本）、`view_image`（`view_image.go:187`）、`file_read` 的图片分支（`file_read_image.go:78`）、`file_read` 批量项（`file_read.go:234`）；`file_edit` 结果会回显编辑处上下文行（`edit_report.go`）。用户自定义 `read_deny`（如 `secrets/**/*.go`）可经 `file_refs`/`file_symbols` 读出内容。
-- 须逐个列出纳入/不纳入及理由；判定放 `readroots.go` 只覆盖起点路径，`file_list`/`file_grep`/`file_find` 需在各自 walk 回调逐项判定（设计“与 resolveRead 同处”易被误读为只在入口判一次）。
-
-### F12 — LOW — CORE_CORRECTIVE：SDK `ReadDeny` 与 `$SUGA_HOME` 展开的装配路径未列全
-
-- `nativeEnv` 只读 gkconfig，签名不含 Options（`capabilities.go:452-492`）；调用点有 `capabilities.go:102`、`runtime_build.go:161`、`runtime.go:508,549,846`、`subagent.go:236`、`manifest.go:598`。SDK 的 `ReadDeny` 要经 `wiring.Options` 到达每个构建读工具的点，含子 agent，否则 SDK 会话的子 agent 只有配置层的禁读。
-- `$SUGA_HOME` 展开须在 internal/config（`ResolveSugaHome`）完成后以绝对模式传入 native，native 不得自行解析（分层）。设计只写了 `capabilities.go`。
-
-### F13 — LOW — CORE_CORRECTIVE：用户可见结果与安全节对“读 .env”的表述矛盾
-
-- L34“任何模式下……不会读 `.env`、`~/.ssh`”；L184“`trust` 档下可通过 shell 读取”。且 auto 档（run 缺省）下原生 `shell_exec` 默认 Allow（`approval_policy.go:62`），`cat .env` 同样可读。L34 应限定为“读类工具”。
-
-### F14 — LOW — CORE_CORRECTIVE：B 的若干边界未写
-
-- 子 agent：`subagent.go:176` 也构建 originGuard，设计未说是否注入 judge（子 agent 只有读工具与宿主 extraTools，originGuard 只对非只读工具生效，实际仅影响 extraTools）。
-- ACP：ACP 能经 `RequestPermission` 询问（`policy.go:240-256`），但 `chatApproverOf(permissionHook)` 为 nil，`ask` 仍走“其他入口拒绝”；应明确这是有意保留。
-- `tools.ask_on_external_origin: false` 时整个 guard 不装（`origin_guard.go:69-73`），与 `tools.origin_judge.enabled` 的关系应写明。
-- 裁决期间回合被取消（ctx canceled）应中止回合而非按“出错”回退。
-
-### F15 — LOW — CORE_CORRECTIVE：事实引用与架构文件清单的小误差
-
-- `chat_approver.go:33` 是类型定义，`newChatApprover` 在 `:82`。
-- “子 agent 强制 run”（L62）：`childPolicy` 保留父快照的 Mode（chat/ACP），只在为空时设 run（`subagent.go:121-139`）；“无人可问即拒”来自 `newPolicyApprover`，不是 Mode。trust 继承需落在快照上。
-- 架构节漏列：`pkg/agentcore/tools/approval.go`（`approval=trust` 需新来源常量，L194-200）、`internal/acpserver/server.go`（OpenRuntime 签名）、`internal/wiring/memory_runtime.go`（`memoryTaintedConfirm`）、`internal/config/settings_registry.go:522`（枚举校验）、`chat_approver.go:110-122`/`manifest.go:594`（`toolsApprovalAuto` 只认两值）。
-
-### F16 — LOW — DEFERRED_ENHANCEMENT：内置禁读列表可补常见凭据
-
-- 未含 `~/.git-credentials`、`~/.config/gh/hosts.yml`、`~/.kube/config`、`~/.npmrc`/`~/.pypirc` 等。scope necessity：issue 只点名 `.env`、`~/.ssh`，列表扩充不影响本设计成立，可后续补。
-
-## 5. 覆盖缺口与限制
-
-- 未读 xhen 仓库，xhen 如何设置 read_roots（推断为 SUGA_HOME 配置）未核实。
-- `internal/hooks/hooks.go` 仅 grep 确认“ask/allow 视为无异议”，未细读。
-- issue `suga-kkh4` 提到的“只读委托门”在 suga 代码中未找到对应机制，设计也未提及，未判定归属（可能在 xhen/gofer 侧）。
-- 未运行任何测试；判定均为静态阅读。
-
-## 6. 结论
-
-**BLOCKED**。开放 CORE_BLOCKING 2 项：F1（裁决缓存旁路）、F2（ClampAllow 的 Ask 在 trust 下的处理未定，字面实现违反 D8）。另有 HIGH CORE_CORRECTIVE 4 项（F3–F6），它们使 B 的输入/装配和 A 第 5 项无法写出唯一实施计划，建议与 blocker 同轮修订。
-
-## 7. 剩余风险与后续
-
-- 修 F1：缓存键改为“工具 + 规范化参数摘要”，或删除缓存。
-- 修 F2：在 A 中写明 trust 下 clamp-Ask 的处理（建议 chat/ACP 仍询问、无人可问时拒绝），并要求 Decide 区分 Ask 来源。
-- F3–F6：补数据来源（turn prompt 的 ctx 键或 store 查询）、ExternalOrigin 是否存原文、judge provider 的延迟绑定与 purpose 导出、ask_outside_dirs 在 trust 下的确定行为。
-- F7–F11 在 0.3 一并澄清；F12–F15 可在计划中落实；F16 后续。
-- 修订后建议第 2 轮仅复核 F1–F11 相关段落与新增内容。
+- F17/F18 若未修即进入计划，存在“按机制忠实实现但违背规范性要求”的风险，计划的反向验证需覆盖显式 allow 规则命中保护路径与 `file_edit .env`。
+- 裁决模型误判 allow 的风险属设计已接受的取舍，依赖真实 provider 评测。
+- 未读 xhen；未运行测试。
