@@ -94,7 +94,7 @@ func newChatApprover(opts chatApproverOptions) *chatApprover {
 		// Tests and direct callers can provide a run-mode gate; chat owns the
 		// interactive default even when the gate was built before chat wiring.
 		a.policy.Mode = approvalrules.ModeChat
-		a.policy.Defaults = defaultApprovalDefaults(approvalrules.ModeChat, opts.auto)
+		a.policy.Defaults = defaultApprovalDefaults(approvalrules.ModeChat, opts.auto, a.policy.Approval)
 		a.usePolicy = !a.policy.compiled || a.policy.rulesEnabled
 	}
 	return a
@@ -135,11 +135,12 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 	name := call.Name
 	var action approvalrules.Action
 	var hit *approvalrules.Rule
+	var protected bool
 	var scope approvalScope
 	if a.usePolicy {
 		scope = a.scopeFor(call, tool)
 		a.mu.Lock()
-		action, hit, _ = a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+		action, hit, protected = a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
 		a.mu.Unlock()
 		if hit != nil {
 			reportScope := ""
@@ -159,6 +160,12 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 				return tools.Denied(fmt.Sprintf("规则 %s 拒绝执行 %s", hit.Summary(), name))
 			}
 			return tools.Denied("需要许可：" + name + "，本次运行未授权")
+		}
+		if a.policy.trustReleasesAsk(action, protected) {
+			// trust answers an unprotected ask itself; a protected-path ask
+			// (and any deny above) still reaches the person / is refused.
+			tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
+			return nil
 		}
 		// Ask continues through the interactive path below. Session-level rules
 		// already returned above; this fallback is only for an ordinary ask.

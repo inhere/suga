@@ -17,7 +17,7 @@ func TestPolicyApproverTranslatesRunActions(t *testing.T) {
 	assert.NoErr(t, os.Mkdir(filepath.Join(workspace, "docs"), 0o755))
 	policy := approvalPolicy{
 		Mode: approvalrules.ModeRun, Workspace: workspace,
-		Defaults: defaultApprovalDefaults(approvalrules.ModeRun, false),
+		Defaults: defaultApprovalDefaults(approvalrules.ModeRun, false, tools.ApprovalModeDefault),
 		Rules: []approvalrules.Rule{
 			{Source: approvalrules.SourceUser, Index: 1, Tool: "file_read", Action: approvalrules.Deny},
 			{Source: approvalrules.SourceUser, Index: 2, Tool: "file_write", Path: []string{"docs/**"}, Root: workspace, Action: approvalrules.Allow},
@@ -55,7 +55,7 @@ func TestChatPolicyRulePrecedesShortcuts(t *testing.T) {
 	workspace := t.TempDir()
 	policy := approvalPolicy{
 		Mode: approvalrules.ModeRun, Workspace: workspace,
-		Defaults: defaultApprovalDefaults(approvalrules.ModeRun, false),
+		Defaults: defaultApprovalDefaults(approvalrules.ModeRun, false, tools.ApprovalModeDefault),
 		Rules: []approvalrules.Rule{
 			{Source: approvalrules.SourceUser, Index: 1, Tool: "file_read", Action: approvalrules.Deny},
 			{Source: approvalrules.SourceUser, Index: 2, Tool: "file_write", Action: approvalrules.Ask},

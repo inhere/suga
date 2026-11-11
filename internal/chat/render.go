@@ -58,6 +58,8 @@ type rendererOptions struct {
 	SessionName string
 	// WriteTools selects the banner's tool line (write and shell on or off).
 	WriteTools bool
+	// ApprovalMode is the start-up tier the banner names ("" adds no line).
+	ApprovalMode string
 	// Workspace is the root the file tools work in: the tool lines show a path
 	// inside it relative to it (empty: every path as the call wrote it).
 	Workspace string
@@ -741,7 +743,7 @@ func (r *Renderer) Banner() {
 		Provider: r.opts.Provider, Model: r.opts.Model,
 		Thinking: r.opts.Thinking, ContextWindow: r.opts.ContextWindow,
 		SessionName: r.opts.SessionName, WriteTools: r.opts.WriteTools,
-		Translator: r.tr(),
+		ApprovalMode: r.opts.ApprovalMode, Translator: r.tr(),
 	}))
 }
 

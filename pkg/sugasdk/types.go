@@ -65,6 +65,13 @@ type SessionOptions struct {
 	HostContext func() (content, hash string)
 	// Approver decides every tool call. nil denies every call (fail closed).
 	Approver tools.Approver
+	// ApprovalMode is the approval tier; "" keeps today's behaviour (the host
+	// Approver decides). tools.ApprovalModeTrust only lifts suga's own outer
+	// guards - the external-origin check and the confirmation of a dangerous
+	// non-hard delete (which still goes to Approver); hard delete targets, deny
+	// rules and Approver stay in force. AllowWrite and MemoryConfirm are not
+	// changed: the host keeps deciding writes and memory confirmations.
+	ApprovalMode tools.ApprovalMode
 	// MemoryConfirm approves a memory write of a session that has read external
 	// content. nil refuses such writes.
 	MemoryConfirm func(ctx context.Context, req MemoryConfirmRequest) bool

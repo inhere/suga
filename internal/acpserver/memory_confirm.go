@@ -10,6 +10,7 @@ import (
 	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/pkg/agentcore/memory"
 	"github.com/inhere/suga/pkg/agentcore/redact"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
 
@@ -24,6 +25,10 @@ const memoryBodyPreview = 300
 // Allowed → nil; rejected or a failed request → ErrMemoryWriteRejected;
 // cancelled (outcome or turn) → context.Canceled, which ends the turn.
 func (h *permissionHook) ConfirmMemory(ctx context.Context, s memory.Scope, op memory.Op) error {
+	if h.approval == tools.ApprovalModeTrust {
+		// trust lifts the memory-write confirmation (design A table, item 5).
+		return nil
+	}
 	if h.conn == nil {
 		return ErrMemoryWriteRejected
 	}

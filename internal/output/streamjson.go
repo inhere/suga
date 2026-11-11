@@ -20,6 +20,16 @@ func WithModel(line map[string]any, model string) map[string]any {
 	return line
 }
 
+// WithApprovalMode records the start-up approval tier (--approve/--yolo) on the
+// session line; an empty mode (the entry point's default) leaves the line as it
+// is, so runs without the flags keep their output byte-for-byte.
+func WithApprovalMode(line map[string]any, mode string) map[string]any {
+	if mode != "" {
+		line["approval_mode"] = mode
+	}
+	return line
+}
+
 // SessionLine is the first stream-json line of a run.
 func SessionLine(sessionID string) map[string]any {
 	return map[string]any{"type": "session", "id": sessionID, "session_id": sessionID}

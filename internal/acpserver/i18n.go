@@ -1,6 +1,9 @@
 package acpserver
 
-import "github.com/inhere/suga/internal/i18n"
+import (
+	"github.com/inhere/suga/internal/i18n"
+	"github.com/inhere/suga/pkg/agentcore/tools"
+)
 
 // ServeOption configures the agent Serve builds; the host assembly passes the
 // startup-resolved catalog it resolved once, so client-facing notices read the
@@ -11,6 +14,14 @@ type ServeOption func(*Agent)
 // historical Chinese text stays (compatibility runtimes built by tests).
 func WithTranslator(tr i18n.Translator) ServeOption {
 	return func(a *Agent) { a.setTranslator(tr) }
+}
+
+// WithApprovalMode fixes the approval tier of the whole ACP process (suga acp
+// --approve/--yolo). A client cannot change it; each prompt's permission hook
+// reads it, and trust only releases asks that were not downgraded for a
+// protected path.
+func WithApprovalMode(mode tools.ApprovalMode) ServeOption {
+	return func(a *Agent) { a.approval = mode }
 }
 
 // trOrFallback keeps the historical Chinese text when no catalog was injected

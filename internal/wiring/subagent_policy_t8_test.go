@@ -18,7 +18,7 @@ func TestSubAgentPolicySnapshotAllowsReadsAndDeniesAsk(t *testing.T) {
 	policy := approvalPolicy{
 		Mode:      approvalrules.ModeRun,
 		Workspace: workspace,
-		Defaults:  defaultApprovalDefaults(approvalrules.ModeRun, false),
+		Defaults:  defaultApprovalDefaults(approvalrules.ModeRun, false, tools.ApprovalModeDefault),
 		Rules: []approvalrules.Rule{
 			{Source: approvalrules.SourceUser, Index: 1, Tool: "file_read", Action: approvalrules.Deny},
 			{Source: approvalrules.SourceUser, Index: 2, Tool: "file_list", Action: approvalrules.Ask},
@@ -73,7 +73,7 @@ func TestRunDefaultPolicyProtectsControlPlanePaths(t *testing.T) {
 		Workspace: workspace,
 		SugaHome:  sugaHome,
 		RuleFiles: []string{ruleFile},
-		Defaults:  defaultApprovalDefaults(approvalrules.ModeRun, false),
+		Defaults:  defaultApprovalDefaults(approvalrules.ModeRun, false, tools.ApprovalModeDefault),
 	}
 
 	tests := []struct {

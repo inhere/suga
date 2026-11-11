@@ -23,6 +23,7 @@ import (
 	"github.com/inhere/suga/internal/wiring"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
+	"github.com/inhere/suga/pkg/agentcore/tools"
 )
 
 var ErrInputRequired = errors.New("turn requires more input")
@@ -89,6 +90,10 @@ type personalOptions struct {
 	// when it was created in another one (--allow-cwd-change). Without it, a
 	// resume elsewhere is refused (chat asks first when it has a terminal).
 	AllowCwdChange bool
+	// Approve and Yolo are --approve ask|auto|trust and --yolo (= trust); see
+	// approval().
+	Approve string
+	Yolo    bool
 	// ImagePaths are the run's --image values (repeatable, order kept). They are
 	// prepared before the first turn and ride with Prompt
 	// (personal.RunRequest.Images, the chat :image pipeline).
@@ -125,6 +130,10 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 	}
 	for _, warning := range warnings {
 		fmt.Fprintln(stderr, "warning: "+warning)
+	}
+	// trust implies write tools, but --read-only keeps priority: say so.
+	if opts.ReadOnly && opts.approval() == tools.ApprovalModeTrust {
+		fmt.Fprintln(stderr, "notice: --read-only takes priority over --approve trust: write tools stay disabled")
 	}
 	// A resumed chat follows the session's selected model unless --model was
 	// explicitly supplied. Read it before assembling the provider runtime.
@@ -258,6 +267,8 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	cmd.StringVar(&opts.OutputFormat, "output-format", "text", "text or stream-json")
 	cmd.BoolVar(&opts.ReadOnly, "read-only", false, "disable every mutating tool; MCP tools are limited to tools.read_only_allow{[;ro]}")
 	cmd.BoolVar(&opts.AllowWrite, "allow-write", false, "allow workspace write and shell tools for this run")
+	cmd.StringVar(&opts.Approve, "approve", "", approveFlagUsage)
+	cmd.BoolVar(&opts.Yolo, "yolo", false, yoloFlagUsage)
 	cmd.StringVar(&opts.AppendSystemPrompt, "append-system-prompt", "", "append system instructions after rules, empty keeps the saved prompt")
 	cmd.BoolVar(&opts.ClearAppendSystemPrompt, "clear-append-system-prompt", false, "clear the session's saved append prompt (a non-empty --append-system-prompt still replaces it)")
 	cmd.BoolVar(&opts.NoProjectRules, "no-project-rules", false, "skip project rule files for debugging")
@@ -290,6 +301,7 @@ func (o personalOptions) wiringOptions(mode string) wiring.Options {
 		Model:      o.Model,
 		Thinking:   o.Thinking,
 		AllowWrite: o.AllowWrite, ReadOnly: o.ReadOnly,
+		ApprovalMode: o.approval(),
 		// --read-only also limits the memory tool to get/search.
 		MemoryReadOnly:     o.ReadOnly,
 		MCPConfigs:         o.MCPConfigs,
@@ -301,7 +313,24 @@ func (o personalOptions) wiringOptions(mode string) wiring.Options {
 	}
 }
 
+// Usage of the shared approval-tier flags (chat, run, acp).
+const (
+	approveFlagUsage = "approval tier: ask, auto or trust (trust lets unprotected asks, MCP tools, dangerous non-hard deletes and memory writes through; protected paths, --read-only and deny rules still apply)"
+	yoloFlagUsage    = "same as --approve trust; cannot be combined with --approve"
+)
+
+// approval is the tier chosen by --approve/--yolo. A bad combination is
+// rejected by validatePersonalOptions before any caller reads it, so the error
+// is not repeated here.
+func (o personalOptions) approval() tools.ApprovalMode {
+	mode, _ := wiring.ResolveApprovalMode(o.Approve, o.Yolo)
+	return mode
+}
+
 func validatePersonalOptions(mode string, opts personalOptions) error {
+	if _, err := wiring.ResolveApprovalMode(opts.Approve, opts.Yolo); err != nil {
+		return err
+	}
 	if opts.SessionID != "" && opts.ResumeID != "" {
 		return fmt.Errorf("--session-id and --resume cannot be combined")
 	}
@@ -399,7 +428,7 @@ func executePersonalRun(ctx context.Context, runner *personal.Runner, opts perso
 		if len(opts.Images) > 0 {
 			session["images"] = len(opts.Images)
 		}
-		if err := encoder.Encode(output.WithModel(session, runModelRef(runner))); err != nil {
+		if err := encoder.Encode(output.WithApprovalMode(output.WithModel(session, runModelRef(runner)), string(opts.approval()))); err != nil {
 			return err
 		}
 	} else {

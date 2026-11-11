@@ -19,7 +19,7 @@ func TestChatScopedApprovalPromptsEnglish(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	policy := approvalPolicy{
 		Mode: approvalrules.ModeChat, Workspace: workspace, AlwaysPrefixTokens: 2, PersistAsk: true,
-		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false),
+		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false, tools.ApprovalModeDefault),
 	}
 	asker := &scriptedAsker{answers: []string{"a", ""}}
 	approver := newChatApprover(chatApproverOptions{
@@ -37,7 +37,7 @@ func TestChatScopedApprovalPromptsAndPersistence(t *testing.T) {
 	t.Setenv("SUGA_HOME", home)
 	policy := approvalPolicy{
 		Mode: approvalrules.ModeChat, Workspace: workspace, AlwaysPrefixTokens: 2, PersistAsk: true,
-		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false),
+		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false, tools.ApprovalModeDefault),
 	}
 	asker := &scriptedAsker{answers: []string{"a", "u"}}
 	var events []ApprovalRulePersistEvent
@@ -80,7 +80,7 @@ func TestChatProjectDenyPersistenceAndWriteFailureKeepSessionRule(t *testing.T) 
 
 	t.Run("project deny is written", func(t *testing.T) {
 		policy := approvalPolicy{Mode: approvalrules.ModeChat, Workspace: workspace, PersistAsk: true,
-			Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false)}
+			Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false, tools.ApprovalModeDefault)}
 		asker := &scriptedAsker{answers: []string{"d", "p"}}
 		approver := newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), asker: asker, workspace: workspace})
 		err := approver.Decide(context.Background(), agentcore.ToolCall{Name: "file_write", Arguments: map[string]any{"path": "docs/a.txt"}}, &nativeStubTool{name: "file_write"})
@@ -99,7 +99,7 @@ func TestChatProjectDenyPersistenceAndWriteFailureKeepSessionRule(t *testing.T) 
 		userPath := filepath.Join(badHome, "approval-rules.yaml")
 		assert.NoErr(t, os.WriteFile(userPath, []byte("rules: [\n"), 0o600))
 		policy := approvalPolicy{Mode: approvalrules.ModeChat, Workspace: workspace, PersistAsk: true,
-			Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false)}
+			Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false, tools.ApprovalModeDefault)}
 		asker := &scriptedAsker{answers: []string{"a", "u"}}
 		var events []ApprovalRulePersistEvent
 		approver := newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), asker: asker, workspace: workspace,
@@ -121,7 +121,7 @@ func TestChatWriteScopeCoversTheFileDirectory(t *testing.T) {
 	workspace := t.TempDir()
 	t.Setenv("SUGA_HOME", t.TempDir())
 	policy := approvalPolicy{Mode: approvalrules.ModeChat, Workspace: workspace,
-		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false)}
+		Defaults: defaultApprovalDefaults(approvalrules.ModeChat, false, tools.ApprovalModeDefault)}
 	asker := &scriptedAsker{answers: []string{"a"}}
 	approver := newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), asker: asker, workspace: workspace})
 	write := func(p string) error {

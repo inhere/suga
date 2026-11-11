@@ -133,6 +133,9 @@ type permissionHook struct {
 	// package-level compatibility tests on the historical read/ask behavior.
 	policy  PolicyDecision
 	session *sessionPolicy
+	// approval is the process-wide tier; trust answers an unprotected ask
+	// (clamped=false) without RequestPermission and skips memory confirmation.
+	approval tools.ApprovalMode
 	// translator renders the questions this hook asks the client (memory write
 	// confirmation); set right after the runtime opens.
 	translator i18n.Translator
@@ -216,7 +219,7 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 		// refusal below; MCP tools never take this path.
 		readTool = true
 	}
-	action, rule, scope, sessionHit := h.decide(call, tool, readTool)
+	action, rule, scope, sessionHit, clamped := h.decide(call, tool, readTool)
 	if rule != "" {
 		if sessionHit {
 			tools.ReportRule(ctx, rule, scope)
@@ -238,6 +241,12 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 	}
 	if action != "ask" {
 		return h.deny(ctx, id, pending, ErrPermissionDenied)
+	}
+	if h.approval == tools.ApprovalModeTrust && !clamped {
+		// trust: the ask is not a protected-path downgrade, so no client question.
+		// (deny, read_only and protected asks were handled or stay below.)
+		tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
+		return h.approve(ctx, pending, id)
 	}
 
 	asked := time.Now()
@@ -294,29 +303,29 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 	return h.approve(ctx, pending, id)
 }
 
-func (h *permissionHook) decide(call agentcore.ToolCall, tool agentcore.Tool, readTool bool) (action, rule, scope string, sessionHit bool) {
+func (h *permissionHook) decide(call agentcore.ToolCall, tool agentcore.Tool, readTool bool) (action, rule, scope string, sessionHit, clamped bool) {
 	if h.policy == nil {
 		if readTool {
-			return "allow", "", call.Name, false
+			return "allow", "", call.Name, false, false
 		}
-		return "ask", "", call.Name, false
+		return "ask", "", call.Name, false, false
 	}
 	var pathProtected bool
-	action, rule, scope, _, pathProtected = h.policy(call, tool)
+	action, rule, scope, clamped, pathProtected = h.policy(call, tool)
 	if scope == "" && h.policy == nil {
 		scope = call.Name
 	}
 	if strength(action) == 0 {
-		return "deny", rule, scope, false
+		return "deny", rule, scope, false, clamped
 	}
 	// An always-allow rule is keyed by scope (a root file gives "file_write:**"), so
 	// it would also cover .git or .suga. A protected target never takes a session
 	// allow: it keeps the policy result (ask). A session deny still applies.
 	if sessionRule, ok := h.session.decide(scope); ok && !(pathProtected && sessionRule.action == "allow") &&
 		(rule == "" || strength(sessionRule.action) >= strength(action)) {
-		return sessionRule.action, sessionRule.summary, scope, true
+		return sessionRule.action, sessionRule.summary, scope, true, clamped
 	}
-	return action, rule, scope, false
+	return action, rule, scope, false, clamped
 }
 
 func (h *permissionHook) approve(ctx context.Context, pending *pendingCall, id acp.ToolCallId) error {

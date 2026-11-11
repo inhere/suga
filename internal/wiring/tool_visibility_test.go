@@ -22,7 +22,7 @@ func TestNewToolVisibility(t *testing.T) {
 		reg := tools.NewRegistry()
 		reg.Register(newCapabilityStubTool("other_tool"))
 		reg.Register(newServerStubTool("srv", "srv_write"))
-		cliGate, err := newCLIMCPGate(false)
+		cliGate, err := newCLIMCPGate(false, tools.ApprovalModeDefault)
 		assert.NoErr(t, err)
 		gate := &deniedCounter{inner: cliGate}
 		vis, err := newToolVisibility(reg, tools.NewApproval(reg, gate), 128000, nil)
@@ -65,7 +65,7 @@ func TestNewToolVisibility(t *testing.T) {
 		reg.Register(newCapabilityStubTool("other_tool"))
 		reg.Register(newServerStubTool("srv", "srv_write"))
 		reg.Register(newServerStubTool("other", "other_write"))
-		cliGate, err := newCLIMCPGate(false)
+		cliGate, err := newCLIMCPGate(false, tools.ApprovalModeDefault)
 		assert.NoErr(t, err)
 		gate := &deniedCounter{inner: cliGate}
 		vis, err := newToolVisibility(reg, tools.NewApproval(reg, gate), 128000, []string{"srv_write"})
