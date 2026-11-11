@@ -61,6 +61,9 @@ func storedAddDirs(t *testing.T, rt *Runtime, sessionID string) []adddir.Dir {
 // mode winning on the same path) and a --read-only run only ever exposes the
 // read-only view.
 func TestAddDirsSession(t *testing.T) {
+	// A store of its own: the package-wide SUGA_HOME outlives -count rounds, and
+	// this test opens sessions with fixed IDs (suga-xrxl).
+	t.Setenv("SUGA_HOME", t.TempDir())
 	ctx := context.Background()
 	ws, ro, rw := t.TempDir(), t.TempDir(), t.TempDir()
 	addDirsSessionConfig(t, ws)

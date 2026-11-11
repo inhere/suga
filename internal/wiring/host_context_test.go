@@ -34,6 +34,9 @@ func segmentStartOf(t *testing.T, rt *Runtime, sessionID string) segmentStartHos
 // segment of a new session freezes the host's text and the resident report
 // counts it. Without the option the record and the report stay empty.
 func TestOpenHostContext(t *testing.T) {
+	// A store of its own: the package-wide SUGA_HOME outlives -count rounds, and
+	// this test opens sessions with fixed IDs (suga-xrxl).
+	t.Setenv("SUGA_HOME", t.TempDir())
 	hostText := "人物设定：XH 是一位向导。\n主题索引：- A"
 	open := func(t *testing.T, host func() (string, string)) *Runtime {
 		t.Helper()

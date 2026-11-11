@@ -218,6 +218,9 @@ func TestOpenRejectsLegacyConfig(t *testing.T) {
 }
 
 func TestRuntimeSwitchPreservesFallbackModels(t *testing.T) {
+	// A store of its own: the package-wide SUGA_HOME outlives -count rounds, and
+	// this test opens sessions with fixed IDs (suga-xrxl).
+	t.Setenv("SUGA_HOME", t.TempDir())
 	resetConfig(t)
 	var seen []string
 	var mu sync.Mutex

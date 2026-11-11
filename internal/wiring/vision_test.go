@@ -30,6 +30,9 @@ func runtimeToolNames(t *testing.T, rt *Runtime) []string {
 // picture to a model that cannot see it instead of a picture tool appearing and
 // disappearing.
 func TestSwitchModelKeepsToolTableStable(t *testing.T) {
+	// A store of its own: the package-wide SUGA_HOME outlives -count rounds, and
+	// this test opens sessions with fixed IDs (suga-xrxl).
+	t.Setenv("SUGA_HOME", t.TempDir())
 	resetConfig(t)
 	assert.NoErr(t, gkconfig.Set("model", "fake/gpt-4o"))
 	setProviders(t, map[string]any{"fake": map[string]any{"type": "openai", "api_key": "k",
