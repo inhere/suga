@@ -12,7 +12,7 @@ require (
 	github.com/gookit/gopty v0.1.2
 	github.com/gookit/goutil v0.8.6
 	github.com/gookit/i18n v1.3.0
-	github.com/gookit/ini/v2 v2.3.2
+	github.com/gookit/ini/v2 v2.3.3
 	github.com/gookit/rotatefile v0.3.3
 	github.com/mattn/go-runewidth v0.0.24
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
@@ -21,7 +21,7 @@ require (
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.61.1
 )
 
 require (
