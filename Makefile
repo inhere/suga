@@ -167,7 +167,7 @@ demo-cast:
 ## smoke-go: run the Go ptytest chat smoke (Linux pty and Windows ConPTY, one suite);
 ## scenarios migrate here from scripts/ptysmoke batch by batch
 smoke-go:
-	go test -tags ptye2e -count=1 ./test/ptye2e/
+	go test -tags ptye2e -count=1 -timeout 30m ./test/ptye2e/
 
 ## smoke-pty-go: compatibility alias for smoke-go
 smoke-pty-go: smoke-go
