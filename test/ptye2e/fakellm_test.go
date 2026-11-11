@@ -82,6 +82,13 @@ type fakeLLM struct {
 	// and the failing one of loop-fail (default false).
 	LoopCommand, LoopFailCommand string
 
+	// origin mode (fakellm_origin_test.go; suga safety plan T5): web_fetch of
+	// PageURL (served by this same server as PageText), then shell_exec of
+	// Command; a judge request (the external-origin judge's prompt) is answered
+	// with JudgeReply whatever the mode.
+	PageURL, PageText string
+	JudgeReply        string
+
 	mu       sync.Mutex
 	served   int
 	arrived  int // requests received, counted before the delay (served counts after it)
@@ -211,6 +218,11 @@ func (f *fakeLLM) SetCommand(command string) {
 }
 
 func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && f.PageText != "" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = fmt.Fprint(w, f.PageText)
+		return
+	}
 	var body struct {
 		Model    string        `json:"model"`
 		Stream   bool          `json:"stream"`
@@ -359,6 +371,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if calls := f.editCalls(user); step < len(calls) {
 			call = &calls[step]
 		}
+	case "origin":
+		call = f.originCall(step)
 	case "tool":
 		if !toolDone && !strings.Contains(user, "[background task") {
 			args := map[string]any{"command": f.command()}
@@ -369,6 +383,10 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	judge := isJudgeRequest(body.Messages)
+	if judge {
+		call = nil // the judge only ever answers with its verdict text
+	}
 	var delta map[string]any
 	if call != nil {
 		raw, _ := json.Marshal(call.args)
@@ -378,6 +396,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}}}
 	} else if f.Mode == "empty-final" {
 		delta = map[string]any{}
+	} else if judge {
+		delta = map[string]any{"content": f.JudgeReply}
 	} else {
 		delta = map[string]any{"content": f.reply()}
 	}

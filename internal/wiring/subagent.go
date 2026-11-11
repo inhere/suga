@@ -176,7 +176,7 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	// is not reused: a child may run in the background, and a question about its
 	// call would arrive detached from what the person is looking at.
 	origin := tools.NewExternalOrigin()
-	approval := tools.NewApproval(registry, guardExternalOrigin(newPolicyApprover(policy), nil, origin, policy.Approval))
+	approval := tools.NewApproval(registry, guardExternalOrigin(newPolicyApprover(policy), nil, origin, policy.Approval, nil))
 	approval.SetDisabled(subAgentDisabledHints(registry))
 	dbPath, err := appconfig.ResolveCoreStorePath()
 	if err != nil {

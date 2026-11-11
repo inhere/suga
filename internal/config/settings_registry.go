@@ -101,6 +101,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "models.compact", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "models.idle", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "models.handoff", Type: ConfigTypeString, Writable: true, Reader: "model"},
+	// models.judge: the model of the external-origin judge (tools.origin_judge.*);
+	// unset falls back to models.compact, then the main model.
+	{Pattern: "models.judge", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	{Pattern: "max_steps", Type: ConfigTypeInt, Writable: true, Reader: "max_steps"},
 	{Pattern: "budget.tokens", Type: ConfigTypeInt, Writable: true, Reader: "budget"},
 	{Pattern: "budget.cost_usd", Type: ConfigTypeFloat, Writable: true, Reader: "budget"},
@@ -220,6 +223,12 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.protect_changed_files", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.ask_on_external_origin", Type: ConfigTypeBool, Writable: true},
+	// tools.origin_judge.enabled / .timeout: the judge that decides a call the
+	// external-origin screen flagged (see origin_judge.go). Not writable through
+	// `suga config set`, so the model cannot switch the judge off; edit
+	// config.yaml by hand.
+	{Pattern: "tools.origin_judge.enabled", Type: ConfigTypeBool},
+	{Pattern: "tools.origin_judge.timeout", Type: ConfigTypeDuration},
 	{Pattern: "tools.shell", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.shell_timeout_max", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "tools.task_timeout_max", Type: ConfigTypeInt, Writable: true},
