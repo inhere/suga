@@ -43,6 +43,24 @@ func TestChatTrust(t *testing.T) {
 		check(t, "trace: turn_context has approval_mode=trust", ctx != nil && attrs(ctx)["approval_mode"] == "trust")
 	})
 
+	t.Run("a default-allowed write is traced as approval=trust", func(t *testing.T) {
+		server := httptest.NewServer(&fakeLLM{Mode: "adddir", WritePath: "trust-note.txt", Delay: 100 * time.Millisecond})
+		defer server.Close()
+		home, work := t.TempDir(), t.TempDir()
+		s, env := startChatOpts(t, binary, chatOpts{Home: home, Work: work, URL: server.URL, Args: []string{"--approve", "trust"}})
+		m := s.Mark()
+		until(t, s, "❯ prompt", `❯ `, m)
+		s.SendLine("写文件")
+		check(t, "default write completes without a question", s.Expect(`tokens · `, m, 30*time.Second) && !s.Contains(`允许执行 file_write`, m))
+		session := ctrlCTwice(t, s)
+		check(t, "session id", session != "")
+		if session == "" {
+			return
+		}
+		call := findEvent(traceEvents(t, binary, work, env, session), "tool", "file_write")
+		check(t, "trace: file_write has approval=trust", call != nil && attrs(call)["approval"] == "trust")
+	})
+
 	t.Run("the same ask rule asks without the flag", func(t *testing.T) {
 		r := newRulesRun(t, binary, &fakeLLM{Mode: "tool", Command: "echo TRUST_ASK", Delay: 100 * time.Millisecond}, "")
 		r.writeRules("  - tool: shell_exec\n    command: echo TRUST_ASK\n    action: ask\n")

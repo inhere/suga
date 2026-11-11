@@ -100,7 +100,7 @@ func trustTestPolicy(t *testing.T, mode approvalrules.Mode, tier tools.ApprovalM
 	t.Helper()
 	loaded := ApprovalRules{Settings: appconfig.DefaultApprovalRulesSettings(), Workspace: t.TempDir(),
 		User: ApprovalRuleSource{Rules: rules}}
-	policy := compileApprovalPolicy(mode, chatAutoFor(tier, false), readOnly, loaded, nil, tier)
+	policy := compileApprovalPolicy(mode, false, readOnly, loaded, nil, tier)
 	policy.SugaHome = t.TempDir()
 	return policy
 }
@@ -397,5 +397,43 @@ func TestTrustThroughAssembly(t *testing.T) {
 		t.Cleanup(func() { _ = rt.Close() })
 		action, _, _, _, _ := rt.ACPPolicy(agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query"))
 		assert.Eq(t, "deny", action)
+	})
+}
+
+// TestTrustReleasedDefaultIsTraced: an allow that only trust opened (the entry's
+// baseline default was not allow) is reported as approval=trust; read-only tools,
+// rule hits and baselines that already allowed stay unmarked.
+func TestTrustReleasedDefaultIsTraced(t *testing.T) {
+	write := agentcore.ToolCall{Name: "file_write", Arguments: map[string]any{"path": "notes.txt"}}
+	writeTool := &nativeStubTool{name: "file_write"}
+	chatOf := func(t *testing.T, configAuto bool) *chatApprover {
+		t.Helper()
+		policy := trustTestPolicy(t, approvalrules.ModeChat, tools.ApprovalModeTrust, false)
+		policy.Baseline = defaultApprovalDefaults(approvalrules.ModeChat, configAuto, tools.ApprovalModeDefault)
+		return newChatApprover(chatApproverOptions{gate: newCLIMCPGateWithPolicy(policy), auto: true, asker: &scriptedAsker{}, workspace: policy.Workspace})
+	}
+	t.Run("chat: a write that would have asked", func(t *testing.T) {
+		err, report := approveCall(t, chatOf(t, false), write, writeTool)
+		assert.NoErr(t, err)
+		assert.Eq(t, tools.ApprovedByTrust, report.Source)
+	})
+	t.Run("chat: tools.approval auto already allowed it", func(t *testing.T) {
+		err, report := approveCall(t, chatOf(t, true), write, writeTool)
+		assert.NoErr(t, err)
+		assert.Eq(t, "", report.Source)
+	})
+	t.Run("chat: a read tool is never marked", func(t *testing.T) {
+		err, report := approveCall(t, chatOf(t, false), agentcore.ToolCall{Name: "file_read", Arguments: map[string]any{"path": "a"}}, &nativeStubTool{name: "file_read"})
+		assert.NoErr(t, err)
+		assert.Eq(t, "", report.Source)
+	})
+	t.Run("run: MCP default opened by trust is marked, native is not", func(t *testing.T) {
+		policy := trustTestPolicy(t, approvalrules.ModeRun, tools.ApprovalModeTrust, false)
+		err, report := approveCall(t, newPolicyApprover(policy), agentcore.ToolCall{Name: "query"}, newServerStubTool("srv", "query"))
+		assert.NoErr(t, err)
+		assert.Eq(t, tools.ApprovedByTrust, report.Source)
+		err, report = approveCall(t, newPolicyApprover(policy), write, writeTool)
+		assert.NoErr(t, err)
+		assert.Eq(t, "", report.Source)
 	})
 }

@@ -32,6 +32,10 @@ type approvalPolicy struct {
 	ReadOnly bool
 	Rules    []approvalrules.Rule
 	Defaults approvalDefaults
+	// Baseline is what Defaults would be without the start-up tier (chat: the
+	// configured tools.approval). Only trustReleasedDefault reads it, to tell a
+	// default allow that trust opened from one that was always an allow.
+	Baseline approvalDefaults
 	// Approval is the start-up approval tier (--approve/--yolo, SDK option); ""
 	// keeps the entry point's own behaviour. Defaults already reflect it; the
 	// approvers read it to let an unprotected ask through in trust mode.
@@ -90,6 +94,7 @@ func defaultApprovalDefaults(mode approvalrules.Mode, chatAuto bool, approval to
 func compileApprovalPolicy(mode approvalrules.Mode, chatAuto, readOnly bool, loaded ApprovalRules, legacy []approvalrules.Rule, approval tools.ApprovalMode) approvalPolicy {
 	compiled := approvalPolicy{
 		Mode: mode, ReadOnly: readOnly, Defaults: defaultApprovalDefaults(mode, chatAuto, approval), Approval: approval,
+		Baseline:   defaultApprovalDefaults(mode, chatAuto, tools.ApprovalModeDefault),
 		RuleSource: loaded, Workspace: loaded.Workspace, AlwaysPrefixTokens: loaded.Settings.AlwaysPrefixTokens,
 		PersistAsk: loaded.Settings.PersistAsk, compiled: true,
 		rulesEnabled: loaded.Settings.Enabled,
@@ -161,11 +166,15 @@ type policyApprover struct{ policy approvalPolicy }
 func newPolicyApprover(policy approvalPolicy) tools.Approver { return &policyApprover{policy: policy} }
 
 func (a *policyApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool agentcore.Tool) error {
-	action, hit, protected := a.policy.Decide(a.policy.targetFor(call, tool), tools.MetaOf(tool))
+	target := a.policy.targetFor(call, tool)
+	action, hit, protected := a.policy.Decide(target, tools.MetaOf(tool))
 	if hit != nil {
 		tools.ReportRule(ctx, hit.Summary(), "")
 	}
 	if action == approvalrules.Allow {
+		if a.policy.trustReleasedDefault(action, hit, target.MCP, tools.MetaOf(tool)) {
+			tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
+		}
 		return nil
 	}
 	if a.policy.trustReleasesAsk(action, protected) {

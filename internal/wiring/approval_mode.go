@@ -59,6 +59,21 @@ func (p approvalPolicy) trustReleasesAsk(action approvalrules.Action, protected 
 	return p.Approval == tools.ApprovalModeTrust && action == approvalrules.Ask && !protected
 }
 
+// trustReleasedDefault reports whether an allow came only from trust opening
+// the default action: trust tier, allow, no rule hit, not a read-only or
+// agent-state tool (those were always allowed), and the entry's baseline default
+// for this kind of tool was not allow. Such calls are traced as approval=trust.
+func (p approvalPolicy) trustReleasedDefault(action approvalrules.Action, hit *approvalrules.Rule, mcp bool, meta tools.Meta) bool {
+	if p.Approval != tools.ApprovalModeTrust || action != approvalrules.Allow || hit != nil || meta.ReadOnly || meta.AgentState {
+		return false
+	}
+	base := p.Baseline.Native
+	if mcp {
+		base = p.Baseline.MCP
+	}
+	return base != approvalrules.Allow
+}
+
 // trustMemoryConfirm wraps an entry point's memory-write confirmation: in trust
 // mode a tainted-session write is allowed without asking (nil confirm, as in
 // run, included). The SDK does not use it: its host's MemoryConfirm decides.

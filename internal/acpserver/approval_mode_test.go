@@ -147,3 +147,28 @@ func TestACPTrustHookDecide(t *testing.T) {
 		client.mu.Unlock()
 	})
 }
+
+// TestACPTrustReleasedDefaultIsTraced: a rule-less allow of a non-read tool under
+// trust is reported as approval=trust; a read tool and a non-trust tier are not.
+func TestACPTrustReleasedDefaultIsTraced(t *testing.T) {
+	allow := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
+		return "allow", "", "x", false, false
+	})
+	source := func(t *testing.T, tier tools.ApprovalMode, tool agentcore.Tool, name string) string {
+		t.Helper()
+		client := &testACPClient{selected: "reject"}
+		hook := newTableHook(t, t.TempDir(), false, client)
+		hook.policy, hook.approval = allow, tier
+		hook.lookup = func(string) agentcore.Tool { return tool }
+		call := agentcore.ToolCall{CallID: "c", Name: name, Arguments: map[string]any{"path": "notes.txt"}}
+		assert.Require(t, assert.NoErr(t, hook.BeforeTool(context.Background(), &agentcore.ToolEvent{RunID: "run", Call: &call}, nil)))
+		ctx, report := tools.WithApprovalReport(context.Background())
+		assert.NoErr(t, hook.Decide(ctx, call, tool))
+		return report.Source
+	}
+	write := policyCatalogTool("file_write")(t, t.TempDir())
+	read := policyCatalogTool("file_read")(t, t.TempDir())
+	assert.Eq(t, tools.ApprovedByTrust, source(t, tools.ApprovalModeTrust, write, "file_write"))
+	assert.Eq(t, "", source(t, tools.ApprovalModeTrust, read, "file_read"))
+	assert.Eq(t, "", source(t, tools.ApprovalModeAuto, write, "file_write"))
+}

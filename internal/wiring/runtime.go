@@ -273,10 +273,12 @@ func OpenCLI(ctx context.Context, opts Options) (*Runtime, error) {
 			return nil, err
 		}
 		// An explicit tier overrides tools.approval (ask / auto / trust).
+		configAuto := auto
 		auto = chatAutoFor(opts.ApprovalMode, auto)
 		// Keep mode-scoped file rules aligned with the interactive entry point.
 		gate.policy.Mode = approvalrules.ModeChat
 		gate.policy.Defaults = defaultApprovalDefaults(approvalrules.ModeChat, auto, opts.ApprovalMode)
+		gate.policy.Baseline = defaultApprovalDefaults(approvalrules.ModeChat, configAuto, tools.ApprovalModeDefault)
 		asker = tools.NewBindableAsker()
 		// The outside-directory question needs the tool's static read roots (a
 		// path under one needs no authorization) and the session's added-directory

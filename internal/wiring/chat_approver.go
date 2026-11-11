@@ -153,6 +153,8 @@ func (a *chatApprover) Decide(ctx context.Context, call agentcore.ToolCall, tool
 		case approvalrules.Allow:
 			if hit != nil && hit.Source == approvalrules.SourceSession {
 				tools.ReportApproval(ctx, tools.ApprovedAlways, 0)
+			} else if a.policy.trustReleasedDefault(action, hit, tools.IsMCP(tool), tools.MetaOf(tool)) {
+				tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
 			}
 			return nil
 		case approvalrules.Deny:

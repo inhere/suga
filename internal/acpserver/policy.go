@@ -236,6 +236,10 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 	if action == "allow" {
 		if sessionHit {
 			tools.ReportApproval(ctx, tools.ApprovedAlways, 0)
+		} else if h.approval == tools.ApprovalModeTrust && rule == "" && !readTool {
+			// ACP's non-trust default for native and MCP calls is ask, so a rule-less
+			// allow of a non-read tool under trust was opened by the tier.
+			tools.ReportApproval(ctx, tools.ApprovedByTrust, 0)
 		}
 		return h.approve(ctx, pending, id)
 	}
