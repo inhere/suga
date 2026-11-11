@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.55.0] - 2026-11-11
+
+本版加入审批档位（`--approve`/`--yolo`）、外部来源小模型裁决与敏感路径禁读（设计 `docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md`），并含 0.54.10 的重试预算修复。
+
 ### 新增
 
 - 审批档位：`chat`、`run`、`acp` 增 `--approve ask|auto|trust`（`--yolo` 即 `--approve trust`），SDK 增 `SessionOptions.ApprovalMode`。`trust` 放开“需要人确认”类检查（规则与默认动作的 ask、MCP 默认拒绝/询问、外部来源检查、非家目录/根目录的危险删除、污染后的记忆写入），chat/run 下隐含 `--allow-write`；保护路径、规则 `deny`、`--read-only`、宿主 Approver 与敏感路径禁读照旧。`trust` 只能由启动参数或 SDK 设定，`tools.approval` 仍只取 `ask|auto`。stream-json `session` 行、`turn_context` 与 chat 横幅显示档位，被放行的调用记 `approval=trust`（suga-kkh4）。
