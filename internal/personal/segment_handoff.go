@@ -105,6 +105,20 @@ func (r *Runner) latestPlan(ctx context.Context, sessionID string) string {
 	return ""
 }
 
+// userRequestMessage decodes a user entry and reports whether it is a request
+// message: not a context update, a segment context or an entry injected into a
+// running turn. Entries tagged metaInjected (Stop hook replies, deliveries) still
+// pass: recentRequests ranks them below typed ones, turn_prompt drops them.
+// Shared by recentRequests and turnPrompt so both read the same notion of "a
+// request".
+func userRequestMessage(e store.Entry) (agentcore.Message, bool) {
+	var m agentcore.Message
+	if err := json.Unmarshal(e.JSON, &m); err != nil || m.Role != "user" || isContextUpdate(m) || isSegmentContext(m) || isInjectedItem(m) {
+		return agentcore.Message{}, false
+	}
+	return m, true
+}
+
 // recentRequests returns up to n recent user requests (original text, oldest
 // first) of the session's adopted turns plus turnID (the turn in progress,
 // whose messages are stored but not yet adopted). Filler requests ("继续",
@@ -150,8 +164,8 @@ func (r *Runner) recentRequests(ctx context.Context, sessionID, turnID string, n
 		if !done[e.TurnID] {
 			continue
 		}
-		var m agentcore.Message
-		if err := json.Unmarshal(e.JSON, &m); err != nil || m.Role != "user" || isContextUpdate(m) || isSegmentContext(m) || isInjectedItem(m) {
+		m, ok := userRequestMessage(e)
+		if !ok {
 			continue
 		}
 		text := strings.TrimSpace(m.Content)
@@ -196,8 +210,8 @@ func (r *Runner) recentRequests(ctx context.Context, sessionID, turnID string, n
 			if !done[e.TurnID] {
 				continue
 			}
-			var m agentcore.Message
-			if err := json.Unmarshal(e.JSON, &m); err != nil || m.Role != "user" || isContextUpdate(m) || isSegmentContext(m) || isInjectedItem(m) {
+			m, ok := userRequestMessage(e)
+			if !ok {
 				continue
 			}
 			text := strings.TrimSpace(m.Content)
