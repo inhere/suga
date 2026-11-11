@@ -193,7 +193,7 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		server, hits := scriptedServer(t, "text/event-stream", openaiOverload)
 		_, err := openai(server.URL).Stream(context.Background(), req, nil)
 		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
-		assert.ErrMsgContains(t, err, "服务端临时错误，已重试 3 次")
+		assert.ErrMsgContains(t, err, "服务端临时错误，共请求 3 次")
 		assert.ErrMsgContains(t, err, overloadMessage) // the API's own wording stays readable
 		assert.Eq(t, int32(fastRetry.MaxAttempts), hits.Load())
 	})
@@ -230,7 +230,7 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		server, hits := scriptedServer(t, "text/event-stream", claudeOverload)
 		_, err := claude(server.URL).Stream(context.Background(), req, nil)
 		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
-		assert.ErrMsgContains(t, err, "服务端临时错误，已重试 3 次")
+		assert.ErrMsgContains(t, err, "服务端临时错误，共请求 3 次")
 		assert.ErrMsgContains(t, err, "claude api error: Overloaded")
 		assert.Eq(t, int32(fastRetry.MaxAttempts), hits.Load())
 	})
@@ -265,7 +265,7 @@ func TestStreamRetriesTransientAPIErrors(t *testing.T) {
 		server, hits := scriptedServer(t, "text/event-stream", responsesOverload)
 		_, err := responses(server.URL).Stream(context.Background(), req, nil)
 		assert.Eq(t, ErrorKindTransient, ErrorKind(err))
-		assert.ErrMsgContains(t, err, "服务端临时错误，已重试 3 次")
+		assert.ErrMsgContains(t, err, "服务端临时错误，共请求 3 次")
 		assert.Eq(t, int32(fastRetry.MaxAttempts), hits.Load())
 	})
 	t.Run("responses: an invalid request error is not retried", func(t *testing.T) {

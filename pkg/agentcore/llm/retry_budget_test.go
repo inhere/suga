@@ -99,3 +99,30 @@ func TestRetryMaxElapsedLeavesTheFallbackItsTurn(t *testing.T) {
 	assert.Eq(t, int32(1), fallbackHits.Load())
 	assert.True(t, int(primaryHits.Load()) < budgetRetry.MaxAttempts, "%d primary attempts", primaryHits.Load())
 }
+
+// A long answer that streamed for longer than the whole budget before the
+// upstream cut it is still retried: the budget starts at the first failure, not
+// at the request (2026-11-11: a codex stream broke after minutes and the error
+// read "已重试 1 次" with no retry made).
+func TestRetryBudgetStartsAtTheFirstFailure(t *testing.T) {
+	req := &agentcoreapi.GenerateRequest{Messages: []agentcoreapi.Message{{Role: "user", Content: "hi"}}}
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		if hits.Add(1) == 1 {
+			// The first attempt streams, outlives the budget, then breaks off.
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n"))
+			w.(http.Flusher).Flush()
+			time.Sleep(3 * budgetRetry.MaxElapsed / 2)
+			return
+		}
+		_, _ = w.Write([]byte(openaiWhole))
+	}))
+	t.Cleanup(server.Close)
+
+	p := NewOpenAIProvider(OpenAIConfig{APIKey: "k", BaseURL: server.URL, Model: "m", Retry: budgetRetry})
+	res, err := p.Stream(context.Background(), req, nil)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, int32(2), hits.Load())
+	assert.Eq(t, "ok", res.Content)
+}
