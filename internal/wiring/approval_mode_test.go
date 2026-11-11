@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -225,8 +226,12 @@ func TestTrustDangerGuard(t *testing.T) {
 	call := func(command string) agentcore.ToolCall {
 		return agentcore.ToolCall{CallID: "c1", Name: "shell_exec", Arguments: map[string]any{"command": command}}
 	}
-	danger := "rm -rf ."
-	hard := "rm -rf ~"
+	// Same commands as TestDangerGuard: the OS default shell decides what counts
+	// as a dangerous delete (PowerShell on Windows).
+	danger, hard := "rm -rf .", "rm -rf ~"
+	if runtime.GOOS == "windows" {
+		danger, hard = "Remove-Item -Recurse -Force .", "Remove-Item -Recurse -Force ~"
+	}
 	innerRuns := 0
 	allowInner := tools.ApproverFunc(func(context.Context, agentcore.ToolCall, agentcore.Tool) error { innerRuns++; return nil })
 	denyInner := tools.ApproverFunc(func(context.Context, agentcore.ToolCall, agentcore.Tool) error {
