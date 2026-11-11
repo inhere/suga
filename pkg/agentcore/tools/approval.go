@@ -198,6 +198,9 @@ const (
 	ApprovedAlways = "always"
 	// AskedAndDenied: the person was asked and refused.
 	AskedAndDenied = "user_denied"
+	// ApprovedByTrust: trust mode let an ask through without a person (not
+	// emitted until the trust tier is wired in).
+	ApprovedByTrust = "trust"
 )
 
 // ApprovalReport says how a call was approved: who decided and how long the
@@ -222,6 +225,13 @@ type ApprovalReport struct {
 	// did approve this call). Later calls a remembered "always" rule lets
 	// through are not Answered, so the model-visible note is not added there.
 	Answered bool
+	// OriginJudge is the verdict of the external-origin judge ("allow", "deny",
+	// "ask"), "" when the call was not judged. OriginJudgeReason is its
+	// redacted, truncated reason; OriginJudgeTokens the tokens it spent
+	// (input + output).
+	OriginJudge       string
+	OriginJudgeReason string
+	OriginJudgeTokens int
 }
 
 type approvalReportKey struct{}
