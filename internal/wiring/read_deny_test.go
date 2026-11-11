@@ -120,3 +120,25 @@ func TestReadDenyInSubAgent(t *testing.T) {
 		assert.StrContains(t, err.Error(), "tools.read_deny")
 	})
 }
+
+// TestReadDenyUnderTrust: the read ban is a hard limit, so the trust tier (which
+// lets confirmation checks through) still refuses a banned file (design C).
+func TestReadDenyUnderTrust(t *testing.T) {
+	resetConfig(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SUGA_HOME", t.TempDir())
+	setProviders(t, map[string]any{"openai": map[string]any{"api_key": "k"}})
+	assert.NoErr(t, gkconfig.Set("model", "openai/gpt-4o"))
+	ws := filepath.Join(home, "proj")
+	assert.Require(t, assert.NoErr(t, os.MkdirAll(ws, 0o755)))
+	assert.Require(t, assert.NoErr(t, os.WriteFile(filepath.Join(ws, ".env"), []byte("TOKEN=sekret"), 0o600)))
+	allowAll := tools.ApproverFunc(func(context.Context, api.ToolCall, api.Tool) error { return nil })
+	rt, err := Open(context.Background(), Options{Workspace: ws, RuleCWD: ws, Approver: allowAll, AllowWrite: true, ApprovalMode: tools.ApprovalModeTrust})
+	assert.Require(t, assert.NoErr(t, err))
+	t.Cleanup(func() { _ = rt.Close() })
+	_, err = readViaRuntime(rt, ".env")
+	assert.Require(t, assert.Err(t, err))
+	assert.StrContains(t, err.Error(), "被 tools.read_deny 禁止")
+}
