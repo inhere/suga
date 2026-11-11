@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 可信模式、外部来源裁决与敏感路径禁读 设计
 
-> 状态：Draft 0.5 / 待人工计划批准；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
+> 状态：Draft 0.5 / 已批准（用户 2026-11-10：“批准 suga 安全设计 0.5（接受未复核修订与上述调整），开始写计划”）；issue `suga-kkh4`、`suga-f5la`、`suga-4t8i`
 
 ## 修订记录
 
