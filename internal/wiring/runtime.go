@@ -611,7 +611,12 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// Text copied from a web or MCP result into a write or exec call is asked
 	// about again (guardExternalOrigin); originObserver feeds it the results.
 	origin := tools.NewExternalOrigin()
-	approvalLayer := tools.NewApproval(capabilities.Registry, guardExternalOrigin(guardDangerous(opts.Approver, opts.ApprovalMode), chatApproverOf(opts.Approver), origin, opts.ApprovalMode))
+	judge, err := newOriginJudge(settings, provider, estimateOptionsForBudget(budget.Tokens, budget.CostUSD, budget.Estimate, budget.EstimateFactor))
+	if err != nil {
+		_ = capabilities.Close()
+		return nil, err
+	}
+	approvalLayer := tools.NewApproval(capabilities.Registry, guardExternalOrigin(guardDangerous(opts.Approver, opts.ApprovalMode), chatApproverOf(opts.Approver), origin, opts.ApprovalMode, judge))
 	approvalLayer.SetDisabled(disabledToolHints(capabilities.Registry, opts))
 	vis, err := newToolVisibility(capabilities.Registry, &originObserver{inner: approvalLayer, origin: origin}, contextWindow,
 		preferredMCPToolNames(capabilities.Registry, preferredTools))

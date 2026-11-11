@@ -277,6 +277,14 @@ func ReportDanger(ctx context.Context, reason string) {
 	}
 }
 
+// ReportOriginJudge records the external-origin judge's verdict ("allow",
+// "deny", "ask" or "error"), its reason and the tokens it spent in ctx's report.
+func ReportOriginJudge(ctx context.Context, decision, reason string, tokens int) {
+	if r, _ := ctx.Value(approvalReportKey{}).(*ApprovalReport); r != nil {
+		r.OriginJudge, r.OriginJudgeReason, r.OriginJudgeTokens = decision, reason, tokens
+	}
+}
+
 // ApprovedResultNote goes after (annotateApproved) the model-visible tool
 // result of a call a person approved this time (ApprovalReport.Answered, the
 // ACP allow/allow_always answer and the chat y/a answer). It tells the model

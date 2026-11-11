@@ -347,6 +347,17 @@ func (o *observedTools) ExecuteTool(ctx context.Context, call agentcore.ToolCall
 	if approval.Danger != "" {
 		e.Attrs["danger"] = approval.Danger
 	}
+	if approval.OriginJudge != "" {
+		// The external-origin judge's verdict; its usage is recorded here only
+		// and never counted into the session budget.
+		e.Attrs["origin_judge"] = approval.OriginJudge
+		if approval.OriginJudgeReason != "" {
+			e.Attrs["origin_judge_reason"] = truncateRunes(redact.Secrets(approval.OriginJudgeReason), 200)
+		}
+		if approval.OriginJudgeTokens > 0 {
+			e.Attrs["origin_judge_tokens"] = approval.OriginJudgeTokens
+		}
+	}
 	if snapshot.Status != "" {
 		e.Attrs["snapshot"] = snapshotEventAttrs(snapshot)
 	}

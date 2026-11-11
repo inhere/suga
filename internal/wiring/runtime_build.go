@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	gkconfig "github.com/gookit/config/v2"
 	appconfig "github.com/inhere/suga/internal/config"
@@ -82,6 +83,37 @@ func buildScenarioProvider(spec *appconfig.ModelSpec, options personal.EstimateO
 		return nil, "", err
 	}
 	return built, spec.Model, nil
+}
+
+// newOriginJudge reads tools.origin_judge.* (a bad timeout fails startup) and
+// returns the judge for originGuard, or nil when it is off. The model is
+// models.judge, else models.compact, else the main model (main is already
+// built); the provider is built on first use, so a judge that never fires costs
+// nothing and a broken judge model only degrades to the plain screen.
+func newOriginJudge(settings appconfig.ModelSettings, main agentcore.Provider, estimate personal.EstimateOptions) (*originJudge, error) {
+	cfg, err := appconfig.ReadOriginJudgeSettings()
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled {
+		return nil, nil
+	}
+	spec := settings.Judge
+	if spec == nil {
+		spec = settings.Compact
+	}
+	var (
+		once     sync.Once
+		built    agentcore.Provider
+		buildErr error
+	)
+	return &originJudge{timeout: cfg.Timeout, provider: func() (agentcore.Provider, error) {
+		if spec == nil {
+			return main, nil
+		}
+		once.Do(func() { built, buildErr = buildProviderWithEstimate(*spec, estimate) })
+		return built, buildErr
+	}}, nil
 }
 
 // estimateOptionsForBudget disables the estimator when no budget is configured;
