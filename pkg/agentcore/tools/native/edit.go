@@ -16,6 +16,7 @@ import (
 type FileEditTool struct {
 	workspace string
 	addDirs   *AddDirs
+	readDeny  ReadDenyList // tools.read_deny: an edit reads the file and echoes it, so a forbidden file is refused
 	snapshots Snapshotter
 	guard     *FileGuard // refuses an edit over a file changed since it was read; nil = off
 }
@@ -76,6 +77,13 @@ func (t *FileEditTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 		return nil, err
 	}
 	path := target.abs
+	// An edit reads the file (and its errors and diffs quote it), so tools.read_deny
+	// applies before readFileInRoot: a forbidden file cannot be edited either.
+	// file_write needs no such check: it overwrites without reading and its
+	// result never carries the old content.
+	if t.readDeny.deniedFile(path) {
+		return nil, errReadDenied(path)
+	}
 	data, err := readFileInRoot(target.base, path)
 	if err != nil {
 		return nil, fmt.Errorf("file_edit: %w", err)

@@ -73,7 +73,7 @@ func TestSkillReadRoots(t *testing.T) {
 		home, sugaHome, workspace := skillRootEnv(t)
 		assert.NoErr(t, os.MkdirAll(filepath.Join(workspace, "skills"), 0o755))
 
-		paths := nativeEnv(workspace, nil).ReadRoots
+		paths := nativeEnv(workspace, nil, native.ReadDenyList{}).ReadRoots
 		agents, builtin := skillRootPaths(home, sugaHome)
 		assert.True(t, findReadRoot(paths, agents))
 		assert.True(t, findReadRoot(paths, builtin))
@@ -87,14 +87,14 @@ func TestSkillReadRoots(t *testing.T) {
 		home, sugaHome, workspace := skillRootEnv(t)
 		assert.NoErr(t, os.RemoveAll(filepath.Join(home, ".agents")))
 		assert.NoErr(t, os.RemoveAll(filepath.Join(sugaHome, "skills")))
-		assert.Empty(t, nativeEnv(workspace, nil).ReadRoots)
+		assert.Empty(t, nativeEnv(workspace, nil, native.ReadDenyList{}).ReadRoots)
 	})
 
 	t.Run("the switch turns the skill roots off", func(t *testing.T) {
 		resetSkillConfig(t)
 		_, _, workspace := skillRootEnv(t)
 		assert.NoErr(t, gkconfig.Set("tools.skill_roots", false))
-		assert.Empty(t, nativeEnv(workspace, nil).ReadRoots)
+		assert.Empty(t, nativeEnv(workspace, nil, native.ReadDenyList{}).ReadRoots)
 	})
 
 	t.Run("a read under the skill roots is not outside", func(t *testing.T) {
@@ -102,11 +102,11 @@ func TestSkillReadRoots(t *testing.T) {
 		home, _, workspace := skillRootEnv(t)
 		agents, _ := skillRootPaths(home, "")
 		ref := filepath.Join(agents, "x", "references", "a.md")
-		_, ok := native.OutsideOf(workspace, nativeEnv(workspace, nil).ReadRoots, nil, "file_read", map[string]any{"path": ref})
+		_, ok := native.OutsideOf(workspace, nativeEnv(workspace, nil, native.ReadDenyList{}).ReadRoots, nil, "file_read", map[string]any{"path": ref})
 		assert.False(t, ok)
 		// A write into the same directory is still an authorization: the roots
 		// are read-only for the write tools.
-		_, ok = native.OutsideOf(workspace, nativeEnv(workspace, nil).ReadRoots, nil, "file_write", map[string]any{"path": ref})
+		_, ok = native.OutsideOf(workspace, nativeEnv(workspace, nil, native.ReadDenyList{}).ReadRoots, nil, "file_write", map[string]any{"path": ref})
 		assert.True(t, ok)
 	})
 

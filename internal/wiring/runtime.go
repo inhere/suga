@@ -71,6 +71,9 @@ type Options struct {
 	// hooks and unique within the session - so a host can key its own
 	// side-effect ledger on it.
 	ExtraTools []api.Tool
+	// ReadDeny adds patterns to tools.read_deny (an embedding host's extras;
+	// "~" and $SUGA_HOME are expanded). They never remove the built-in list.
+	ReadDeny []string
 	// HostContext returns the host's context text (persona, topic index, verbatim
 	// constraints) and a hash of it; nil = no host context. The segment start
 	// freezes it in the segment context and every turn compares the hash: a
@@ -387,6 +390,12 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	if err := validateExtraToolNames(opts.ExtraTools); err != nil {
 		return nil, err
 	}
+	// tools.read_deny: validated at startup (a bad glob fails here), then handed
+	// to every native tool set this runtime builds, the sub-agents' included.
+	readDeny, err := appconfig.LoadReadDeny(opts.ReadDeny)
+	if err != nil {
+		return nil, err
+	}
 	workspace, ruleCWD, allowWrite, servers := opts.Workspace, opts.RuleCWD, opts.AllowWrite, opts.Servers
 	approval := approvalPolicy{}
 	if opts.approvalPolicy != nil {
@@ -472,9 +481,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	sessionEnv := newSessionEnvProvider(opts.NoSessionEnv)
 	var capabilities defaultCapabilities
 	if opts.CLIMode {
-		capabilities, err = buildPersonalCLICapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools)
+		capabilities, err = buildPersonalCLICapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools, readDeny)
 	} else {
-		capabilities, err = buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools)
+		capabilities, err = buildPersonalCapabilitiesWithExtras(ctx, workspace, dirs, allowWrite, servers, snapshotter, opts.ExtraTools, readDeny)
 	}
 	if err != nil {
 		return nil, err
@@ -519,7 +528,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 				shell.SetTasks(opts.Tasks)
 			}
 		}
-		capabilities.Registry.Register(native.NewTaskTool(opts.Tasks, nativeEnv(workspace, dirs).ShellTimeoutMax))
+		capabilities.Registry.Register(native.NewTaskTool(opts.Tasks, nativeEnv(workspace, dirs, readDeny).ShellTimeoutMax))
 	}
 	// agent hands a task to a read-only sub-agent (every mode; agents.enabled).
 	agentSettings, err := appconfig.ReadAgentSettings()
@@ -529,7 +538,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	}
 	if agentSettings.Enabled {
 		agentTool := native.NewAgentTool(&subAgents{workspace: workspace, ruleCWD: ruleCWD, mainModel: opts.Model, projectMemoryKey: opts.ProjectMemoryKey,
-			noProjectRules: opts.NoProjectRules, ruleFile: ruleFile, settings: agentSettings, addDirs: dirs,
+			noProjectRules: opts.NoProjectRules, ruleFile: ruleFile, settings: agentSettings, addDirs: dirs, readDeny: readDeny,
 			budget: personal.BudgetSettings{Tokens: budget.Tokens, CostUSD: budget.CostUSD, Scope: budget.Scope,
 				Estimate: budget.Estimate, EstimateFactor: budget.EstimateFactor, NoticeRatio: budget.NoticeRatio},
 			deadlineEnv:    appconfig.ReadRunDeadlineEnv(),
@@ -560,7 +569,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// prompt listing exist only when some skill was found.
 	skillReg := buildDefaultSkillRegistry(workspace)
 	if skillReg.Len() > 0 {
-		capabilities.Registry.Register(native.NewSkillTool(skillReg, nativeEnv(workspace, dirs).RawBytes))
+		capabilities.Registry.Register(native.NewSkillTool(skillReg, nativeEnv(workspace, dirs, readDeny).RawBytes))
 	}
 	// suga_manifest is read-only local data, so it is registered in every
 	// mode. It reports the live registry (MCP tools included) when called.
@@ -863,7 +872,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	// The runner of chat's local commands ("!cmd"/"!!cmd"): they run like
 	// shell_exec ones (same shell, workspace, environment and output rules) but
 	// outside the tools and every turn - chat never asks for them (用户 2026-10-14).
-	env := nativeEnv(workspace, dirs)
+	env := nativeEnv(workspace, dirs, readDeny)
 	rt.local = native.NewLocalCommand(native.LocalCommandOptions{
 		Workspace: workspace, Shell: env.Shell, Timeout: env.ShellTimeoutMax,
 		RawBytes: env.RawBytes, InlineBytes: env.InlineBytes, Minimize: minimizeOutput(workspace),

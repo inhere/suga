@@ -23,11 +23,12 @@ const maxRefContext = 5
 // readable and never shown.
 type refSourceCache struct {
 	target readTarget
+	deny   ReadDenyList        // tools.read_deny: a forbidden file gives no context lines
 	lines  map[string][]string // by the file name the result shows
 }
 
-func newRefSourceCache(target readTarget) *refSourceCache {
-	return &refSourceCache{target: target, lines: make(map[string][]string)}
+func newRefSourceCache(target readTarget, deny ReadDenyList) *refSourceCache {
+	return &refSourceCache{target: target, deny: deny, lines: make(map[string][]string)}
 }
 
 // linesOf returns the raw lines of file, 1-based by index-1, reading the file
@@ -48,6 +49,9 @@ func (c *refSourceCache) read(file string) []string {
 	abs := file
 	if !c.target.outside {
 		abs = filepath.Join(c.target.base, filepath.FromSlash(file))
+	}
+	if c.deny.Denied(abs) {
+		return nil
 	}
 	data, err := withRoot(c.target.base, abs, func(root *os.Root, rel string) ([]byte, error) {
 		return root.ReadFile(rel)

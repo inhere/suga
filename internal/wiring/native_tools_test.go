@@ -60,13 +60,13 @@ func TestWebFetchUserAgentWiring(t *testing.T) {
 		descriptor, err := appconfig.MatchConfigKey("tools.web_fetch.user_agent")
 		assert.Require(t, assert.NoErr(t, err))
 		assert.True(t, descriptor.Writable)
-		assert.Eq(t, "", nativeEnv(t.TempDir(), nil).FetchUserAgent)
+		assert.Eq(t, "", nativeEnv(t.TempDir(), nil, native.ReadDenyList{}).FetchUserAgent)
 	})
 	t.Run("a configured value reaches the tool", func(t *testing.T) {
 		resetConfig(t)
 		assert.NoErr(t, gkconfig.Set("tools", map[string]any{"web_fetch": map[string]any{
 			"user_agent": "Mozilla/5.0 (X11; Linux x86_64)"}}))
-		assert.Eq(t, "Mozilla/5.0 (X11; Linux x86_64)", nativeEnv(t.TempDir(), nil).FetchUserAgent)
+		assert.Eq(t, "Mozilla/5.0 (X11; Linux x86_64)", nativeEnv(t.TempDir(), nil, native.ReadDenyList{}).FetchUserAgent)
 	})
 }
 

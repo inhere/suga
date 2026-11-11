@@ -86,7 +86,7 @@ func TestShortNameRoots(t *testing.T) {
 	dirs.Set([]AddDir{{Path: roLong}, {Path: rwLong, Writable: true}})
 
 	t.Run("an added directory recorded long, asked for short", func(t *testing.T) {
-		target, err := resolveRead(ws, withAddDirs(nil, dirs), filepath.Join(ro, "seed.txt"))
+		target, err := resolveRead(ws, withAddDirs(nil, dirs), ReadDenyList{}, filepath.Join(ro, "seed.txt"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, filepath.Join(roLong, "seed.txt"), target.abs)
 		assert.True(t, target.outside)
@@ -94,17 +94,17 @@ func TestShortNameRoots(t *testing.T) {
 	t.Run("an added directory recorded short, asked for long", func(t *testing.T) {
 		short := NewAddDirs()
 		short.Set([]AddDir{{Path: ro}})
-		target, err := resolveRead(ws, withAddDirs(nil, short), filepath.Join(roLong, "seed.txt"))
+		target, err := resolveRead(ws, withAddDirs(nil, short), ReadDenyList{}, filepath.Join(roLong, "seed.txt"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, filepath.Join(ro, "seed.txt"), target.abs)
 	})
 	t.Run("a configured read root recorded long, asked for short", func(t *testing.T) {
-		target, err := resolveRead(ws, []string{roLong}, filepath.Join(ro, "seed.txt"))
+		target, err := resolveRead(ws, []string{roLong}, ReadDenyList{}, filepath.Join(ro, "seed.txt"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, filepath.Join(roLong, "seed.txt"), target.abs)
 	})
 	t.Run("a file that does not exist yet", func(t *testing.T) {
-		target, err := resolveRead(ws, []string{roLong}, filepath.Join(ro, "new", "deep", "a.txt"))
+		target, err := resolveRead(ws, []string{roLong}, ReadDenyList{}, filepath.Join(ro, "new", "deep", "a.txt"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, filepath.Join(roLong, "new", "deep", "a.txt"), target.abs)
 	})
@@ -117,13 +117,13 @@ func TestShortNameRoots(t *testing.T) {
 		assert.ErrMsgContains(t, err, "outside the workspace and the added read-write directories")
 	})
 	t.Run("the workspace recorded long, asked for short", func(t *testing.T) {
-		target, err := resolveRead(wsLong, nil, filepath.Join(ws, "a.txt"))
+		target, err := resolveRead(wsLong, nil, ReadDenyList{}, filepath.Join(ws, "a.txt"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, filepath.Join(wsLong, "a.txt"), target.abs)
 		assert.False(t, target.outside)
 	})
 	t.Run("the workspace recorded short, asked for long", func(t *testing.T) {
-		target, err := resolveRead(ws, nil, filepath.Join(wsLong, "a.txt"))
+		target, err := resolveRead(ws, nil, ReadDenyList{}, filepath.Join(wsLong, "a.txt"))
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, filepath.Join(ws, "a.txt"), target.abs)
 		assert.False(t, target.outside)
@@ -136,7 +136,7 @@ func TestShortNameRoots(t *testing.T) {
 	})
 	t.Run("a file really outside is still refused", func(t *testing.T) {
 		other := t.TempDir()
-		_, err := resolveRead(ws, []string{roLong}, filepath.Join(other, "x.txt"))
+		_, err := resolveRead(ws, []string{roLong}, ReadDenyList{}, filepath.Join(other, "x.txt"))
 		assert.ErrMsgContains(t, err, "outside the workspace")
 	})
 }

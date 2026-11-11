@@ -92,6 +92,11 @@ type SessionOptions struct {
 	// creates; empty uses the engine origin, then OriginSDK. Hosts that need
 	// longer retention should pin sessions with Engine.Pin.
 	Origin string
+	// ReadDeny adds glob patterns of files the read tools must never return
+	// (tools.read_deny): it is appended to the configured list and the built-in
+	// credential list, which a host cannot remove. "~" and $SUGA_HOME are
+	// expanded. An invalid pattern, or an "!" exception, fails OpenSession.
+	ReadDeny []string
 }
 
 // Prompt is one turn's input: text plus pictures.

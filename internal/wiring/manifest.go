@@ -594,8 +594,14 @@ func loadManifest(opts ManifestOptions) (Manifest, manifestParts, error) {
 	if _, err := toolsApprovalAuto(); err != nil {
 		return Manifest{}, manifestParts{}, err
 	}
+	// The manifest only describes the tools, but building them from the same
+	// env keeps a bad tools.read_deny glob a startup error here as well.
+	readDeny, err := appconfig.LoadReadDeny(nil)
+	if err != nil {
+		return Manifest{}, manifestParts{}, err
+	}
 	reg := tools.NewRegistry()
-	for _, t := range native.BuildTools(nativeEnv(workspace, nil), true) {
+	for _, t := range native.BuildTools(nativeEnv(workspace, nil, readDeny), true) {
 		reg.Register(t)
 	}
 	reg.Register(native.NewUpdatePlanTool(nil))

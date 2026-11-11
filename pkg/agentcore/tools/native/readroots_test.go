@@ -29,31 +29,31 @@ func TestResolveRead(t *testing.T) {
 	roots := []string{dep}
 
 	t.Run("workspace paths stay in the workspace", func(t *testing.T) {
-		target, err := resolveRead(ws, roots, "a.txt")
+		target, err := resolveRead(ws, roots, ReadDenyList{}, "a.txt")
 		assert.NoErr(t, err)
 		assert.Eq(t, ws, target.base)
 		assert.False(t, target.outside)
 		assert.Eq(t, "x/y.go", target.show("x/y.go"))
 	})
 	t.Run("absolute path under a read root", func(t *testing.T) {
-		target, err := resolveRead(ws, roots, filepath.Join(dep, "mod", "lib.go"))
+		target, err := resolveRead(ws, roots, ReadDenyList{}, filepath.Join(dep, "mod", "lib.go"))
 		assert.NoErr(t, err)
 		assert.Eq(t, dep, target.base)
 		assert.True(t, target.outside)
 		assert.Eq(t, filepath.Join(dep, "mod", "lib.go"), target.show("mod/lib.go"))
 	})
 	t.Run("outside both is refused", func(t *testing.T) {
-		_, err := resolveRead(ws, roots, filepath.Join(filepath.Dir(dep), "elsewhere.txt"))
+		_, err := resolveRead(ws, roots, ReadDenyList{}, filepath.Join(filepath.Dir(dep), "elsewhere.txt"))
 		assert.ErrMsgContains(t, err, "outside the workspace and the read-only roots")
 	})
 	t.Run("relative escape is refused even with roots", func(t *testing.T) {
 		rel, err := filepath.Rel(ws, filepath.Join(dep, "mod", "lib.go"))
 		assert.NoErr(t, err)
-		_, err = resolveRead(ws, roots, rel)
+		_, err = resolveRead(ws, roots, ReadDenyList{}, rel)
 		assert.ErrMsgContains(t, err, "outside workspace")
 	})
 	t.Run("no roots keeps the workspace error", func(t *testing.T) {
-		_, err := resolveRead(ws, nil, filepath.Join(dep, "mod", "lib.go"))
+		_, err := resolveRead(ws, nil, ReadDenyList{}, filepath.Join(dep, "mod", "lib.go"))
 		assert.ErrMsgContains(t, err, "outside workspace")
 	})
 }

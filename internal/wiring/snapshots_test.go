@@ -20,11 +20,11 @@ func TestNativeEnvSnapshotConfiguration(t *testing.T) {
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)
 	t.Setenv("SUGA_HOME", t.TempDir())
-	enabled := nativeEnvWithSnapshot(t.TempDir(), nil, configuredSnapshotter())
+	enabled := nativeEnvWithSnapshot(t.TempDir(), nil, configuredSnapshotter(), native.ReadDenyList{})
 	assert.NotNil(t, enabled.Snapshots)
 
 	assert.NoErr(t, gkconfig.Set("tools.snapshots.enabled", false))
-	disabled := nativeEnvWithSnapshot(t.TempDir(), nil, configuredSnapshotter())
+	disabled := nativeEnvWithSnapshot(t.TempDir(), nil, configuredSnapshotter(), native.ReadDenyList{})
 	assert.Nil(t, disabled.Snapshots)
 }
 
@@ -41,7 +41,7 @@ func TestSnapshotSettingsUseConfiguredLimits(t *testing.T) {
 		"keep_days":         3,
 	}))
 
-	policy, ok := nativeEnvWithSnapshot(t.TempDir(), nil, configuredSnapshotter()).Snapshots.(*policySnapshotter)
+	policy, ok := nativeEnvWithSnapshot(t.TempDir(), nil, configuredSnapshotter(), native.ReadDenyList{}).Snapshots.(*policySnapshotter)
 	assert.True(t, ok)
 	assert.Eq(t, int64(123), policy.store.Limits().MaxFileBytes)
 	assert.Eq(t, int64(456), policy.store.Limits().MaxSessionBytes)

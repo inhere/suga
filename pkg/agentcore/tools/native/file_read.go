@@ -45,9 +45,10 @@ const (
 // lines at a time.
 type FileReadTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
-	maxOut    int      // page cap in bytes per file; 0 = DefaultReadPageBytes
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
+	maxOut    int          // page cap in bytes per file; 0 = DefaultReadPageBytes
 	// image is the picture pipeline this tool shares with view_image (design
 	// 2026-10-23-file-read-images): nil = a default reader, which can see.
 	image *ViewImageTool
@@ -179,7 +180,7 @@ func (t *FileReadTool) pageBytes() int {
 
 // readOne reads the line window of one path argument.
 func (t *FileReadTool) readOne(arg string, offset, limit int) (string, error) {
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), arg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, arg)
 	if err != nil {
 		return "", err
 	}
@@ -231,7 +232,7 @@ func (t *FileReadTool) readItem(item readItem, offset, limit int, outline bool) 
 // holds a line, so a range past the end is a mistake reported back, not a short
 // answer.
 func (t *FileReadTool) readRanges(item readItem) (string, error) {
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), item.path)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, item.path)
 	if err != nil {
 		return "", err
 	}
@@ -324,7 +325,7 @@ func isPastEndWindow(text string) bool { return strings.HasPrefix(text, "[offset
 // window and a first line saying why: an outline is a convenience, never an
 // error (design 2026-10-18-explore-efficiency, means A).
 func (t *FileReadTool) readOutline(arg string, offset, limit int) (string, error) {
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), arg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, arg)
 	if err != nil {
 		return "", err
 	}

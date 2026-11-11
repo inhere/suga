@@ -32,9 +32,10 @@ const (
 // parses in memory only.
 type FileSymbolsTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
-	maxOut    int      // raw result cap in bytes; 0 = DefaultRawOutputBytes
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
+	maxOut    int          // raw result cap in bytes; 0 = DefaultRawOutputBytes
 }
 
 func (t *FileSymbolsTool) Name() string { return "file_symbols" }
@@ -109,7 +110,7 @@ func (t *FileSymbolsTool) Execute(ctx context.Context, call api.ToolCall) (*api.
 	}
 	includeTests, _ := call.Arguments["include_tests"].(bool)
 	noIgnore, _ := call.Arguments["no_ignore"].(bool)
-	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), pathArg)
+	target, err := resolveRead(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, pathArg)
 	if err != nil {
 		return nil, fmt.Errorf("file_symbols: %w", err)
 	}
@@ -163,6 +164,11 @@ func (t *FileSymbolsTool) walkDir(ctx context.Context, target readTarget, filter
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 	walk, err := walkWorkspace(ctx, target.base, target.abs, noIgnore, func(root *os.Root, rel string, d fs.DirEntry) error {
+		// A forbidden file is never parsed (its declarations would quote it).
+		if target.deniedRel(t.readDeny, rel) {
+			out.denied++
+			return nil
+		}
 		if !includeTests && isTestFileName(d.Name()) {
 			out.tests++
 			return nil
@@ -236,6 +242,7 @@ type symbolOut struct {
 	tests           int // test files left out
 	unsupported     int // files of a type no extractor covers
 	tooLarge        int // files over maxSearchFileBytes
+	denied          int // files skipped because tools.read_deny forbids them
 	fallbackPattern string
 	approx          bool
 	extraNotes      []string // the extractors' own notes (a configuration file's caps), deduplicated
@@ -317,6 +324,9 @@ func (o *symbolOut) notes(limit int) []string {
 	}
 	if o.unsupported > 0 {
 		notes = append(notes, fmt.Sprintf("[skipped %d file(s) with no declaration extractor; use file_grep with pattern: %s; file_read outline=true is unavailable for these files]", o.unsupported, o.fallbackPattern))
+	}
+	if o.denied > 0 {
+		notes = append(notes, strings.TrimPrefix(denySkipNote(o.denied), "\n"))
 	}
 	if o.tooLarge > 0 {
 		notes = append(notes, fmt.Sprintf("[skipped %d file(s) over %d bytes]", o.tooLarge, maxSearchFileBytes))

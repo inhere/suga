@@ -237,6 +237,11 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.web_fetch.user_agent", Type: ConfigTypeString, Writable: true},
 	{Pattern: "tools.interpreters", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.read_roots", Type: ConfigTypeStringList, Writable: true},
+	// tools.read_deny / tools.read_deny_defaults: the files no read tool returns
+	// (see read_deny.go). Not writable through `suga config set`, so the model
+	// cannot switch the ban off; edit config.yaml by hand.
+	{Pattern: "tools.read_deny", Type: ConfigTypeStringList},
+	{Pattern: "tools.read_deny_defaults", Type: ConfigTypeBool},
 	{Pattern: "tools.auto_allow", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "tools.read_only_allow", Type: ConfigTypeStringList, Writable: true},
 	// tools.disabled: tool names the runtime must not offer to the model at all

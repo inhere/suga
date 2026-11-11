@@ -22,7 +22,7 @@ func TestNativeEnvShellLimitsReachShellTool(t *testing.T) {
 		assert.NoErr(t, gkconfig.Set("tools.shell_limits.processes", 64))
 		assert.NoErr(t, gkconfig.Set("tools.shell_limits.cpu_time", "10m"))
 
-		env := nativeEnv(t.TempDir(), nil)
+		env := nativeEnv(t.TempDir(), nil, native.ReadDenyList{})
 		assert.Eq(t, uint64(2<<30), env.ShellLimits.MemoryBytes)
 		assert.Eq(t, 64, env.ShellLimits.Processes)
 		assert.Eq(t, 10*time.Minute, env.ShellLimits.CPUTime)
@@ -34,7 +34,7 @@ func TestNativeEnvShellLimitsReachShellTool(t *testing.T) {
 
 	t.Run("defaults when the section is absent", func(t *testing.T) {
 		resetConfig(t)
-		env := nativeEnv(t.TempDir(), nil)
+		env := nativeEnv(t.TempDir(), nil, native.ReadDenyList{})
 		assert.Eq(t, native.DefaultShellLimitMemory, env.ShellLimits.MemoryBytes)
 		assert.Eq(t, native.DefaultShellLimitProcesses, env.ShellLimits.Processes)
 		assert.Eq(t, time.Duration(0), env.ShellLimits.CPUTime)
@@ -44,7 +44,7 @@ func TestNativeEnvShellLimitsReachShellTool(t *testing.T) {
 		resetConfig(t)
 		assert.NoErr(t, gkconfig.Set("tools.shell_limits.off", true))
 
-		env := nativeEnv(t.TempDir(), nil)
+		env := nativeEnv(t.TempDir(), nil, native.ReadDenyList{})
 		assert.True(t, env.ShellLimits.Empty())
 		assert.StrNotContains(t, shellExecDescription(t, env), "tools.shell_limits")
 	})
@@ -54,7 +54,7 @@ func TestNativeEnvShellLimitsReachShellTool(t *testing.T) {
 		assert.NoErr(t, gkconfig.Set("tools.shell_limits.memory", "off"))
 		assert.NoErr(t, gkconfig.Set("tools.shell_limits.processes", 0))
 
-		env := nativeEnv(t.TempDir(), nil)
+		env := nativeEnv(t.TempDir(), nil, native.ReadDenyList{})
 		assert.True(t, env.ShellLimits.Empty())
 	})
 
@@ -62,7 +62,7 @@ func TestNativeEnvShellLimitsReachShellTool(t *testing.T) {
 		resetConfig(t)
 		assert.NoErr(t, gkconfig.Set("tools.shell_limits.memory", "4GBytes"))
 
-		env := nativeEnv(t.TempDir(), nil)
+		env := nativeEnv(t.TempDir(), nil, native.ReadDenyList{})
 		assert.Eq(t, native.DefaultShellLimitMemory, env.ShellLimits.MemoryBytes)
 	})
 }

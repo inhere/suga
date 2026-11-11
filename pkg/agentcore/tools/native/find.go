@@ -18,9 +18,10 @@ const defaultFindResults = 200
 // FileFindTool finds files by glob pattern in the workspace.
 type FileFindTool struct {
 	workspace string
-	readRoots []string // read-only directories outside the workspace
-	addDirs   *AddDirs // the session's added directories, read at call time
-	maxOut    int      // raw result cap in bytes; 0 = DefaultRawOutputBytes
+	readRoots []string     // read-only directories outside the workspace
+	readDeny  ReadDenyList // tools.read_deny: files that may never be read
+	addDirs   *AddDirs     // the session's added directories, read at call time
+	maxOut    int          // raw result cap in bytes; 0 = DefaultRawOutputBytes
 }
 
 func (t *FileFindTool) Name() string { return "file_find" }
@@ -56,7 +57,7 @@ func (t *FileFindTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	if pattern == "" {
 		return nil, fmt.Errorf("file_find: pattern is required")
 	}
-	start, err := searchStart(t.workspace, withAddDirs(t.readRoots, t.addDirs), call.Arguments)
+	start, err := searchStart(t.workspace, withAddDirs(t.readRoots, t.addDirs), t.readDeny, call.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +69,9 @@ func (t *FileFindTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 	type hit struct {
-		rel string
-		mod time.Time
+		rel    string
+		mod    time.Time
+		denied bool // tools.read_deny forbids reading it: listed, marked
 	}
 	var hits []hit
 	noIgnore, _ := call.Arguments["no_ignore"].(bool)
@@ -81,7 +83,7 @@ func (t *FileFindTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 		if info, err := d.Info(); err == nil {
 			mod = info.ModTime()
 		}
-		hits = append(hits, hit{rel: rel, mod: mod})
+		hits = append(hits, hit{rel: rel, mod: mod, denied: start.deniedRel(t.readDeny, rel)})
 		return nil
 	})
 	if err != nil {
@@ -101,6 +103,9 @@ func (t *FileFindTool) Execute(ctx context.Context, call api.ToolCall) (*api.Too
 	lines := make([]string, len(hits))
 	for i, h := range hits {
 		lines[i] = start.show(h.rel)
+		if h.denied {
+			lines[i] += readDenyMark
+		}
 	}
 	content := strings.Join(lines, "\n")
 	if total == 0 {
