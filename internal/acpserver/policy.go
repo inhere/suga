@@ -23,8 +23,11 @@ var ErrReadOnly = errors.New("tool is unavailable in read_only mode")
 
 // PolicyDecision is the wiring-neutral result of the shared approval policy.
 // action is one of allow, ask, or deny; rule is the representative rule
-// summary, and scope is the stable key used by ACP session rules.
-type PolicyDecision func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string)
+// summary, and scope is the stable key used by ACP session rules. clamped
+// reports an allow downgraded by ClampAllow (always false until trust mode
+// reads it); pathProtected reports that the target is a protected control-plane
+// path, so an always session rule must not allow it silently.
+type PolicyDecision func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string, clamped, pathProtected bool)
 
 type sessionRule struct {
 	action  string
@@ -298,14 +301,19 @@ func (h *permissionHook) decide(call agentcore.ToolCall, tool agentcore.Tool, re
 		}
 		return "ask", "", call.Name, false
 	}
-	action, rule, scope = h.policy(call, tool)
+	var pathProtected bool
+	action, rule, scope, _, pathProtected = h.policy(call, tool)
 	if scope == "" && h.policy == nil {
 		scope = call.Name
 	}
 	if strength(action) == 0 {
 		return "deny", rule, scope, false
 	}
-	if sessionRule, ok := h.session.decide(scope); ok && (rule == "" || strength(sessionRule.action) >= strength(action)) {
+	// An always-allow rule is keyed by scope (a root file gives "file_write:**"), so
+	// it would also cover .git or .suga. A protected target never takes a session
+	// allow: it keeps the policy result (ask). A session deny still applies.
+	if sessionRule, ok := h.session.decide(scope); ok && !(pathProtected && sessionRule.action == "allow") &&
+		(rule == "" || strength(sessionRule.action) >= strength(action)) {
 		return sessionRule.action, sessionRule.summary, scope, true
 	}
 	return action, rule, scope, false

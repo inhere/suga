@@ -725,8 +725,8 @@ func TestPersonalACPBudgetWrapUpAndTruncationKeepEndTurn(t *testing.T) {
 }
 
 func TestPersonalACPAlwaysDecisionsAreSessionScoped(t *testing.T) {
-	policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string) {
-		return "ask", "", "file_write:docs/**"
+	policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
+		return "ask", "", "file_write:docs/**", false, false
 	})
 	for _, tc := range []struct {
 		name       string
@@ -757,8 +757,8 @@ func TestPersonalACPAlwaysDecisionsAreSessionScoped(t *testing.T) {
 
 func TestPersonalACPLoadSessionKeepsAlwaysOnlyInProcess(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "db", "sessions.db")
-	policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string) {
-		return "ask", "", "file_write:docs/**"
+	policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
+		return "ask", "", "file_write:docs/**", false, false
 	})
 	provider := mock.NewProvider(
 		mock.ToolCall("call-1", "file_write", map[string]any{"path": "docs/a.txt"}), mock.Final("first"),

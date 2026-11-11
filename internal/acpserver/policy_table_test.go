@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/coder/acp-go-sdk"
@@ -188,8 +189,8 @@ func TestPolicyTable(t *testing.T) {
 }
 
 func TestACPPolicyOptionsAndImmediateDecisions(t *testing.T) {
-	policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string) {
-		return "ask", "", "file_write:docs/**"
+	policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
+		return "ask", "", "file_write:docs/**", false, false
 	})
 	for _, tc := range []struct {
 		name     string
@@ -228,8 +229,8 @@ func TestACPPolicyOptionsAndImmediateDecisions(t *testing.T) {
 	t.Run("allow policy does not ask but still starts the tool", func(t *testing.T) {
 		client := &testACPClient{selected: "reject"}
 		hook := newTableHook(t, t.TempDir(), false, client)
-		hook.policy = func(agentcore.ToolCall, agentcore.Tool) (string, string, string) {
-			return "allow", "user#1 file_write action=allow", "file_write:docs/**"
+		hook.policy = func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
+			return "allow", "user#1 file_write action=allow", "file_write:docs/**", false, false
 		}
 		call := agentcore.ToolCall{CallID: "allow-call", Name: "file_write"}
 		assert.Require(t, assert.NoErr(t, hook.BeforeTool(context.Background(), &agentcore.ToolEvent{RunID: "run", Call: &call}, nil)))
@@ -237,5 +238,54 @@ func TestACPPolicyOptionsAndImmediateDecisions(t *testing.T) {
 		client.mu.Lock()
 		assert.Len(t, client.requests, 0)
 		client.mu.Unlock()
+	})
+}
+
+// TestACPAlwaysRuleSkipsProtectedPaths (suga-flei): an allow_always answer
+// gives a scope-wide session rule ("file_write:**" for a root file); it must not
+// allow a target the policy reports as a protected path, which asks again.
+func TestACPAlwaysRuleSkipsProtectedPaths(t *testing.T) {
+	// The policy models the wiring closure: one scope for every write, and
+	// pathProtected for anything under .git.
+	policy := PolicyDecision(func(call agentcore.ToolCall, _ agentcore.Tool) (string, string, string, bool, bool) {
+		path, _ := call.Arguments["path"].(string)
+		return "ask", "", "file_write:**", false, strings.HasPrefix(path, ".git/")
+	})
+	decide := func(t *testing.T, hook *permissionHook, id, path string) error {
+		t.Helper()
+		call := agentcore.ToolCall{CallID: id, Name: "file_write", Arguments: map[string]any{"path": path}}
+		assert.Require(t, assert.NoErr(t, hook.BeforeTool(context.Background(), &agentcore.ToolEvent{RunID: "run", Call: &call}, nil)))
+		return hook.Decide(context.Background(), call, nil)
+	}
+	asked := func(client *testACPClient) int {
+		client.mu.Lock()
+		defer client.mu.Unlock()
+		return len(client.requests)
+	}
+
+	t.Run("always on a root file asks again for a protected path", func(t *testing.T) {
+		client := &testACPClient{selected: "allow_always"}
+		hook := newTableHook(t, t.TempDir(), false, client)
+		hook.policy = policy
+		hook.session = newSessionPolicy()
+		assert.NoErr(t, decide(t, hook, "c1", "notes.txt"))
+		assert.Eq(t, 1, asked(client))
+		// The remembered rule still covers other non-protected files.
+		assert.NoErr(t, decide(t, hook, "c2", "other.txt"))
+		assert.Eq(t, 1, asked(client))
+		// The protected path is asked, not allowed by the rule.
+		assert.NoErr(t, decide(t, hook, "c3", ".git/hooks/x"))
+		assert.Eq(t, 2, asked(client))
+	})
+
+	t.Run("reject always still applies to a protected path", func(t *testing.T) {
+		client := &testACPClient{selected: "reject_always"}
+		hook := newTableHook(t, t.TempDir(), false, client)
+		hook.policy = policy
+		hook.session = newSessionPolicy()
+		assert.Err(t, decide(t, hook, "c1", "notes.txt"))
+		assert.Eq(t, 1, asked(client))
+		assert.Err(t, decide(t, hook, "c2", ".git/hooks/x"))
+		assert.Eq(t, 1, asked(client))
 	})
 }

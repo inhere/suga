@@ -83,8 +83,8 @@ func TestACPApprovedNote(t *testing.T) {
 		// The remembered always rule is only consulted when the runtime has a
 		// policy (the nil-policy compat path of h.decide never checks it), so
 		// this case runs with the same constant scope the existing tests use.
-		policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string) {
-			return "ask", "", "file_write:docs/**"
+		policy := PolicyDecision(func(agentcore.ToolCall, agentcore.Tool) (string, string, string, bool, bool) {
+			return "ask", "", "file_write:docs/**", false, false
 		})
 		provider := &capturingProvider{Provider: mock.NewProvider(writeCall("w1"), mock.Final("done"), writeCall("w2"), mock.Final("done again"))}
 		client := &testACPClient{selected: "allow_always"}
