@@ -108,3 +108,47 @@ func TestACPProtectedNoticeOnce(t *testing.T) {
 	assert.Require(t, assert.Eq(t, 1, len(events)))
 	assert.Eq(t, "protected_config_changed", events[0].Name)
 }
+
+// TestCompactCreatesNoSnapshot: `suga session compact` opens a runtime without a
+// session, so it must not create the protected settings snapshot (it would
+// confirm a change nobody saw).
+func TestCompactCreatesNoSnapshot(t *testing.T) {
+	home, snapshotPath := protectedCLIEnv(t)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`)
+	}))
+	t.Cleanup(provider.Close)
+	setTestProvider(t, provider.URL)
+	t.Chdir(t.TempDir())
+
+	// A session to compact, then no snapshot at all: compact has to leave it that
+	// way instead of comparing and creating one.
+	var stdout, stderr bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"run", "--prompt", "hi"})
+	assert.Require(t, assert.NoErr(t, err))
+	sessionID := lastSessionID(t, home)
+	assert.NoErr(t, os.Remove(snapshotPath))
+
+	stdout.Reset()
+	stderr.Reset()
+	// The compact itself may fail on a one-turn session (nothing to summarize);
+	// what this checks is that opening its runtime wrote no snapshot.
+	_ = newCLI(ctx, strings.NewReader(""), &stdout, &stderr).RunWithArgs([]string{"session", "compact", sessionID})
+	_, err = os.Stat(snapshotPath)
+	assert.True(t, os.IsNotExist(err), "compact created the protected snapshot: %v", err)
+}
+
+// lastSessionID returns the id of the only session in the store.
+func lastSessionID(t *testing.T, home string) string {
+	t.Helper()
+	repo, err := store.Open(filepath.Join(home, "db", "sessions.db"))
+	assert.Require(t, assert.NoErr(t, err))
+	defer func() { _ = repo.Close() }()
+	sessions, err := repo.ListSessions(context.Background())
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Require(t, assert.Eq(t, 1, len(sessions)))
+	return sessions[0].ID
+}
