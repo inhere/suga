@@ -18,26 +18,28 @@ import (
 // newConfigCommand builds the configuration command group. The group owns only
 // parsing and rendering; source resolution, readers and YAML writes stay in
 // internal/config so other callers use the same safety rules.
-func newConfigCommand(stdout, stderr io.Writer) *capp.Cmd {
+func newConfigCommand(stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
 	config := capp.NewCmd("config", "Read and maintain suga configuration")
 	config.LongHelp = `Configuration commands do not modify environment variables.
 	Use "suga config path" to see the active home, config, and env paths.`
 	config.SetOutput(stderr)
 	config.Add(
-		newConfigLeaf(stdout, stderr, "get", "Show an effective configuration value", runConfigGet, "key"),
-		newConfigLeaf(stdout, stderr, "set", "Set a writable configuration value", runConfigSet, "key", "value"),
-		newConfigLeaf(stdout, stderr, "unset", "Remove a writable configuration value", runConfigUnset, "key"),
-		newConfigLeaf(stdout, stderr, "list", "List effective configuration values", runConfigList),
-		newConfigLeaf(stdout, stderr, "path", "Show configuration and data paths", runConfigPath),
+		newConfigLeaf(stdin, stdout, stderr, "get", "Show an effective configuration value", runConfigGet, "key"),
+		newConfigLeaf(stdin, stdout, stderr, "set", "Set a writable configuration value", runConfigSet, "key", "value"),
+		newConfigLeaf(stdin, stdout, stderr, "unset", "Remove a writable configuration value", runConfigUnset, "key"),
+		newConfigLeaf(stdin, stdout, stderr, "list", "List effective configuration values", runConfigList),
+		newConfigLeaf(stdin, stdout, stderr, "path", "Show configuration and data paths", runConfigPath),
 	)
 	return config
 }
 
-type configLeafHandler func(io.Writer, *capp.Cmd) error
+// configLeafHandler receives stdin because `config set/unset` has to tell a
+// human at a terminal from a command the model ran through a shell tool.
+type configLeafHandler func(in io.Reader, out io.Writer, c *capp.Cmd) error
 
-func newConfigLeaf(stdout, stderr io.Writer, name, description string, handler configLeafHandler, args ...string) *capp.Cmd {
+func newConfigLeaf(stdin io.Reader, stdout, stderr io.Writer, name, description string, handler configLeafHandler, args ...string) *capp.Cmd {
 	cmd := capp.NewCmd(name, description, func(c *capp.Cmd) error {
-		return handler(stdout, c)
+		return handler(stdin, stdout, c)
 	})
 	cmd.SetOutput(stderr)
 	for _, arg := range args {
@@ -46,7 +48,7 @@ func newConfigLeaf(stdout, stderr io.Writer, name, description string, handler c
 	return cmd
 }
 
-func runConfigGet(out io.Writer, c *capp.Cmd) error {
+func runConfigGet(in io.Reader, out io.Writer, c *capp.Cmd) error {
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config get <key>")
 	}
@@ -58,23 +60,29 @@ func runConfigGet(out io.Writer, c *capp.Cmd) error {
 	return writeConfigValue(out, value)
 }
 
-func runConfigSet(out io.Writer, c *capp.Cmd) error {
+func runConfigSet(in io.Reader, out io.Writer, c *capp.Cmd) error {
 	tr := cliTranslator()
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config set <key> <value>")
 	}
 	key := strings.TrimSpace(c.Arg("key").String())
-	if _, err := writableConfigKey(key); err != nil {
+	descriptor, err := writableConfigKey(key)
+	if err != nil {
+		return err
+	}
+	path, err := activeConfigPath()
+	if err != nil {
+		return err
+	}
+	// Refuse a protected key before parsing its value: the answer must be the
+	// protected-key refusal, whatever the value looks like.
+	if err := protectedWriteAllowed(descriptor, path, in); err != nil {
 		return err
 	}
 	raw := c.Arg("value").String()
 	value, err := appconfig.ParseConfigValue(key, raw)
 	if err != nil {
 		return configInputError(err.Error())
-	}
-	path, err := activeConfigPath()
-	if err != nil {
-		return err
 	}
 	result, err := editConfig(path, key, value, false)
 	if err != nil {
@@ -90,17 +98,21 @@ func runConfigSet(out io.Writer, c *capp.Cmd) error {
 	return writeConfigValue(out, resolved)
 }
 
-func runConfigUnset(out io.Writer, c *capp.Cmd) error {
+func runConfigUnset(in io.Reader, out io.Writer, c *capp.Cmd) error {
 	tr := cliTranslator()
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config unset <key>")
 	}
 	key := strings.TrimSpace(c.Arg("key").String())
-	if _, err := writableConfigKey(key); err != nil {
+	descriptor, err := writableConfigKey(key)
+	if err != nil {
 		return err
 	}
 	path, err := activeConfigPath()
 	if err != nil {
+		return err
+	}
+	if err := protectedWriteAllowed(descriptor, path, in); err != nil {
 		return err
 	}
 	if _, err := editConfig(path, key, nil, true); err != nil {
@@ -113,7 +125,7 @@ func runConfigUnset(out io.Writer, c *capp.Cmd) error {
 	return err
 }
 
-func runConfigList(out io.Writer, c *capp.Cmd) error {
+func runConfigList(in io.Reader, out io.Writer, c *capp.Cmd) error {
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config list")
 	}
@@ -130,7 +142,7 @@ func runConfigList(out io.Writer, c *capp.Cmd) error {
 	return nil
 }
 
-func runConfigPath(out io.Writer, c *capp.Cmd) error {
+func runConfigPath(in io.Reader, out io.Writer, c *capp.Cmd) error {
 	if len(c.RemainArgs()) != 0 {
 		return configInputError("usage: suga config path")
 	}
@@ -166,6 +178,26 @@ func writableConfigKey(key string) (appconfig.ConfigKey, error) {
 		return appconfig.ConfigKey{}, configInputError(fmt.Sprintf("configuration key %q has no typed reader", key))
 	}
 	return descriptor, nil
+}
+
+// configStdinIsTerminal is isTerminalInput in production; tests replace it to
+// drive both answers without a real terminal.
+var configStdinIsTerminal = isTerminalInput
+
+// protectedWriteAllowed decides whether `config set/unset` may write key.
+// Protected keys widen what the model may execute or read/write, so they are
+// only writable by a human at a terminal outside suga: inside a session
+// (SUGA_SESSION_ID set) or with a piped stdin (the model running the command
+// through a shell tool) the write is refused and nothing is changed.
+func protectedWriteAllowed(key appconfig.ConfigKey, path string, stdin io.Reader) error {
+	if !key.Protected {
+		return nil
+	}
+	if strings.TrimSpace(os.Getenv("SUGA_SESSION_ID")) == "" && configStdinIsTerminal(stdin) {
+		return nil
+	}
+	message := cliText(cliTranslator(), "cli.config.protected_refused", map[string]any{"key": key.Pattern, "path": path})
+	return configInputError(message)
 }
 
 func activeConfigPath() (string, error) {

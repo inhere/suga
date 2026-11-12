@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -308,6 +309,12 @@ func setupConfigCLI(t *testing.T, content string) string {
 	home := t.TempDir()
 	t.Setenv("SUGA_HOME", home)
 	t.Setenv("SUGA_CONFIG", "")
+	// Config tests answer the protected-key gate as a human at a terminal: no
+	// agent session and a terminal stdin. The protected-key tests override both.
+	t.Setenv("SUGA_SESSION_ID", "")
+	previous := configStdinIsTerminal
+	configStdinIsTerminal = func(io.Reader) bool { return true }
+	t.Cleanup(func() { configStdinIsTerminal = previous })
 	assert.NoErr(t, os.WriteFile(filepath.Join(home, "config.yaml"), []byte(content), 0o600))
 	gkconfig.Reset()
 	t.Cleanup(gkconfig.Reset)
