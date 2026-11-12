@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 安全配置键保护 设计
 
-> 状态：Draft 0.7 / 待人工计划批准；issue `suga-hyj7`
+> 状态：Draft 0.8 / 待人工计划批准；issue `suga-hyj7`
 
 ## 修订记录
 
@@ -14,6 +14,7 @@
 | 0.5 | 2026-11-12 | Claude | 处理第 3 轮两轴评审（按类自查：比较键集、取值与规范化、推进与锁、入口挂点、分类归组）：比较取快照与当前键名并集（新增或删除 provider 可被报出）；无法逐键读取的写法改按整文件比较；推进写入启动时的摘要，单键更新与写配置同一临界区；模型与压缩模型不保护、裁决回退列为风险；补全“不保护”分组；D6 区分 Q4 推荐与评审补入的键 |
 | 0.6 | 2026-11-12 | Claude | 处理第 4 轮两轴评审（按类自查：比较范围是否覆盖全部影响执行门与请求去向的键、整文件模式、规范化与路径）：比较范围扩到全部标 Protected 的注册表键（含不可写、秘密键），补 `hooks.pre_tool_use.*` 描述符与 `network.proxy.url`、`tools.web_fetch.proxy`；整文件回退只由顶层点号键、锚点/别名/合并键、多文档触发，快照同存两种摘要；锁与快照路径同一规范化；compact 经装配参数不比较 |
 | 0.7 | 2026-11-12 | Claude | 处理第 5 轮两轴评审的纠正项（按类自查：快照数据模型、未归组键、`.env` 风险、改动点清单）：`hooks.pre_tool_use.*` 改为只标 protected、不可写；快照数据模型与整文件模式细节写定；补 `serpapi_key` 等秘密键分组；补 `.env` 中 `SUGA_HOOKS`、`HTTP(S)_PROXY` 风险；架构补 `load.go` 与 `wiring.Options` 改动 |
+| 0.8 | 2026-11-12 | Claude | 未复核修订（第 6 轮纠正确认轮之后，处理其纠正项 S23、S24、F36、F37）：trace attrs 声明与 provider 秘密键归组一致；写定整文件模式判定看当前文件或快照任一侧、单键更新只改 `keys[<键>]`；`Load` 不持锁读取（只读命令不写 SUGA_HOME），快照读写才取锁 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -91,7 +92,7 @@
 受影响项目与接口：
 - xhen：README 让你在终端里执行 `SUGA_HOME=… suga config set tools.read_roots …`（`xhen/README.md:151`），终端里照常可用，不需改文档；Git Bash/mintty 下会被拒（改为直接编辑文件），由 xhen 侧在跟进 suga 版本时补一句说明。xhen 内嵌 SDK，提示进 trace。
 - gofer：仓库内未见 `suga config set` 调用；gofer exec 任务里的脚本改 protected 键会被拒；suga run 的 stderr 多一行提示（进 job 日志）。
-- 新增接口（只增不改）：trace 事件 `kind=config`、`name=protected_config_changed`（attrs 只含键名列表）；SUGA_HOME 下新目录 `run/protected-config/`。
+- 新增接口（只增不改）：trace 事件 `kind=config`、`name=protected_config_changed`（attrs 为 `{"keys":[键名]}`，整文件模式下为 `{"whole_file":true}`，不含取值）；SUGA_HOME 下新目录 `run/protected-config/`。
 
 ## 已确认事实与规范
 
@@ -132,7 +133,7 @@
 - 日志（除 `log.file`）：`log.level`、`log.stderr`、`log.max_size`、`log.keep`、`log.compress`；
 - 其他秘密键：`serpapi_key`、`providers.<id>.api_key`、`providers.<id>.headers` 等（本就不可写，且不改变请求去向；改动由用户自行管理）；
 - 显示与交互：`language`、`chat.*`（除 `chat.ask_outside_dirs`）；
-- provider 调参：`providers.<id>` 与模型级下除 `base_url`、`type` 外的键。
+- provider 调参：`providers.<id>` 与模型级下除 `base_url`、`type`、`api_key`、`headers` 外的键。
 
 计划阶段先盘点代码中全部字面配置键读取（`gkconfig.*` 等），未登记的补描述符。
 
@@ -143,7 +144,7 @@
 - 检查放在 set 与 unset 共用的可写键判定之后（`internal/cli/config.go`）：键为 protected，且 `SUGA_SESSION_ID` 非空或 stdin 不是终端，则拒绝。
 - config 命令改为接收 root 的 stdin（沿用现有 capp 命令结构）；终端判定经可注入的函数完成（默认 `isTerminalInput`），测试可替换。
 - 拒绝：退出码 2（与现有输入错误一致），配置文件不变；提示走 i18n：“安全相关配置 <键> 只能由你在 suga 之外的终端里修改，或直接编辑 <config.yaml 路径>”。
-- 人在终端里修改 protected 键成功后，只把该键的摘要更新到快照（见 3，D9）：在写配置的同一临界区内、用本次写入的值计算，不重算其他键，不会吸收此前未展示的改动；没有快照时不建快照；整文件模式下不改快照（改动留到 chat 横幅展示）。
+- 人在终端里修改 protected 键成功后，只把该键的摘要更新到快照（见 3，D9）：在写配置的同一临界区内、用本次写入的值计算，不重算其他键，不会吸收此前未展示的改动；没有快照时不建快照；当前文件处于整文件模式或快照 `mode=file` 时不改快照（改动留到 chat 横幅展示）；其余情况只改 `keys[<该键>]`，不改 `mode` 与 `file`。
 - 强度如实定位：只挡“模型直接调用 `suga config set`”；刻意绕过（`SUGA_SESSION_ID=` 置空或 `env -u`，再配合 Unix `</dev/tty`、`script`、pty 或 Windows `< CON`/`CONIN$`；SDK `NoSessionEnv`）与直接改文件同属一类，由 3 兜底。
 - D5 使 `tools.origin_judge.*`、`tools.read_deny*` 从 v0.55.0 的“任何调用都不可写”变为“人在终端可写”，与其他 protected 键一致。
 
@@ -158,8 +159,8 @@
   - 快照无法读取或损坏时视为全部 protected 键已改动，提示中注明“快照无法读取”，不静默重建。
   - 升级后注册表新增 protected 键：只要文件里未设置该键，两侧都按“未设置”，不误报。
 - **快照**：`SUGA_HOME/run/protected-config/` 子目录（0700），文件 0600；默认配置为 `default.json`，`SUGA_CONFIG` 指向其他文件时为 `<sha256(规范化路径)>.json`，规范化为绝对路径、`filepath.Clean`，Windows 上再转小写；配置锁路径也用同一规范化后的路径（三处一致）。首次运行（文件不存在）只建快照不提示。
-- **快照内容**：`{"version":1,"mode":"keys|file","keys":{"<键名>":"<摘要>"},"file":"<整文件摘要>"}`；逐键与整文件摘要每次都写。空文件或只有注释的文件按“全部未设置”处理。
-- **锁**：启动时的读、比较与 chat 推进各自取该配置文件的配置锁；人工 set/unset 的单键更新在 `editConfigFile` 已持有的锁内完成（锁不可重入，不再重复获取）。写入用临时文件加改名。
+- **快照内容**：`{"version":1,"mode":"keys|file","keys":{"<键名>":"<摘要>"},"file":"<整文件摘要>"}`；首建与 chat 整体推进时写入全部字段（逐键摘要在整文件模式下按可读取的部分尽力计算，不参与比较）；单键更新见 §2。空文件或只有注释的文件按“全部未设置”处理。
+- **锁**：只有快照的读写取该配置文件的配置锁（启动比较读快照、chat 推进写快照各取一次；锁获取失败时跳过比较并记 Warn，不影响启动）；读配置文件本身不取锁，防半写由写入方的临时文件加改名保证，只读命令（如 inspect）不因此写 SUGA_HOME；人工 set/unset 的单键更新在 `editConfigFile` 已持有的锁内完成（锁不可重入，不再重复获取）。写入用临时文件加改名。
 - **推进的值**：chat 推进写入启动时比较算出的那份摘要，不在推进时重读文件，启动与横幅之间别人做的改动留到下次提示。
 - **各入口**：
 
@@ -180,7 +181,7 @@
 - `internal/config/settings_registry.go`：`ConfigKey.Protected` 与静态、动态描述符标记；
 - `internal/config` 新文件（如 `protected_snapshot.go`）：原始值摘要、快照路径、比较、整体推进与单键更新（持配置锁）；
 - `internal/cli/config.go`：set/unset 共用的 protected 检查；单键更新经 `internal/config` 在写配置的临界区内完成；config 命令接收 stdin（沿用现有 capp 命令结构）；
-- `internal/config/load.go`：持配置锁读取文件字节，经 `LoadSources` 加载并保留这份字节供比较复用，比较与生效读取同源；
+- `internal/config/load.go`：读取一次文件字节（不取锁），经 `LoadSources` 加载并保留这份字节供比较复用，比较与生效读取同源；
 - `internal/wiring`：装配时调用 config 的比较函数，把键名列表交给各入口，自身不含判断逻辑（GR108）；`wiring.Options` 新增关闭比较的字段，供 compact 使用；
 - 输出：chat 横幅 `internal/chat/layout.go`（`BannerInfo`），横幅打印后经 `chat.Options` 回调推进快照；run 的 stderr；trace `internal/personal/observe.go`，新 kind 常量加在 `internal/personal/store/types.go`；文案 `internal/i18n/catalog`。
 
@@ -225,7 +226,7 @@ suga 启动（chat / run / acp / SDK）
 - **验证要求**（计划中落实）：
   - GR110：经 `internal/cli` 真实命令分发——会话内（`SUGA_SESSION_ID` 非空）与非终端的 set/unset protected 键被拒、退出码 2、配置文件未变；`SUGA_SESSION_ID` 为空字符串时按无标记处理；非 protected 键照常；注入“是终端”判定时 protected 键可写且快照只更新该键、无快照时不建；临时去掉拒绝分支做反向验证；
   - 显式分类表测试（含动态描述符），并做反向验证；
-  - 快照：首建、无变化、变化后 run 不推进而 chat 推进、人工 set 不吸收其他键的改动、新增与删除 provider 被报出、注释与缩进变化不报、顶层点号键、锚点、内联合并键、多文档改走整文件比较且带点模型名仍逐键、整文件模式下人工 set 不改快照、启动后横幅前的改动下次仍提示、秘密键（代理地址）改动只报键名、`hooks.pre_tool_use.*` 改动被报出且不可经 config set 写、空文件与只有注释的文件按全部未设置、损坏时全部提示、`SUGA_CONFIG` 分别建快照（含相对路径与 Windows 大小写）、并发启动不损坏文件；
+  - 快照：首建、无变化、变化后 run 不推进而 chat 推进、人工 set 不吸收其他键的改动、新增与删除 provider 被报出、注释与缩进变化不报、顶层点号键、锚点、内联合并键、多文档改走整文件比较且带点模型名仍逐键、整文件模式下人工 set 不改快照、启动后横幅前的改动下次仍提示、秘密键（代理地址）改动只报键名、`hooks.pre_tool_use.*` 改动被报出且不可经 config set 写、整文件模式（当前或快照一侧）下人工 set 不改快照且下次仍提示、空文件与只有注释的文件按全部未设置、损坏时全部提示、`SUGA_CONFIG` 分别建快照（含相对路径与 Windows 大小写）、并发启动不损坏文件；
   - chat 横幅用 `test/ptye2e` + `suga inspect trace --json` 断言并反向验证；ACP（同一会话多个 prompt 只记一条）、SDK 的 trace 事件测试；run 的 stderr 行；
   - 主机 Windows：ptye2e ConPTY 下真实二进制在终端里 set protected 键成功、管道输入被拒。
 
