@@ -116,7 +116,9 @@ func TestCheckProtectedOnce(t *testing.T) {
 		assert.False(t, ok)
 		assert.NoErr(t, state.Advance())
 		_, err := os.Stat(snapshotPath)
-		assert.True(t, os.IsNotExist(err), "advance wrote a snapshot without a comparison: %v", err)
+		// Stat under a regular file is ENOENT on Windows and ENOTDIR on Unix; either
+		// way no snapshot exists.
+		assert.True(t, err != nil, "advance wrote a snapshot without a comparison")
 		assert.Eq(t, configPath, state.Path)
 	})
 }
