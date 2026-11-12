@@ -35,7 +35,8 @@ func waitForPipelineLog(t *testing.T, path, want string) {
 		select {
 		case <-ticker.C:
 		case <-deadline.C:
-			t.Fatalf("timed out waiting for hook log line %q; log=%v", want, readHookLog(t, path))
+			assert.Fail(t, "timed out waiting for hook log line "+want)
+			return
 		}
 	}
 }
