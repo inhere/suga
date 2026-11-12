@@ -63,6 +63,11 @@ const (
 	// EventTurnContext records what a turn starts with (model, mode, tool
 	// set, rules/memory snapshot hashes, taint); see D9.
 	EventTurnContext = "turn_context"
+	// EventConfig records a startup observation of the configuration file:
+	// name "protected_config_changed" is a turn that started while the protected
+	// settings differed from what the user last confirmed (attrs keys,
+	// whole_file or snapshot_unreadable). Key names only - never values.
+	EventConfig = "config"
 	// EventSchedule records a host scheduler event (chat idle consolidation:
 	// name = task name, status and attrs.event = what happened).
 	EventSchedule = "schedule"
