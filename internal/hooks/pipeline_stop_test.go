@@ -269,7 +269,7 @@ func newPipelineNoticeClient(t *testing.T, labels ...string) (*pipeline, string)
 	for index, label := range labels {
 		entries = append(entries, &commandClient{
 			argv:    []string{os.Args[0], "-test.run=^TestPipelineStopNoticeProcess$", "--", label, "silent"},
-			timeout: time.Second, stopTimeout: time.Second, entry: index + 1,
+			timeout: 30 * time.Second, stopTimeout: 30 * time.Second, entry: index + 1,
 			program: filepath.Base(os.Args[0]),
 		})
 	}

@@ -18,7 +18,9 @@ type pipeline struct {
 	// entries are the hooks.commands clients in configuration order; their entry
 	// field is the YAML position plus 1.
 	entries []*commandClient
-	// compatWaiting says the compatible entry's Stop waits for its own bound.
+	// compatWaiting says the compatible entry's Stop waits for its own bound
+	// (hooks.stop_wait_sec, or stop_background), so it runs as a second phase
+	// after the immediate entries instead of answering at once.
 	compatWaiting bool
 }
 
@@ -29,7 +31,11 @@ func newPipeline(compat *commandClient, entries []*commandClient, compatWaiting 
 }
 
 // Call runs an ordinary event of the pipeline. PostToolUse belongs to the
-// compatible hooks.command alone; all other events run every entry in order.
+// compatible hooks.command alone (the entries carry no tool filter, so they would
+// see every tool result); SessionStart, UserPromptSubmit, SessionEnd and unknown
+// names run the compatible entry first and then the entries in configuration
+// order. A failing entry is logged and skipped, so one broken hook never keeps
+// the next one from running.
 func (p *pipeline) Call(ctx context.Context, event Event) Response {
 	if event.Name == "PostToolUse" {
 		if p.compat == nil {
@@ -44,7 +50,8 @@ func (p *pipeline) Call(ctx context.Context, event Event) Response {
 	for _, entry := range p.entries {
 		answer, err := entry.call(ctx, event, false)
 		if err != nil {
-			// A failed entry is retained in Runs but cannot prevent later entries.
+			// The answer of a failed command is empty but its run record is kept, so
+			// the trace still shows that the entry ran and why it did not answer.
 			slog.Warn("hook command failed", "event", event.Name, "entry", entry.entry, "err", err)
 		}
 		answers = append(answers, answer)
@@ -52,7 +59,10 @@ func (p *pipeline) Call(ctx context.Context, event Event) Response {
 	return mergePipelineAnswers(answers)
 }
 
-// mergePipelineAnswers joins ordinary-event answers in execution order.
+// mergePipelineAnswers joins the ordinary-event answers in execution order: the
+// additional context blocks and the notices are joined, the runs are
+// concatenated. An ordinary event has no decision, reason or updated input of its
+// own, so those stay empty even when an entry sent them.
 func mergePipelineAnswers(answers []Response) Response {
 	merged := Response{}
 	contexts := make([]string, 0, len(answers))
