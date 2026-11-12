@@ -161,7 +161,7 @@ func TestHookFailuresAreBestEffort(t *testing.T) {
 	assert.NoErr(t, gkconfig.Set("hooks.command", []string{filepath.Join(t.TempDir(), "missing-hook-command-7cb7")}))
 	h := mustNew(t)
 	// A configured but failing hook process yields an empty response, never a panic.
-	assert.Eq(t, Response{}, h.Call(context.Background(), Event{Name: "SessionStart"}))
+	assertEmptyFailedRun(t, h.Call(context.Background(), Event{Name: "SessionStart"}))
 	result := <-h.StartStop(context.Background(), Event{Name: "Stop"}).Done()
 	assert.Err(t, result.Err)
 }
@@ -290,7 +290,7 @@ func TestHookTimeouts(t *testing.T) {
 		assert.NoErr(t, result.Err)
 		assert.Eq(t, "late", result.Response.Reason)
 		// The same slow command on an ordinary event is cut at timeout_ms.
-		assert.Eq(t, Response{}, h.Call(context.Background(), Event{Name: "UserPromptSubmit"}))
+		assertEmptyFailedRun(t, h.Call(context.Background(), Event{Name: "UserPromptSubmit"}))
 	})
 }
 

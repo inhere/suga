@@ -20,12 +20,14 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	gkconfig "github.com/gookit/config/v2"
 
+	appconfig "github.com/inhere/suga/internal/config"
 	agentcoreapi "github.com/inhere/suga/pkg/agentcore/api"
 )
 
@@ -58,6 +60,21 @@ type Response struct {
 	Notice string
 	// UpdatedInput replaces the arguments of the call (PreToolUse); nil keeps them.
 	UpdatedInput map[string]any
+	// Runs records the command executions behind this answer, in the order they
+	// ran. A single entry reports one run per call, a failed one included.
+	Runs []EntryRun
+}
+
+// EntryRun is the record of one hook command execution: which configured entry
+// ran, what program it was, how long it took, what it answered and how it failed.
+// Response holds the answer of that one command, never the merged answer, and is
+// empty when the command failed.
+type EntryRun struct {
+	Entry    int
+	Program  string
+	Duration time.Duration
+	Response Response
+	Err      error
 }
 
 // Result is the outcome of a Stop wait.
@@ -144,6 +161,11 @@ type commandClient struct {
 	// extraEnv adds the variables suga exports to the hook command (the session
 	// and turn of the call); nil leaves the inherited environment alone.
 	extraEnv func(context.Context) []string
+	// entry is the position of the client in the configuration: 0 is the
+	// compatible hooks.command, a hooks.commands entry is its index plus 1.
+	entry int
+	// program is the base name of argv[0], reported in every EntryRun.
+	program string
 }
 
 // Option configures the client New returns.
@@ -202,20 +224,71 @@ func (f PostToolFilter) Match(tool string) (string, bool) {
 //     (with stop_background: no limit of its own, tasks.max_duration applies)
 //   - hooks.stop_background: run Stop as a background task (see StopBackground)
 //   - hooks.post_tool_use.tools / .name: PostToolUse tool globs and the name sent
+//   - hooks.commands: extra hook entries ({command, timeout_ms}) run as a pipeline
+//     (see pipeline.go) next to or instead of hooks.command
 //
 // opts add what the caller knows (WithExtraEnv: the session variables of the
-// command's environment).
+// command's environment). They apply to the compatible command and to every
+// hooks.commands entry.
 func New(opts ...Option) (Client, error) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("SUGA_HOOKS")), "off") {
 		return nil, nil
 	}
+	timeoutMS := gkconfig.Int("hooks.timeout_ms", defaultTimeoutMS)
+	if timeoutMS <= 0 {
+		timeoutMS = defaultTimeoutMS
+	}
+	timeout := time.Duration(timeoutMS) * time.Millisecond
+
 	argv, err := stringList("hooks.command")
 	if err != nil {
 		return nil, err
 	}
-	if len(argv) == 0 {
+	var compat *commandClient
+	compatWaiting := false
+	if len(argv) > 0 {
+		compat, err = newCompatClient(argv, timeout, opts)
+		if err != nil {
+			return nil, err
+		}
+		// compatWaiting: a Stop that is bounded by its own long wait instead of
+		// answering at once, so a pipeline runs it as a second phase.
+		compatWaiting = gkconfig.Int("hooks.stop_wait_sec", 0) > 0 || StopBackground()
+	}
+
+	entries, err := appconfig.ReadHookEntries()
+	if err != nil {
+		return nil, err
+	}
+	if compat == nil && len(entries) == 0 {
 		return nil, nil
 	}
+	if len(entries) == 0 {
+		return compat, nil
+	}
+	clients := make([]*commandClient, 0, len(entries))
+	for index, entry := range entries {
+		entryTimeout := time.Duration(entry.TimeoutMS) * time.Millisecond
+		if entry.TimeoutMS <= 0 {
+			// An entry without timeout_ms follows the hooks.timeout_ms default.
+			entryTimeout = timeout
+		}
+		client := &commandClient{
+			argv: entry.Command, timeout: entryTimeout, stopTimeout: entryTimeout,
+			entry: index + 1, program: filepath.Base(entry.Command[0]),
+		}
+		for _, opt := range opts {
+			opt(client)
+		}
+		clients = append(clients, client)
+	}
+	return newPipeline(compat, clients, compatWaiting), nil
+}
+
+// newCompatClient builds the client of the single hooks.command. Its companion
+// keys are read here only: without hooks.command they stay unparsed, so a stale
+// hooks.stop_args or tool filter never keeps a hooks.commands setup from starting.
+func newCompatClient(argv []string, timeout time.Duration, opts []Option) (*commandClient, error) {
 	if strings.TrimSpace(argv[0]) == "" {
 		return nil, fmt.Errorf("hooks.command: the program name is empty")
 	}
@@ -239,11 +312,6 @@ func New(opts ...Option) (Client, error) {
 			return nil, fmt.Errorf("hooks.post_tool_use.tools glob %q: %w", pattern, err)
 		}
 	}
-	timeoutMS := gkconfig.Int("hooks.timeout_ms", defaultTimeoutMS)
-	if timeoutMS <= 0 {
-		timeoutMS = defaultTimeoutMS
-	}
-	timeout := time.Duration(timeoutMS) * time.Millisecond
 	stopTimeout := timeout
 	// The extra 2s lets a command that waits stop_wait_sec answer before it is killed.
 	if waitSec := gkconfig.Int("hooks.stop_wait_sec", 0); waitSec > 0 {
@@ -255,6 +323,8 @@ func New(opts ...Option) (Client, error) {
 	}
 	client := &commandClient{
 		argv: argv, stopArgs: stopArgs, timeout: timeout, stopTimeout: stopTimeout,
+		entry:    0,
+		program:  filepath.Base(argv[0]),
 		postTool: PostToolFilter{Tools: tools, Name: strings.TrimSpace(gkconfig.String("hooks.post_tool_use.name"))},
 		preTool:  PreToolFilter{Tools: preTools, Name: strings.TrimSpace(gkconfig.String("hooks.pre_tool_use.name"))},
 	}
@@ -331,6 +401,7 @@ func (h *commandClient) StartStop(ctx context.Context, event Event) Wait {
 }
 
 func (h *commandClient) call(parent context.Context, event Event, stop bool) (Response, error) {
+	start := time.Now()
 	timeout := h.timeout
 	args := append([]string(nil), h.argv[1:]...)
 	if stop {
@@ -347,7 +418,7 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 	}
 	input, err := json.Marshal(event)
 	if err != nil {
-		return Response{}, err
+		return h.result(Response{}, err, start)
 	}
 	input = append(input, '\n')
 	cmd := exec.CommandContext(ctx, h.argv[0], args...)
@@ -361,9 +432,9 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 			// The command outlived its bound (hooks.timeout_ms or the caller's own):
 			// a PreToolUse answer that never arrives has to be named as a timeout,
 			// because the caller refuses the call on it.
-			return Response{}, &timeoutError{after: timeout, cause: ctx.Err()}
+			return h.result(Response{}, &timeoutError{after: timeout, cause: ctx.Err()}, start)
 		}
-		return Response{}, err
+		return h.result(Response{}, err, start)
 	}
 	var wire struct {
 		Decision           string `json:"decision"`
@@ -377,7 +448,7 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 	}
 	if len(bytes.TrimSpace(output)) != 0 {
 		if err := json.Unmarshal(output, &wire); err != nil {
-			return Response{}, err
+			return h.result(Response{}, err, start)
 		}
 	}
 	decision, reason := wire.Decision, wire.Reason
@@ -391,8 +462,19 @@ func (h *commandClient) call(parent context.Context, event Event, stop bool) (Re
 	if wire.HookSpecificOutput.PermissionReason != "" {
 		reason = wire.HookSpecificOutput.PermissionReason
 	}
-	return Response{Decision: decision, Reason: reason, AdditionalContext: wire.HookSpecificOutput.AdditionalContext,
-		Notice: strings.TrimSpace(stderr.String()), UpdatedInput: wire.HookSpecificOutput.UpdatedInput}, nil
+	return h.result(Response{Decision: decision, Reason: reason, AdditionalContext: wire.HookSpecificOutput.AdditionalContext,
+		Notice: strings.TrimSpace(stderr.String()), UpdatedInput: wire.HookSpecificOutput.UpdatedInput}, nil, start)
+}
+
+// result attaches the run record of this execution to the answer: every return
+// path of call fills it (success, timeout, cancel, non-zero exit, unreadable
+// answer), so a caller can trace what each entry did. On failure the record's
+// Response stays empty.
+func (h *commandClient) result(response Response, err error, start time.Time) (Response, error) {
+	// The literal is built before response.Runs is set, so the recorded answer
+	// holds no nested runs of its own.
+	response.Runs = []EntryRun{{Entry: h.entry, Program: h.program, Duration: time.Since(start), Response: response, Err: err}}
+	return response, err
 }
 
 type stopWait struct {
