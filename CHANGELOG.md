@@ -16,6 +16,11 @@
 - `tools.origin_judge.enabled`、`tools.origin_judge.timeout`、`tools.read_deny`、`tools.read_deny_defaults` 由“任何调用都不可写”（v0.55.0）改为 protected 键：在 suga 之外的终端里可以 `suga config set/unset`，会话内与非终端调用仍被拒绝（suga-hyj7）。
 - `network.proxy.url`、`tools.web_fetch.proxy` 作为端点类参与启动比较（仍是秘密键，不能经 `suga config set` 写入，只报键名不报取值）。
 
+### 修复
+
+- `shell_exec`：shell 进程本身以 Windows 崩溃码退出（`STATUS_STACK_OVERFLOW`、`STATUS_ACCESS_VIOLATION`、`STATUS_STACK_BUFFER_OVERRUN`）时，结果追加一行说明 shell 自身崩溃、管道里尚未返回的输出没有回到工具，建议把长输出重定向到文件或去掉管道重跑，Metadata 记 `shell_crashed`；PowerShell 下的工具说明提示长输出命令不要用 `| Select-Object -First N` 截断（suga-oup1）。
+- 外部来源裁决：注入回合（Stop block 续跑、投递）的正文作为不可信材料交给裁决模型，裁决能看到触发写/执行调用的上下文（suga-xsvv）。
+
 ## [0.55.0] - 2026-11-11
 
 本版加入审批档位（`--approve`/`--yolo`）、外部来源小模型裁决与敏感路径禁读（设计 `docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md`），并含 0.54.10 的重试预算修复。
