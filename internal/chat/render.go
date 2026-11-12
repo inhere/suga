@@ -12,6 +12,7 @@ import (
 
 	"github.com/gookit/cliui/show/symbols"
 	"github.com/gookit/color"
+	appconfig "github.com/inhere/suga/internal/config"
 	"github.com/inhere/suga/internal/diffview"
 	"github.com/inhere/suga/internal/output"
 	"github.com/inhere/suga/internal/output/termtext"
@@ -60,6 +61,11 @@ type rendererOptions struct {
 	WriteTools bool
 	// ApprovalMode is the start-up tier the banner names ("" adds no line).
 	ApprovalMode string
+	// ProtectedChange is what the protected settings of the config file changed
+	// to since the user last confirmed them (empty: nothing changed, no line) and
+	// ProtectedPath the file the notice names.
+	ProtectedChange appconfig.ProtectedChange
+	ProtectedPath   string
 	// Workspace is the root the file tools work in: the tool lines show a path
 	// inside it relative to it (empty: every path as the call wrote it).
 	Workspace string
@@ -739,12 +745,15 @@ func (r *Renderer) SetSessionName(name string) { r.opts.SessionName = name }
 // and its styles are built by BuildBanner (layout.go).
 func (r *Renderer) Banner() {
 	r.endThinking()
-	printLayout(r.opts.Out, r.opts.Color, BuildBanner(BannerInfo{
+	lines := BuildBanner(BannerInfo{
 		Provider: r.opts.Provider, Model: r.opts.Model,
 		Thinking: r.opts.Thinking, ContextWindow: r.opts.ContextWindow,
 		SessionName: r.opts.SessionName, WriteTools: r.opts.WriteTools,
 		ApprovalMode: r.opts.ApprovalMode, Translator: r.tr(),
-	}))
+	})
+	// A changed protected configuration is shown with the banner, so it is seen
+	// before the first turn (protected_banner.go).
+	printLayout(r.opts.Out, r.opts.Color, append(lines, protectedBannerLines(r.tr(), r.opts.ProtectedChange, r.opts.ProtectedPath)...))
 }
 
 // clockTime renders the end-of-turn time as a 24 hour local HH:MM.

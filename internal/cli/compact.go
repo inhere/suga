@@ -47,7 +47,7 @@ func newCompactCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 		// (write tools) and the background-task tool every turn process registers:
 		// a table that differs from the last turn's falls back to
 		// handoff_reuse=fallback:prefix_changed:tools (H4).
-		wopts := wiring.Options{Model: model, Thinking: thinking}
+		wopts := wiring.Options{Model: model, Thinking: thinking, SkipProtectedCheck: true}
 		if mode, err := wiring.SessionRunMode(ctx, sessionID); err == nil && mode == personal.ModeAllowWrite {
 			wopts.AllowWrite = true
 		}

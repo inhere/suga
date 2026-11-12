@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/inhere/suga/internal/chat"
@@ -86,9 +87,25 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 	// the manifest and the start notice.
 	chatSkills := chatSkillInfos(runtime.Skills)
 	contextParts := chatContextParts(runtime.ContextReport)
+	// The protected settings of the config file changed since the user last
+	// confirmed them: the banner shows it and the snapshot advances once it was
+	// shown, so the next start compares against what they have seen.
+	protected := runtime.ProtectedState()
+	var protectedChange appconfig.ProtectedChange
+	var protectedPath string
+	var onBannerShown func()
+	if protected != nil {
+		protectedChange, protectedPath = protected.Change, protected.Path
+		onBannerShown = func() {
+			if err := protected.Advance(); err != nil {
+				slog.Warn("advance the protected settings snapshot", "err", err)
+			}
+		}
+	}
 	return chat.Run(ctx, runtime.Runner, chat.Options{
 		SessionID: opts.SessionID, ResumeID: opts.ResumeID, FromID: opts.FromID,
 		ContextNotices: contextNotices, Skills: chatSkills, ContextParts: contextParts,
+		ProtectedChange: protectedChange, ProtectedPath: protectedPath, OnBannerShown: onBannerShown,
 		Translator: runtime.Translator,
 		Asker:      runtime.Asker, WriteTools: runtime.WriteTools, ApprovalMode: string(runtime.ApprovalMode),
 		Thinking: runtime.Thinking, ContextWindow: runtime.ContextWindow,
