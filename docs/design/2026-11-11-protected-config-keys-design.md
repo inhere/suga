@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 安全配置键保护 设计
 
-> 状态：Draft 0.4 / 待人工计划批准；issue `suga-hyj7`
+> 状态：Draft 0.5 / 待人工计划批准；issue `suga-hyj7`
 
 ## 修订记录
 
@@ -10,7 +10,8 @@
 | 0.1 | 2026-11-11 | Claude | 初稿：安全相关配置键只允许人修改；列出可选防护档位 Q1–Q3 待定 |
 | 0.2 | 2026-11-11 | Claude | 记录用户选择（2026-11-11：“Q1 选 A，Q2、Q3 按推荐”），转为决策 D3–D5；方案只保留 A 档 |
 | 0.3 | 2026-11-11 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-11-protected-config-keys/`）与用户选择（2026-11-11：“Q4–Q6 按推荐”）：清单补端点类、`workspace` 等（D6）；如实写明判定只挡直接调用（D7）；加回启动时变化提示（D8）；显式分类表、验证要求、兼容说明、拒绝细节、替代声明 |
-| 0.4 | 2026-11-11 | Claude | 处理第 2 轮两轴评审与用户选择（2026-11-12：“Q7、Q8 按推荐”）：快照只在 chat 横幅展示后推进、人工 set 只更新该键（D9）；按 config.yaml 原始值比较（D10）；去掉 stream-json 字段，run 改为 stderr 一行；补 `tools.disabled`、`rules.file`、压缩模型；写明分类原则、快照位置与并发、判定细节、受影响测试与引用 |
+| 0.4 | 2026-11-12 | Claude | 处理第 2 轮两轴评审与用户选择（2026-11-12：“Q7、Q8 按推荐”）：快照只在 chat 横幅展示后推进、人工 set 只更新该键（D9）；按 config.yaml 原始值比较（D10）；去掉 stream-json 字段，run 改为 stderr 一行；补 `tools.disabled`、`rules.file`、压缩模型；写明分类原则、快照位置与并发、判定细节、受影响测试与引用 |
+| 0.5 | 2026-11-12 | Claude | 处理第 3 轮两轴评审（按类自查：比较键集、取值与规范化、推进与锁、入口挂点、分类归组）：比较取快照与当前键名并集（新增或删除 provider 可被报出）；无法逐键读取的写法改按整文件比较；推进写入启动时的摘要，单键更新与写配置同一临界区；模型与压缩模型不保护、裁决回退列为风险；补全“不保护”分组；D6 区分 Q4 推荐与评审补入的键 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -28,6 +29,14 @@
 | 2 | S10 | 记录 Q4–Q8 的选项；D6 列全新增键 |
 | 2 | F13 | 判定为 `SUGA_SESSION_ID` 非空；终端判定可注入；列出受影响测试；补验证项 |
 | 2 | S12、F14、F15 | 修正引用；补 Windows 与空值绕过；修正 GR107 引用 |
+| 3 | F16（阻断） | 比较取快照与当前两侧键名的并集，缺失一侧按“未设置”；无快照时 set/unset 不建快照 |
+| 3 | F17、F22 | 值按解析后的规范形式求摘要；锚点、别名、合并键、字面量点号键等无法逐键读取时改按整文件摘要比较 |
+| 3 | F18、S14 | chat 推进写入启动时算出的摘要；单键更新在写配置的同一临界区内、用本次写入的值；推进由 `internal/chat` 经回调触发 |
+| 3 | F19、S10 | `models.compact`/`compact_model` 不保护，裁决回退列为风险；D6 区分 Q4 推荐与评审补入的键，Gate 上请你确认后者 |
+| 3 | F20 | 补全“不保护”分组，覆盖全部可写键 |
+| 3 | F21、S16 | ACP 按会话记一条；compact 不参与；进程内缓存按配置路径、测试可重置；CLI 拒绝做反向验证 |
+| 3 | F24、S15 | 快照放 `run/protected-config/` 子目录（0700/0600），路径规范化后求哈希；风险补“模型在伪终端里自起 chat” |
+| 3 | S13、F23、S17 | 删 SR2003，改为沿用现有 capp 命令结构；修正文档行号与修订日期；补 trace kind 常量位置 |
 
 **思考与范围声明**
 - 思考模式：`RIGOROUS`。
@@ -71,7 +80,7 @@
 受影响项目与接口：
 - xhen：README 让你在终端里执行 `SUGA_HOME=… suga config set tools.read_roots …`（`xhen/README.md:151`），终端里照常可用，不需改文档；Git Bash/mintty 下会被拒（改为直接编辑文件），由 xhen 侧在跟进 suga 版本时补一句说明。xhen 内嵌 SDK，提示进 trace。
 - gofer：仓库内未见 `suga config set` 调用；gofer exec 任务里的脚本改 protected 键会被拒；suga run 的 stderr 多一行提示（进 job 日志）。
-- 新增接口（只增不改）：trace 事件 `kind=config`、`name=protected_config_changed`（attrs 只含键名列表）；SUGA_HOME 下新文件 `run/protected-config*.json`。
+- 新增接口（只增不改）：trace 事件 `kind=config`、`name=protected_config_changed`（attrs 只含键名列表）；SUGA_HOME 下新目录 `run/protected-config/`。
 
 ## 已确认事实与规范
 
@@ -82,9 +91,11 @@
 - **退出码**：配置输入错误为 `processExitError{code: 2}`（`internal/cli/config.go:282-284`）。
 - **配置锁**：`configLockPath` 在 `SUGA_HOME/run/locks/` 下按配置路径的 `sha256` 命名（`internal/config/yaml_edit.go:102-127`）。
 - **其他写入口**：`suga init --force` 重置配置；`suga data restore` 替换 `db/sessions.db`、`config.yaml`、`memory/user`、`projects`（`internal/personal/backup/backup.go:432`），不含 `run/`。
-- **trace**：事件没有 session ID 时丢弃（`internal/personal/observe.go:107-108`）。
-- **前序决定**：`docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md`（F14/S12）把 `tools.origin_judge.*`、`tools.read_deny*` 设为不可写（注册表注释 `:227`、`:250`，`docs/usage/gofer-personal-agent.md:125`，测试 `internal/cli/config_origin_judge_test.go`、`config_read_deny_test.go`）。
-- **规范**：SR1301、SR1403、GR108、GR109、GR110、SR2003、SR2004。
+- **trace**：事件没有 session ID 时丢弃（`internal/personal/observe.go:107-108`）；kind 常量在 `internal/personal/store/types.go:57-144`。
+- **配置锁不可重入**（`internal/config/bootstrap_lock.go:12-21`），`editConfigFile` 写配置时已持有该锁。
+- **裁决模型回退**：`models.judge` → `models.compact` → 主模型（`internal/wiring/runtime_build.go:89-92`）。
+- **前序决定**：`docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md`（F14/S12）把 `tools.origin_judge.*`、`tools.read_deny*` 设为不可写（注册表注释 `:227`、`:250`，`docs/usage/gofer-personal-agent.md:124-125`，测试 `internal/cli/config_origin_judge_test.go`、`config_read_deny_test.go`）。
+- **规范**：SR1301、SR1403、GR108、GR109、GR110、SR2004。
 
 ## 总体方案
 
@@ -97,40 +108,52 @@
 | 执行类 | `hooks.command`、`hooks.stop_args`、`hooks.post_tool_use.tools`、`hooks.post_tool_use.name`、`memory.user.command`、`memory.user.args`、`memory.user.backend`、`memory.project.command`、`memory.project.args`、`memory.project.backend`、`mcp.servers`、`tools.shell`、`tools.interpreters`、`rules.file` |
 | 放宽类 | `tools.allow_write`、`tools.approval`、`tools.auto_allow`、`tools.read_only_allow`、`tools.disabled`、`tools.read_roots`、`tools.dependency_roots`、`tools.standards_roots`、`tools.skill_roots`、`tools.ask_on_external_origin`、`tools.protect_changed_files`、`tools.approval_rules.{enabled,always_prefix_tokens,persist_ask,project_trust}`、`chat.ask_outside_dirs`、`memory.write`、`memory.write_tainted`、`memory.taint_tools`、`memory.taint_on_spill`、`tools.web_fetch.allow_private`、`tools.session_message.{enabled,in_gofer_jobs,max_hops}`、`tools.origin_judge.{enabled,timeout}`、`tools.read_deny`、`tools.read_deny_defaults`、`workspace` |
 | 执行上限类 | `tools.shell_limits.{memory,processes,cpu_time,off}`、`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.{max_running,max_duration,max_output_bytes}` |
-| 端点类 | `providers.<id>.base_url`、`providers.<id>.type`、`providers.<id>.models.<name>.base_url`、`providers.<id>.models.<name>.type`、`models.judge`、`models.compact`、`compact_model`（外部来源裁决未配 `models.judge` 时回退到压缩模型） |
+| 端点类 | `providers.<id>.base_url`、`providers.<id>.type`、`providers.<id>.models.<name>.base_url`、`providers.<id>.models.<name>.type`、`models.judge` |
 | 其他 | `log.file`（可把日志写到任意路径） |
 
-不保护（按组）：
-- 费用与步数（`budget.*`、`max_steps`、`agents.max_steps`、`agents.max_tokens`、`agents.timeout`）：只影响花费和轮数，不扩大权限；
-- 留存与可恢复性（`gc.retention.*`、`tools.snapshots.*`）：影响保留多久、能否回滚，不扩大权限；缩短留存可能提前清掉 trace，列为已知风险；
-- 模型选择（`model`、`fallback_models`、`agents.model`、`models.*` 中除 `judge`、`compact` 外的键）：只在已配置的 provider 之间选择；
-- 其余工具偏好、显示、性能与 provider 调参键（`tools.preferred`、`skills.always_load`、`agents.enabled`、`agents.nudge`、`providers.<id>` 下除 `base_url`、`type` 外的键等）。
+不保护（按组；每组都不扩大可执行、可读写范围，不改变请求去向）：
+- 费用与步数：`budget.*`、`max_steps`、`agents.max_steps`、`agents.max_tokens`、`agents.timeout`、`tools.loop_guard`；
+- 留存与可恢复性：`gc.retention.*`、`tools.snapshots.*`、`transcripts`、`chat.history*`；
+- 模型选择：`model`、`compact_model`、`fallback_models`、`models.compact`、`models.idle`、`models.handoff`、`agents.model`（只在已配置的 provider 之间选择；对裁决的影响见风险）；
+- 运行参数：外部程序与请求的超时和重试（`hooks.timeout_ms`、`hooks.stop_wait_sec`、`hooks.stop_background`、`memory.*.timeout_sec`、`mcp.call_timeout_sec`、`mcp.startup_timeout_sec`、`retry.*`、`timeouts.*`、`tools.shell_background_after`、`tasks.wake_on_exit`）、输出与上下文（`tools.max_output_bytes`、`tools.max_spill_bytes`、`tools.spill.*`、`tools.read_page_bytes`、`tools.parallel_reads`、`tools.minimize_output`、`context.*`、`images.*`、`store.body_inline_bytes`）、`run.deadline_env`、`network.proxy.sites`（只选择走哪个已配置代理，代理地址是秘密键不可写）；
+- 工具与技能偏好：`tools.preferred`、`tools.deferred*`、`tools.web_fetch.user_agent`、`skills.*`、`agents.enabled`、`agents.nudge`；
+- 日志（除 `log.file`）：`log.level`、`log.stderr`、`log.max_size`、`log.keep`、`log.compress`；
+- 显示与交互：`language`、`chat.*`（除 `chat.ask_outside_dirs`）；
+- provider 调参：`providers.<id>` 与模型级下除 `base_url`、`type` 外的键。
 
 测试：一张覆盖全部 `Writable:true` 键（含动态描述符）的显式分类表（protected / 不保护 + 所属组）；注册表出现未分类的可写键，或分类与 `Protected` 字段不一致，测试失败。
 
 ### 2 `suga config set/unset` 的限制（D3、D7）
 
 - 检查放在 set 与 unset 共用的可写键判定之后（`internal/cli/config.go`）：键为 protected，且 `SUGA_SESSION_ID` 非空或 stdin 不是终端，则拒绝。
-- config 命令改为接收 root 的 stdin；终端判定经可注入的函数完成（默认 `isTerminalInput`），测试可替换。
+- config 命令改为接收 root 的 stdin（沿用现有 capp 命令结构）；终端判定经可注入的函数完成（默认 `isTerminalInput`），测试可替换。
 - 拒绝：退出码 2（与现有输入错误一致），配置文件不变；提示走 i18n：“安全相关配置 <键> 只能由你在 suga 之外的终端里修改，或直接编辑 <config.yaml 路径>”。
-- 人在终端里修改 protected 键成功后，只把该键的摘要更新到快照（见 3，D9），不重算其他键，不会吸收此前未展示的改动。
+- 人在终端里修改 protected 键成功后，只把该键的摘要更新到快照（见 3，D9）：在写配置的同一临界区内、用本次写入的值计算，不重算其他键，不会吸收此前未展示的改动；没有快照时不建快照。
 - 强度如实定位：只挡“模型直接调用 `suga config set`”；刻意绕过（`SUGA_SESSION_ID=` 置空或 `env -u`，再配合 Unix `</dev/tty`、`script`、pty 或 Windows `< CON`/`CONIN$`；SDK `NoSessionEnv`）与直接改文件同属一类，由 3 兜底。
 - D5 使 `tools.origin_judge.*`、`tools.read_deny*` 从 v0.55.0 的“任何调用都不可写”变为“人在终端可写”，与其他 protected 键一致。
 
 ### 3 启动时变化提示（D8、D9、D10）
 
-- **比较**：读配置后，对每个 protected 键在 `config.yaml` 中的原始取值（未展开 `${VAR}`；缺省视为“未设置”）计算 SHA-256 摘要，与快照比较，得到改动的键名列表。快照无法读取或损坏时视为全部 protected 键已改动，提示中注明“快照无法读取”，不静默重建。
-- **快照**：`SUGA_HOME/run/protected-config.json`；`SUGA_CONFIG` 指向其他文件时为 `run/protected-config-<sha256(路径)>.json`（与配置锁同一命名法）。读改写持该配置文件的配置锁，写入用临时文件加改名。首次运行（文件不存在）只建快照不提示。
+- **比较**：读配置后，对 protected 键在 `config.yaml` 中的取值计算 SHA-256 摘要，与快照比较，得到改动的键名列表。
+  - 键集：快照中的键与当前文件中 protected 键（含动态 provider 键）的并集；任一侧缺失按“未设置”计，因此新增或删除 provider、设置或删除某个键都会被报出。
+  - 取值：YAML 解析后、未展开 `${VAR}` 的值，按规范形式（列表、映射与 `mcp.servers` 这类整块值序列化为排序后的 JSON）求摘要，注释与缩进变化不算改动。
+  - 文件中出现锚点、别名、合并键，或顶层/中间层的字面量点号键（如 `"tools.approval": auto`）等无法逐键读取的写法时，改为对整个文件求一个摘要并比较；变化时提示“配置文件有变化（含无法逐键比较的写法），请检查 <路径>”。
+  - 快照无法读取或损坏时视为全部 protected 键已改动，提示中注明“快照无法读取”，不静默重建。
+  - 升级后注册表新增 protected 键：只要文件里未设置该键，两侧都按“未设置”，不误报。
+- **快照**：`SUGA_HOME/run/protected-config/` 子目录（0700），文件 0600；默认配置为 `default.json`，`SUGA_CONFIG` 指向其他文件时为 `<sha256(规范化路径)>.json`，规范化为绝对路径、`filepath.Clean`，Windows 上再转小写。首次运行（文件不存在）只建快照不提示。
+- **锁**：启动时的读、比较与 chat 推进各自取该配置文件的配置锁；人工 set/unset 的单键更新在 `editConfigFile` 已持有的锁内完成（锁不可重入，不再重复获取）。写入用临时文件加改名。
+- **推进的值**：chat 推进写入启动时比较算出的那份摘要，不在推进时重读文件，启动与横幅之间别人做的改动留到下次提示。
 - **各入口**：
 
 | 入口 | 有改动时 | 推进快照 |
 |---|---|---|
-| chat | 横幅显示“安全相关配置自上次确认以来有变化：<键名>；如果不是你改的，请检查 <config.yaml 路径>”；并写 trace | 横幅显示后整体推进 |
+| chat | 横幅显示“安全相关配置自上次确认以来有变化：<键名>；如果不是你改的，请检查 <config.yaml 路径>”；并写 trace | 横幅显示后整体推进（`internal/chat` 经 `chat.Options` 新增的回调触发） |
 | run | stderr 一行同样内容；写 trace | 否 |
-| ACP、SDK（含 xhen） | 写 trace | 否 |
+| ACP、SDK（含 xhen） | 每个会话的首个回合写一条 trace（ACP 每个 prompt 新建 runtime，按会话 ID 去重） | 否 |
+| `suga compact` 等维护命令 | 不参与比较 | 否 |
 | `suga config set/unset`（人在终端） | — | 只更新被改键 |
 
-- **trace**：在每个会话首个回合内记一条 `kind=config`、`name=protected_config_changed`、attrs 只含键名列表（回合内才有 session ID，避免被丢弃）；比较结果在进程内缓存，同一进程多个会话不重复读快照。
+- **trace**：在每个会话首个回合内记一条 `kind=config`、`name=protected_config_changed`、attrs 只含键名列表（回合内才有 session ID，避免被丢弃）；比较结果在进程内按配置文件路径缓存（测试提供重置函数），同一进程多个会话不重复读快照。
 - 快照写入失败只记 Warn，不影响会话（GR109 的 best-effort 例外，理由：提示是辅助观测），下次启动仍会提示。
 
 ## 架构
@@ -138,9 +161,9 @@
 代码组织参照 suga 现有分层（命令在 `internal/cli`、配置在 `internal/config`、装配在 `internal/wiring`，SR2004）：
 - `internal/config/settings_registry.go`：`ConfigKey.Protected` 与静态、动态描述符标记；
 - `internal/config` 新文件（如 `protected_snapshot.go`）：原始值摘要、快照路径、比较、整体推进与单键更新（持配置锁）；
-- `internal/cli/config.go`：set/unset 共用的 protected 检查与单键更新；config 命令接收 stdin（SR2003 的命令结构不变）；
+- `internal/cli/config.go`：set/unset 共用的 protected 检查；单键更新经 `internal/config` 在写配置的临界区内完成；config 命令接收 stdin（沿用现有 capp 命令结构）；
 - `internal/wiring`：装配时调用 config 的比较函数，把键名列表交给各入口，自身不含判断逻辑（GR108）；
-- 输出：chat 横幅 `internal/chat/layout.go`（`BannerInfo`）、run 的 stderr、trace `internal/personal/observe.go`；文案 `internal/i18n/catalog`。
+- 输出：chat 横幅 `internal/chat/layout.go`（`BannerInfo`），横幅打印后经 `chat.Options` 回调推进快照；run 的 stderr；trace `internal/personal/observe.go`，新 kind 常量加在 `internal/personal/store/types.go`；文案 `internal/i18n/catalog`。
 
 ## 关键流程
 
@@ -150,13 +173,13 @@ suga config set|unset <key> …
   → Protected ?
        ├─ 否 → 写入
        └─ 是 → SUGA_SESSION_ID 非空 或 stdin 非终端 → 拒绝（退出码 2，i18n 提示）
-                 否则 → 写入 → 快照中只更新该键
+                 否则 → 写入（持锁）→ 同一临界区内快照只更新该键（无快照则不建）
 
 suga 启动（chat / run / acp / SDK）
-  → 读配置 → protected 键原始值摘要 → 持锁读快照比较
+  → 读配置 → protected 键摘要（快照与当前键名并集；无法逐键时整文件摘要）→ 持锁读快照比较
        ├─ 无快照 → 建快照
        ├─ 相同 → 无事
-       └─ 不同 → chat：横幅显示 → 整体推进快照
+       └─ 不同 → chat：横幅显示 → 写入启动时的摘要
                  run：stderr 一行；ACP/SDK：无
                  各入口：会话首个回合记 trace
 ```
@@ -169,18 +192,20 @@ suga 启动（chat / run / acp / SDK）
   - 快照可被同时改写或删除（删除后按首次运行处理），从而掩盖改动，与直接改文件同级；
   - 经 `.env` 或环境变量间接改变 `${VAR}` 引用的值不被比较（D10）；
   - 缩短 `gc.retention.*` 可能提前清掉 trace；
+  - 模型可在伪终端里自起 `suga chat` 让横幅“展示”而推进快照，与改写快照同级；
+  - 未配置 `models.judge` 时裁决回退到压缩模型或主模型，两者不保护，模型可把它们切到已配置的较弱模型；需要时请配置 `models.judge`；
   - trust 档下外部来源检查被放开，这时只剩 CLI 判定与启动提示；其他档位下外部来源裁决对照抄外部内容的此类命令裁决，是另一道防线。
 - **兼容与误拒**：以下人的操作改 protected 键会被拒，提示改在 suga 之外的终端执行或直接编辑文件：chat 里 `!` 执行、hook 脚本、gofer exec 任务里的脚本、Git Bash/mintty（stdin 为管道）、`echo … | suga config set`。非 protected 键不受影响。
-- **替代声明**：替代 `docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md` F14/S12 的“`tools.origin_judge.*`、`tools.read_deny*` 不可写”，改为 protected；同步注册表注释（`:227`、`:250`）、`docs/usage/gofer-personal-agent.md:125`。
+- **替代声明**：替代 `docs/plans/2026-11-10-trust-mode-origin-judge-read-deny-plan.md` F14/S12 的“`tools.origin_judge.*`、`tools.read_deny*` 不可写”，改为 protected；同步注册表注释（`:227`、`:250`）、`docs/usage/gofer-personal-agent.md:124-125`。
 - **受影响的现有测试**（改为“会话内拒绝、终端可写”或改用非 protected 键）：`internal/cli/config_origin_judge_test.go`、`config_read_deny_test.go`、`config_test.go:132-160` 与 `:175-204`、`approval_flags_test.go:133`；计划阶段再 grep 一遍 set/unset protected 键的测试与 `scripts/` 调用。
 - **文档**：README 与 `docs/usage/gofer-personal-agent.md` 写明 protected 键、修改方式、启动提示与限制。
-- **数据**：新文件 `SUGA_HOME/run/protected-config*.json`（键名 → 摘要）；无表结构变化。
+- **数据**：新目录 `SUGA_HOME/run/protected-config/`（键名 → 摘要）；无表结构变化。
 - **回滚**：revert；删除快照文件即恢复“首次运行”。
 - **验证要求**（计划中落实）：
-  - GR110：经 `internal/cli` 真实命令分发——会话内（`SUGA_SESSION_ID` 非空）与非终端的 set/unset protected 键被拒、退出码 2、配置文件未变；`SUGA_SESSION_ID` 为空字符串时按无标记处理；非 protected 键照常；注入“是终端”判定时 protected 键可写且快照只更新该键；
+  - GR110：经 `internal/cli` 真实命令分发——会话内（`SUGA_SESSION_ID` 非空）与非终端的 set/unset protected 键被拒、退出码 2、配置文件未变；`SUGA_SESSION_ID` 为空字符串时按无标记处理；非 protected 键照常；注入“是终端”判定时 protected 键可写且快照只更新该键、无快照时不建；临时去掉拒绝分支做反向验证；
   - 显式分类表测试（含动态描述符），并做反向验证；
-  - 快照：首建、无变化、变化后 run 不推进而 chat 推进、人工 set 不吸收其他键的改动、损坏时全部提示、`SUGA_CONFIG` 分别建快照、并发启动不损坏文件；
-  - chat 横幅用 `test/ptye2e` + `suga inspect trace --json` 断言并反向验证；ACP、SDK 的 trace 事件测试；run 的 stderr 行；
+  - 快照：首建、无变化、变化后 run 不推进而 chat 推进、人工 set 不吸收其他键的改动、新增与删除 provider 被报出、注释与缩进变化不报、锚点或字面量点号键改走整文件比较、损坏时全部提示、`SUGA_CONFIG` 分别建快照（含相对路径与 Windows 大小写）、并发启动不损坏文件；
+  - chat 横幅用 `test/ptye2e` + `suga inspect trace --json` 断言并反向验证；ACP（同一会话多个 prompt 只记一条）、SDK 的 trace 事件测试；run 的 stderr 行；
   - 主机 Windows：ptye2e ConPTY 下真实二进制在终端里 set protected 键成功、管道输入被拒。
 
 ## 决策
@@ -188,13 +213,14 @@ suga 启动（chat / run / acp / SDK）
 - **D1** protected 键由注册表字段统一标记，显式分类表测试防漏标。
 - **D2** CLI 限制只加在 `suga config set/unset`；其他改动方式由启动提示兜底。
 - **D3**（Q1）判定：`SUGA_SESSION_ID` 非空或 stdin 不是终端时，拒绝修改 protected 键。
-- **D4**（Q2）执行类与放宽类全部列为 protected，含 `tools.session_message.*`、`tools.shell_limits.*`、`tools.web_fetch.allow_private`。
+- **D4**（Q2）执行类与放宽类全部列为 protected，含 `tools.session_message.*`、`tools.web_fetch.allow_private`；`tools.shell_limits.*` 在 0.4 起归入执行上限类，仍为 protected。
 - **D5**（Q3）`tools.origin_judge.*`、`tools.read_deny*` 改为 `Writable:true` + `Protected:true`，替代前序“不可写”决定。
-- **D6**（Q4）清单增端点类（`providers.<id>.base_url/type`、模型级 `base_url/type`、`models.judge`，及其回退的 `models.compact`/`compact_model`）、`workspace`、`memory.*.backend`、执行上限类、`log.file`、`tools.disabled`、`rules.file`；显式分类表覆盖全部可写键。
+- **D6**（Q4）清单增端点类（`providers.<id>.base_url/type`、模型级 `base_url`、`models.judge`）、`workspace`、`memory.*.backend`；显式分类表覆盖全部可写键。
+  - 评审补入、Q4 未涵盖、需你在 Gate 上确认的键：模型级 `type`、执行上限类（`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.max_*`）、`log.file`、`tools.disabled`、`rules.file`。
 - **D7**（Q5）CLI 判定如实定位为“挡直接调用、挡不住刻意绕过”；接受“兼容与误拒”中列出的误拒。
 - **D8**（Q6）启动时变化提示：逐键摘要快照，只报键名，不阻断。
 - **D9**（Q7）快照只在 chat 横幅展示后整体推进；run、ACP、SDK 只提示不推进；人工 set/unset 只更新被改键。
-- **D10**（Q8）按 `config.yaml` 原始值比较，不比较 `${VAR}` 展开值，限制写入文档。
+- **D10**（Q8）按 `config.yaml` 中未展开 `${VAR}` 的值比较，限制写入文档。
 
 用户选项记录（均选推荐项）：
 - Q4 清单：推荐补端点类（`providers.<id>.base_url/type`、模型级 `base_url`）、`workspace`、`models.judge`、`memory.*.backend`，防漏标测试改为覆盖全部可写键的显式分类表；未提出其他选项。
