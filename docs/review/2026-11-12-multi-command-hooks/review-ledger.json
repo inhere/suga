@@ -1,0 +1,337 @@
+{
+ "artifact_type": "review_ledger",
+ "schema_version": "2.1.0",
+ "candidate_progression": "DOCUMENT_REVISION",
+ "candidate": {
+  "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+  "commit": "b11cd71747bb9d3ff5edadf4c2f7962752e5c66d",
+  "subject_path": "docs/design/2026-11-12-multi-command-hooks-design.md",
+  "document_revision": "0.1"
+ },
+ "author_id": "author-main",
+ "required_rounds": [
+  1
+ ],
+ "required_sections": [
+  "修订记录",
+  "背景与目标",
+  "名词",
+  "范围与非目标",
+  "已确认事实与规范",
+  "总体方案",
+  "架构",
+  "关键流程",
+  "安全、数据、运维与回滚",
+  "决策",
+  "待确认事项",
+  "结论与人工计划 Gate"
+ ],
+ "required_axes": [
+  "Standards/Governance",
+  "Spec/Executability"
+ ],
+ "receipts": [
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "b11cd71747bb9d3ff5edadf4c2f7962752e5c66d",
+    "subject_path": "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "document_revision": "0.1"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r1",
+   "session_id": "reviewer-standards-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "docs/review/2026-11-12-multi-command-hooks/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-12-multi-command-hooks/standards-review.md",
+    "source_report_commit_oid": "4edfb88989bae04f96ad2ade310aa3dac0fd8cb6",
+    "source_report_blob_oid": "46df14c2a7958003a03bc1ad25b4be46f91df992",
+    "direct_repo_paths": [
+     "docs/design/2026-11-12-multi-command-hooks-design.md",
+     "docs/review/2026-11-12-multi-command-hooks/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "现有 hooks.command 配置行为不变",
+    "多个命令共存时 Stop block 生效",
+    "新键受 protected 约束"
+   ],
+   "findings": [
+    {
+     "finding_id": "HS1",
+     "severity": "HIGH",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "推荐 A 含无验收机制，缺最小选项",
+     "impact": "推荐 A 含无验收机制，缺最小选项",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HS2",
+     "severity": "HIGH",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "推荐 A 反转 F33 未披露",
+     "impact": "推荐 A 反转 F33 未披露",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HS3",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "校验包归属与依赖方向",
+     "impact": "校验包归属与依赖方向",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HS4",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "GR108/GR109 引用",
+     "impact": "GR108/GR109 引用",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HS5",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "发布顺序与 protected",
+     "impact": "发布顺序与 protected",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "b11cd71747bb9d3ff5edadf4c2f7962752e5c66d",
+    "subject_path": "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "document_revision": "0.1"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r1",
+   "session_id": "reviewer-spec-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "docs/review/2026-11-12-multi-command-hooks/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-12-multi-command-hooks/spec-review.md",
+    "source_report_commit_oid": "4edfb88989bae04f96ad2ade310aa3dac0fd8cb6",
+    "source_report_blob_oid": "d5baa3ee68721e4e978b5827cf04d75c3f121708",
+    "direct_repo_paths": [
+     "docs/design/2026-11-12-multi-command-hooks-design.md",
+     "docs/review/2026-11-12-multi-command-hooks/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "现有 hooks.command 配置行为不变",
+    "多个命令共存时 Stop block 生效",
+    "新键受 protected 约束"
+   ],
+   "findings": [
+    {
+     "finding_id": "HF1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "stop_args 需配 stop_wait_sec 的校验未限新条目，现有配置启动失败",
+     "impact": "[BUG] stop_args 需配 stop_wait_sec 的校验未限新条目，现有配置启动失败",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "现有配置行为不变",
+     "necessary_causal_chain": [
+      "校验作用于全部",
+      "现有 stop_background+stop_args",
+      "chat 启动失败"
+     ],
+     "minimal_owner": [
+      "校验规则与兼容"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "HF2",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Stop 合并结果字段",
+     "impact": "Stop 合并结果字段",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF3",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Interrupt 阶段切换竞态",
+     "impact": "Interrupt 阶段切换竞态",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF4",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "PostToolUse 原始工具名",
+     "impact": "PostToolUse 原始工具名",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF5",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "events 与 glob 关系",
+     "impact": "events 与 glob 关系",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF6",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "跨键 config set 校验",
+     "impact": "跨键 config set 校验",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Reader 落点",
+     "impact": "Reader 落点",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF8",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Q6-A 隐藏代价 F33",
+     "impact": "Q6-A 隐藏代价 F33",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF9",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Interrupt trace 与来源",
+     "impact": "Interrupt trace 与来源",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF10",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "gofer 影响描述",
+     "impact": "gofer 影响描述",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF11",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "验证要求缺项",
+     "impact": "验证要求缺项",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF12",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "小偏差",
+     "impact": "小偏差",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  }
+ ],
+ "dependency_edges": [
+  {
+   "from": "已确认事实与规范",
+   "to": "总体方案"
+  },
+  {
+   "from": "总体方案",
+   "to": "关键流程"
+  },
+  {
+   "from": "总体方案",
+   "to": "安全、数据、运维与回滚"
+  }
+ ],
+ "global_invariants": [
+  "现有 hooks.command 配置行为不变",
+  "多个命令共存时 Stop block 生效",
+  "新键受 protected 约束"
+ ],
+ "open_core_blockers": [
+  "HF1"
+ ],
+ "status": "BLOCKED"
+}
