@@ -122,6 +122,10 @@ type Options struct {
 	// (--add-dir, SUGA_ADD_DIRS, already parsed by the front end). A session
 	// keeps them in its metadata; ApplyAddDirs publishes the merged set.
 	AddDirs []adddir.Dir
+	// SkipProtectedCheck turns off the startup comparison of the protected
+	// settings (see protected.go). `suga session compact` sets it: that process
+	// starts no session and must not create the snapshot.
+	SkipProtectedCheck bool
 	// sessionDirs is the live set the tools and the environment prompt read. It
 	// is created by OpenCLI so the chat approver and the tools share one set; nil
 	// (a runtime assembled directly) means no additional directory.
@@ -204,6 +208,9 @@ type Runtime struct {
 
 	repo         *store.Store
 	capabilities defaultCapabilities
+	// protectedState is the startup comparison of the protected settings of this
+	// process (nil: skipped, or the configuration was never loaded).
+	protectedState *appconfig.ProtectedState
 	// sessionDirs is the handle on the session's added directories: ApplyAddDirs
 	// publishes them through it, chat's :add-dir/:rm-dir commands and the
 	// outside-directory question change them through it too, so the metadata and
@@ -397,6 +404,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		return nil, err
 	}
 	workspace, ruleCWD, allowWrite, servers := opts.Workspace, opts.RuleCWD, opts.AllowWrite, opts.Servers
+	// The protected settings of the config file are compared with the snapshot the
+	// user last confirmed, once per process (protected.go).
+	protectedState := protectedCheck(opts)
 	approval := approvalPolicy{}
 	if opts.approvalPolicy != nil {
 		approval = *opts.approvalPolicy
@@ -743,6 +753,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		Plans:              plans,
 		Ledger:             ledger,
 		MemoryIndex:        mem.index,
+		ProtectedNotice:    protectedNoticeCallback(protectedState),
 		Workspace:          workspace,
 		Version:            buildVersion,
 		Mode:               runMode(allowWrite),
@@ -869,7 +880,8 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			return string(policyAction), rule, scope, protected, pathProtected
 		},
 		repo: repo, capabilities: capabilities, ContextWindow: contextWindow, Budget: budget,
-		Thinking: settings.Main.ThinkingLevel(), tools: toolRegistry, approval: approval,
+		protectedState: protectedState,
+		Thinking:       settings.Main.ThinkingLevel(), tools: toolRegistry, approval: approval,
 		vision: visionGate, sessionEnv: sessionEnv,
 		AddDirs: dirs, modelOptions: modelOptions, modelSpecs: modelSpecs,
 		fallbacks:        append([]appconfig.ModelSpec(nil), settings.Fallbacks...),

@@ -196,15 +196,18 @@ def run_config_and_models(binary, work):
         fail("secret config value was echoed")
     if (home / "config.yaml").read_bytes() != config_before_secret:
         fail("secret config rejection changed the file")
-    result = command(binary, ["config", "set", "tools.allow_write", "true"], env, ws)
-    expect(result, stdout=["已写入", "tools.allow_write = true", "source = config:"])
+    # Use a non-protected key: `tools.allow_write` and every other setting that
+    # can widen the model's own access is protected, so it round-trips only from a
+    # terminal outside suga and this smoke scenario uses a display key instead.
+    result = command(binary, ["config", "set", "chat.markdown", "false"], env, ws)
+    expect(result, stdout=["已写入", "chat.markdown = false", "source = config:"])
     if "# keep this comment" not in (home / "config.yaml").read_text(encoding="utf-8"):
         fail("config set did not preserve the fixture comment")
-    expect(command(binary, ["config", "get", "tools.allow_write"], env, ws),
-           stdout=["tools.allow_write = true", "source = config:"])
-    expect(command(binary, ["config", "list"], env, ws), stdout=["model = fake/m1", "tools.allow_write = true"])
-    expect(command(binary, ["config", "unset", "tools.allow_write"], env, ws),
-           stdout=["已删除 tools.allow_write"])
+    expect(command(binary, ["config", "get", "chat.markdown"], env, ws),
+           stdout=["chat.markdown = false", "source = config:"])
+    expect(command(binary, ["config", "list"], env, ws), stdout=["model = fake/m1", "chat.markdown = false"])
+    expect(command(binary, ["config", "unset", "chat.markdown"], env, ws),
+           stdout=["已删除 chat.markdown"])
 
     result = command(binary, ["models"], env, ws)
     expect(result, stdout=["Providers (offline)", "fake/unlisted", "No network request was made."])

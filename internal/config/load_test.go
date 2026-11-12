@@ -148,6 +148,55 @@ func TestLoadSugaHomeDotenv(t *testing.T) {
 	})
 }
 
+// TestLoadedConfigBytes covers the contract the startup comparison relies on:
+// one read of the resolved config file, and no recorded bytes before Load.
+func TestLoadedConfigBytes(t *testing.T) {
+	t.Run("not loaded", func(t *testing.T) {
+		gkconfig.Reset()
+		t.Cleanup(gkconfig.Reset)
+		ResetLoadedStateForTest()
+		t.Cleanup(ResetLoadedStateForTest)
+		_, _, ok := LoadedConfigBytes()
+		assert.False(t, ok)
+	})
+
+	t.Run("missing default config is empty", func(t *testing.T) {
+		gkconfig.Reset()
+		t.Cleanup(gkconfig.Reset)
+		ResetLoadedStateForTest()
+		t.Cleanup(ResetLoadedStateForTest)
+		root := t.TempDir()
+		t.Setenv("SUGA_HOME", root)
+		t.Setenv("SUGA_CONFIG", "")
+		t.Chdir(t.TempDir())
+		assert.NoErr(t, Load())
+		path, data, ok := LoadedConfigBytes()
+		assert.True(t, ok)
+		assert.Eq(t, filepath.Join(root, "config.yaml"), path)
+		assert.Eq(t, 0, len(data))
+	})
+
+	t.Run("relative SUGA_CONFIG is resolved before loading", func(t *testing.T) {
+		gkconfig.Reset()
+		t.Cleanup(gkconfig.Reset)
+		ResetLoadedStateForTest()
+		t.Cleanup(ResetLoadedStateForTest)
+		root := t.TempDir()
+		t.Setenv("SUGA_HOME", root)
+		cwd := t.TempDir()
+		t.Chdir(cwd)
+		body := "model: openai/chosen-model\n"
+		assert.NoErr(t, os.WriteFile(filepath.Join(cwd, "chosen.yaml"), []byte(body), 0600))
+		t.Setenv("SUGA_CONFIG", "chosen.yaml")
+		assert.NoErr(t, Load())
+		path, data, ok := LoadedConfigBytes()
+		assert.True(t, ok)
+		assert.Eq(t, filepath.Join(cwd, "chosen.yaml"), path)
+		assert.Eq(t, body, string(data))
+		assertMainModel(t, "chosen-model")
+	})
+}
+
 func assertMainModel(t *testing.T, want string) {
 	t.Helper()
 	settings, err := ReadModelSettings("")

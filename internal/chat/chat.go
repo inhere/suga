@@ -60,6 +60,14 @@ type Options struct {
 	// ApprovalMode is the start-up approval tier (--approve/--yolo) the banner
 	// names; "" (the configured default) adds no line.
 	ApprovalMode string
+	// ProtectedChange is what the protected settings of the config file changed
+	// to since the user last confirmed them (empty: nothing changed) and
+	// ProtectedPath the file the notice names. Both go into the banner.
+	ProtectedChange appconfig.ProtectedChange
+	ProtectedPath   string
+	// OnBannerShown runs once the banner is on screen: the CLI advances the
+	// protected settings snapshot there, so the notice is shown exactly once.
+	OnBannerShown func()
 	// Markdown renders the model's text as terminal markdown (config
 	// chat.markdown, on by default). Only a colored terminal uses it: a pipe,
 	// a redirected output or NO_COLOR keeps the raw text.
@@ -416,6 +424,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		Provider: runner.ProviderName(), Model: runner.Model(),
 		Thinking: opts.Thinking, ContextWindow: opts.ContextWindow,
 		WriteTools: opts.WriteTools, ApprovalMode: opts.ApprovalMode, Markdown: opts.Markdown, Spinner: opts.Spinner,
+		ProtectedChange: opts.ProtectedChange, ProtectedPath: opts.ProtectedPath,
 		Workspace:     workspace,
 		AgentProgress: opts.AgentProgress,
 		AgentTasks:    agentTasks,
@@ -541,6 +550,11 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	}()
 
 	render.Banner()
+	// The banner is on screen: what it announced as unconfirmed is confirmed now
+	// (the CLI advances the protected settings snapshot here).
+	if opts.OnBannerShown != nil {
+		opts.OnBannerShown()
+	}
 	// Continuing an existing session: show the model's last reply above the first
 	// prompt, so the person can go on from it (read-only: no model call, no entry
 	// written, no hook). A handoff (--from) starts a new session and shows nothing.

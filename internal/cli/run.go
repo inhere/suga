@@ -233,6 +233,12 @@ func runPersonalWithOptions(ctx context.Context, mode string, opts personalOptio
 		opts.contract, opts.schemaText = contract, schema
 	}
 	opts.translator = runtime.Translator
+	// A changed protected configuration is named on stderr once per run, before the
+	// first turn: run only reports it, the snapshot advances in chat (after the
+	// banner showed it).
+	if protected := runtime.ProtectedState(); protected != nil && !protected.Change.Empty() {
+		fmt.Fprintln(stderr, appconfig.ProtectedChangeText(opts.translator, protected.Change, protected.Path))
+	}
 	return executePersonalRun(ctx, runtime.Runner, opts, stdout, stderr)
 }
 

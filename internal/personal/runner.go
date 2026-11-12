@@ -183,6 +183,12 @@ type Config struct {
 	// binds it to this runner's store (loaded_tools meta) and event recorder,
 	// and its tool list is added to the segment context.
 	Visibility *tools.Visibility
+	// ProtectedNotice reports what changed in the protected settings of the
+	// config file since the user last confirmed them, once per session (the
+	// wiring layer owns the comparison and the deduplication). ok=false leaves
+	// the turn without the config event. nil (a sub-agent's runner) records
+	// nothing.
+	ProtectedNotice func(sessionID string) (keys []string, wholeFile, unreadable bool, ok bool)
 	// Price looks up the configured price of a (provider id, model); nil or a
 	// miss means cost stays 0 unless the provider reports it.
 	Price func(provider, model string) (Price, bool)
@@ -666,6 +672,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 		history.items = append(history.items, item)
 	}
 	// What this turn starts with (D9); best-effort like every event.
+	// A session whose first turn runs on changed protected settings records it
+	// once, next to the turn context it belongs to.
+	r.recordProtectedNotice(ctx, model.ID)
 	r.recordTurnContext(ctx, model, history.segment, history.eff)
 	if err := emit(ctx, req.Emit, Event{Kind: "run_started", SessionID: result.SessionID, TurnID: result.TurnID, RunID: result.RunID}); err != nil {
 		return r.finish(ctx, model, result, turnStart, usage, nil, err, req.Emit)

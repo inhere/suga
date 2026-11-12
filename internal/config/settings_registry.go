@@ -38,12 +38,19 @@ type ValueType = ConfigValueType
 // ConfigKey describes one supported configuration path. Reader is the existing
 // typed reader used to validate the key; an empty Reader means that the key is
 // known but has no typed reader and must not be reported as validated.
+//
+// Protected marks a key that widens what the model may execute or read/write,
+// introduces external programs or instructions, changes where requests go, or
+// turns off the checks bounding that; only a human in a terminal outside suga
+// may change it (see ProtectedConfigKeys). Protected says nothing about
+// Writable: a secret or read-only key can be protected too.
 type ConfigKey struct {
 	Pattern   string
 	Type      ConfigValueType
 	Sensitive bool
 	Writable  bool
 	Reader    string
+	Protected bool
 }
 
 // KeyDescriptor is the descriptive name used by config command adapters.
@@ -103,7 +110,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "models.handoff", Type: ConfigTypeString, Writable: true, Reader: "model"},
 	// models.judge: the model of the external-origin judge (tools.origin_judge.*);
 	// unset falls back to models.compact, then the main model.
-	{Pattern: "models.judge", Type: ConfigTypeString, Writable: true, Reader: "model"},
+	{Pattern: "models.judge", Type: ConfigTypeString, Writable: true, Reader: "model", Protected: true},
 	{Pattern: "max_steps", Type: ConfigTypeInt, Writable: true, Reader: "max_steps"},
 	{Pattern: "budget.tokens", Type: ConfigTypeInt, Writable: true, Reader: "budget"},
 	{Pattern: "budget.cost_usd", Type: ConfigTypeFloat, Writable: true, Reader: "budget"},
@@ -111,14 +118,14 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "budget.estimate", Type: ConfigTypeEnum, Writable: true, Reader: "budget"},
 	{Pattern: "budget.estimate_factor", Type: ConfigTypeFloat, Writable: true, Reader: "budget"},
 	{Pattern: "budget.notice_ratio", Type: ConfigValueType("float"), Writable: true, Reader: "budget"},
-	{Pattern: "workspace", Type: ConfigTypeString, Writable: true},
+	{Pattern: "workspace", Type: ConfigTypeString, Writable: true, Protected: true},
 	// run.deadline_env: the env var name carrying this run's job deadline
 	// (gofer sets GOFER_JOB_DEADLINE); empty = the deadline hint is off.
 	{Pattern: "run.deadline_env", Type: ConfigTypeString, Writable: true},
 	{Pattern: "serpapi_key", Type: ConfigTypeString, Sensitive: true},
 	// The global outbound proxy: url is sensitive (it may embed credentials and
 	// is only ever reported masked), sites is the allowlist that opts hosts in.
-	{Pattern: "network.proxy.url", Type: ConfigTypeString, Sensitive: true, Reader: "network_proxy"},
+	{Pattern: "network.proxy.url", Type: ConfigTypeString, Sensitive: true, Reader: "network_proxy", Protected: true},
 	{Pattern: "network.proxy.sites", Type: ConfigTypeStringList, Writable: true, Reader: "network_proxy"},
 	{Pattern: "retry.max_attempts", Type: ConfigTypeInt, Writable: true, Reader: "retry"},
 	{Pattern: "retry.base_delay", Type: ConfigTypeDuration, Writable: true, Reader: "retry"},
@@ -159,7 +166,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "chat.diff_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_highlight", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_max_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
-	{Pattern: "chat.ask_outside_dirs", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
+	{Pattern: "chat.ask_outside_dirs", Type: ConfigTypeSwitch, Writable: true, Reader: "chat", Protected: true},
 	{Pattern: "chat.undo_confirm", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.notify", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},
 	{Pattern: "chat.notify_after", Type: ConfigTypeDuration, Writable: true, Reader: "chat"},
@@ -175,11 +182,11 @@ var configKeyDescriptors = []ConfigKey{
 	// carries it, so `config get/set chat.colors` goes through the same reader as
 	// the other chat.* keys.
 	{Pattern: "chat.colors", Type: ConfigTypeStringMap, Writable: true, Reader: "chat"},
-	{Pattern: "rules.file", Type: ConfigTypeString, Writable: true, Reader: "rules"},
+	{Pattern: "rules.file", Type: ConfigTypeString, Writable: true, Reader: "rules", Protected: true},
 	{Pattern: "transcripts", Type: ConfigTypeSwitch, Writable: true},
-	{Pattern: "tasks.max_running", Type: ConfigTypeInt, Writable: true, Reader: "tasks"},
-	{Pattern: "tasks.max_duration", Type: ConfigTypeDuration, Writable: true, Reader: "tasks"},
-	{Pattern: "tasks.max_output_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tasks"},
+	{Pattern: "tasks.max_running", Type: ConfigTypeInt, Writable: true, Reader: "tasks", Protected: true},
+	{Pattern: "tasks.max_duration", Type: ConfigTypeDuration, Writable: true, Reader: "tasks", Protected: true},
+	{Pattern: "tasks.max_output_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "tasks", Protected: true},
 	{Pattern: "tasks.wake_on_exit", Type: ConfigTypeBool, Writable: true, Reader: "tasks"},
 	{Pattern: "agents.enabled", Type: ConfigTypeBool, Writable: true, Reader: "agents"},
 	{Pattern: "agents.model", Type: ConfigTypeString, Writable: true, Reader: "agents"},
@@ -189,7 +196,7 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "agents.nudge", Type: ConfigTypeString, Writable: true, Reader: "agents"},
 	{Pattern: "mcp.call_timeout_sec", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "mcp.startup_timeout_sec", Type: ConfigTypeInt, Writable: true},
-	{Pattern: "mcp.servers", Type: ConfigTypeYAML, Writable: true, Reader: "mcp"},
+	{Pattern: "mcp.servers", Type: ConfigTypeYAML, Writable: true, Reader: "mcp", Protected: true},
 	{Pattern: "tools.preferred", Type: ConfigTypeYAML, Writable: true, Reader: "preferred_tools"},
 	{Pattern: "tools.deferred", Type: ConfigTypeEnum, Writable: true},
 	// tools.deferred_native: which native tools may be deferred (auto | never |
@@ -197,15 +204,15 @@ var configKeyDescriptors = []ConfigKey{
 	// table (segment | immediate). MCP tools keep the immediate behaviour.
 	{Pattern: "tools.deferred_native", Type: ConfigTypeYAML, Writable: true, Reader: "deferred_native"},
 	{Pattern: "tools.deferred_apply", Type: ConfigTypeEnum, Writable: true},
-	{Pattern: "tools.allow_write", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.allow_write", Type: ConfigTypeBool, Writable: true, Protected: true},
 	// session_message: the tool that lets a model message the other chat sessions
 	// of this SUGA_HOME, and how deep their automatic replies may go.
-	{Pattern: "tools.session_message.enabled", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.session_message.enabled", Type: ConfigTypeBool, Writable: true, Protected: true},
 	// in_gofer_jobs: a gofer job registers no local message endpoint, so the tool
 	// stays out of its catalog unless the job asks for it (default false).
-	{Pattern: "tools.session_message.in_gofer_jobs", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.session_message.max_hops", Type: ConfigTypeInt, Writable: true},
-	{Pattern: "tools.approval", Type: ConfigTypeEnum, Writable: true},
+	{Pattern: "tools.session_message.in_gofer_jobs", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.session_message.max_hops", Type: ConfigTypeInt, Writable: true, Protected: true},
+	{Pattern: "tools.approval", Type: ConfigTypeEnum, Writable: true, Protected: true},
 	{Pattern: "tools.max_output_bytes", Type: ConfigTypeInt64, Writable: true},
 	{Pattern: "tools.max_spill_bytes", Type: ConfigTypeInt64, Writable: true},
 	{Pattern: "tools.spill.max_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "spill"},
@@ -218,65 +225,71 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.parallel_reads", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.minimize_output", Type: ConfigTypeBool, Writable: true},
 	{Pattern: "tools.loop_guard", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.dependency_roots", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.standards_roots", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.protect_changed_files", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.ask_on_external_origin", Type: ConfigTypeBool, Writable: true},
+	{Pattern: "tools.dependency_roots", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.standards_roots", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.skill_roots", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.protect_changed_files", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.ask_on_external_origin", Type: ConfigTypeBool, Writable: true, Protected: true},
 	// tools.origin_judge.enabled / .timeout: the judge that decides a call the
-	// external-origin screen flagged (see origin_judge.go). Not writable through
-	// `suga config set`, so the model cannot switch the judge off; edit
-	// config.yaml by hand.
-	{Pattern: "tools.origin_judge.enabled", Type: ConfigTypeBool},
-	{Pattern: "tools.origin_judge.timeout", Type: ConfigTypeDuration},
-	{Pattern: "tools.shell", Type: ConfigTypeString, Writable: true},
-	{Pattern: "tools.shell_timeout_max", Type: ConfigTypeInt, Writable: true},
-	{Pattern: "tools.task_timeout_max", Type: ConfigTypeInt, Writable: true},
+	// external-origin screen flagged (see origin_judge.go). Protected: only a
+	// human in a terminal outside suga may change them, so the model cannot
+	// switch the judge off from inside a session.
+	{Pattern: "tools.origin_judge.enabled", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.origin_judge.timeout", Type: ConfigTypeDuration, Writable: true, Protected: true},
+	{Pattern: "tools.shell", Type: ConfigTypeString, Writable: true, Protected: true},
+	{Pattern: "tools.shell_timeout_max", Type: ConfigTypeInt, Writable: true, Protected: true},
+	{Pattern: "tools.task_timeout_max", Type: ConfigTypeInt, Writable: true, Protected: true},
 	{Pattern: "tools.shell_background_after", Type: ConfigTypeDuration, Writable: true},
 	// tools.shell_limits: the memory, process count and CPU time a shell_exec run
 	// and its process tree may use (0 = that limit off, off = all off).
-	{Pattern: "tools.shell_limits.memory", Type: ConfigTypeString, Writable: true},
-	{Pattern: "tools.shell_limits.processes", Type: ConfigTypeInt, Writable: true},
-	{Pattern: "tools.shell_limits.cpu_time", Type: ConfigTypeDuration, Writable: true},
-	{Pattern: "tools.shell_limits.off", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.web_fetch.allow_private", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "tools.web_fetch.proxy", Type: ConfigTypeString, Sensitive: true},
+	{Pattern: "tools.shell_limits.memory", Type: ConfigTypeString, Writable: true, Protected: true},
+	{Pattern: "tools.shell_limits.processes", Type: ConfigTypeInt, Writable: true, Protected: true},
+	{Pattern: "tools.shell_limits.cpu_time", Type: ConfigTypeDuration, Writable: true, Protected: true},
+	{Pattern: "tools.shell_limits.off", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.web_fetch.allow_private", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.web_fetch.proxy", Type: ConfigTypeString, Sensitive: true, Protected: true},
 	// tools.web_fetch.user_agent is the User-Agent the tool sends; empty keeps the
 	// built-in suga-web-fetch/1.0.
 	{Pattern: "tools.web_fetch.user_agent", Type: ConfigTypeString, Writable: true},
-	{Pattern: "tools.interpreters", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "tools.read_roots", Type: ConfigTypeStringList, Writable: true},
+	{Pattern: "tools.interpreters", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "tools.read_roots", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	// tools.read_deny / tools.read_deny_defaults: the files no read tool returns
-	// (see read_deny.go). Not writable through `suga config set`, so the model
-	// cannot switch the ban off; edit config.yaml by hand.
-	{Pattern: "tools.read_deny", Type: ConfigTypeStringList},
-	{Pattern: "tools.read_deny_defaults", Type: ConfigTypeBool},
-	{Pattern: "tools.auto_allow", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "tools.read_only_allow", Type: ConfigTypeStringList, Writable: true},
+	// (see read_deny.go). Protected: only a human in a terminal outside suga may
+	// change them, so the model cannot switch the ban off from inside a session.
+	{Pattern: "tools.read_deny", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "tools.read_deny_defaults", Type: ConfigTypeBool, Writable: true, Protected: true},
+	{Pattern: "tools.auto_allow", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "tools.read_only_allow", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	// tools.disabled: tool names the runtime must not offer to the model at all
 	// (not registered, so absent from the tool list, tool_search and manifest).
-	{Pattern: "tools.disabled", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "memory.write", Type: ConfigTypeEnum, Writable: true},
-	{Pattern: "memory.write_tainted", Type: ConfigTypeEnum, Writable: true},
-	{Pattern: "memory.taint_tools", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "memory.taint_on_spill", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "memory.user.backend", Type: ConfigTypeEnum, Writable: true},
-	{Pattern: "memory.user.command", Type: ConfigTypeString, Writable: true},
-	{Pattern: "memory.user.args", Type: ConfigTypeStringList, Writable: true},
+	{Pattern: "tools.disabled", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "memory.write", Type: ConfigTypeEnum, Writable: true, Protected: true},
+	{Pattern: "memory.write_tainted", Type: ConfigTypeEnum, Writable: true, Protected: true},
+	{Pattern: "memory.taint_tools", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "memory.taint_on_spill", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "memory.user.backend", Type: ConfigTypeEnum, Writable: true, Protected: true},
+	{Pattern: "memory.user.command", Type: ConfigTypeString, Writable: true, Protected: true},
+	{Pattern: "memory.user.args", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	{Pattern: "memory.user.timeout_sec", Type: ConfigTypeInt, Writable: true},
-	{Pattern: "memory.project.backend", Type: ConfigTypeEnum, Writable: true},
-	{Pattern: "memory.project.command", Type: ConfigTypeString, Writable: true},
-	{Pattern: "memory.project.args", Type: ConfigTypeStringList, Writable: true},
+	{Pattern: "memory.project.backend", Type: ConfigTypeEnum, Writable: true, Protected: true},
+	{Pattern: "memory.project.command", Type: ConfigTypeString, Writable: true, Protected: true},
+	{Pattern: "memory.project.args", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	{Pattern: "memory.project.timeout_sec", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "skills.list_max", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "skills.always_load", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "hooks.command", Type: ConfigTypeStringList, Writable: true},
+	{Pattern: "hooks.command", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	{Pattern: "hooks.timeout_ms", Type: ConfigTypeInt, Writable: true},
-	{Pattern: "hooks.stop_args", Type: ConfigTypeStringList, Writable: true},
+	{Pattern: "hooks.stop_args", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	{Pattern: "hooks.stop_wait_sec", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "hooks.stop_background", Type: ConfigTypeBool, Writable: true},
-	{Pattern: "hooks.post_tool_use.tools", Type: ConfigTypeStringList, Writable: true},
-	{Pattern: "hooks.post_tool_use.name", Type: ConfigTypeString, Writable: true},
+	{Pattern: "hooks.post_tool_use.tools", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	{Pattern: "hooks.post_tool_use.name", Type: ConfigTypeString, Writable: true, Protected: true},
+	// hooks.pre_tool_use.tools / .name narrow the execution-time deny gate to
+	// matching calls (see internal/hooks). They are not writable through
+	// `suga config set` - the registry carries them so the startup comparison
+	// reports a change made to config.yaml directly.
+	{Pattern: "hooks.pre_tool_use.tools", Type: ConfigTypeStringList, Protected: true},
+	{Pattern: "hooks.pre_tool_use.name", Type: ConfigTypeString, Protected: true},
 	{Pattern: "tools.snapshots.enabled", Type: ConfigTypeBool, Writable: true, Reader: "snapshots"},
 	{Pattern: "tools.snapshots.max_file_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "snapshots"},
 	{Pattern: "tools.snapshots.max_session_bytes", Type: ConfigTypeInt64, Writable: true, Reader: "snapshots"},
@@ -284,17 +297,17 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "tools.snapshots.keep_turns", Type: ConfigTypeInt, Writable: true, Reader: "snapshots"},
 	{Pattern: "tools.snapshots.keep_days", Type: ConfigTypeInt, Writable: true, Reader: "snapshots"},
 	{Pattern: "tools.snapshots.on_error", Type: ConfigTypeEnum, Writable: true, Reader: "snapshots"},
-	{Pattern: "tools.approval_rules.enabled", Type: ConfigTypeBool, Writable: true, Reader: "approval_rules"},
-	{Pattern: "tools.approval_rules.always_prefix_tokens", Type: ConfigTypeInt, Writable: true, Reader: "approval_rules"},
-	{Pattern: "tools.approval_rules.persist_ask", Type: ConfigTypeBool, Writable: true, Reader: "approval_rules"},
-	{Pattern: "tools.approval_rules.project_trust", Type: ConfigTypeStringMap, Writable: true, Reader: "approval_rules"},
+	{Pattern: "tools.approval_rules.enabled", Type: ConfigTypeBool, Writable: true, Reader: "approval_rules", Protected: true},
+	{Pattern: "tools.approval_rules.always_prefix_tokens", Type: ConfigTypeInt, Writable: true, Reader: "approval_rules", Protected: true},
+	{Pattern: "tools.approval_rules.persist_ask", Type: ConfigTypeBool, Writable: true, Reader: "approval_rules", Protected: true},
+	{Pattern: "tools.approval_rules.project_trust", Type: ConfigTypeStringMap, Writable: true, Reader: "approval_rules", Protected: true},
 	{Pattern: "gc.retention.interactive", Type: ConfigTypeDuration, Writable: true, Reader: "gc_retention"},
 	{Pattern: "gc.retention.noninteractive", Type: ConfigTypeDuration, Writable: true, Reader: "gc_retention"},
 	// log.* configures the process logger (internal/wiring/logging.go): level,
 	// the rotating file (or off), the stderr copy, the rotation size, how many
 	// rotated files are kept and whether they are compressed.
 	{Pattern: "log.level", Type: ConfigTypeEnum, Writable: true, Reader: "log"},
-	{Pattern: "log.file", Type: ConfigTypeString, Writable: true, Reader: "log"},
+	{Pattern: "log.file", Type: ConfigTypeString, Writable: true, Reader: "log", Protected: true},
 	{Pattern: "log.stderr", Type: ConfigTypeEnum, Writable: true, Reader: "log"},
 	{Pattern: "log.max_size", Type: ConfigTypeInt64, Writable: true, Reader: "log"},
 	{Pattern: "log.keep", Type: ConfigTypeInt, Writable: true, Reader: "log"},
@@ -308,8 +321,8 @@ var (
 )
 
 var providerKeyDescriptors = map[string]ConfigKey{
-	"type":              {Pattern: "providers.<id>.type", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
-	"base_url":          {Pattern: "providers.<id>.base_url", Type: ConfigTypeString, Writable: true, Reader: "providers"},
+	"type":              {Pattern: "providers.<id>.type", Type: ConfigTypeEnum, Writable: true, Reader: "providers", Protected: true},
+	"base_url":          {Pattern: "providers.<id>.base_url", Type: ConfigTypeString, Writable: true, Reader: "providers", Protected: true},
 	"api_key":           {Pattern: "providers.<id>.api_key", Type: ConfigTypeString, Sensitive: true, Reader: "providers"},
 	"headers":           {Pattern: "providers.<id>.headers", Type: ConfigTypeStringMap, Sensitive: true, Reader: "providers"},
 	"context_window":    {Pattern: "providers.<id>.context_window", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
@@ -327,8 +340,8 @@ var providerKeyDescriptors = map[string]ConfigKey{
 
 var providerModelKeyDescriptors = map[string]ConfigKey{
 	"model_id":          {Pattern: "providers.<id>.models.<name>.model_id", Type: ConfigTypeString, Writable: true, Reader: "providers"},
-	"type":              {Pattern: "providers.<id>.models.<name>.type", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
-	"base_url":          {Pattern: "providers.<id>.models.<name>.base_url", Type: ConfigTypeString, Writable: true, Reader: "providers"},
+	"type":              {Pattern: "providers.<id>.models.<name>.type", Type: ConfigTypeEnum, Writable: true, Reader: "providers", Protected: true},
+	"base_url":          {Pattern: "providers.<id>.models.<name>.base_url", Type: ConfigTypeString, Writable: true, Reader: "providers", Protected: true},
 	"context_window":    {Pattern: "providers.<id>.models.<name>.context_window", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
 	"max_output_tokens": {Pattern: "providers.<id>.models.<name>.max_output_tokens", Type: ConfigTypeInt, Writable: true, Reader: "providers"},
 	"thinking":          {Pattern: "providers.<id>.models.<name>.thinking", Type: ConfigTypeEnum, Writable: true, Reader: "providers"},
@@ -360,6 +373,31 @@ var providerNestedDescriptors = map[string]ConfigKey{
 // model paths are represented by the dynamic patterns returned by MatchConfigKey.
 func KnownConfigKeys() []ConfigKey {
 	out := append([]ConfigKey(nil), configKeyDescriptors...)
+	sort.Slice(out, func(i, j int) bool { return out[i].Pattern < out[j].Pattern })
+	return out
+}
+
+// ProtectedConfigKeys returns the descriptors of every key marked Protected:
+// the fixed keys plus the dynamic provider and model descriptors, whose Pattern
+// keeps its <id> / <name> placeholder. The result is sorted by Pattern so the
+// callers (startup comparison, registry tests) see a stable order.
+func ProtectedConfigKeys() []ConfigKey {
+	out := make([]ConfigKey, 0, len(configKeyDescriptors))
+	for _, descriptor := range configKeyDescriptors {
+		if descriptor.Protected {
+			out = append(out, descriptor)
+		}
+	}
+	for _, table := range []map[string]ConfigKey{
+		providerKeyDescriptors, providerModelKeyDescriptors,
+		providerModelNestedDescriptors, providerNestedDescriptors,
+	} {
+		for _, descriptor := range table {
+			if descriptor.Protected {
+				out = append(out, descriptor)
+			}
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Pattern < out[j].Pattern })
 	return out
 }

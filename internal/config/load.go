@@ -1,10 +1,12 @@
 package axconfig
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	gkconfig "github.com/gookit/config/v2"
 	"github.com/gookit/config/v2/yaml"
@@ -16,16 +18,40 @@ import (
 // embeds the agent (pkg/sugasdk) reads it to keep one configuration at a time.
 var loadedHome string
 
+// loadedConfigState is the one read of the config file Load loaded from.
+type loadedConfigState struct {
+	path string
+	data []byte
+	ok   bool
+}
+
+// loadedConfig is the exact bytes Load read, so the startup comparison of the
+// protected settings and the values the process actually runs on come from one
+// read of one file. ok is false until Load succeeded in this process.
+var loadedConfig loadedConfigState
+
 // LoadedHome returns the root Load loaded the configuration from, and whether
 // Load ran in this process at all.
 func LoadedHome() (string, bool) {
 	return loadedHome, loadedHome != ""
 }
 
-// ResetLoadedStateForTest forgets the loaded root, so a test can load another
-// SUGA_HOME. Tests call it from their cleanup; production code never does.
+// LoadedConfigBytes returns the absolute path of the config file Load read, the
+// bytes it loaded and whether Load succeeded in this process. A missing default
+// config file leaves data empty.
+func LoadedConfigBytes() (path string, data []byte, ok bool) {
+	if !loadedConfig.ok {
+		return "", nil, false
+	}
+	return loadedConfig.path, loadedConfig.data, true
+}
+
+// ResetLoadedStateForTest forgets the loaded root and config bytes, so a test
+// can load another SUGA_HOME. Tests call it from their cleanup; production code
+// never does.
 func ResetLoadedStateForTest() {
 	loadedHome = ""
+	loadedConfig = loadedConfigState{}
 }
 
 // Load initializes environment and YAML-backed configuration sources for the
@@ -48,19 +74,51 @@ func Load() error {
 
 	gkconfig.AddDriver(yaml.Driver)
 	gkconfig.WithOptions(gkconfig.ParseEnv)
-	if configPath := os.Getenv("SUGA_CONFIG"); configPath != "" {
-		if err := gkconfig.LoadFiles(configPath); err != nil {
-			return fmt.Errorf("load SUGA_CONFIG: %w", err)
+	// Resolve the config file before anything could change the working directory:
+	// a relative SUGA_CONFIG is relative to the directory suga was started in.
+	configPath := filepath.Join(privateDir, "config.yaml")
+	explicit := strings.TrimSpace(os.Getenv("SUGA_CONFIG")) != ""
+	if explicit {
+		resolved, err := filepath.Abs(strings.TrimSpace(os.Getenv("SUGA_CONFIG")))
+		if err != nil {
+			return fmt.Errorf("resolve SUGA_CONFIG: %w", err)
 		}
-		return validateLoadedSettings()
+		configPath = resolved
 	}
-	// Like .env, config.yaml is read from SUGA_HOME only: a config.yaml in the
-	// user's project is that project's file, not suga's.
-	if err := gkconfig.LoadExists(filepath.Join(privateDir, "config.yaml")); err != nil {
-		slog.Error("loading config file", "err", err)
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// Like .env, config.yaml is read from SUGA_HOME only: a config.yaml in the
+		// user's project is that project's file, not suga's. A missing default file
+		// means an empty configuration; an explicitly chosen file must exist.
+		if !explicit && errors.Is(err, os.ErrNotExist) {
+			data = []byte{}
+		} else if explicit {
+			return fmt.Errorf("load SUGA_CONFIG: %w", err)
+		} else {
+			slog.Error("loading config file", "err", err)
+			return err
+		}
+	}
+	// The bytes are read once and loaded from memory (not through the files) so
+	// the startup comparison of the protected settings sees the same content.
+	if len(data) > 0 {
+		format := strings.TrimPrefix(strings.ToLower(filepath.Ext(configPath)), ".")
+		if format == "" {
+			format = "yaml"
+		}
+		if err := gkconfig.LoadSources(format, data); err != nil {
+			if explicit {
+				return fmt.Errorf("load SUGA_CONFIG: %w", err)
+			}
+			slog.Error("loading config file", "err", err)
+			return err
+		}
+	}
+	if err := validateLoadedSettings(); err != nil {
 		return err
 	}
-	return validateLoadedSettings()
+	loadedConfig = loadedConfigState{path: configPath, data: data, ok: true}
+	return nil
 }
 
 // validateLoadedSettings runs startup validation for settings whose malformed
