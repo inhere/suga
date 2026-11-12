@@ -4,6 +4,17 @@
 
 ## [未发布]
 
+### 新增
+
+- 安全相关配置（protected 键）：放宽检查、扩大读写或执行范围、引入外部程序或指令、改变请求去向的配置键标为 protected，按用途分为执行类、放宽类、执行上限类、端点类、裁决与 `log.file`（完整清单见 `docs/usage/gofer-personal-agent.md` 的“安全相关配置”一节）；`suga config set/unset` 只能在 suga 之外的终端里改它们，会话内调用（`shell_exec`、chat `!cmd`、hook 脚本）或 stdin 不是终端（`echo … | suga config set`、Git Bash/mintty、Gofer job 脚本）时退出码 2、配置文件不变，提示改为在终端执行或直接编辑配置文件。非 protected 键不受影响（suga-hyj7）。
+- 启动时的变化提示：chat、run、ACP 与 SDK 读取配置后，把 protected 键的取值摘要与 `$SUGA_HOME/run/protected-config/` 下的快照比较（按 `config.yaml` 里未展开 `${VAR}` 的原始值，注释与缩进不算改动；无法逐键读取的写法比较整个文件）；有改动时 chat 横幅列出键名（不含取值）并在展示后推进快照，run 向 stderr 写一行，会话首个回合记一条 `kind=config`、`name=protected_config_changed` 的 trace；首次运行只建快照，`suga compact` 不比较，快照无法读取时按全部 protected 键已改动提示（suga-hyj7）。
+- 不可写的 `hooks.pre_tool_use.tools`、`hooks.pre_tool_use.name` 描述符（此前未登记，只参与启动比较）（suga-hyj7）。
+
+### 变更
+
+- `tools.origin_judge.enabled`、`tools.origin_judge.timeout`、`tools.read_deny`、`tools.read_deny_defaults` 由“任何调用都不可写”（v0.55.0）改为 protected 键：在 suga 之外的终端里可以 `suga config set/unset`，会话内与非终端调用仍被拒绝（suga-hyj7）。
+- `network.proxy.url`、`tools.web_fetch.proxy` 作为端点类参与启动比较（仍是秘密键，不能经 `suga config set` 写入，只报键名不报取值）。
+
 ## [0.55.0] - 2026-11-11
 
 本版加入审批档位（`--approve`/`--yolo`）、外部来源小模型裁决与敏感路径禁读（设计 `docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md`），并含 0.54.10 的重试预算修复。

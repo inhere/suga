@@ -121,8 +121,8 @@ MCP 工具默认一律不放行，由 YAML 中两个 glob 列表控制，条目�
 - `tools.dependency_roots`（缺省 `true`）、`tools.standards_roots`（缺省 `true`）与 `tools.read_roots`（目录列表，支持 `~`，须为已存在的绝对路径）：工作区外的只读目录。`file_read`、`file_list`、`file_grep`、`file_find` 可用绝对路径读取其中文件，写工具与 `shell_exec` 的工作目录不受影响。自动识别的依赖根只取源码目录：Go 模块缓存（`GOMODCACHE`，或 `go env -w` 写的值，或 `GOPATH/pkg/mod`）、Go 标准库（`GOROOT/src`，未设置时按 PATH 中 `go` 的位置推断）、Rust crate 源码（`CARGO_HOME/registry/src`），不会放开整个 `~/.cargo`、`~/.m2` 这类含凭据的目录；Java 依赖多为 jar，需要时把解压后的源码目录写进 `tools.read_roots`。开启 `tools.standards_roots` 后，`IDEV_STD_RELEASES_ROOT` 或兼容的 `INHERE_DEV_STANDARDS_ROOT` 若指向已存在目录就加入 idev-std 发行根；再从工作区向上查找带 `standards.json` 的工作空间根，把存在的 `<工作空间根>/tmp/idev-std` 加入加载产物根。识别结果列在提示词的环境一节，grep/find 在这些目录里输出绝对路径；重复路径会合并。开启 `tools.skill_roots`（缺省 `true`）后，工作区外的 skill 根（`SUGA_HOME/skills`、`~/.agents/skills`，目录存在才收录；工作区内的 skill 根本就可达，不重复加入）也加入只读根路，模型读 skill 的 `references/` 等文件不再触发目录授权，写工具与 shell 的审批不变。
 - `tools.protect_changed_files`（缺省 `true`）：`file_write` / `file_edit` 拒绝覆盖“自本会话上次 `file_read` / 写入之后被外部修改过”的文件（按大小 + 修改时间判断），错误提示先 `file_read` 再改；从未读过的文件与新建文件不受影响。每个会话（子 agent 也各自）有自己的记录；设为 `false` 关闭。
 - `tools.ask_on_external_origin`（缺省 `true`）：写类 / 执行类工具的参数里含有本会话 `web_fetch` / `web_search` / MCP 工具结果的 40 字节以上原文（其中至少 32 个非空白字节）时，即使 `tools.approval: auto` 也再确认一次（写文件、改文件时参数里的 http(s) URL 不参与比对，执行命令等其他工具照常比对 URL）（chat 询问并注明来源，run / ACP 拒绝并说明）；只读工具不受影响。设为 `false` 关闭。
-- 外部来源裁决：初筛命中后由小模型判断这次调用是在执行用户请求还是在照做外部内容的指令，`allow` 继续、`deny` 拒绝并说明、`ask` 在 chat 询问（run / ACP 拒绝）；出错或超时按上一条处理。模型为 `models.judge`，未配置时用 `models.compact` 或主模型并固定 `thinking: minimal`（推理模型原强度下单次可达数十秒）；`tools.origin_judge.enabled`（缺省 `true`）、`tools.origin_judge.timeout`（缺省 `45s`）只能写在配置文件里，`suga config set` 拒绝修改。
-- 敏感路径禁读：读类工具（`file_read`、`view_image`、`file_symbols`、`file_refs`、`file_grep`、`file_list`、`file_find`）与 `file_edit` 在任何档位都不读取 `.env*`（`.env.example`/`.sample`/`.template` 除外）、`~/.ssh/**`、`~/.aws/credentials`、`~/.gnupg/**`、`~/.netrc`、`~/.docker/config.json`、`~/.git-credentials`、`~/.config/gh/hosts.yml`、`~/.kube/config`、`~/.npmrc`、`~/.pypirc`、`$SUGA_HOME/.env`；列目录与查找只显示文件名并标注“禁读”，搜索跳过并注明跳过数。`tools.read_deny`（glob 列表）追加，`tools.read_deny_defaults: false` 关闭内置列表，两者只能写在配置文件里；`shell_exec` 不在覆盖内。
+- 外部来源裁决：初筛命中后由小模型判断这次调用是在执行用户请求还是在照做外部内容的指令，`allow` 继续、`deny` 拒绝并说明、`ask` 在 chat 询问（run / ACP 拒绝）；出错或超时按上一条处理。模型为 `models.judge`，未配置时用 `models.compact` 或主模型并固定 `thinking: minimal`（推理模型原强度下单次可达数十秒）；`tools.origin_judge.enabled`（缺省 `true`）、`tools.origin_judge.timeout`（缺省 `45s`）属于安全相关配置（protected），只能在 suga 之外的终端里用 `suga config set` 修改或直接编辑配置文件，会话内调用会被拒绝（见下“安全相关配置”）。
+- 敏感路径禁读：读类工具（`file_read`、`view_image`、`file_symbols`、`file_refs`、`file_grep`、`file_list`、`file_find`）与 `file_edit` 在任何档位都不读取 `.env*`（`.env.example`/`.sample`/`.template` 除外）、`~/.ssh/**`、`~/.aws/credentials`、`~/.gnupg/**`、`~/.netrc`、`~/.docker/config.json`、`~/.git-credentials`、`~/.config/gh/hosts.yml`、`~/.kube/config`、`~/.npmrc`、`~/.pypirc`、`$SUGA_HOME/.env`；列目录与查找只显示文件名并标注“禁读”，搜索跳过并注明跳过数。`tools.read_deny`（glob 列表）追加，`tools.read_deny_defaults: false` 关闭内置列表，两者同属安全相关配置（protected），终端里可用 `suga config set` 修改，会话内会被拒绝（见下节）；`shell_exec` 不在覆盖内。
 - `mcp.call_timeout_sec`（缺省 120）：单次 MCP 工具调用的超时。
 - `mcp.startup_timeout_sec`（缺省 30）：单个 MCP server 的 initialize + `tools/list` 发现超时；每个 server 独立计时，一个慢 server 不拉长其他 server 的启动。
 - `mcp.servers[].url` / `transport` / `headers`：Streamable HTTP server。`url` 与 `command` 互斥，`transport` 取 `stdio` 或 `streamable_http`（不写时按字段形状推断，旧 `sse` 明确报错）；`headers` 只在 HTTP 下有效，值里的 `${VAR}` 从进程环境或 `$SUGA_HOME/.env` 展开，日志、manifest 与诊断不回显值。HTTP 与 stdio 的 MCP 工具在权限、`tools.deferred` 与 preferred 上语义相同；同名工具仍按注册顺序 first-wins，冲突可在运行时 manifest 的 `tool_conflicts`（server/tool/kept_by）中查到。
@@ -132,6 +132,23 @@ MCP 工具默认一律不放行，由 YAML 中两个 glob 列表控制，条目�
 - `session_search`（全文检索过往消息、工具结果与摘要）与 `recall`（按 ref 读命中附近的消息，或读已外置输出的带行号文本）：只读；取回的是本会话自己的历史，不算外部内容，不会把会话标为已污染，也不触发“逐字复制外部内容”的写/执行确认（原始网页、搜索或 MCP 结果在首次读取时已记为外部来源，同一会话里照样会被拦）。
 - `suga_manifest`：以 JSON 返回能力清单，等同在主机上跑 `suga inspect manifest --json`（模型、工具及元数据、MCP、skills、记忆后端及选择原因、输出上限）。
 - `memory`：长期记忆，见下节。
+
+### 安全相关配置（protected 键）
+
+能扩大模型可执行、可读写范围，引入外部程序或指令，或改变请求（连同凭据）去向的配置键标为 protected，按用途分六组：
+
+- 执行类：`hooks.command`、`hooks.stop_args`、`hooks.pre_tool_use.tools`、`hooks.pre_tool_use.name`、`hooks.post_tool_use.tools`、`hooks.post_tool_use.name`、`memory.user.command`/`args`/`backend`、`memory.project.command`/`args`/`backend`、`mcp.servers`、`tools.shell`、`tools.interpreters`、`rules.file`；
+- 放宽类：`workspace`、`tools.allow_write`、`tools.approval`、`tools.auto_allow`、`tools.read_only_allow`、`tools.disabled`、`tools.read_roots`、`tools.dependency_roots`、`tools.standards_roots`、`tools.skill_roots`、`tools.ask_on_external_origin`、`tools.protect_changed_files`、`tools.approval_rules.enabled`/`always_prefix_tokens`/`persist_ask`/`project_trust`、`chat.ask_outside_dirs`、`memory.write`、`memory.write_tainted`、`memory.taint_tools`、`memory.taint_on_spill`、`tools.web_fetch.allow_private`、`tools.session_message.enabled`/`in_gofer_jobs`/`max_hops`、`tools.origin_judge.enabled`/`timeout`、`tools.read_deny`、`tools.read_deny_defaults`；
+- 执行上限类：`tools.shell_limits.memory`/`processes`/`cpu_time`/`off`、`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.max_running`/`max_duration`/`max_output_bytes`；
+- 端点类：`providers.<id>.base_url`、`providers.<id>.type`、`providers.<id>.models.<name>.base_url`、`providers.<id>.models.<name>.type`、`network.proxy.url`、`tools.web_fetch.proxy`（后两者是秘密键，只能用 `.env` 里的 `${VAR}` 引用，不能经 `suga config set` 写入）；
+- 裁决：`models.judge`（未配置时裁决回退到压缩模型或主模型，两者不保护，需要固定时请显式配置）；
+- 其他：`log.file`。
+
+**修改方式**：在 suga 之外的终端里执行 `suga config set|unset <键>`，或直接编辑 `config.yaml`。以下情况会被拒绝（退出码 2，配置文件不变，提示“安全相关配置 <键> 只能由你在 suga 之外的终端里修改，或直接编辑 <config.yaml 路径>”）：会话内调用（`shell_exec`、chat 的 `!cmd`、hook 脚本，它们带非空 `SUGA_SESSION_ID`）；stdin 不是终端（`echo … | suga config set …`、Git Bash/mintty、Gofer job 里的脚本）。非 protected 键不受影响，照常可写；`hooks.pre_tool_use.tools`/`name` 即使在这类终端里也不可写（没有自己的子命令，只参与启动比较）。
+
+**启动提示**：chat、run、ACP 与 SDK 读取配置后，把 protected 键的取值摘要与 `$SUGA_HOME/run/protected-config/` 下的快照比较（`SUGA_CONFIG` 指向其他文件时按路径分开存）。比较按 `config.yaml` 中未展开 `${VAR}` 的原始值：注释与缩进变化、键的顺序不算改动，新增或删除 provider、增删某个键算改动；文件里出现顶层字面量点号键、锚点/别名、合并键或多文档时无法逐键比较，改为比较整个文件。有改动时 chat 横幅列出键名（不含取值），run 向 stderr 写一行，会话首个回合记一条 `kind=config`、`name=protected_config_changed` 的 trace（attrs 只含键名，整文件模式下为 `whole_file`）；快照只在 chat 横幅展示后推进，run / ACP / SDK 只提示不推进，`suga compact` 不参与比较。首次运行只建快照不提示；快照无法读取时按全部 protected 键已改动提示，不会静默重建。
+
+**限制**（不是沙箱）：直接改 `config.yaml`、`suga init --force`、`suga data restore` 都不会被阻止，只靠下次打开 chat 的提示兜底；快照文件本身可被改写或删除（删除后按首次运行处理），刻意置空 `SUGA_SESSION_ID` 再加伪终端也能绕过命令行判定；`${VAR}` 经 `.env` 或环境变量改值不在比较范围（`.env` 里的 `SUGA_HOOKS`、`SUGA_APPEND_SYSTEM_PROMPT`、未配 `network.proxy` 时的 `HTTP(S)_PROXY` 同理）；横幅出现之前别人做的改动留到下次提示，`echo /exit | suga chat` 也能让横幅“展示”并推进快照；在 trust 档下外部来源检查被放开，这时只剩命令行判定与启动提示。
 
 ### 写操作快照与回滚
 
