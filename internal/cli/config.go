@@ -272,7 +272,14 @@ func collectConfigKeys(value any, prefix []string, keys map[string]struct{}) {
 }
 
 func writeConfigValue(out io.Writer, value appconfig.ResolvedConfigValue) error {
-	if _, err := fmt.Fprintf(out, "%s = %s\nsource = %s\n", value.Key, formatConfigValue(value.Value), formatConfigSource(value)); err != nil {
+	formatted := formatConfigValue(value.Value)
+	// hooks.commands is a list of mappings: the default value formatting would
+	// print the Go representation, so the config command renders it as the
+	// single-line flow YAML that `config set` accepts again.
+	if value.Key == "hooks.commands" {
+		formatted = formatHookEntries(value.Value)
+	}
+	if _, err := fmt.Fprintf(out, "%s = %s\nsource = %s\n", value.Key, formatted, formatConfigSource(value)); err != nil {
 		return err
 	}
 	return nil
@@ -309,6 +316,25 @@ func formatConfigValue(value any) string {
 		}
 	}
 	return fmt.Sprint(value)
+}
+
+// formatHookEntries renders hooks.commands as one line of flow-style YAML, so
+// the printed value is the same shape `config set` accepts. An unset or
+// unencodable value falls back to formatConfigValue, which prints <unset> for a
+// missing value like every other key.
+func formatHookEntries(value any) string {
+	if value == nil {
+		return formatConfigValue(value)
+	}
+	encoded, err := goccyyaml.MarshalWithOptions(value, goccyyaml.Flow(true))
+	if err != nil {
+		return formatConfigValue(value)
+	}
+	text := strings.TrimSpace(string(encoded))
+	if text == "" || text == "null" {
+		return formatConfigValue(value)
+	}
+	return text
 }
 
 func configInputError(message string) error {
