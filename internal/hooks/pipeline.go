@@ -314,6 +314,7 @@ func (w *pipelineWait) Interrupt(parent context.Context) string {
 			// The Stop event fields are supplied by commandClient's original event
 			// through the caller's event in StartStop; only these fields matter to the
 			// interrupt contract, and the client receives the session environment.
+
 			ctx, cancel := context.WithTimeout(parent, time.Second)
 			client.Call(ctx, interrupt)
 			cancel()
