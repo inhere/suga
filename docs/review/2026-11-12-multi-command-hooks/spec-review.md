@@ -1,136 +1,136 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga chat hooks 多命令设计 第 1 轮 Spec/Executability 评审
+# suga chat hooks 多命令设计 第 2 轮 Spec/Executability 评审
 
 ## 评审目标与范围
 
-- 目标: `inhere-tools/suga` 仓库（Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`）`docs/design/2026-11-12-multi-command-hooks-design.md`，candidate commit `b11cd717`，issue `suga-5xmf`
-- 修订版本: Draft 0.1
+- 目标: `inhere-tools/suga` 仓库（Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`）`docs/design/2026-11-12-multi-command-hooks-design.md`，candidate commit `096c9e93`（上轮 `b11cd717` / 0.1），issue `suga-5xmf`
+- 修订版本: Draft 0.3
 - 评审者: 独立 Spec/Executability 轴评审 agent（Claude，REPORT_ONLY，未改仓库、未提交）
 - 日期: 2026-11-12
-- 排除项: Q1–Q7 选项本身的取舍（只指出推荐项在代码上的不可行或隐藏代价）；Standards/Governance 轴（另一轴负责）；gofer 服务端内部状态机的完整审计
+- 排除项: Q1–Q7 的选择本身（用户已定：Q1 选 M，Q2–Q7 按推荐）；Standards/Governance 轴；gofer 服务端 `sessionrelay` 状态机；IDEV-STD 续跑 hook 的实现
 
 ## 输入与方法
 
-- 规范：`tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/payload.md` 全文；review-contract 与 review 模板取自 `tmp/idev-std/d/3Z3cOanwUM2ILAXHbxiTlQ/payload.md`。
-- 仓库 `AGENTS.md`；设计全文（252 行）。
-- 代码：`internal/hooks/` 全部（`hooks.go` 及 4 个测试文件）；调用方 `internal/chat/{chat.go,chat_turn.go,hooks_gate.go,hooks_record.go,stop_background.go,followup.go}`、`internal/cli/{chat.go,config.go}`、`internal/wiring/localenv.go`、`internal/config/{settings_registry.go,config_candidate.go}`；`internal/personal` 只有注释引用 hooks（`analyze.go:119`），无调用。
-- gofer 侧：`docs/usage/gofer-personal-agent.md:206-214,374-411`；gofer 仓库 `internal/hookrelay/run.go`（事件分发 `:205-262`、Stop `:570-680`、catch-up `:933-937`、harness 判定 `:1082-1084`）、`payload.go`（`stop_hook_active` 只解析不使用）。
-- 依赖方向：`go list -deps ./internal/hooks`（只依赖 `pkg/agentcore/api`）与 `./internal/config`（不依赖 `internal/hooks`）。
-- 方法：逐事件把设计规则映射到现有消费点，检查合并结果在每个消费点的含义是否唯一；对每类发现做同类穷尽。
+- 规范：`tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/payload.md`；review-contract 与 review 模板取自 `tmp/idev-std/d/3Z3cOanwUM2ILAXHbxiTlQ/payload.md`。
+- 上轮本轴报告 `docs/review/2026-11-12-multi-command-hooks/spec-review.md`（HF1–HF12）。
+- 设计 0.3 全文（260 行，`git show 096c9e93:<subject>`）与 `git diff b11cd717..096c9e93 -- <subject>`；按 review-contract 第 2 轮读 diff 与依赖章节，因 §3/§4/架构/验证要求均被重写，实际按全文读。
+- 代码（工作树 HEAD `8b870a79`，`internal/` 下与候选相比无改动）：`internal/hooks/hooks.go` 全文、`hooks_test.go:342-372`；`internal/chat/{hooks_record.go,stop_background.go,hooks_gate.go}` 全文，`chat.go:485-545,552-566,726-858`，`chat_turn.go:240-252,290-302,394-433`；`internal/config/{config_candidate.go,mcp.go}`、`settings_registry.go:36-47,192,268-279,475-492,678-735`；`internal/wiring/localenv.go:184-199`；`internal/cli/chat.go:21,121`；`pkg/agentcore/tasks/tasks.go:493,509-523,658-670,684-710,825-838`。
+- `go list -deps ./internal/config`：只依赖 `internal/i18n`，不经 `internal/hooks`，`internal/hooks → internal/config` 无环。
+- 方法：逐项核对上轮发现的关闭证据；把 0.3 的每条规则（事件集合、两阶段、合并字段、打断、后台、Pre/Post 委托、Reader、trace、gofer 影响、验证）映射到现有消费点，检查结果是否唯一、是否与 D2/AC3 一致；每类发现做同类穷尽。
 
 ## 验收标准
 
-- review-contract（四级 severity + disposition；`CORE_BLOCKING` 限 BUG/SECURITY/DATA/MISSING_FUNCTION/AUTHORITY 并附 necessity proof；同类穷尽）。
-- 设计自身的核心目标与 D2：只配 `hooks.command` 时行为、超时、等待、Interrupt、trace 与现状一致（设计 `:16`、`:31`、`:213`）。
-- 规则实现唯一、可由计划直接拆解；验证要求能证明所述行为（AGENTS.md“验证”节）。
+- review-contract（四级 severity + disposition；`CORE_BLOCKING` 限五类并附 necessity proof；同类穷尽）。
+- 设计核心目标与 AC1–AC4（`:37-38`），特别是 AC3/D2“只配 `hooks.command` 时行为、超时、等待、Interrupt、trace 与现状一致”（`:53`、`:230`）。
+- 规则实现唯一、可由计划直接拆解；验证要求能证明所述行为。
+
+## 上轮发现关闭情况
+
+| 上轮 | 状态 | 证据 |
+|---|---|---|
+| HF1（阻断） | 关闭 | `:123` 新校验只作用于新条目、兼容条目不增加检查；`:218` 补“`stop_background`+`stop_args` 无 `stop_wait_sec`、只配 `stop_args`”启动用例；与 `hooks.go:222-255` 一致 |
+| HF2 | 关闭（新文本引出 HF13） | `:146-154` 写定 `Decision`/`Reason`/`Err`/`Notice`；但未覆盖“流水线被其 ctx 取消”的情况，见 HF13 |
+| HF3 | 关闭（新规则引出 HF15） | `:156-160` 冻结→Interrupt→取消，冻结与启动下一条同锁判定；“两条目之间不发”对兼容单条目改变了现状，见 HF15 |
+| HF4 | 关闭 | M 下 `PreToolName`/`PostToolName` 签名不变（`:185`）；`PostToolUse` 经通用 `Call` 的路由需写明，见 HF18 |
+| HF5 | 关闭 | M 下无 `events`、无条目级 glob |
+| HF6 | 关闭 | M 下新条目有效性不依赖其他 `hooks.*`（`:167`）；默认超时取 `hooks.timeout_ms`，`<=0` 回落 3000（`hooks.go:242-245`），不构成校验约束 |
+| HF7 | 关闭 | `:182` 定为 `internal/config/hooks_entries.go` 的 `ReadHookEntries() ([]HookEntry, error)` + `dispatchConfigReader` `case "hooks"`；与 `ReadMCPServerSettings`（`mcp.go:17`）同模式；`ValidateConfigCandidate` 先把候选载入 gkconfig 再分发（`config_candidate.go:31-44`），无参 Reader 可用 |
+| HF8 | 关闭 | M 下新条目无 PreToolUse 字段（`:168`），与 F33 无冲突 |
+| HF9 | 关闭 | `:83`、`:213` Interrupt 不进 trace；`:224` ptye2e 用假 hook 落盘记录；`:84` 打断来源与 `chat.go:748-812,823-833`、`followup.go:119-123`、`chat_turn.go:429-431`、`chat.go:532-533` 逐一相符 |
+| HF10 | 关闭 | `:211` 列出被推迟的 gofer Stop 职责与 catch-up；一处措辞见 HF20 |
+| HF11 | 部分关闭 | `:218-225` 补齐上轮①–⑥（①中 PreToolUse 多条目在 M 下不再适用）；HF13/HF14/HF15 引出的新验证项未覆盖 |
+| HF12 | 关闭 | `:81` 行号改为 `chat.go:782-790`；`:209`、`:225` `filepath.Base`；`:182`、`:184` 条目错误路径与 `pre_tool_use` glob 文案（现有测试只断言 `post_tool_use` 用例，`hooks_test.go:139-140`，不受影响） |
 
 ## 核对结论摘要（非发现项）
 
-- **事件全集**：与代码一致。chat 只构造 SessionStart（`chat.go:492`）、UserPromptSubmit（`chat_turn.go:235`）、PostToolUse（`chat_turn.go:295`）、Stop（`chat_turn.go:395`）、SessionEnd（`chat.go:539`）、PreToolUse（`hooks_gate.go:51`）、Interrupt（`hooks.go:408`）；无其他 `Event{Name:…}` 构造点。
-- **PreToolUse fail closed 与 updatedInput 串联**：可实现。现有 `UpdatedInput` 是整体替换参数（`hooks_gate.go:72-77`），链式传递语义唯一；`GateOf` 在录制包装前取门（`chat.go:227`），多条目 client 实现 `ToolGate` 即可。
-- **SessionStart/UserPromptSubmit 合并**：`additionalContext` 空行连接与 `appendContext` 现有拼法一致（`chat.go:848-856`）；`termtext.Clean` 保留换行（`termtext.go:54`），多条 notice 用换行拼接可行。
-- **gofer `--wait` 链路**：设计提到的“续跑 block 时 gofer 收不到 Stop、web 显示运行中”**成立**——gofer 的 Stop 是携带 `LastMessage`/`IdleSec`/`ClearProgress` 的心跳并在此打开 relay turn（`run.go:570-583,664`），被短路时这些都不发生；但 suga 侧没有因此失效的契约：gofer 不使用 `stop_hook_active`，下一次注入回合的 UserPromptSubmit 带 `injected=true`（`chat_turn.go:239`），gofer 视为 harness 输入、保持 relay、并经 catch-up 补投 job 通知（`run.go:212-226,935-937`）。结论：风险成立且可接受，不需要新的设计层机制，但描述需补全（见 HF10）。打断引起的 gofer 侧遗留 turn 风险见 HF3。
-- **Reader 落点的 import 方向**：两个方向都无环（`internal/hooks` 不依赖 `internal/config`，反之亦然），无内部分层守卫测试约束；需要的是设计给出确定落点（HF7）。
+- **条目接收的事件集合**（`:117`）：新条目收 SessionStart/UserPromptSubmit/Stop/SessionEnd 与被打断时的 Interrupt，不收 Pre/PostToolUse，与 D7 一致且可实现。
+- **两阶段中兼容条目 0 的位置**：即时型在阶段一最前、等待型在阶段二（`:141-143`）。`stop_background` 下兼容条目必为等待型（`hooks.go:249-255`），故后台流水线总是“新条目阶段一 → 兼容条目阶段二”。分类边界见 HF17，`stop_args` 见 HF16。
+- **前台续跑（AC2）**：阶段一 block 后 `Done` 交出 `Decision=block`、reason 非空、`Err=nil`，`chat.go:782-791` 开启注入回合并置 `stopHookActive`（`chat.go:559-563`）。成立。
+- **`stop_hook_active` 全局**（`:144`）：与 `chat_turn.go:251` 的 `s.stopHookActive || s.bgStop.takeBlocked()` 一致。
+- **锁与冻结**：同锁判定可消除上轮 HF3 竞态；交回路径与 `recordingWait.Interrupt` 的 `reply == ""` 防重（`hooks_record.go:117-121`）配合不会重复投递 reason。
+- **`ReadHookEntries` / `Reader:"hooks"`**：`ConfigTypeYAML` 解析路径现成（`settings_registry.go:487-491`），整体替换写入可行；`Protected` 字段当前不存在（`settings_registry.go:41-47`），依赖 `suga-hyj7` 先合入或同版，设计已锁定发布顺序（`:170-173`）。
+- **装配层**：`localenv.go:193` 的 `hooks.New()` 与 `Enabled = client != nil` 在只配 `hooks.commands` 时自然为启用，不需改 `localenv.go`（`:188`）；`inspect env` 的原始 `hooks` 映射已会带出 `commands`（`localenv.go:188-191`，已脱敏），与“展示条目 deferred”不冲突。
+- **gofer `--wait` 链路**：上轮判断仍成立；阶段一只在等待前追加至多各条目超时之和（典型 10 秒），不改 gofer 的 `stop_wait_sec` 上限。
 
 ## 发现
 
-### HF1 [HIGH] `stop_args 需配 stop_wait_sec` 校验未限定范围，会让现有合法的兼容配置启动失败
+### HF13 [HIGH] 合并规则“阶段一有 block 则 `Err=nil`”未排除流水线被取消，后台 Stop 被新 Stop 杀掉后仍会投递过期的续跑通知
 
 - disposition: `CORE_BLOCKING` / `[BUG]`
-- 证据: 设计 `:195` 把“`stop_args` 需配 `stop_wait_sec`”列为“启动与 `config set` 同一套校验”，未限定只作用于 `hooks.commands` 条目；表格 `:103` 同样只说“与 `stop_wait_sec` 同时配”。现状 `hooks.New` 不做这项检查（`hooks.go:222-255`），且文档明确允许 `stop_background: true` 下只配 `stop_args` 不配 `stop_wait_sec`（`docs/usage/gofer-personal-agent.md:213`、`:402`“不设该值时由 `tasks.max_duration` 限制”）；只配 `stop_args` 的旧配置当前也能启动（只是按 `timeout_ms` 结束）。
-- 影响: 按 `:195` 实现会让这些现有用户升级后 `suga chat` 启动报错，直接违反核心目标 `:16`“只配 `hooks.command` 的现有用户行为不变”与 D2 `:213`；按 D2 实现则 `:195` 不成立——实现不唯一，两种读法结果相反。
-- necessity proof: 存在仓库内文档化的合法配置（`stop_background: true` + `stop_args` 无 `stop_wait_sec`），在 `:195` 规则下必然被拒；这是用户可见的结果错误，且无法由计划阶段在不改设计语义的前提下自行裁决（需要在 D2 与 `:195` 之间二选一）。
-- 同类穷尽: 设计中所有“校验”清单出现点：`:32`（启动报错指出第几条）、`:101`（未知事件名）、`:108`（events 列 Pre/Post 但无 glob）、`:135`（等待型条目多于一个）、`:150`（reader 与启动同一校验）、`:195`（清单）。其中只有 `:195` 的 `stop_args` 项会触达兼容条目；“至多一个等待型条目”对兼容条目只在同时存在 `hooks.commands` 时才可能触发，不影响只配 `hooks.command` 的用户。
-- 建议: `:195`、`:103` 写明该项只校验 `hooks.commands` 条目；兼容条目保持现有接受范围（含 `stop_background` 下无 `stop_wait_sec` 的 7 天上限）。
+- 证据:
+  - 设计 `:150-151`：阶段一有 block → `Decision=block`、`Err=nil`，并声明“前台、后台、交回路径、trace 用同一规则”（`:146`）；`:162`：后台“新 Stop 杀掉旧任务时直接取消（同现状……）”。
+  - 后台消费 `stop_background.go:67-79`：`Err != nil && ctx.Err() != nil` 才视为被杀并返回；`Err == nil` 时只要 `Decision=="block"` 且 reason 非空就 `b.blocked.Store(true)` 并 `r.Notify(...)`。现状单条目被杀时 `Err` 为取消/超时错误（`hooks.go:315-327,359-365`），所以不会通知。
+  - 杀任务只取消 ctx 并最多等 5 秒（`tasks.go:658-667,825-837`）；`reporter.Notify` 不检查任务状态（`tasks.go:509-523`），`TakeNotices` 也不过滤已杀任务（`tasks.go:686-710`）。
+  - 触发组合：`stop_background: true`，阶段一至少两条即时条目（M 下即两条及以上 `hooks.commands`，兼容条目在后台必为等待型）；A 已 block，B 仍在运行时下一回合结束触发新 Stop（后台模式不受输入打断，新回合可在 B 的超时内结束）。按 `:150-151`，被取消的旧流水线合并结果为 `block`+`Err=nil`。
+- 影响: 旧回合的续跑 reason 作为任务通知送进会话、唤醒 chat 或进入正在运行的回合，并把 `stop_hook_active` 置真（`stop_background.go:77`、`chat_turn.go:251`）——模型收到基于过期状态的“继续”指令；与 `:162` 的“同现状”承诺相反。同一规则下，阶段一无 block 而被杀时合并 `Err=nil`，任务以 0 结束并打印 `decision: none`（现状为 `-1`），属次要差异。
+- necessity proof: 按设计 `:150-151` 字面实现，上述合法配置下必然产生错误的用户可见结果（过期续跑通知）；`:146` 明确后台使用同一规则，计划阶段若自行加“取消时 `Err` 非空”就是改写设计已写定的合并语义，故须在设计中修正。属 BUG（结果错误）。
+- 同类穷尽: 依赖合并 `Err` 判定“被取消”的消费点：①后台 `stop_background.go:67-69`（受影响）；②前台 `chat.go:782-788`——被打断时 `stopDone` 已置 nil（`chat.go:739-744,773-777`），不读 Done，不受影响；③交回路径 `recordingWait.Interrupt`（`hooks_record.go:119`）——其 reason 本来就要交回（设计 `:160`），不受影响；④chat 退出 `chat.go:532-533` 走 Interrupt，不受影响；⑤trace（`hooks_record.go:88-96`）——若按逐条记录则各条自带错误，不受影响，若记合并结果则被杀流水线记为 `ok`。
+- 建议: 在 `:151` 增加首要规则：“流水线的 ctx 已取消（后台被新 Stop 杀掉或 chat 退出）时，`Err` 取 ctx 错误，不论阶段一是否有 block”；前台打断的 reason 只经 `Interrupt` 返回值交回（`:160`），不受此影响。验证要求 `:221` 的“阶段一运行中被新 Stop 杀掉时不启动阶段二”补“且已得的 block 不产生任务通知、不置 `stop_hook_active`”。
 
-### HF2 [MEDIUM] Stop 合并结果的 `Err`、`Notice`、`Decision` 未定义，而每个消费点都依赖它们
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 设计表格 `:128` 只写“合并见 Q3、Q4”，`:146` 只定义 reason 合并。消费点：前台 `chat.go:782-790` 以 `result.Err != nil || Decision != "block" || Reason == ""` 判无决定，并打印 `result.Response.Notice`；后台 `stop_background.go:65-81` `Err != nil` 时任务以错误结束、打印 Notice 与 decision；交回路径 `hooks.go:418` 与 `hooks_record.go:119` 都要求 `Err == nil` 才交回 block reason；trace `hooks_record.go:88-96` 按 Err 定 status。
-- 影响: 若计划按“合并 Err = 各条错误之 join”实现，阶段一 A 条 block、B 条超时时，前台与交回路径都会丢掉 A 的 block（续跑失效），后台任务被记为失败；若按“有 block 则 Err=nil”实现则正常。设计 `:128`“单条失败视为无决定”只能推出部分规则。Notice 在阶段一多条、或阶段一 + 阶段二时如何拼接也未写。
-- 建议: 在 §3 写定 Stop 合并：有合并 block 时 `Err=nil`；无 block 时 `Err` 取阶段二等待条目的错误（与现状一致），无等待条目时 `Err=nil`（阶段一失败只记日志）；`Notice` 按执行顺序换行拼接；`Decision` 有 block 为 `block`，否则取等待条目的回答。交回路径（`Interrupt` 返回值）沿用同一判定。
-
-### HF3 [MEDIUM] “只给正在运行的条目发 Interrupt”在阶段切换时有竞态，可能让 gofer 打开的 turn 被杀而收不到 Interrupt
+### HF14 [MEDIUM] 逐条 trace 的数据来源与字段只对 Stop 写定；`Call` 返回 `Response`、PreToolUse 自记 trace，且兼容条目失败的 status 会变化
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: 设计 `:139`、`:181`。现有合同是先发 Interrupt（1 秒）再取消（`hooks.go:407-415`，测试 `hooks_test.go:342-361` 守住顺序）。多条目流水线中，Interrupt 发给阶段一条目的同时，若该条目恰好结束且阶段二尚未被冻结，等待条目（gofer）可能随后启动并在 `OpenSessionTurn` 后被取消（gofer `run.go:664`），却没有收到 Interrupt——而 gofer 正是靠 Interrupt 心跳结算 open turn（`run.go:246-248,265-282`）。
-- 影响: web 侧可能短暂残留“等你回复”的 turn（gofer 服务端在下一次 UserPromptSubmit 时也会结算，故不是持久数据问题）；同时“未启动的条目不收 Interrupt”的断言在该竞态下不稳定。
-- 建议: 写明 Interrupt 的原子顺序：①先冻结流水线（之后不再启动任何条目）；②若此刻有条目在跑，向它发 Interrupt（受其 `events` 约束）；③再取消；④两条目之间（无条目在跑）时不发 Interrupt。单元测试覆盖“阶段一结束瞬间打断”。
+- 证据: 设计 `:185`“`Result` 增加逐条运行记录”、`:187`“`hooks_record.go` 按逐条运行记录逐条写 trace；`hooks_gate.go` 只消费合并结果，逻辑不变”、`:213`“每个条目每次运行记一条……只有兼容条目时同样带这两个字段，其余字段不变”。代码：①`Client.Call` 返回 `Response` 而非 `Result`（`hooks.go:79`），`recordingHooks.Call` 只能拿到 `Response`（`hooks_record.go:35-39`），SessionStart/UserPromptSubmit/PostToolUse/SessionEnd 都走这条路；②PreToolUse 的 trace 由 `hooks_gate.go:55-58` 直接调 `recordHookRun`，`ToolGate.PreTool` 返回 `(Response, error)`，无 `entry`/`program` 来源；③现状 `Call` 失败在 trace 中记为 `status=ok`（`hooks_record.go:38` 不带 `Err`），逐条记录若带“该条错误”，只配兼容条目时 SessionStart 等失败会变成 `error`/`cancelled`。
+- 影响: 三处都有多种实现（逐条记录挂在 `Response` 上、改 `Call` 签名、或 Call 事件不逐条记；PreToolUse 带不带 `entry`/`program`；失败 status 变不变），其中一些违反 `:213`/D2 的“其余字段不变”。
+- 同类穷尽: 所有写 `kind=hook` 的点：`hooks_record.go:38`（Call）、`:54`（StartStop）、`hooks_gate.go:58`（PreToolUse）；无其他 `recordHookRun` 调用。
+- 建议: 写定：逐条运行记录同时挂在 `Response`（或给 `Call` 路径同等载体）上；PreToolUse 是否带 `entry=0`/`program`（带则 `hooks_gate.go` 要改，不能写“逻辑不变”）；普通事件逐条记录的失败是否进 status（若进，在 D2 中列为新增行为，并在 chat 层验证中加只配兼容条目时的 trace 断言）。
 
-### HF4 [MEDIUM] 按条目改名后 PostToolUse 事件须由 hooks 构造，架构里“chat_turn 逻辑不变”与之矛盾
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 设计 `:166` 把 `PostToolName/PreToolName` 改为“是否有条目订阅”，名由各条目决定；`:168` 只说 `hooks_gate.go` 改为传原始工具名，`chat_turn.go`“只消费合并结果，逻辑不变”。但 `chat_turn.go:291-297` 用 `PostToolName` 返回的改名结果填 `postTool.ToolName` 后整体 `Call`，与 `hooks_gate.go:175-181` 是同一模式。
-- 同类穷尽: 依赖“返回改名后的工具名”的点：`chat_turn.go:291-296`、`hooks_gate.go:175-181`、`hooks.go:81-83,93-95`（接口注释）、`hooks.go:291-293`；以及实现假 `Client`/`ToolGate` 的 chat 测试（`chat_hooks_test.go`、`hooks_gate_test.go`、`hooks_record_test.go`、`stop_background_test.go`、`chat_hooks_config_test.go`、`followup_test.go`）。
-- 建议: 架构写明 `Client`/`ToolGate` 的新签名（如 `PostToolName(tool) bool` 或保留签名但只作判定），`chat_turn.go` PostToolUse 改传原始名；把这些测试列入受影响清单。
-
-### HF5 [MEDIUM] `events` 与工具 glob 的关系只写了一个方向
+### HF15 [MEDIUM] “只给正在运行的条目发 Interrupt”改变了只配兼容条目时的现有 Interrupt 合同
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: `:108` 写“PreToolUse/PostToolUse 仍只由工具 glob 决定”且“列在 `events` 里但没有 glob 时启动报错”，未写反方向：`events: [Stop]` 但配了 `pre_tool_use.tools` 的条目是否收 PreToolUse。按“只由 glob 决定”推得“收”，但同一句又把 `events` 当作订阅声明，读者易得出相反结论；PreToolUse 是执行前拒绝门，两种读法的门开关相反。
-- 建议: 明确二选一并写进表格：要么“Pre/Post 只看 glob，`events` 中列出与否不影响”，要么“有 glob 而 `events` 显式给出但不含该事件时启动报错”。推荐后者（与 `:108` 的防误配理由对称）。
+- 证据: 设计 `:136`、`:158`“两条目之间（无条目在运行）不发”。现状 `stopWait.Interrupt` 无条件先发 Interrupt 再取消（`hooks.go:407-415`），即使命令已结束、结果已在 `done` 中——`hooks_test.go:342-361` 正是以预先填好 `done` 的 wait 断言 Interrupt 被发出。会出现“已结束未消费”的路径：`nextChatInput` 每轮先 select 输入/唤醒/投递（`chat.go:737-768`），gofer 回复与输入同时到达时走打断；回合内插入消息接续（`chat_turn.go:429-431`）；chat 退出（`chat.go:532-533`）。
+- 影响: 按 `:158` 实现时，只配 gofer 的用户在上述窗口内不再收到 Interrupt，与 D2/AC3“Interrupt 与现在一致”不符；而 `:186` 又说 `stopWait` 保留为原语、其测试不改，读者无法判断兼容单条目走 `stopWait` 原语（保持现状）还是走流水线（改变现状）——实现不唯一。影响限于竞态窗口，gofer 侧多一次或少一次结算心跳，故非阻断。
+- 同类穷尽: 打断时“无条目在运行”的三种状态：①阶段一与阶段二之间（`:158` 已覆盖，应不发）；②流水线已全部结束但结果未被消费（本项）；③阶段一 block 后结束、阶段二未启动（同②）。
+- 建议: 写明“流水线已结束时，向最后执行的条目发 Interrupt（保持单条目现状）；只有处于两条目之间时不发”，或明确接受该差异并从 D2 中列出；验证补“只配兼容条目、结果已到未消费时打断仍发 Interrupt”。
 
-### HF6 [MEDIUM] “启动与 `config set` 同一套校验”只对 `hooks.commands` 成立，跨键约束可经其他 `hooks.*` 键绕过
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 设计 `:150`、`:195`。“至多一个等待型条目”涉及兼容条目，而兼容条目是否等待型由 `hooks.stop_wait_sec` / `hooks.stop_background` 决定（`hooks.go:249-255`）。这些键是简单类型、无 Reader（`settings_registry.go:273-279`），`config set` 只按被改键的 Reader 校验（`config_candidate.go:41`、`cli/config.go:165`）。
-- 影响: 已有一个等待型 `hooks.commands` 条目时，`suga config set hooks.stop_wait_sec 7140` 或 `hooks.stop_background true` 会成功写入，之后 `suga chat` 启动报错——与 `:150` 的承诺不符。
-- 同类穷尽: 参与跨键校验的键：`hooks.command`（是否存在兼容条目）、`hooks.stop_wait_sec`、`hooks.stop_background`、`hooks.stop_args`（若 HF1 后仍对兼容条目有约束）、`hooks.timeout_ms`（条目默认超时，仅取值合法性）。
-- 建议: 给上述 `hooks.*` 描述符统一挂同一个 Reader（如 `"hooks"`），或在设计中如实写明“跨键约束只在启动时检查”。
-
-### HF7 [LOW] 校验 Reader 的落点需在设计中定死
+### HF16 [MEDIUM] `stop_args` 只在阶段二出现，即时型兼容条目在阶段一是否附加 `stop_args` 未写
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: `:169` 写“校验函数放 `internal/hooks`，经注册表的 reader 分发调用……计划阶段核对 import 方向，必要时把纯解析放到无依赖的小包”。实际：Reader 分发是 `internal/config` 内的 switch，全部调用 `config.ReadXxx`（`settings_registry.go:680-735`，如 `ReadMCPServerSettings`）；`go list -deps` 显示两包互不依赖，两种方向都无环。
-- 影响: 留到计划会产生三种可行实现（config→hooks、hooks 调 config 的解析、新小包），属可在设计阶段消除的不唯一。
-- 建议: 定为在 `internal/config` 增加 `ReadHookEntries()`（与 `ReadMCPServerSettings` 同模式、读 gkconfig、返回解析后的条目与校验错误），`hooks.New` 消费它；避免基础包 `internal/config` 反向依赖功能包。
+- 证据: 设计 `:143`“兼容条目为等待型时启动它（附加 `stop_args`）”、`:197`“兼容条目为等待型时带 stop_args 运行”；`:141` 阶段一的兼容条目未提 `stop_args`。现状 Stop 总是附加 `stop_args`（`hooks.go:336-339`），文档化的“只配 `stop_args`、不设 `stop_wait_sec`”配置（设计 `:88`、`:218`）正是即时型兼容条目带 `stop_args`。
+- 影响: 读作“只有等待型才附加”时，该类现有配置的 Stop 参数被去掉，违反 AC3；`:122`“行为与现状完全相同”可推出正确读法，但两处文字互相矛盾，计划易照流程图实现。
+- 同类穷尽: 提及 `stop_args` 的规范性文字：`:46`、`:88`、`:103`、`:122`、`:123`、`:143`、`:197`、`:218`；只有 `:143`、`:197` 把它绑定到等待型。
+- 建议: `:141`、`:143`、`:197` 改为“兼容条目的 Stop 总附加 `stop_args`（同现状），与它在哪个阶段无关”。
 
-### HF8 [MEDIUM] Q6 推荐 A 的隐藏代价：经 `hooks.commands` 可写入 PreToolUse 门配置，与安全配置键设计对 `hooks.pre_tool_use.*` 的处理不一致
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 本设计条目字段含 `pre_tool_use.tools/.name`（`:105`），Q6 A 让 `hooks.commands` 可写（`:150`、`:243`）。安全配置键设计 0.7 有意把 `hooks.pre_tool_use.*` 定为“只标 protected、不可写，不新增 CLI 能力”（`2026-11-11-protected-config-keys-design.md:16,48,120`；评审 F33 `docs/review/2026-11-11-protected-config-keys/spec-review.md:40`）。设计 `:153` 只说“补描述符一事由 `suga-hyj7` 承担”，未提及这一差异。
-- 影响: 选 Q6 A 后，执行前拒绝门配置事实上获得 CLI 写入口（人在终端可写），推翻了已批准设计的取舍而无记录。（`:152` 的“先 Writable 后 Protected”窗口不是新暴露面：`hooks.command` 当前已可写且未保护。）
-- 建议: Q6 说明中写明这一代价与对已批准设计的影响，并给出处理：接受并在两份设计间同步说明，或让 `config set hooks.commands` 拒绝含 `pre_tool_use` 的条目。
-
-### HF9 [LOW] Interrupt 的 trace 归属与触发来源描述不完整
+### HF17 [LOW] “等待型条目”的两句定义在边界配置下结论相反
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: 现状 Interrupt 调用不进 trace（`stopWait.call` 是未包装的 `commandClient.Call`，`hooks.go:313,413`；`recordingWait.Interrupt` 只转发，`hooks_record.go:112-125`）。设计 `:199`“每个条目每次运行记一条”未说是否包含 Interrupt；`:206` 的 ptye2e 要“断言 Interrupt 只到等待条目”，但未说用什么观察（trace 还是假 hook 的落盘记录）。`:138` 列的打断来源缺少任务唤醒（`chat.go:748,792`）、Tab 排队消息（`followup.go:119-123`）、等待中的 Ctrl-C/EOF（`chat.go:830-833`）。
-- 建议: 写明 Interrupt 是否记 trace（若记，属于 D2 之外的新增行为需列出）；ptye2e 的观察手段写定；打断来源按代码列全（行为由 `Wait.Interrupt` 统一，补全只为测试覆盖与读者理解）。
+- 证据: `:61`“Stop 上限长于其普通超时的条目”与“设了 `stop_wait_sec`……时为等待型”。`stop_wait_sec=1`、`timeout_ms=5000` 时 Stop 上限为 3 秒（`hooks.go:249-250`）短于普通超时：按前句为即时型（阶段一最前），按后句为等待型（阶段二，可被续跑 block 跳过）。
+- 影响: 决定兼容条目的阶段与是否被跳过，实现不唯一（配置罕见，故 LOW）。
+- 建议: 只保留按键判定：“兼容条目在 `stop_wait_sec > 0` 或 `stop_background` 为真时为等待型”，删去按时长比较的句子。
 
-### HF10 [LOW] 对 gofer 影响的描述只写了“运行中”，漏了被短路的其他 Stop 职责
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 设计 `:197`。gofer Stop 还承担：上报本回合 `LastMessage`/`IdleSec`/`ClearProgress`（`run.go:581-583`）、接管通知 `Notice`（`run.go:590-593`）、信件与 watched job 的 Stop 送达（`run.go:596-660`）。续跑 block 期间这些都推迟到续跑结束后的那次 Stop；中间回合的最后回复不会出现在 web。job 通知有 UserPromptSubmit catch-up 兜底（generic 方言，`run.go:933-937`）。另外阶段一被打断时，gofer 该回合既无 Stop 也无 Interrupt。
-- 影响: 不构成错误（风险判断见“核对结论摘要”），但读者与 gofer 维护方无法据 `:197` 预判 web 上缺失的中间回复与延迟的接管提示。
-- 建议: `:197` 补一句列出上述被推迟的项，并说明 job 通知经 catch-up 不丢。
-
-### HF11 [LOW] 验证要求有缺口
+### HF18 [LOW] PostToolUse 经通用 `Call` 发出，流水线 `Call` 需按事件名只委托兼容条目；`hooks.New` 的提前返回需改写
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: 设计 `:203-208`。
-- 缺口: ①chat 层 PreToolUse 多条目：逐条 trace（`hooks_gate.go:56-58` 现只记一条）与审批看到最终改写参数，仅列了 `internal/hooks` 单元；②HF3 的阶段切换打断；③HF6 的跨键 `config set`；④后台 Stop 在阶段一被新 Stop 杀掉；⑤HF2 的合并 Err 规则（阶段一 block + 另一条失败时仍交回/续跑）；⑥`hooks_test.go:342-372` 直接构造 `stopWait{call,event,cancel,done}`，`:204`“现有测试不改断言”需说明夹具可调整或保留 `stopWait` 作为单条目原语。
-- 建议: 在验证要求中逐项补上。
+- 证据: ①PostToolUse 由 `chat_turn.go:302` 的 `s.hooks.Call` 发出，不经专用方法；设计 `:185` 只写 `PreToolName`/`PostToolName`/`PreTool` 委托兼容条目，`:134` 表格写“只有兼容条目”，未说明流水线 `Call` 按 `event.Name` 分流。②`hooks.New` 在 `hooks.command` 为空时直接 `return nil, nil`（`hooks.go:216-218`），设计 `:184`“保留兼容条目的现有解析，再……追加新条目”需要先去掉这一返回才能满足 `:124`“只配 `hooks.commands` 也启用”。
+- 影响: 前者若照 `:185` 实现，`PostToolUse` 会发给新条目（续跑 hook 对其无输出退出，功能无害，但违反 D7 且增加每次工具调用的延迟）；后者是可推出的改动，写明可防遗漏。
+- 建议: 架构写明“流水线 `Call` 对 `PostToolUse` 只调兼容条目、无兼容条目时不发”；`hooks.New` 的启用条件改为“兼容条目或新条目任一非空”，验证补“只配 `hooks.commands` 时 `New` 返回非 nil、`PostToolName` 为 false”。
 
-### HF12 [LOW] 小的事实与表述偏差
+### HF19 [LOW] 阶段一条目的 Notice 显示时机未写：会被推迟到等待结束，打断时丢失
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: ①`:67` 引“前台等待 `chat.go:555-563`”，前台 block 实际处理在 `chat.go:782-790`；②`:199` “argv[0] 基名”未指明用 `filepath.Base`（Windows 下 `path.Base` 不切反斜杠）；③现有 `hooks.go:234-240` 对 `pre_tool_use.tools` 的 glob 错误也报成 `hooks.post_tool_use.tools`，新条目校验要“指出第几条”时应一并按实际键名/条目报错。
-- 建议: 顺带修正。
+- 证据: `:152` Notice 并入合并结果；前台只在读到 `Done` 时打印 Notice（`chat.go:782-785`），打断后不再读 `Done`（`chat.go:739-744`），`Interrupt` 只交回 reason（`hooks.go:417-421`）。
+- 影响: 新条目在阶段一写到 stderr 的提示，要等 gofer 等待（最长约 2 小时）结束才显示，用户输入打断则不显示。现状单条目也是“结束时显示、打断时丢”，但多条目下延迟来自另一条命令，用户无法预期。
+- 建议: 一句写明取舍：接受（并在用户文档提示新条目勿依赖 stderr 提示），或阶段一结束且进入阶段二时先打印阶段一 Notice。
+
+### HF20 [LOW] gofer 影响中“其 turn 由下一次 UserPromptSubmit 结算”措辞不准
+
+- disposition: `CORE_CORRECTIVE`
+- 证据: `:211`。gofer 在 Stop 时才打开等待 web 回复的 turn（gofer `run.go:664`，上轮核对）；阶段一被打断时 gofer 未收到 Stop，没有新开的 turn 需要结算，遗留的只是该回合的“运行中”状态与未上报的最后回复。
+- 建议: 改为“阶段一被打断时 gofer 该回合既无 Stop 也无 Interrupt：不打开等待 turn，本回合最后回复不上报，web 保持运行中直到下一次 UserPromptSubmit”。
 
 ## 覆盖缺口与限制
 
-- 未运行代码或测试；结论基于静态阅读。
-- gofer 服务端对“缺 Stop、连续 injected UserPromptSubmit”的会话状态只读了 hookrelay 客户端侧，未审计 `sessionrelay` 服务端状态机；“web 显示运行中”的判断依据是 Stop 心跳负责清进度与上报最后回复。
-- IDEV-STD 续跑 hook 的实现未读（只采信本设计 `:26` 的描述，特别是它不依赖 `stop_hook_active`）。
-- Standards/Governance 轴（代码组织、GR107–GR110 结构核对）不在本轴范围。
+- 静态阅读，未运行代码或测试。
+- HF13 中“过期通知会被送进会话”基于 `tasks.go` 的 Notify/TakeNotices 不过滤已杀任务的静态推断，未实测时序。
+- IDEV-STD 续跑 hook 的 stderr 行为与“最多 8 次”上界（`:211`）未核实。
+- 候选之后的提交 `341237b3` 已记录 `suga-hyj7` 计划 0.4 获批，设计 `:170` 的“计划 0.4 待批”在候选时点成立，不作发现。
+- Standards/Governance 轴不在本轴范围。
 
 ## 结论
 
-BLOCKED：HF1（`CORE_BLOCKING`/BUG）——`stop_args` 需配 `stop_wait_sec` 的校验未限定到新条目，与 D2 冲突，按字面实现会让文档化的现有配置启动失败。其余 HF2–HF12 为 `CORE_CORRECTIVE`。
+BLOCKED：HF13（`CORE_BLOCKING`/BUG）——合并规则在流水线被取消时仍给出 `block`+`Err=nil`，`stop_background` 下被新 Stop 杀掉的旧流水线会投递过期续跑通知并置 `stop_hook_active`，与 `:162`“同现状”相反。上轮 HF1 已关闭；HF14–HF20 为 `CORE_CORRECTIVE`。
 
 ## 剩余风险与后续
 
-- 修订时按类自查：①所有校验规则对兼容条目的作用范围（HF1、HF6）；②合并结果每个字段在每个消费点的含义（HF2）；③打断与阶段切换的时序（HF3、HF9）；④接口签名变化波及的调用方与测试（HF4、HF11）。
-- 第 2 轮 confirmation 读 `git diff b11cd717..<新 candidate> -- docs/design/2026-11-12-multi-command-hooks-design.md` 及依赖章节。
-- Q6 若选 A，需与安全配置键设计（`suga-hyj7`）同步处理 HF8。
+- 修订时按类自查：①合并结果在“取消/被杀/打断/正常结束”四种结束方式下每个字段的值（HF13）；②trace 的每个写入点的数据来源与只配兼容条目时的字段差异（HF14）；③兼容单条目经流水线后与 `stopWait`/`call` 现状的逐项差异——Interrupt、`stop_args`、阶段归属（HF15–HF17）；④经通用 `Call` 发出的事件按名分流（HF18）。
+- 第 3 轮读 `git diff 096c9e93..<新 candidate> -- docs/design/2026-11-12-multi-command-hooks-design.md` 与 §4、架构、验证要求。

@@ -1,112 +1,98 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga chat hooks 多命令设计 第 1 轮 Standards/Governance 评审
+# suga chat hooks 多命令设计 第 2 轮 Standards/Governance 评审
 
 ## 评审目标与范围
 
 - 目标: `docs/design/2026-11-12-multi-command-hooks-design.md`（issue `suga-5xmf`）
-- 候选身份: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `b11cd71747bb9d3ff5edadf4c2f7962752e5c66d`；subject path `docs/design/2026-11-12-multi-command-hooks-design.md`；document revision Draft 0.1（HEAD 中该文件与候选一致）
-- 修订版本: Draft 0.1
-- 评审者: 独立 Standards/Governance 轴评审者（子 Agent，未参与本设计撰写），REPORT_ONLY
+- 候选身份: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `096c9e93fa8364aa448e957679e3c6526279cd20`；subject path `docs/design/2026-11-12-multi-command-hooks-design.md`；document revision Draft 0.3（HEAD `341237b3` 未改该文件）
+- 修订版本: Draft 0.3（上轮候选 `b11cd71747bb9d3ff5edadf4c2f7962752e5c66d` / 0.1；0.2 `1dae6a7a` 为未评审中间版，本轮按 0.1→0.3 diff 覆盖）
+- 评审者: 独立 Standards/Governance 轴评审者（子 Agent，未参与撰写），REPORT_ONLY
 - 日期: 2026-11-12
-- 轴: Standards/Governance；第 1 轮 discovery（全量读）
-- 排除项: Spec/Executability 轴（流程正确性、并发与时序细节、测试可执行性）；用户尚未作出的 Q1–Q7 选择本身；IDEV-STD 仓库的实现
+- 轴: Standards/Governance；第 2 轮 confirmation
+- 排除项: Spec/Executability 轴；用户 2026-11-12 的选择（“hooks Q1 选 M，Q2–Q7 按推荐”）本身；`suga-hyj7` 计划自身的正确性
 
 ## 输入与方法
 
-- 规范：`tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/payload.md`（design-contract、design 模板、SR11xx/SR14xx、SR1301、GR101–GR110、规则包 SR2001–SR2004）全文；`tmp/idev-std/d/OfGu6IpGnHz92hejmPjb9g/payload.md` 的 review-contract、review-candidate-loop、review 模板、SR1409/SR1410.1/SR1433 等章节。
-- 仓库：`AGENTS.md`；设计全文（`git show b11cd717:<subject>`）；已批准设计 `docs/design/2026-11-11-protected-config-keys-design.md`（Draft 0.8，批准记录 commit `d416ed9b`）；`gofer issue show suga-5xmf`。
-- 事实核对：`internal/hooks/hooks.go`（全文）、`internal/chat/hooks_record.go`、`hooks_gate.go`、`stop_background.go`、`chat.go`/`chat_turn.go` 相关行、`internal/config/settings_registry.go:180-200,265-285,595-740`、`pkg/sugasdk/doc.go:94`、`internal/cli/chat.go:21`、`internal/wiring/localenv.go:193`；`git tag`（存在 `v0.55.0`）；IDEV-STD 设计 `idev-standards-public/docs/design/2026-11-12-continuation-hooks-split-plans-1-3-0-design.md:41,75,92,143`；分层守卫测试位置（仅 `pkg/agentcore/layering_test.go` 等，`internal/*` 间无守卫）。
-- 设计引用的代码行号逐一抽查，均与现状一致（`hooks.go:247-255/302-308/316-326/407-422`、`settings_registry.go:192/273-279`、`chat_turn.go:235/244-247/295/302/395`、`hooks_record.go:64-100/88-96/112-128` 等）。
+- 规范：`tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/payload.md`（design-contract、design 模板、SR1103/SR1108/SR1301/SR1403/SR1405/SR1405.1/SR1406/SR1409/SR1410、GR107–GR110、SR2004）；`tmp/idev-std/d/8Yz1eltnU9GuyZy8zAtfgA/payload.md` 的 review-contract 与 review 模板。
+- 仓库：`AGENTS.md`；上轮本轴报告 `docs/review/2026-11-12-multi-command-hooks/standards-review.md`（HS1–HS5）；设计 0.3 全文（`git show 096c9e93:<subject>`）与 `git diff b11cd717..096c9e93 -- <subject>`（+164/−156）；已批准设计 `docs/design/2026-11-11-protected-config-keys-design.md`（0.8，§1 表行 116–140、F33 行 48）；计划 `docs/plans/2026-11-12-protected-config-keys-plan.md`（0.4，行 51、58、105、126–137、147）。
+- 事实核对：`internal/hooks/hooks.go:208-265,302-330`；`go list -deps ./internal/config`（不含 `internal/hooks`，新依赖 `internal/hooks → internal/config` 无环）；`internal/config/settings_registry.go:273-279,678`（`dispatchConfigReader`）；`internal/chat/chat.go:780-792`；`internal/cli/chat.go:21`、`internal/wiring/localenv.go:193`；`internal/cli/config.go:160-168`；`internal/hooks/hooks_test.go:139`；`ConfigKey` 目前无 `Protected` 字段（由 `suga-hyj7` T1 新增）；`tmp/review/suga-hooks/` 存在 `r1-*.md`，同内容已提交到 `docs/review/2026-11-12-multi-command-hooks/`（commit `4edfb889`）。
 
 ## 验收标准
 
-- design-contract 必需内容（声明、修订记录、背景/目标、名词、范围/非目标/受影响项目、事实与规则 ID、方案与架构、流程、安全/数据/运维/回滚、决策与未决问题、结论与 Gate）。
-- SR1103、SR1108、SR1301、SR1403、SR1405（含 SR1405.1）、SR1409、SR1410（含 SR1410.1）、GR107–GR110、SR2004。
-- 每个新增机制先答 scope necessity（核心需求：多个命令共存、Stop block 能生效；只配 `hooks.command` 行为不变）。
-- 与已批准 protected-config-keys 设计 0.8 的一致性。
-- Q1–Q7 是否列全需用户拍板的核心选择，选项与推荐理由是否充分。
+- 上轮 HS1–HS5 是否关闭。
+- design-contract 必需内容；SR1103、SR1301、SR1403/SR1405/SR1410（scope necessity）、GR107–GR110、SR2004；与 protected-config-keys 0.8 / 计划 0.4 的一致性。
+- 每个新增机制或改动能否追溯到核心目标（AC1–AC4，行 38）。
+
+### 上轮发现关闭情况
+
+| ID | 结果 | 依据 |
+|---|---|---|
+| HS1 | 关闭 | Q1 增 M 并被选定（D7，行 235）；新条目只有 `command`+`timeout_ms`（行 112-117），逐项对应 AC1–AC4；`events`、条目级等待、Pre/Post 过滤、`inspect env` 展示均列为非目标/deferred（行 69），引 SR1405.1 |
+| HS2 | 关闭 | 新条目不含 PreToolUse 过滤器，行 168 明确与 F33 无冲突；与 0.8 的唯一差异（条目内 `timeout_ms` 随整块受保护）在行 171 披露并给理由 |
+| HS3 | 关闭 | 解析与校验定在 `internal/config/hooks_entries.go`（`ReadHookEntries`，`dispatchConfigReader` 增 `case "hooks"`），依赖方向 `internal/hooks → internal/config` 写明（行 182-184）；`go list -deps` 证实无环 |
+| HS4 | 关闭（同类有一处上轮未穷尽，见下） | D1 去掉 GR108 误引（行 229）；装配层只构造（行 188）；Interrupt 失败沿用 `Call` 的 Warn（行 136，GR109）。上轮未穷尽：Stop 单条失败写“记日志”（行 135、151，0.1 行 128 即已存在），未写级别 |
+| HS5 | 关闭 | D6 与 §5 锁定随 `suga-hyj7` 同版或其后发布（行 173、234）；SR1301 鉴权结论因此无条件成立（行 209） |
 
 ### 逐项核对结果
 
 | 条目 | 结果 |
 |---|---|
-| design-contract 必需内容 | 齐全：声明（行 14-20）、修订记录（行 6-12）、背景与用户可见结果（22-32）、名词（34-40）、范围/非目标/受影响项目（42-61）、事实与规则 ID（63-74）、方案（76-157）、架构/代码组织（159-171）、流程（173-191）、安全数据运维回滚（193-208）、决策与待确认（210-248）、结论与 Gate（250-252） |
-| SR1103 | 通过：0.1 行含版本、日期、作者、摘要 |
-| SR1108 | 通过：RIGOROUS、核心目标、scope freeze、DEFER_OR_REQUEST、预算 8 轮、停止条件均公开声明；但 scope freeze 本身含超出核心需要的机制，见 HS1 |
-| SR1301 | 逐项：鉴权——已核对（protected，依赖 `suga-hyj7`，见 HS5）；注入防护——已核对（argv 直接执行，不经 shell）；秘密——已核对（trace 只记 argv[0] 基名与编号）；入参校验——已核对（启动与 `config set` 同一校验）；资源归属——不适用。无 SECURITY 违反 |
-| SR1403 / SR1405 / SR1405.1 / SR1410 | 不通过（纠正级）：多项条目字段与跨条目机制没有当前验收需要、没有两个已验证用例，也未证明更小方案不足，见 HS1 |
-| SR1409 | 通过：判高暴露度并引用可核实事实（tag `v0.55.0` 存在；Stop 等待链路与执行前拒绝门），声明两轴独立评审与 ledger 目录 |
+| design-contract 必需内容 | 齐全：声明（35-42）、修订记录（6-14）、背景与用户可见结果（44-54）、名词（56-63）、范围/非目标/受影响项目（65-75）、事实与规则 ID（77-91）、方案（93-177）、架构/代码组织（179-189）、流程（191-205）、安全数据运维回滚（207-225）、决策（227-252）、待确认（254-256）、结论与 Gate（258-260，“批准只授权进入计划，不授权实施”） |
+| SR1103 | 通过：0.2、0.3 两行均含版本、日期、作者、摘要；0.3 为语义变化（记录用户决策、删去 A），递增合理；用户原话留痕（行 243） |
+| SR1301 | 鉴权——已核对（protected + 发布顺序锁定；与 0.8“只挡会话内/非终端的 config set”强度一致，行 209 措辞“会话内不能经 config set 写入”未夸大）；注入防护——已核对（argv 直接执行）；秘密——已核对（trace 只记 `filepath.Base(argv[0])` 与编号）；入参校验——已核对（启动与 `config set` 同一 `ReadHookEntries`，未知字段报错）；资源归属——不适用。无 SECURITY 违反 |
+| SR1403 / SR1405 / SR1405.1 / SR1410 | 通过（一处小的范围外改动，见 HS6）。其余新增项均可追溯：逐条 trace 与 `entry`/`program` attrs 对应 AGENTS.md“验证”节要求的 trace 检查及多条目可观察性，并已在用户可见结果披露（行 53）；条目未知字段报错对应 AC3/误配防护；`Result` 逐条记录服务于 trace |
+| SR1409 | 通过：高暴露度，引用 tag `v0.55.0` 与执行门/等待链路，两轴独立评审与 ledger |
 | GR107 | 不适用（不新增 CLI 入口） |
-| GR108 | 引用不准确（D1 用于包职责而非装配层）；装配层 `localenv.go` 只做展示，未见违规，见 HS4 |
-| GR109 | 列入规范但无落点说明（Interrupt“忽略”与现有 Warn 日志的关系未写），见 HS4 |
-| GR110 | 通过：验证要求含 `suga config set/get hooks.commands` 经真实命令分发 |
-| SR2004 | 通过：不新增 CLI，代码组织沿用本仓库分层并给出参照；但校验函数的包归属未定，见 HS3 |
-| 与 protected-config-keys 0.8 一致性 | 一处未披露的决定反转，见 HS2；超时类键在条目内随整块受保护已披露（行 151），可接受 |
-| Q1–Q7 完整性 | 缺“最小充分形状”选项，见 HS1；其余各问选项与理由基本充分 |
+| GR108 | 通过：装配层 `internal/cli/chat.go`、`internal/wiring/localenv.go` 只构造 client，`hooks.New` 签名不变、`localenv.go` 不改（行 188） |
+| GR109 | 基本通过：普通事件与 Interrupt 失败明确记 Warn；Stop 失败级别未写（HS4 上轮未穷尽） |
+| GR110 | 通过：`suga config set/get hooks.commands` 经 `internal/cli` 真实分发，含非法值退出码 2 且文件不变（行 222） |
+| SR2004 | 通过：不新增 CLI；代码组织参照本仓库 `ReadMCPServerSettings` + Reader 分发与现有分层，每个新文件包归属明确 |
+| 与 protected-config-keys 0.8 / 计划 0.4 一致性 | 通过：`Protected:true` 用的正是计划 T1 新增的 `ConfigKey.Protected` 字段（计划行 131）；“执行类”对应计划分类表组 `exec`（计划行 136）；“后合入者补分类表一行”与计划行 105 一致，且 `TestProtectedClassification` 对未分类键失败，兜底成立；`hooks.pre_tool_use.*` 仍由 `suga-hyj7` 承担，不重复。条目 `timeout_ms` 受保护与 0.8“`hooks.timeout_ms` 不保护”的差异已披露 |
+| 无法追溯的机制 | 无新增机制；仅 HS6 一处顺带改动 |
 
 ## 发现
 
-### HS1 [HIGH] 推荐形状引入多项无法追溯到核心需求的机制，Q1 缺最小充分选项
+### HS6 [LOW] “顺带修正 `pre_tool_use` glob 错误键名”不在核心验收内，且与 §2“兼容条目完全相同”字面冲突
 
-- disposition: `CORE_CORRECTIVE`（不属五类：不采纳也不会让结果错误、不安全或不可执行，只是范围超出最小充分）
-- 证据:
-  - 核心需求（设计行 16、30；issue `suga-5xmf`）：新增命令与 gofer 的 `hooks.command` 共存、按序收事件、Stop block 生效；IDEV-STD 续跑命令只处理 Stop，非 Stop 事件自行过滤后无输出退出 0（IDEV-STD 设计行 75），唯一已证实的额外需要是独立超时 10 秒（同文行 92）。
-  - 推荐 A 为每条新条目引入、但当前任何验收都不需要的机制（同类穷尽）：
-    1. `events` 订阅字段及“列在 events 中但无 glob 时启动报错”规则（行 101、108）；续跑命令已自行过滤事件。
-    2. 条目级 `stop_args`、`stop_wait_sec`（行 103-104）及由此产生的“至多一个等待型条目”校验（行 135、195）、在新条目中挑选等待型条目的分支；已证实的等待来源只有兼容条目（gofer）。
-    3. 条目级 `pre_tool_use.tools/.name`（行 105）及跨条目 PreToolUse 改写链（行 127、185-190、D3）、`PreToolName` 语义改为“任一条目订阅”（行 166）；续跑命令不需要 PreToolUse。
-    4. 条目级 `post_tool_use.tools/.name`（行 106）及 `PostToolName` 语义变化（行 166）；同上。
-    5. `inspect env` 展示条目数与程序名（行 48、170）；非验收所需。
-  - Q1 的 C（行 223）被否决的理由是“不能单独设超时”“无法订阅部分事件”；前者可用只加 `timeout_ms` 的形状解决，后者不是已证实需要。Q1 没有给出“`command` + `timeout_ms`、新条目只做即时条目、不收 PreToolUse/PostToolUse”这一最小充分选项，用户无法选它。
-  - 规则：SR1403（不做→复用→最小实现）、SR1405/SR1405.1（无两个已验证用例不抽象）、SR1410/SR1410.1（重机制须列出局部修复为何不足）、planning-core-rigorous“scope freeze 后新增机制须直接追溯到核心验收”。
-- 影响: 计划与实施面扩大（条目解析、校验、两类过滤器、改写链、等待型选择、展示），评审与测试负担随之扩大；且第 3 项引出 HS2 的规范冲突。若改为最小形状，Q3 的 B/C（多个等待来源）也随之失去前提。
-- 建议: 在 Q1 增加最小充分选项（如 A0：条目只有 `command` 与 `timeout_ms`；新条目收全部普通事件、不收 PreToolUse/PostToolUse、不能等待；等待只来自兼容条目），并把推荐理由改为按 SR1403/SR1410.1 比较；若仍推荐 A，逐项写明每个字段对应的当前验收与“局部方案为何不足”，否则把第 1–5 项列为 deferred。
+- disposition: `CORE_CORRECTIVE`（不属五类：不改变结果正确性、安全或数据；属 scope freeze 披露一致性）
+- 证据: 行 184“顺带把 `pre_tool_use.tools` 的 glob 错误按实际键名报告（只改错误文案）”、行 33（HF12 处理）；现状 `hooks.go:236-243` 对 pre 与 post 两类 glob 共用 `hooks.post_tool_use.tools` 文案。行 39 scope freeze 与 AC1–AC4（行 38）均未包含兼容条目的错误文案；行 122 写“兼容条目 0……解析、校验……与现状完全相同”，D2（行 230）写“现有测试断言不改”（`hooks_test.go:139` 只断言 post 文案，故断言不受影响）。同类穷尽：全文“顺带”只此一处；其余改动均已追溯（见逐项核对）。
+- 影响: 小；但违反 SR1403.1“不顺带”与 SR1108“不得静默扩大范围”，且兼容条目“完全相同”的承诺在字面上不再成立，计划阶段可能被据此质疑。
+- 建议: 二选一：(a) 删去该顺带项，列为 deferred（可另开 Quick issue）；(b) 保留时把它写进 scope freeze（行 39），理由写“新条目错误按 `hooks.commands[i].<字段>` 报告，同函数内统一键名报告方式”，并把行 122 改为“除 pre glob 错误文案外完全相同”。
 
-### HS2 [HIGH] 推荐方案使 PreToolUse 过滤器可经 `config set` 写入，反转已批准设计的决定且未披露
+### HS7 [LOW] 发布顺序锁定的决策引用错为 D13
 
-- disposition: `CORE_CORRECTIVE`（Gate 前须修正或显式列为决策；不判 AUTHORITY：本设计本身仍须经用户 Gate，属于披露缺口而非越权）
-- 证据:
-  - 已批准 protected-config-keys 0.8：`hooks.pre_tool_use.tools/name` 为“新增不可写描述符，只参与比较”（该文行 120），第 5 轮 F33 决定“只标 protected、不可写，不新增 CLI 能力”（行 48、16）。
-  - 本设计 `hooks.commands` 条目含 `pre_tool_use.tools/.name`（行 105），描述符 `Writable:true`（行 150），即执行前拒绝门的过滤器经 `suga config set hooks.commands` 可写。
-  - 本设计对 0.8 的摘要（行 73）未提及 `hooks.pre_tool_use.*` 不可写；Q6 的 B 引用了该处理（行 244），但 A 未说明它会反转 F33。
-  - 同类穷尽（与 0.8 的其他差异）：条目内 `timeout_ms`、`stop_wait_sec` 随整块成为受保护比较对象，而 0.8 将 `hooks.timeout_ms`、`hooks.stop_wait_sec` 列为“不保护”（0.8 行 131）——本设计行 151 已披露并给理由，可接受；`hooks.stop_background` 保持全局、不入条目，无冲突。未发现其他差异。
-- 影响: 用户按推荐批准时可能未意识到推翻了刚批准的 F33；`suga-hyj7` 计划（当前评审中）的分类表与 CLI 能力边界会和本设计不一致。
-- 建议: 二选一并写进决策或 Q6：(a) 采纳 HS1 最小形状，新条目不带 `pre_tool_use`，冲突消失；(b) 保留时在 Q6 明确写“选 A 即把 PreToolUse 过滤器变为人在终端可写，替代 protected-config-keys 0.8 F33”，并加替代声明（参照 0.8 行 221 的写法）。
+- disposition: `CORE_CORRECTIVE`（纯引用纠正，按 SR1103/SR1406 不递增版本、不启动新轮次）
+- 证据: 行 173“发布顺序锁定（D13、HS5）”；发布顺序决策是 D6（行 234），D13 是“不纳入项目级 hook”（行 241）。同类穷尽：全文 D 编号引用（行 21、27、42、61、67、69、95、97、120、126、138、141、164、173、175）逐一核对，仅行 173 错。
+- 影响: 读者按引用会找到无关决策。
+- 建议: 改为“（D6、HS5）”。
 
-### HS3 [MEDIUM] 代码组织中校验函数的包归属与依赖方向未定
+### HS8 [LOW] 第 1 轮评审来源指向未纳入版本控制的 `tmp/` 路径
 
-- disposition: `CORE_CORRECTIVE`（review-contract：结构问题计划批准前必须修正）
-- 证据: 行 169“校验函数放 `internal/hooks`，经注册表的 reader 分发调用……计划阶段核对 import 方向，必要时把纯解析放到无依赖的小包”。现状：reader 分发在 `internal/config/settings_registry.go:700-740`（`dispatchConfigReader` 只调用 `internal/config` 内函数）；`internal/config` 目前只依赖 `internal/i18n`；`internal/*` 之间没有分层守卫测试（仅 `pkg/agentcore/layering_test.go`）。按行 169，`internal/config` 将依赖执行包 `internal/hooks`（无循环，但方向新增），或另建未命名的小包。
-- 影响: 包归属与新依赖方向留到计划阶段决定，设计的“代码组织”不唯一；SR2004 要求偏离在设计中写理由。
-- 建议: 在设计中定下一种：如条目解析与校验（纯函数，只依赖 gkconfig）放 `internal/config`（如 `hooks_entries.go`），`internal/hooks` 消费解析结果；或明确接受 `internal/config → internal/hooks` 并说明理由。
+- disposition: `CORE_CORRECTIVE`（provenance 元数据纠正，不递增版本、不启动新轮次）
+- 证据: 行 11（0.2 摘要“`tmp/review/suga-hooks/r1-standards.md`、`r1-spec.md`”）、行 41（“第 1 轮报告暂存 `tmp/review/suga-hooks/`”）；同内容报告已于 `4edfb889` 提交到 `docs/review/2026-11-12-multi-command-hooks/standards-review.md`、`spec-review.md`，ledger 见 `c51c3872`。同类穷尽：全文 `tmp/` 引用只有这两处。
+- 影响: 受版本控制的设计引用工作区临时路径，`tmp/` 清理后来源不可追溯；与行 41 自述的评审目录不一致。
+- 建议: 两处改指 `docs/review/2026-11-12-multi-command-hooks/`（第 2 轮报告同样落该目录）。
 
-### HS4 [LOW] 规则引用不准确或无落点（GR108、GR109）
+### HS4（上轮未穷尽）[LOW] Stop 单条失败未写日志级别
 
-- disposition: `CORE_CORRECTIVE`
-- 证据: D1（行 212）以“GR108 精神”说明合并逻辑留在 `internal/hooks`，而 GR108 约束的是装配层不内联业务逻辑，本处是领域包与消费方的分工；“规范”列出 GR109（行 74），但全文无落点——表中 Interrupt 单条失败“忽略”（行 129）未说明是否沿用现有 `Call` 的 Warn 日志（`hooks.go:302-308`），Interrupt 会改变 gofer 侧等待状态（发消息类调用）。
-- 影响: 规则引用与实际约束错位，计划阶段可能据此误判。
-- 建议: D1 去掉 GR108 引用或改为说明装配层（`localenv.go`、`cli/chat.go`）只构造不合并；Interrupt 失败写为“记 Warn（沿用 `Call`），不影响取消”，以落实 GR109。
-
-### HS5 [LOW] SR1301“鉴权”结论依赖落地顺序，未锁定
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 行 152 允许本特性先于 `suga-hyj7` 落地并以 `Writable:true`、未 protected 发布；行 195 的鉴权结论“新键为 protected”只在后落地时成立。现状 `hooks.command` 同样可写且未保护（`settings_registry.go:273`），所以不是相对现状的新风险类，但在先落地的版本里多了一个模型可写的执行配置入口。
-- 影响: SR1301 逐项结论有条件成立，计划实现路径有两支。
-- 建议: 锁定为“随 `suga-hyj7` 同版或其后发布”，或在 SR1301 项中写明先落地版本的暴露与接受理由。
+- disposition: 沿用 HS4 的 `CORE_CORRECTIVE`，不新增 disposition
+- 证据: 行 135“记日志，视为无决定”、行 151“阶段一其他条的失败只记日志与逐条 trace”；现状 `hooks.go:316-326` 对失败记 Warn、对取消与 `ErrTimedOut` 记 Debug。续跑条目的 Stop 失败会让本应开启的下一回合丢失，是用户可感知的结果（GR109 落点）。
+- 影响: 计划阶段日志级别不唯一；若按 Debug 实现，续跑失败对用户不可见。
+- 建议: 行 135、151 写明“失败记 Warn，取消与超时记 Debug（同现状 `StartStop`）”。
 
 ## 覆盖缺口与限制
 
-- 未评 Spec/Executability：两阶段 Stop 在前台打断、后台任务被杀、Q4 A 下阶段一中途打断的时序与 `recordingWait` 交接细节，由另一轴负责。
-- 未运行任何测试或工具；IDEV-STD 侧需求只按其设计文本核对，未核对其实现。
-- 未核对 `docs/usage/gofer-personal-agent.md:390-402` 引文全文（行号存在性未逐行验证）。
-- `suga-hyj7` 计划正在评审（commit `97e26d11` 为其第 1 轮 ledger，BLOCKED），HS2/HS5 的最终一致性取决于该计划修订后的分类表。
+- 未评 Spec/Executability（两阶段 Stop 冻结锁、`lostReply` 交回、后台任务杀除时序、ptye2e 可执行性）。
+- 0.2 中间版未单独评审；本轮以 `b11cd717..096c9e93` diff 加全文复读覆盖其全部改动。
+- 未运行测试；`gofer internal/hookrelay` 行号（行 90）与 IDEV-STD 设计行号只按文本存在性抽查，未逐行核对。
+- 行 170 写计划 0.4“待批”：候选提交时属实，其后 `341237b3` 已记录批准；属候选之后的事实变化，不作发现。
 
 ## 结论
 
-PASS（Standards/Governance 轴第 1 轮）。无开放 `CORE_BLOCKING`；HS1–HS5 均为 `CORE_CORRECTIVE`，其中 HS1、HS2、HS3 应在用户就 Q1–Q7 拍板与计划批准前修正（review-contract：结构问题计划批准前必须修正）。
+PASS（Standards/Governance 轴第 2 轮 confirmation）。HS1–HS5 全部关闭；无开放 `CORE_BLOCKING`；新增 HS6–HS8 及 HS4 上轮未穷尽项均为 LOW `CORE_CORRECTIVE`，未引入无法追溯到核心目标的机制。
 
 ## 剩余风险与后续
 
-- 作者修订时按类自查：①所有条目字段与跨条目机制的 necessity（HS1）；②与 protected-config-keys 0.8 的每处差异是否已披露（HS2）；③代码组织中每个新文件的包归属（HS3）。
-- 若采纳 HS1 最小形状，Q3 的 B/C、PreToolUse 改写链与“至多一个等待型条目”校验可整体删除，Spec 轴相应范围缩小。
-- 第 2 轮 confirmation 读 `git diff b11cd717..<新候选> -- <subject>` 及依赖章节。
+- HS7、HS8 为纯元数据纠正，按 SR1103/SR1406 沿用 0.3、不需要纠正确认轮；HS6、HS4 残留为小的语义澄清，可在 0.3.x 计划前修订中一并处理，是否另做唯一一轮纠正确认轮由作者按 planning-core-rigorous 判断（本轴认为改动量不需要）。
+- 计划阶段：`suga-hyj7` 先合入时，本计划须在 `TestProtectedClassification` 表中加 `hooks.commands: exec`，GR110 分发用例需在“终端为真、`SUGA_SESSION_ID` 为空”条件下写入（计划 0.4 行 147 的拒绝条件）。
+- `internal/hooks` 新依赖 `internal/config` 会传递引入较重的 `pkg/agentcore/tools/*` 依赖树；无环、非违规，计划可留意编译与测试耗时。
