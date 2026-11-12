@@ -1,182 +1,145 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 安全配置键保护设计 R3 评审：Spec/Executability 轴
+# suga 安全配置键保护设计 R4 评审：Spec/Executability 轴
 
 ## 评审目标与范围
 
 - 目标：`docs/design/2026-11-11-protected-config-keys-design.md` 的可执行性、是否有歧义、事实是否准确
-- 候选四元组：git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；commit `4a67c13c65546f3292a6408245ce39e1caf9be84`；subject 为上述设计；revision Draft 0.4（上轮 `a0845767` / 0.3）
-- 修订版本：Draft 0.4
-- 评审者：spec 轴独立子 agent，第 3 轮（blocking closure），REPORT_ONLY
+- 候选四元组：git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；commit `c5b77adcdfeb8be6c051c5a968419f96253be3e2`；subject 为上述设计；revision Draft 0.5（上轮 `4a67c13c` / 0.4）
+- 修订版本：Draft 0.5
+- 评审者：spec 轴独立子 agent，第 4 轮（blocking closure），REPORT_ONLY
 - 日期：2026-11-11
 - 排除项：用户已选定的 D3–D10 本身不评；Standards/Governance 轴另行评审；不改仓库、不提交
 
 ## 输入与方法
 
-- 规范：payload `tmp/idev-std/d/3Z3cOanwUM2ILAXHbxiTlQ/payload.md`（review-contract、review-candidate-loop、rules-*）与 delta `.../bXLJzNcvvw_ZrjUevizE3A/delta-OfGu6IpGnHz92hejmPjb9g.md`；仓库 `AGENTS.md`。
-- 上轮本轴报告 `docs/review/2026-11-11-protected-config-keys/spec-review.md`（F8–F15）；设计 0.4 全文（`git show 4a67c13c:<subject>`，下文“第 N 行”均指该版本）与 `git diff a0845767..4a67c13c -- <subject>`。HEAD 即 `4a67c13c`，工作树干净，代码行号按工作树。
+- 规范：payload `tmp/idev-std/d/3Z3cOanwUM2ILAXHbxiTlQ/payload.md`（review-contract、review-candidate-loop、rules-*）与 delta `tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/delta-OfGu6IpGnHz92hejmPjb9g.md`；仓库 `AGENTS.md`。
+- 上轮本轴报告 `docs/review/2026-11-11-protected-config-keys/spec-review.md`（第 3 轮，F16–F24）；设计 0.5 全文（`git show c5b77adc:<subject>`，下文“第 N 行”均指 0.5）与 `git diff 4a67c13c..c5b77adc -- <subject>`。HEAD 即 `c5b77adc`，工作树干净，代码行号按工作树。
 - 读过的代码：
-  - `internal/config/settings_registry.go:88-357`（全部静态与 4 张动态描述符表）；
-  - `internal/config/load.go`（全文）、`yaml_edit.go:1-320`（编辑、锁路径、AST 解析）、`bootstrap_lock.go:12-35`、`providers.go:205-225,600-615`、`rules.go:19`、`mcp.go:18`、`tools_disabled.go:16`；
-  - `internal/hooks/hooks.go:212-222`、`internal/wiring/chat_approver.go:111`、`capabilities.go:323`、`runtime.go:150-260,370-400`、`runtime_build.go:89-123`、`sessionenv.go:15-36`；
-  - `internal/cli/config.go:15-25,150-195,278-286`、`root.go:66-71`、`cwdcheck.go:205-216`、`chat.go:55-110`、`acp.go:60-100`；
-  - `internal/chat/chat.go:186-300,543`、`render.go:735-750`；`internal/personal/observe.go:85-120`；`internal/personal/backup/backup.go:428-436`；
-  - `pkg/agentcore/tools/native/code_exec.go:560-566`、`pkg/agentcore/internal/proctree/proctree_unix.go:22-27`；
-  - `test/ptye2e/chat_smoke_test.go:424-448`（测试环境变量处理）；`docs/usage/gofer-personal-agent.md:123-126`；`xhen/README.md:149-153`；
-  - gookit/config `v2.2.9` 的 `read.go:149-190`（`GetValue`）与 `yaml/yaml.go`（goccy 解码）。
-- 实测：在临时包里用 `gkconfig.LoadFiles` 加载一个含字面量点号顶层键与 YAML 合并键的 config.yaml，确认二者都生效（见 F17）；探针已删除，仓库无改动。
-- 方法：逐项核对 F8–F15；把 §3 与入口表的每一步落到代码挂点；对照注册表逐键检查分类；同类穷尽。
+  - `internal/config/yaml_edit.go:25-40,75-84,102-354`（锁路径、`editConfigFile`、`parseConfigDocument`、`configYAMLPath`、`yamlKey`）；`bootstrap_lock.go:12-35`、`bootstrap_unix.go:10-16`、`bootstrap_windows.go:11-19`、`bootstrap.go:60-110`；
+  - `internal/config/load.go:1-80`、`settings_registry.go:300-400`（动态描述符、`modelIdentifierPattern`、`MatchConfigKey`）、`providers.go:200-260`；
+  - `internal/cli/config.go:150-195`（`writableConfigKey`、`activeConfigPath`，`WriteConfigValue`/`UnsetConfigValue` 的唯一调用方）；
+  - `internal/chat/chat.go:49,186-190,279,543`、`chat_input.go:200-240`、`layout.go:77`；
+  - `internal/wiring/runtime_build.go:89-92,187-192`、`runtime.go:648,813`、`context.go:314`；`internal/hooks/hooks.go:209`；
+  - 引用核对：`docs/usage/gofer-personal-agent.md:124-125`、`settings_registry.go:227,250`、`internal/personal/store/types.go:57,144`。
+- 实测（一次性探针，放在 `tmp/review/suga-config-keys/probe`，用 suga 的 go.sum 离线构建，跑完已删除，仓库无改动），gookit/config v2.2.9 + goccy/go-yaml v1.19.2：
+  1. `hooks: {<<: {command: [evil]}}`（**内联合并键，无锚点/别名**）：gkconfig `Get("hooks.command")` = `[evil]`，生效；goccy AST 能解析，`ast.FilterFile(ast.MergeKeyType)` 计数 1，不触发 `parseConfigDocument` 的锚点/别名拒绝。
+  2. `tools: {"approval_rules.enabled": false}`（**中间层**字面量点号键）：`Get("tools.approval_rules.enabled")` = nil，**不生效**。
+  3. `providers.x.models.gpt-4.1.base_url`：gkconfig 读 `Get("providers")` 得到 `map[x:map[models:map[gpt-4.1:…]]]`，带点模型名正常生效。
+  4. 两文档文件（`---` 分隔）：gkconfig 取第一文档且生效；AST `len(Docs)=2`，`parseConfigDocument` 会拒绝（yaml_edit.go:203）。
+  5. 重复顶层键：gkconfig 加载报错，suga 无法启动（不构成漏报路径）。
+- 方法：逐项核对 F16–F24；按任务要求把 §3 的比较、快照、锁、推进、入口表与验证要求逐条落到代码挂点；同类穷尽；对全部 `Writable:true` 静态键做了一次与设计文本的机械对照（全部已归组）。
 
 ## 验收标准
 
-- 核心目标见设计第 34 行；用户可见结果第 51–54 行。
-- review-contract：只有 BUG/SECURITY/DATA/MISSING_FUNCTION/AUTHORITY 可标 CORE_BLOCKING，须给 necessity proof；同类问题穷尽，后续轮次再现标“上轮未穷尽”。
-- SR1301；GR108–GR110；AGENTS.md 验证规范（GR110、ptye2e、反向验证、Windows 主机测试）。
+- 核心目标见第 43 行；用户可见结果第 60–63 行；§3 自述性质第 137–145 行、第 131 行。
+- review-contract：只有 BUG/SECURITY/DATA/MISSING_FUNCTION/AUTHORITY 可标 CORE_BLOCKING，须给 necessity proof；同类穷尽，后续轮次再现标“上轮未穷尽”。
+- SR1301；GR108–GR110；AGENTS.md 验证规范。
 
-## F8–F15 关闭核对
+## F16–F24 关闭核对
 
 | 上轮 | 结果 | 设计位置 | 证据 / 剩余 |
 |---|---|---|---|
-| F8（CORE_BLOCKING） | **已关闭** | 第 116、131、153 行，D9 第 196 行；测试第 182 行“人工 set 不吸收其他键的改动” | 写定“只更新被改键、不重算其他键”，并有对应测试。实现层的锁与取值来源见 F18（CORRECTIVE，不影响 F8 关闭） |
-| F9 | 已关闭 | 入口表第 124–131 行；trace 第 133 行；D9 | 只有 chat 推进，自动入口不再消费提示；trace 改到回合内（observe.go:107-108 的丢弃问题已规避）。挂点细节见 F21 |
-| F10 | 部分关闭 | 第 122–123、84 行 | 路径、按配置路径区分、持锁、原子写、损坏全部提示、不在 `data restore` 范围内都已写明（backup.go:432 不含 `run/`）。上轮并入 F10 的两项未处理：新增/删除 provider 条目（升级为 F16）、值的规范化（F22） |
-| F11 | 已关闭 | 第 98 行 | `tools.disabled` 列入放宽类 |
-| F12 | 部分关闭 | 第 93、103–107 行 | 有了分类原则与不保护分组；上轮点名的部分键仍未归组，且按第 93 行原则判不出结果，见 F20；`model` 与 `compact_model` 的同类不一致见 F19 |
-| F13 | 已关闭 | 第 113–114、175、179–184 行 | “非空”、可注入终端判定、受影响测试（逐条 grep 核对，其余 set/unset 测试用的都是非 protected 键）、ACP/SDK/run/SUGA_CONFIG/并发用例都已补；ptye2e 的 `testEnvLanguage` 已剔除全部 `SUGA_*`（chat_smoke_test.go:435），正向用例在 agent 内也能跑。CLI 拒绝的反向验证仍未写明，并入 F21 |
-| F14 | 部分关闭 | 第 79、84、86、174 行 | `local_command.go`、`backup.go` 已改对；但 `gofer-personal-agent.md` 现在两处都写 `:125`，origin_judge 实际在 `:124`，见 F23 |
-| F15 | 已关闭 | 第 117 行 | 空值、`env -u`、Windows `< CON`/`CONIN$`、`NoSessionEnv` 都已列入 |
+| F16（CORE_BLOCKING） | **已关闭** | 第 138、131、176、205、207 行 | 键集写定为“快照键 ∪ 当前 protected 键（含动态 provider 键），缺失一侧按未设置”；无快照时 set/unset 不建快照；用例含“新增与删除 provider 被报出”。可实现性：当前键可从 goccy AST 的 `providers` 映射逐 `<id>`、逐 `models.<name>` 枚举 `base_url`/`type`（与运行时 `Get("providers")` 整表读入同源，providers.go:214-220）；键名作为不透明字符串存放，带点模型名不需拆分。升级新增键不误报（第 142 行）。 |
+| F17 | 部分关闭 | 第 139–140 行 | 取值来源与回退已写；但回退触发条件把“中间层字面量点号键”也算进去，与合法的带点模型名冲突，见 F25；内联合并键、多文档、解析失败的处理与测试未写全，见 F27 |
+| F18 | 部分关闭 | 第 131、144–145 行 | 推进写启动摘要、单键更新在 `editConfigFile` 临界区内且不重复取锁，已写。可行性：`WriteConfigValue`/`UnsetConfigValue` 的唯一调用方是 `internal/cli/config.go:191-193`，经 `ConfigWriteOptions` 增一个写后回调即可在锁内完成；锁为阻塞 flock/LockFileEx、不可重入，启动比较、chat 推进、set 三处各取一次，无嵌套；`home.lock` 只在 bootstrap 中使用，与配置锁无交叉持有，无死锁。剩余：整文件模式下的单键更新未定义（F26）；上轮第 3 点“比较与生效值读同一份字节”与“比较后横幅前改动”的用例未落地（F29） |
+| F19 | 已关闭 | 第 117、196 行 | 改为不保护并把裁决回退写入风险，与 runtime_build.go:89-92 一致 |
+| F20 | 已关闭 | 第 114–122 行 | 机械对照：全部 `Writable:true` 静态键均已点名或被 `{…}`/`*` 组覆盖 |
+| F21 | 已关闭 | 第 150–156、166、205、208 行 | 回调经 `chat.Options`、横幅走 `BannerInfo`；ACP 按会话去重；compact 不参与；缓存按路径并可重置；CLI 反向验证 |
+| F22 | 已关闭（附 LOW） | 第 139 行 | 规范化为排序 JSON；“排序”的对象未写清，并入 F27 |
+| F23 | 已关闭 | 第 97、199 行 | `gofer-personal-agent.md:124-125` 核对无误 |
+| F24 | 已关闭（附 LOW） | 第 143、195 行 | 路径规范化与风险已写；与锁路径的规范化不一致见 F28；风险表述偏窄见 F30 |
 
 ## 发现
 
-### F16 [HIGH] 比较时取哪一组键没有写定；“只看快照里已有的键”这种实现漏报新增的 provider，改变请求去向而不提示
+### F25 [HIGH] 整文件回退把“中间层字面量点号键”列为触发条件，与合法的带点模型名冲突：多数真实配置会常驻整文件模式
 
-- 级别与处置：HIGH，`CORE_BLOCKING`，类别 `[BUG]`（实现不唯一，其中一种让核心验收失败）。上轮在 F10 的 SR1301 补充里提过“新增或删除 provider/model 条目算作变化”，当时只按误报处理、定为 CORRECTIVE；0.4 未采纳。本轮补上漏报方向的因果链，因此升级。
+- 级别与处置：HIGH，`CORE_CORRECTIVE`。
 - 证据：
-  - 第 122 行：“对每个 protected 键在 `config.yaml` 中的原始取值（…缺省视为‘未设置’）计算 SHA-256 摘要，与快照比较”。“缺省视为未设置”只说了 config.yaml 一侧，没说**快照里没有的键**怎么算。
-  - 动态描述符的具体键名随 `providers` 下的条目变化（settings_registry.go:310-357；运行时按 `gkconfig.Get("providers")` 的整张表读入，providers.go:214）。新增一个 provider，就会多出快照里从没有过的 `providers.<new>.base_url`、`providers.<new>.type`。
-  - 有两个现成理由会让实现者选择“快照里没有的键跳过”：
-    1. 0.4 新增“人工 set 只更新该键”（第 116、153 行），但没写没有快照时 set 怎么办；如果 set 建了一个只含一个键的快照，“缺失即变化”会让下次启动报出全部已配置的 protected 键，跳过缺失键看起来就是正确做法；
-    2. 以后的版本新增 protected 键时，旧快照里没有这些键，跳过缺失键能避免升级后的误报。
-- 必要性证明：
-  - core_acceptance：第 34 行“改变模型请求的去向……用其他方式改动这些配置时，你下次打开 chat 能看到”；第 54 行。
-  - necessary_causal_chain：
-    1. 模型用 shell_exec 在 `config.yaml` 里加一个 provider：`providers.x: {type: openai, base_url: <外部地址>, api_key: ${现有的 key 变量}}`，同一次编辑里改 `model: x/…`（`model` 不是 protected 键，用 `config set` 也行）；
-    2. 下次启动时，当前 protected 键里有 `providers.x.base_url`、`providers.x.type`，快照里没有；
-    3. 按“快照里没有就跳过”实现，改动列表为空，横幅不提示；
-    4. 之后的请求连同 API key 发往外部地址。
-    5. 第 182 行列出的快照用例都只改已有的键，两种实现都能通过，测试发现不了这个问题。
-  - minimal_owner：设计 §3 第 122 行加一句：“比较取快照与当前两侧键名的并集，任一侧缺失按‘未设置’计；新增或删除 provider/model 条目会报出对应键”。第 123 行或第 131 行加一句：“没有快照时，set/unset 不建快照（由下次启动按首次运行建）”。第 182 行加两条用例：新增 provider 的 `base_url` 被报出；删除 provider 被报出。
-  - deletion_alternative：FAIL。把端点类动态键移出清单就违背第 34 行的“请求去向”；删掉启动提示属于 D8/D9 的用户选择，不在本轴范围内。
-  - scope_effect：不新增 Module、Interface、Schema 或 lifecycle，只把已有比较步骤的语义写确定。升级后新增 protected 键会提示一次，属于可接受的误报，在“风险”一节写一句即可。
+  - 第 140 行：“顶层/中间层的字面量点号键（如 `"tools.approval": auto`）等无法逐键读取的写法时，改为对整个文件求一个摘要”。
+  - 模型名允许点号：`modelIdentifierPattern = ^[A-Za-z0-9_@:/.-]+$`（settings_registry.go:306）；`configYAMLPath` 专门为带点模型名生成 `providers/<id>/models/<name>` 段（yaml_edit.go:254-266）；用法文档举例 `gpt-4.1`（docs/usage/llm-config-v0.md:38）。`providers.x.models.gpt-4.1:` 这类中间层带点键是正常写法，人用 `suga config set providers.x.models.gpt-4.1.base_url …` 也会写出它。
+  - 实测：中间层带点键对 gkconfig **不生效**（探针 2）；gkconfig 只在顶层查字面量键（gookit/config read.go:163）。所以只有顶层带点键会造成“AST 逐键读到的值 ≠ 生效值”，中间层不需要回退。
+  - 按第 140 行字面实现，配置里只要有一个带点模型名就进入整文件模式，后果：
+    1. 横幅只能显示“配置文件有变化”，不再列键名，与第 63 行用户可见结果不符；
+    2. 任何改动（包括你自己 `config set model …`、改注释、改缩进）都会触发提示，与第 139 行“注释与缩进变化不算改动”矛盾，提示失去区分度；
+    3. 人工 set 的单键更新在整文件模式下没有定义（见 F26），这个歧义从边缘情形变成常见情形。
+  - 第 207 行的用例“注释与缩进变化不报”用不带点的样例也能通过，测试发现不了。
+- 为什么不是 CORE_BLOCKING：整文件模式只会多报，不会漏报，第 43 行“你下次打开 chat 能看到”仍成立。
+- 建议：第 140 行改为只检测**顶层**带点键（运行时唯一会读到的位置；注册表的顶层键都不含点号），并写明中间层带点键（含 `providers.<id>.models.<name>`）按普通键名处理；第 207 行加一条用例：含 `gpt-4.1` 这类模型名的配置仍走逐键比较、只报被改键。
 
-### F17 [MEDIUM] “原始取值”的读取方式和 gkconfig 实际生效的值对不上：字面量点号顶层键、YAML 合并键都能生效却读不到；解析失败时的行为也没写
+### F26 [MEDIUM] 整文件模式下快照存什么、两种模式之间怎么切换、人工 set 的“只更新该键”怎么做，都没有写定
 
 - 级别与处置：MEDIUM，`CORE_CORRECTIVE`。
 - 证据：
-  - 运行时读取 protected 键靠 `gkconfig.Get("<带点号的键>")`，例如 `hooks.go:212`、`mcp.go:18`、`rules.go:19`、`tools_disabled.go:16`、`chat_approver.go:111`、`capabilities.go:323`。gookit/config `GetValue` 先查顶层字面量键 `c.data[key]`（read.go:163），查不到才按点号逐级找。
-  - 实测：config.yaml 同时有 `tools: {approval: ask}` 和顶层 `"tools.approval": auto` 时，生效的是 `auto`；用 `&h`/`<<: *h` 合并进来的 `hooks.command` 也会生效（goccy 解码支持合并键）。
-  - 设计第 122 行的“`config.yaml` 中的原始取值”，自然实现是复用 `configYAMLPath` 按段查找（yaml_edit.go:246）。这样读到的是 `tools.approval: ask`，看不到生效的 `auto`；合并进来的 `hooks.command` 则被当成“未设置”。
-  - 现有 AST 解析 `parseConfigDocument` 遇到锚点或别名直接报错（yaml_edit.go:206），遇到多文档也报错（:203），而 gkconfig 能正常加载这类文件。设计只写了快照损坏怎么办，没写 **config.yaml 读不成原始值**时怎么办；如果实现成“跳过比较”，只要在文件里加一个锚点，整个提示就失效了。
-- 为什么不是 CORE_BLOCKING：这几种写法都是刻意掩盖，与第 169 行已接受的“改写或删除快照”同属一类，攻击者已经可以更简单地删掉快照。只改写正常 YAML 的情况能被检测到，第 34 行核心验收在非刻意场景下成立。
-- 建议（任选其一并写进 §3）：
-  1. 读取时出现顶层带点号的 protected 键、锚点/别名/合并键或解析失败，一律视为“全部 protected 键已改动”，提示中注明原因（与“快照无法读取”同一处理）；
-  2. 或者在第 167–172 行的风险清单里写明这几种写法与删除快照同级、不被检测。
-  - 同时写明“原始值”取自哪个解析器（建议 goccy AST，与 `config set` 同一套），以及上面这些情况的测试用例。
+  - 第 202 行快照内容只写“键名 → 摘要”；第 140 行的整文件摘要存在哪里、逐键摘要是否同时保留，没有写。
+  - **模式切换**：上次推进时是逐键模式、这次变成整文件模式（或反过来）时，快照里没有当前模式需要的那份摘要。第 138 行“缺失按未设置”是针对键说的，整文件摘要不是键；第 143 行“首次运行只建不提示”只针对快照文件不存在。实现者可能把“缺整文件摘要”当成首次运行，静默补上。
+  - **人工 set**：顶层带点键和内联合并键都能通过 `parseConfigDocument`（探针 1；yaml_edit.go:205 只拒绝锚点/别名），所以整文件模式下 `suga config set` 照常成功。此时第 131 行的两句话互相冲突：“用本次写入的值计算”在整文件模式下就是重算整文件摘要；“不会吸收此前未展示的改动”则要求不能这么做。
+  - 漏报链（只在实现者按前一句做时出现）：模型写入顶层 `"hooks.command": [evil]`（生效，探针同类）→ 进入整文件模式 → 你在终端 `suga config set tools.read_roots …`（第 61 行的正常操作）→ 快照整文件摘要按写后文件重算 → 下次 chat 不提示。
+- 为什么不是 CORE_BLOCKING：第 131 行已把“不吸收此前未展示的改动”写成必须满足的性质，照着这条实现不会选择重算整文件摘要；这里是表述歧义，不是唯一实现就出错。考虑到 F25 会让整文件模式变常见，应在计划前写清。
+- 建议：§3 补三句。
+  1. 快照始终同时存整文件摘要和（能逐键读取时的）逐键摘要；比较按当前模式取对应的那一份，缺失按“已改动”计；
+  2. 整文件模式下人工 set/unset 不改快照（下次 chat 照常提示一次）；
+  3. 第 207 行加用例：整文件模式下人工 set 后，下次启动仍提示；从逐键模式切到整文件模式时提示。
 
-### F18 [MEDIUM] 推进和单键更新用的是哪一份值、在哪把锁里做，没有写定；有两种实现会吸收比较之后才发生的改动，还有一种会死锁
+### F27 [LOW] 整文件回退的触发条件需写全并配测试；“排序后的 JSON”中排序的对象没写清
 
-- 级别与处置：MEDIUM，`CORE_CORRECTIVE`。
+- 级别与处置：LOW，`CORE_CORRECTIVE`（同类穷尽：凡是 AST 逐键读取与 gkconfig 生效值可能不一致的写法）。
 - 证据：
-  - **chat 推进的取值来源。** 入口表第 128 行写“横幅显示后整体推进”，没说推进的是启动时比较所用的那份摘要，还是推进时重新读文件算出来的。
-    - 比较发生在装配阶段；横幅在 `chat.Run` 内部、会话建立之后打印（chat.go:543）。中间要启动 MCP server，最长可等 `mcp.startup_timeout_sec`（默认 30s，mcp.go:172）。
-    - 如果推进时重读，这段时间里别的 suga 会话（例如并发的 gofer job）对 protected 键的修改，会在没有展示的情况下被写进快照。
-  - **人工 set 的取值来源与锁。** 第 123 行“读改写持该配置文件的配置锁”，而 `editConfigFile` 写配置时已经持有同一把锁（yaml_edit.go:138）。`acquireBootstrapLock` 是不可重入的文件锁（bootstrap_lock.go:12-21）：
-    - 如果在 `editConfigFile` 的锁里再取一次锁，就会死锁；
-    - 如果在释放之后重读文件来算摘要，就会把这一瞬间别人对同一个键的修改记成“你设置的值”。
-  - **比较与生效值读的不是同一次文件。** `Load` 不持锁读一次（load.go:52-60），比较时持锁再读一次。这只会造成多报或少报一个“正在生效的值”，属于观测误差，写一句即可。
-- 建议：在 §3 写明三点。
-  1. chat 推进写入的是启动比较时算出的摘要，在锁内按键合并，不重读文件；
-  2. set/unset 的单键摘要用本次写入的值（`editConfigFile` 渲染出的内容）计算，在同一个临界区内完成，不重新取锁、不重读；如果确实要在释放后更新快照，就用写入时的值；
-  3. 第 182 行加用例：比较之后、横幅之前修改另一个 protected 键，下次启动仍然报出。
+  - **内联合并键**：`<<: {command: [evil]}` 没有锚点/别名，`parseConfigDocument` 不拒绝；按 AST 逐键读 `hooks.command` 是“未设置”，gkconfig 生效值是 `[evil]`（探针 1）。第 140 行列了“合并键”，但第 207 行用例只有“锚点或字面量点号键”。如果实现只靠 `parseConfigDocument` 报错来触发回退，就会漏掉这一种。检测方法很直接：`ast.FilterFile(ast.MergeKeyType, file)`。
+  - **多文档、其他解析失败**：多文档文件 gkconfig 取第一文档生效（探针 4），`parseConfigDocument` 会拒绝（yaml_edit.go:203）。第 140 行只用了“等”，没写解析失败一律回退整文件。如果实现成“解析失败就跳过比较”，比较就失效了。
+  - **“排序”**：第 139 行“序列化为排序后的 JSON”。如果把列表元素也排序，`hooks.command`、`memory.*.args` 里参数重新排列就不会被报出，而参数顺序会改变实际执行的命令。
+- 建议：第 140 行写明触发条件为“锚点、别名、合并键（含内联 `<<`）、顶层带点键，以及 `parseConfigDocument` 拒绝的任何情况（多文档等）”；第 139 行写明“映射键排序，列表保持原顺序”；第 207 行补内联合并键与多文档两条用例。
 
-### F19 [MEDIUM] 外部来源裁决模型的回退链最终落到 `model`，与把 `compact_model` 列为 protected 的理由同类，但 `model` 被归为不保护（上轮未穷尽）
-
-- 级别与处置：MEDIUM，`CORE_CORRECTIVE`（同类穷尽）。
-- 证据：
-  - 第 100 行把 `models.compact`、`compact_model` 列为端点类，理由是“外部来源裁决未配 `models.judge` 时回退到压缩模型”。
-  - 代码里的回退链是 models.judge → models.compact → **主模型**（runtime_build.go:89-92、123）。
-  - 第 106 行却把 `model` 归为不保护，理由是“只在已配置的 provider 之间选择”。这条理由对 `models.judge`、`models.compact` 同样成立，两组的划分自相矛盾。
-- 为什么不是 CORE_BLOCKING：可选模型都在你自己配置的 provider 里，不改变请求去向；裁决模型变弱只削弱一道纵深防线。
-- 建议：二选一。
-  - 把 `model` 也列为 protected，并注明“在终端里照常可改”；
-  - 或者改写第 100 行的理由，例如“`models.judge`/`compact` 只用于裁决与后台工作，改了你在会话里看不出来；`model` 改了会显示在每次 chat 横幅与 run 的 manifest 里”，再按这条理由决定 `compact_model` 是否保留。
-
-### F20 [LOW] 按第 93 行的原则，仍有一批可写键归不了组（上轮 F12 未关闭部分）
-
-- 级别与处置：LOW，`CORE_CORRECTIVE`（同类穷尽）。
-- 证据：对照注册表的全部 `Writable:true` 静态键（settings_registry.go:88-299）与 4 张动态表（:310-357），下列键在设计里没有点名，第 107 行“其余……等”这个兜底分组也判不出它们属于哪一组，有的还会按第 93 行的“检查与上限”原则被归为 protected：
-  - 外部程序的超时：`hooks.timeout_ms`、`hooks.stop_wait_sec`、`hooks.stop_background`、`memory.user.timeout_sec`、`memory.project.timeout_sec`、`mcp.call_timeout_sec`、`mcp.startup_timeout_sec`。字面上属于“执行上限”，与 `tools.shell_timeout_max` 同形；
-  - 检查开关：`tools.loop_guard`；
-  - 审计与留存：`transcripts`（关闭会话转录），与第 105 行的“留存与可恢复性”同类但没有列入；
-  - 网络路径：`network.proxy.sites`（让指定主机走代理，与“请求去向”相关）；
-  - 其他：`run.deadline_env`、`tools.shell_background_after`、`tasks.wake_on_exit`、`log.level`、`log.stderr`。
-  - 其余 `chat.*`、`context.*`、`images.*`、`retry.*`、`timeouts.*`、`tools.spill.*`、`tools.deferred*`、输出字节类、`language`、`store.body_inline_bytes`、`skills.list_max`、`tools.web_fetch.user_agent`、provider 调参与 `price.*`，归入第 107 行没有歧义。
-- 建议：在第 103–107 行的分组里逐个点名上面这些键。例如外部程序超时写明“程序本身由 protected 键决定，超时只影响已允许程序的运行时长”；`transcripts` 并入留存组。这样计划阶段的分类表就不用猜。
-
-### F21 [LOW] 入口挂点还有几处没写明（F9 的剩余细节）
+### F28 [LOW] 快照路径与配置锁路径的规范化不一致
 
 - 级别与处置：LOW，`CORE_CORRECTIVE`。
 - 证据：
-  - **chat 由谁推进。** 横幅在 `chat.Run` 内部打印（chat.go:543），cli 层不知道横幅什么时候打出来。另外已有的 `ContextNotices` 通道是在横幅**之前**打到 stderr 的（chat.go:279-281）。设计要写明：变化提示是走 `BannerInfo` 还是复用 `ContextNotices`；推进经由 `chat.Options` 新增的回调完成，回调实现放在 internal/config，chat 包不直接写快照。
-  - **ACP 的“每会话首个回合”。** ACP 每个 prompt 都调一次 `wiring.Open` 新建 runtime（acp.go:84）。挂在 runtime 上的“首个回合记一条”实际会变成每个 prompt 记一条。要么写明按会话去重（例如进程内记住已经记过的 session），要么接受每个 prompt 都记一条。
-  - **compact。** `suga session compact` 也走 `wiring.OpenCLI`（compact.go:60），入口表没有列出它是否比较、是否打印 stderr。
-  - **进程内缓存。** 第 133 行没写缓存按什么区分（建议按配置文件绝对路径），也没写测试时怎么重置（参照 `ResetLoadedStateForTest`，load.go:27）。SDK 宿主在同一进程里换 SUGA_HOME 时会用到。
-  - **CLI 拒绝的反向验证。** 第 181、183 行只要求分类表测试和 chat 横幅做反向验证；CLI 拒绝的 GR110 测试也应做一次（上轮 F13 已提）。
-- 建议：在入口表与第 133 行补上以上几点，各一句即可。
+  - 第 143 行：快照文件名用“绝对路径 + `filepath.Clean` + Windows 小写”后的哈希。
+  - 配置锁用 `sha256([]byte(path))`，对路径没有做 Clean，也没有转小写（yaml_edit.go:109-110）。`editConfigFile` 传入的是 `filepath.Abs` 之后的路径（yaml_edit.go:130），而 `Load` 直接用原始的 `os.Getenv("SUGA_CONFIG")`（load.go:51-52）。
+  - 第 144 行“启动时的读、比较与 chat 推进各自取该配置文件的配置锁”，没写取锁时用哪种路径形式。如果启动时用原始路径取锁，就会和 set 拿到不同的锁文件；在 Windows 上，大小写不同的两个进程也会拿到不同的锁，却写同一份快照。
+  - 后果只会是丢失更新，结果是多报，不会吸收改动，所以定为 LOW。
+- 建议：第 144 行写明三处都用 `configLockPath(filepath.Abs(path))`，与 `editConfigFile` 取同一把锁；或者让锁名与快照名共用同一个规范化函数。
 
-### F22 [LOW] 列表、映射和整块 YAML 值算摘要之前怎么规范化，没有写（上轮 F10 未关闭部分）
+### F29 [LOW] F18 的剩余部分：比较读的文件与 gkconfig 生效的不是同一份字节；“比较后、横幅前改动”的用例没有写进验证要求
 
-- 级别与处置：LOW，`CORE_CORRECTIVE`。
+- 级别与处置：LOW，`CORE_CORRECTIVE`（上轮 F18 第 3 点与建议用例未处理）。
 - 证据：
-  - `mcp.servers` 是整块 YAML（settings_registry.go:194）。`hooks.command` 等是列表，`tools.approval_rules.project_trust` 是映射。
-  - 第 122 行没说摘要是对节点的原文（含注释、flow/block 风格、CRLF）算，还是对解码后重新编码的规范形式算。按原文算，你手工改个注释或换个缩进，就会收到“如果不是你改的”的提示；`config set` 改写节点风格之后也一样。
-- 建议：写明“对未展开的取值做规范编码（忽略注释、风格、换行符，映射键排序）后再算摘要”。
+  - `Load` 不持锁读一次文件并生效（load.go:51-60）；按第 144 行，比较时持锁再读一次。两次读之间如果文件被改回快照状态，本会话实际用的是被改过的配置，却不会提示。窗口很小，需要并发进程刻意配合。
+  - 上轮 F18 建议的用例“比较之后、横幅之前修改另一个 protected 键，下次启动仍然报出”，第 207 行没有写进去。第 145 行的性质因此没有测试守住。
+- 建议：第 145 行或风险清单写一句“比较读取与生效读取之间的改动，下次启动才会报出”（或者让比较复用 `Load` 读到的字节）；第 207 行补上述用例。
 
-### F23 [LOW] 引用行号仍有一处不对（上轮 F14 未关闭部分）
+### F30 [LOW] 风险清单同类缺口：chat 不需要终端；`.env` 可以直接注入持久指令
 
-- 级别与处置：LOW，`CORE_CORRECTIVE`。
-- 证据：第 86、174 行用 `docs/usage/gofer-personal-agent.md:125` 同时指 origin_judge 和 read_deny。实际 origin_judge 那条在 `:124`，read_deny 在 `:125`。
-- 建议：改为 `:124-125`。
-
-### F24 [LOW] 风险清单还缺两项同类情形
-
-- 级别与处置：LOW，`CORE_CORRECTIVE`（同类穷尽）。
+- 级别与处置：LOW，`CORE_CORRECTIVE`（同类穷尽，只是如实记录已接受的风险，不改变 D9/D10 的选择）。
 - 证据：
-  - 模型可以在 pty 里自己起一个 `suga chat`（`script -c "suga chat"`），横幅打给它看，快照随之推进，你下次打开 chat 就不再提示。这和第 117 行的“刻意绕过”、第 169 行的“改写快照”是同一类，但风险清单没有写。
-  - 快照文件名按配置文件路径的 sha256 区分（第 123 行）。Windows 上路径大小写不同、相对路径和绝对路径不同，都会得到另一份快照，而新快照按“首次运行”处理，不提示。配置锁用的是 `filepath.Abs` 之后的路径（yaml_edit.go:130），设计应写明快照同样先取绝对路径再计算。大小写问题写进风险即可。
-- 建议：第 167–172 行补一句；第 123 行写明“路径先取绝对路径”。
+  - **chat 不需要终端。** 第 195 行写的是“模型可在伪终端里自起 `suga chat`”。但 chat 支持非终端输入：stdin 不是终端时不进入 raw 模式，照常逐行读（chat_input.go:226 只在终端时设 makeRaw）。所以 `shell_exec` 里一句 `echo /exit | suga chat` 就能打出横幅并推进快照，不需要 pty。危害与第 192 行“删除快照”同级，只是现在的表述低估了门槛。
+  - **`.env` 注入持久指令。** `SUGA_APPEND_SYSTEM_PROMPT` 从进程环境读取（runtime_build.go:187-192），每个会话都会用到（runtime.go:648,813；context.go:314）；`Load` 会把 `SUGA_HOME/.env` 载入进程环境（load.go:46）。在 `.env` 里写这一行，就是一条持久注入的指令，与 `rules.file`（第 108 行，列为 protected，理由是持久注入的指令）同类。但第 193 行的风险只提到“`${VAR}` 引用经 `.env` 间接改值”，没有提这种直接方式。
+- 建议：
+  - 第 195 行改为“模型可直接（管道或伪终端）自起 `suga chat`……”。如果愿意，推进时可以复用第 128 行的判定（`SUGA_SESSION_ID` 非空或 stdin 非终端时不推进）。这是一个可选的低成本收紧，不要求本轮采纳。
+  - 第 193 行补“`.env` 中直接设置的 `SUGA_APPEND_SYSTEM_PROMPT` 等环境变量不被比较（与 `rules.file` 同类的持久指令注入）”。
 
 ### SR1301 核对
 
-- 鉴权：已核对。CLI 判定只挡直接调用，已如实写明（第 117、194 行）；启动提示只在 chat 推进，自动入口无法消费提示（对模型自起 chat 的情况见 F24）。
-- 注入防护：已核对。键名精确匹配（settings_registry.go:371-375），不拼接命令。
-- 秘密：已核对。快照只存摘要，trace attrs 只含键名；动态键名里只有 provider id 和模型名，不含秘密。`mcp.servers` 内联的 env 值以摘要形式进入 `SUGA_HOME/run/`，模型本来就能直接读 config.yaml，没有新增暴露面。
+- 鉴权：已核对。CLI 判定只挡直接调用，已如实写明（第 132、191 行）；推进门槛的表述见 F30。
+- 注入防护：已核对。键名精确匹配，不拼接命令；快照文件名用哈希，不拼接用户输入的路径。
+- 秘密：已核对。快照只存摘要，提示与 trace 只含键名；整文件摘要也只是哈希；`run/protected-config/` 目录 0700、文件 0600。
 - 入参校验：已核对，沿用现有校验。
 - 资源归属：不适用。
 
 ## 覆盖缺口与限制
 
-- 没有运行项目测试和 ptye2e；只用一次性探针验证了 gookit/config 的字面量点号键与合并键行为（F17），探针已删除。
-- Windows 上 ConPTY 下 `term.IsTerminal` 为 true，是按 x/term 实现推断的，没有在主机上实际跑。
-- 本轮是增量复核：读了 0.3→0.4 的 diff，以及 §1–§3、架构、流程、风险、验证、决策各节；分类表做了全量对照，其余未变章节沿用上轮结论。
+- 没有运行项目测试和 ptye2e。gookit/config 与 goccy 的行为只用一次性探针验证（见“输入与方法”），探针已删除。
+- Windows 上锁与大小写的行为是读代码推断的，没有在主机上实际跑。
+- 本轮是增量复核：读了 0.4→0.5 的 diff，以及 §3、架构、关键流程、风险、验证、决策各节；分类表做了机械对照。§1 分类原则与 §2 判定沿用上轮结论。
 
 ## 结论
 
-**BLOCKED。**
-- 上轮的 CORE_BLOCKING F8 已关闭。
-- 本轮新增 1 个 CORE_BLOCKING：F16，`[BUG]`。比较的键集合没有写定，“跳过快照里没有的键”这种实现会漏报新增的 provider，请求连同 API key 发往外部而不提示，违反第 34 行。补一句“取并集、缺失按未设置”，再写明“无快照时 set 不建快照”，加两条用例即可关闭。
-- F17–F24 都是 CORE_CORRECTIVE，应在计划批准前修正。
+**PASS（Spec/Executability 轴，本轮无开放 CORE_BLOCKING）。**
+- 上轮的 CORE_BLOCKING F16 已关闭：键集取并集，动态 provider 键可以从 AST 枚举，无快照时 set 不建快照，用例覆盖新增和删除 provider。
+- F19–F21、F23 已关闭；F17、F18、F22、F24 的剩余部分转为本轮 finding。
+- 本轮新增 F25–F30，都是 `CORE_CORRECTIVE`，应在计划批准前修正。其中 F25（HIGH）与 F26（MEDIUM）优先：F25 让常见配置常驻整文件模式；F26 在整文件模式下要依靠第 131 行的“不吸收”性质，才能排除漏报那种实现。
+- 按 review-candidate-loop，本轮全 PASS 且含 CORE_CORRECTIVE，修订后可做唯一一轮纠正确认轮（candidate 须变化）。
 
 ## 剩余风险与后续
 
-- 关闭 F16 后进入第 4 轮，只复核 §3 与验证要求这两处 changed/dependent scope。
-- D7、D9、D10 已接受的风险不变：刻意绕过 CLI 判定；改写或删除快照；`${VAR}` 经 `.env` 间接改值；只用 ACP/run/SDK、从不打开 chat 的用户，提示会一直出现在 stderr 与 trace 里，直到人工 set 或删除快照。最后这一条建议在文档里写明消除提示的方法。
+- 修订 F25–F30 后，纠正确认轮只需复核 §3 第 138–145 行、第 131 行、风险清单与第 207 行。
+- 已接受的风险不变：刻意绕过 CLI 判定；改写或删除快照；`.env`/环境变量间接改值；只用 ACP/run/SDK 的用户提示会一直出现，直到打开 chat。
