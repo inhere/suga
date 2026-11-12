@@ -261,6 +261,7 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | 键 | 默认 | 含义 |
 |---|---|---|
 | `hooks.command` | 不设（不启用） | hook 命令，argv 列表（不经 shell）；事件 JSON 写在 stdin 上 |
+| `hooks.commands` | 不设 | 额外的 hook 条目列表，每条只有 `command`（argv，不经 shell）与可选的 `timeout_ms`（缺省取 `hooks.timeout_ms`，再缺省 `3000`）；与 `hooks.command` 同时生效（不设 `hooks.command`、只配它时同样启用 hooks），收 SessionStart、UserPromptSubmit、Stop、SessionEnd（前台 Stop 被打断时收 Interrupt），不收 PreToolUse/PostToolUse、不能等待；protected 键，`suga config set hooks.commands '[{command: [x], timeout_ms: 10000}]'` 整块替换 |
 | `hooks.timeout_ms` | `3000` | 普通事件的超时 |
 | `hooks.stop_args` | `[]` | 只追加到 Stop 事件 argv；**必须**与 `stop_wait_sec` 同时配，否则 Stop 按 `timeout_ms` 结束 |
 | `hooks.stop_wait_sec` | 不设 | 设置了它时 Stop 最多等 `stop_wait_sec+2` 秒 |
@@ -270,7 +271,7 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `hooks.pre_tool_use.tools` | `[]`（不发） | 只对这些 glob 匹配的工具在**执行前**发送 PreToolUse（可拒绝或改写参数） |
 | `hooks.pre_tool_use.name` | 不设 | 设置了就把 PreToolUse 事件里的工具名改成它 |
 
-事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop、SessionEnd、Interrupt。`SUGA_HOOKS=off` 整体关闭。
+事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop、SessionEnd、Interrupt。`hooks.commands` 的条目只参与 SessionStart、UserPromptSubmit、Stop、SessionEnd 与打断时的 Interrupt；PreToolUse/PostToolUse 只发给 `hooks.command`。Stop 先按顺序执行即时条目，任一返回 block 即跳过等待型条目，多个 block 的 reason 以空行连接。`SUGA_HOOKS=off` 整体关闭。
 
 ## `log.*`（进程日志）
 
@@ -359,7 +360,7 @@ suga models --json
 
 ### suga 导出给子进程的变量
 
-会话跑的子进程（`shell_exec` 及其后台/ watch 任务、chat 的 `!cmd`/`!!cmd` 本地命令，以及 chat hooks 的 `hooks.command`）环境里带上当前会话信息；每次执行时取值，所以 `:model` 切换、子 agent 的会话、ACP 同进程多会话都拿当前那一个。
+会话跑的子进程（`shell_exec` 及其后台/ watch 任务、chat 的 `!cmd`/`!!cmd` 本地命令，以及 chat hooks 的 `hooks.command` 与 `hooks.commands` 条目）环境里带上当前会话信息；每次执行时取值，所以 `:model` 切换、子 agent 的会话、ACP 同进程多会话都拿当前那一个。
 
 | 变量 | 含义 |
 |---|---|
