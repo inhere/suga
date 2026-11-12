@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.56.0] - 2026-11-12
+
+本版加入安全相关配置键保护（设计 `docs/design/2026-11-11-protected-config-keys-design.md`）与 chat hooks 多命令（设计 `docs/design/2026-11-12-multi-command-hooks-design.md`）。注意：脚本、CI、gofer exec 任务或 chat `!` 里用 `suga config set/unset` 改 protected 键会以退出码 2 被拒，请改在 suga 之外的终端执行或直接编辑 `config.yaml`。
+
 ### 新增
 
 - 安全相关配置（protected 键）：放宽检查、扩大读写或执行范围、引入外部程序或指令、改变请求去向的配置键标为 protected，按用途分为执行类、放宽类、执行上限类、端点类、裁决与 `log.file`（完整清单见 `docs/usage/gofer-personal-agent.md` 的“安全相关配置”一节）；`suga config set/unset` 只能在 suga 之外的终端里改它们，会话内调用（`shell_exec`、chat `!cmd`、hook 脚本）或 stdin 不是终端（`echo … | suga config set`、Git Bash/mintty、Gofer job 脚本）时退出码 2、配置文件不变，提示改为在终端执行或直接编辑配置文件。非 protected 键不受影响（suga-hyj7）。
