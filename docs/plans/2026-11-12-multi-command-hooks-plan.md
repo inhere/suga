@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga chat hooks 多命令 实施计划
 
-> 状态：Draft 0.3 / 待人工计划批准；issue `suga-5xmf`
+> 状态：Draft 0.4 / 待人工计划批准；issue `suga-5xmf`
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-11-12 | Claude | 初稿：按已批准设计 0.6 拆为 T1–T9 |
 | 0.2 | 2026-11-12 | Claude | 处理第 1 轮两轴评审（按类自查：打断与 `Done` 的消费者、确定性同步点、反向验证预期、CLI 输出、验证要求落任务、文件归属、假进程、文档落点、授权与执行者）：打断不读 `Done`，`finished` 态一律发给最后执行的条目，`Done` 写一次后 close，`Interrupt` 等内部完成信号，T6 加经 `recordHooks` 包装的打断用例；增加打断侧同步点与三种窗口的用例编排；T2 改反向验证预期并负责 `config get/set` 的 YAML 输出；设计验证要求逐条落任务；`newPipeline` 签名与文件归属闭合；规定假进程合同；T1 补决定性代码位置与分支②后的去向；T8 按 hyj7 合入后的文档落点；补真实环境验证、派活约束、执行者待定、授权、retrospective 与 gofer plan |
 | 0.3 | 2026-11-12 | Claude | 处理第 2 轮两轴评审纠正项（按类自查：状态机初始态与收尾、打断用例断言、测试同步方式、主目录合并保护、真实验证的凭据与残留、复用位置）：状态机初始为 `between`，“有下一条”含阶段二，冻结拦截与完成共用收尾；between 用例断言 reason 交回与 `Runs` 只含 A；T6 同步方式写定、HF13 用例 B 超时 ≥30000；删 `slow` 并统一假进程措辞；T9 合并前核对主目录分支与 dirty 并记录恢复点；真实验证的凭据与残留四条；更正复用位置（`PreferredTool` 分支在 `formatConfigValue`，`hooks.commands` 由 `writeConfigValue` 按键选 `formatHookEntries`）；hyj7 已合入（`7905a0f4`），前置判定与 baseline 同步 |
+| 0.4 | 2026-11-12 | Claude | 未复核修订（第 3 轮纠正确认轮之后，处理 HPS16、HPS17、HPF17–HPF20）：删去 T6 无法实现的“包装下 between”子项，改由 T5 `Runs` 断言与 T6 逐条记录用例共同覆盖；`formatHookEntries` 未设时回落 `<unset>`，补未设用例，回显经 `writeConfigValue` 含 `config list`；T9 合并前先提交本计划在主目录产生的 tracker 改动，写明 T1、T9 写 issue 评论的时机；真实验证复制 provider 时丢弃 `headers`，`api_key` 逐值须为 `${VAR}` 引用 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -42,12 +43,21 @@
 | 评审项 | 处理 |
 |---|---|
 | HPF13 | T5 状态机：`StartStop` 起协程前状态为 `between`（下一条为第一条），每条（含第一条）都“取锁查 `frozen` → 置 `running`”；“有下一条”= 阶段一尚有条目，或阶段一结束、无 block 且 `compatWaiting`（即阶段二等待条目）；冻结拦截路径与完成路径共用同一收尾；加“第一条启动前打断”用例 |
-| HPF14、HPS1 续 | T5 between 用例 A 设为 `block`：断言 `Interrupt` 返回 `A-reason`、`done` 的 `Err` 非空、`Runs` 只含 A；T6 包装下 between 打断断言 trace 无 B 的事件 |
+| HPF14、HPS1 续 | T5 between 用例 A 设为 `block`：断言 `Interrupt` 返回 `A-reason`、`done` 的 `Err` 非空、`Runs` 只含 A；T6 包装下 between 打断断言 trace 无 B 的事件（0.4 删去该 T6 子项，见 HPF18） |
 | HPF16、HPS15 | T6 finished 用例以轮询 `len(w.(*recordingWait).out)==1`（期限 10s）判断转发已完成；HF13 用例 B 的 `timeout_ms` 设 30000，`b.start` 返回后立即断言并按第一个任务 ID 过滤通知，`t.Cleanup` 调 `taskManager.Close()`；删除未用的 `slow` 模式，措辞改为“`mode` 决定 Stop 行为；`timeout` 另作用于全部事件、`ifail` 另作用于 Interrupt” |
 | HPS12 | T9 合并前主机 job 核对 `git -C inhere-tools/suga branch --show-current` 为 `main`、`status --short` 为空，否则按 Ownership Conflict 停止；记录合并前 main HEAD 作恢复点，回滚节同步 |
 | HPS13 | T9 真实验证：provider 段只复制 `${VAR}` 引用且复制后检查无字面密钥才继续；脚本不打印环境与 `.env`；结束删除隔离 home 与构建产物；记录临时 gofer 会话 id 并在完成说明给出处理方式 |
 | HPS14 | CAP-01 与 T2 更正：`PreferredTool` 分支在 `formatConfigValue`（按值类型）；`hooks.commands` 分支落在 `writeConfigValue`，按 `value.Key` 选择格式化，回显两行格式写定 |
 | HPS6 续、HPF15 | 前置判定改为 `git merge-base --is-ancestor 7905a0f4 main`（hyj7 合并提交，已满足）；baseline 同步 hyj7 已合入、worktree 与分支已删 |
+
+第 3 轮（唯一纠正确认轮）评审处理（两轴 PASS，评审结束；本版为未复核修订）：
+
+| 评审项 | 处理 |
+|---|---|
+| HPF18 | 删去 T6“包装下的 between”子项（`pipelineTestHook` 不导出，`internal/chat` 无法拦在 B 启动前）；“打断时未启动的条目不记”由 T5 between 用例的 `Runs` 只含 A，加上 T6 按 `Runs` 逐条写 trace 的用例共同证明 |
+| HPF17 | `formatHookEntries` 遇 nil（未设）直接回落 `formatConfigValue`，输出 `<unset>`；T2 补“未设时 `config get hooks.commands` 输出 `hooks.commands = <unset>`”用例；`config get`、`config set` 回显与 `config list` 都经 `writeConfigValue` |
+| HPS16、HPF19 | T9 合并前核对之前，先在主目录提交本计划产生的 `.gofer/tracker/` 改动（只暂存 tracker 文件，`chore(tracker): …`），再要求 `status --short` 为空；写明 T1、T9 写 issue 评论的时机 |
+| HPS17、HPF20 | 真实验证复制 provider 段时丢弃 `headers`（本次验证不需要自定义请求头），`api_key` 去掉引号后须匹配 `^\$\{[A-Za-z0-9_]+\}$`，逐值检查通过才继续 |
 
 **思考与范围声明**
 - 思考模式：`RIGOROUS`。
@@ -140,6 +150,7 @@
 - 文件: 无改动。只读 gofer 仓库 `inhere-tools/gofer`：`internal/hookrelay/run.go`（未设 `--wait` 时 `Options.Wait` 回落 `:167,393-395`；Stop 打开 turn `:594,642`；Interrupt `:246-282`）、`internal/httpapi/session_handler.go:249-265`（服务端 `WaitReason`）、`internal/commands/hook.go:158,284-299`（只有 SIGINT/SIGTERM/SIGHUP 触发 `ReportInterrupt`；suga 以 `exec.CommandContext` 结束进程，Unix 为 SIGKILL、Windows 为 TerminateProcess）。只读 suga `git show v0.55.0:internal/cli/config.go`、`v0.55.0:internal/config/settings_registry.go`（`MatchConfigKey`）与 `v0.55.0:internal/hooks/hooks.go`。
 - 动作:
   - 判定：未设 `--wait` 的 `gofer hook generic --agent suga` 在 Stop 时是否打开等待 web 回复的 turn；在流水线中“收 Stop、不收 Interrupt”（以及被 suga 超时杀掉）时该 turn 如何结算。
+  - 评论时机：T1 结束时在 suga 主目录 `gofer issue comment suga-5xmf …` 写一次结论（tracker 改动留到 T9 合并前一并提交）。
   - 分支①：不打开 turn → 结论写进 issue `suga-5xmf` 评论，继续。
   - 分支②：会打开 turn → 把这一用户可见影响写进 issue 评论（供 T8 写入文档），并**停下请求你确认**；不得在计划内改 D9 的 Interrupt 去向。获你确认后继续 T2。
   - 旧版本：v0.55.0 遇到 `hooks.commands` 时 `suga config get hooks.commands`（预期 `unknown configuration key`）、`suga config list`（只列注册键）与 chat 启动（`hooks.New` 不读该键）的表现，结论写进同一评论，供 T8 回滚说明。
@@ -155,8 +166,8 @@
   - `func ReadHookEntries() ([]HookEntry, error)`，归一化顺序：①`raw := gkconfig.Get("hooks.commands")`；nil → `nil, nil`。②容器：`[]any` 直接用；`[]map[string]any` 转为 `[]any`（同 `ReadMCPServerSettings`）；空 → `nil, nil`；其他类型 → `hooks.commands must be a list of entries`。③每项（YAML 下标 i，从 0 起）须为 `map[string]any`，否则 `hooks.commands[i]: must be a mapping`；键只允许 `command`、`timeout_ms`，其他键 → `hooks.commands[i]: unknown field "<k>" (only command and timeout_ms are supported)`（多个未知键按字典序报第一个）。④`command`：接受 `[]string` 或元素全为 string 的 `[]any`；缺失、其他类型、为空、首项去空白后为空 → `hooks.commands[i].command: must be a non-empty list of strings with a program name`。⑤`timeout_ms`：缺失为 0；接受 `int`、`int64`、`uint64`（≤ `math.MaxInt`）、整值 `float64`；≤0、非整数或其他类型 → `hooks.commands[i].timeout_ms: must be a positive integer`。错误文案为英文，与现有 `hooks.*` 启动错误一致，不走 i18n。返回顺序即配置顺序。
   - 注册表：`{Pattern: "hooks.commands", Type: ConfigTypeYAML, Writable: true, Protected: true, Reader: "hooks"}`；`dispatchConfigReader` 增 `case "hooks": _, err = ReadHookEntries()`。兼容键维持无 Reader。
   - 分类表 `settings_protected_test.go` 的 `exec` 组加 `"hooks.commands": "exec"`。
-  - `internal/cli/config.go`：现有 `formatConfigValue(value any)` 只按值类型分支（`PreferredTool` 分支即在此），不收键，签名不改。在 `writeConfigValue` 中按 `value.Key == "hooks.commands"` 选用新的 `formatHookEntries(value any) string`（同文件；`goccyyaml.MarshalWithOptions(value, goccyyaml.Flow(true))`，去首尾空白成单行，失败时回落 `formatConfigValue`），其他键仍用 `formatConfigValue`。输出仍为两行：`hooks.commands = <单行 YAML>` 与 `source = <来源>`；`config get` 与 `config set` 成功回显都经 `writeConfigValue`。
-- 验证: worktree 根运行 `go test ./internal/config -run 'TestReadHookEntries|TestProtectedClassification' -count=1`；`TestReadHookEntries` 用 `t.Run` 覆盖：未设、空列表、合法两条（含省略 `timeout_ms`）、经 `gkconfig.Set` 写入的 `[]map[string]any` 与 YAML 加载得到的 `[]any`、`[]string` 与 `[]any` 两种 `command`、`timeout_ms` 为 int/uint64/整值 float64、非列表、项非映射、未知字段 `stop_args`、`command` 缺失/空/首项空白/非字符串、`timeout_ms` 为 0/负数/1.5/字符串，断言 `err.Error()` 含 `hooks.commands[<i>].<字段>`。worktree 根运行 `go test ./internal/cli -run 'TestConfigHooksCommands|TestConfigCommands' -count=1`：经 root 命令真实分发（GR110），在“终端为真、`SUGA_SESSION_ID` 为空”条件下（沿用 hyj7 的 `setupConfigCLI` 注入）`config set hooks.commands '[{command: [x], timeout_ms: 10000}]'` 写入成功且回显行为 `hooks.commands = [{command: [x], timeout_ms: 10000}]`、`config get hooks.commands` 同一行（若 goccy flow 的空格与此不同，按实际输出固定并记为 Operational Discovery）；`config set hooks.commands '[{command: []}]'` 退出码 2、文件字节不变、`err.Error()` 含 `hooks.commands[0].command`；`SUGA_SESSION_ID=x` 下 set 被 protected 拒绝；`config get mcp.servers` 输出不变。反向验证：临时去掉 `case "hooks"`（可编译），确认非法值用例的 `hooks.commands[0].command` 断言失败（此时报 `unknown config reader`）且输出不含 `[build failed]`，恢复。
+  - `internal/cli/config.go`：现有 `formatConfigValue(value any)` 只按值类型分支（`PreferredTool` 分支即在此），不收键，签名不改。在 `writeConfigValue` 中按 `value.Key == "hooks.commands"` 选用新的 `formatHookEntries(value any) string`（同文件；`goccyyaml.MarshalWithOptions(value, goccyyaml.Flow(true))`，去首尾空白成单行，遇 nil（未设）或失败时回落 `formatConfigValue`，未设即输出 `<unset>`，与其他键一致），其他键仍用 `formatConfigValue`。输出仍为两行：`hooks.commands = <单行 YAML>` 与 `source = <来源>`；`config get`、`config set` 成功回显与 `config list` 都经 `writeConfigValue`。
+- 验证: worktree 根运行 `go test ./internal/config -run 'TestReadHookEntries|TestProtectedClassification' -count=1`；`TestReadHookEntries` 用 `t.Run` 覆盖：未设、空列表、合法两条（含省略 `timeout_ms`）、经 `gkconfig.Set` 写入的 `[]map[string]any` 与 YAML 加载得到的 `[]any`、`[]string` 与 `[]any` 两种 `command`、`timeout_ms` 为 int/uint64/整值 float64、非列表、项非映射、未知字段 `stop_args`、`command` 缺失/空/首项空白/非字符串、`timeout_ms` 为 0/负数/1.5/字符串，断言 `err.Error()` 含 `hooks.commands[<i>].<字段>`。worktree 根运行 `go test ./internal/cli -run 'TestConfigHooksCommands|TestConfigCommands' -count=1`：经 root 命令真实分发（GR110），在“终端为真、`SUGA_SESSION_ID` 为空”条件下（沿用 hyj7 的 `setupConfigCLI` 注入）`config set hooks.commands '[{command: [x], timeout_ms: 10000}]'` 写入成功且回显行为 `hooks.commands = [{command: [x], timeout_ms: 10000}]`、`config get hooks.commands` 同一行（若 goccy flow 的空格与此不同，按实际输出固定并记为 Operational Discovery）；`config set hooks.commands '[{command: []}]'` 退出码 2、文件字节不变、`err.Error()` 含 `hooks.commands[0].command`；`SUGA_SESSION_ID=x` 下 set 被 protected 拒绝；`config get mcp.servers` 输出不变；未设时 `config get hooks.commands` 输出 `hooks.commands = <unset>`。反向验证：临时去掉 `case "hooks"`（可编译），确认非法值用例的 `hooks.commands[0].command` 断言失败（此时报 `unknown config reader`）且输出不含 `[build failed]`，恢复。
 - 完成标准: 上述测试通过；反向验证写在提交说明。
 - 依赖: T1（分支①，或分支②已获确认）；前置条件 hyj7 已合入。
 
@@ -216,7 +227,7 @@
   - `hooks_gate.go`：`extra` 中在 `response.Runs` 非空时加 `entry`、`program`（取 `Runs[0]`）；拒绝与改写逻辑不改。
 - 验证: worktree 根运行 `go test ./internal/chat -run 'TestRecordingHooks|TestToolGate|TestBackgroundStop|TestMultiHook|TestPersonalChatRunsConfiguredHookCommand|TestPersonalChatPostToolUseFollowsConfig|TestPersonalChatBlockStartsInjectedTurnAndMarksStopActive|TestPersonalChatKeepsWebReplyReceivedDuringInterrupt|TestPersonalChatSurvivesFailingHookCommand' -count=1`。新增 `TestMultiHook*`（`hooks.New` + `TestMultiHookProcess`）：
   - trace：只配兼容条目时每个 hook 事件带 `entry=0`/`program`，SessionStart 失败仍记 `ok`；PreToolUse 失败的记录带 `entry=0`/`program` 且 status 同现状；两条新条目时 Stop 记两条；Interrupt 不产生 hook 事件。
-  - 包装下的打断（HPF1，`recordHooks(hooks.New(...), recorder)`）：running——等待条目 `start` 后调用 `recordingWait.Interrupt`，Interrupt 只到等待条目，在期限内返回；finished——轮询 `len(w.(*recordingWait).out)==1`（期限 10s，表示转发协程已取走流水线结果）后调用 `Interrupt`，最后执行的条目收 Interrupt，返回的 reason 恰好一次（不与 `out` 中的结果重复），不挂起；between——A `block`、钩子拦在 B 启动前时打断，trace 中没有 B 的 hook 事件。
+  - 包装下的打断（HPF1，`recordHooks(hooks.New(...), recorder)`）：running——等待条目 `start` 后调用 `recordingWait.Interrupt`，Interrupt 只到等待条目，在期限内返回；finished——轮询 `len(w.(*recordingWait).out)==1`（期限 10s，表示转发协程已取走流水线结果）后调用 `Interrupt`，最后执行的条目收 Interrupt，返回的 reason 恰好一次（不与 `out` 中的结果重复），不挂起。“打断时未启动的条目不记”不在 chat 层单独测（`pipelineTestHook` 不导出，chat 测试无法拦在条目启动前），由 T5 between 用例的 `Runs` 只含 A 与本任务按 `Runs` 逐条写 trace 的用例共同证明。
   - 后台 Stop（`backgroundStop` + `tasks.Manager`）：正例——两条新条目、A `block`：产生一条 `Stop hook asks to continue: A-reason` 通知、`takeBlocked()` 为真；HF13——A `block`、B `wait` 且 `timeout_ms: 30000`（避免第二个流水线在断言前按 R1 发出同文通知），日志出现 `B Stop start` 后以新 Stop 杀掉，`b.start` 返回（`Kill` 已等旧任务结束）后立即断言，通知按第一个任务 ID 过滤：第一个任务无该通知、`takeBlocked()` 为 false、任务以 `-1` 结束、兼容等待条目未运行；HF21——`tasks.max_duration` 设 200ms 且 B `wait`：无通知；`taskManager.Close()`：无通知；各用例 `t.Cleanup` 调 `taskManager.Close()`。
   - 反向验证：临时去掉 T5 的 R0，确认 HF13 用例失败（ptye2e 场景不触发 R0，R0 的反向验证只在本任务与 T5 承担），恢复。
 - 完成标准: 用例通过；`hooks_record.go` 与 `hooks_gate.go` 净增各不超过 25 行；反向验证记录。
@@ -247,7 +258,8 @@
 - 动作:
   - 容器内 worktree 根：`go test -race ./...`、`go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...`、`make smoke-chat`（已依赖 `smoke-go`，含 Linux 上的 `TestChatMultiHooks`）。
   - 主机 Windows（gofer exec job，只写 `tmp/`）：在 worktree 跑 `go test ./...` 与 `go test -tags ptye2e ./test/ptye2e -run 'TestChatMultiHooks|TestChatObserve' -count=1 -v`。
-  - 真实环境（主机 gofer exec job，脚本 `tmp/suga-5xmf/realenv.ps1`）：在 worktree 根 `go build -o <WP>/tmp/suga-5xmf/suga.exe ./cmd/suga`；以隔离 `SUGA_HOME=<WP>/tmp/suga-5xmf/home`（`config.yaml` 只含从真实配置复制的 provider 段——只能含 `${VAR}` 引用，复制后 `Select-String -Pattern 'api_key:\s*[^$\s]'` 无结果才继续——与 `hooks.command: [gofer, hook, generic, --agent, suga]`、`hooks.commands: [{command: [idevstd, script, continuation_hook, --agent, suga], timeout_ms: 10000}]`，`.env` 只读引用真实凭据，不复制文件）在 `<WP>/tmp/suga-5xmf/ws` 运行一回合（`"说一句话" | suga.exe chat`，结束后 `/exit`）；随后 `suga.exe inspect trace <id> --json` 确认 SessionStart、UserPromptSubmit、Stop 各有 `entry` 0 与 1 的 hook 事件、无 error 状态，gofer 侧会话列表出现该会话。续跑 block 的真实路径需要 SUPMODE 状态文件，本次不构造：完成说明写 `UNVERIFIED_REAL_ENV: 真实 continuation_hook 的 block 路径（复现：在 ws 下按 IDEV-STD 续跑合同放置状态文件后重跑同一脚本）`；gofer 无 `--wait`/有 `--wait` 的真实差异同样以 T1 结论为准并披露。凭据与残留（HPS13）：脚本不打印环境变量与 `.env` 内容，job 日志只含命令、退出码与 trace 检查结果；结束后删除 `tmp/suga-5xmf/home`、`tmp/suga-5xmf/ws` 与 `suga.exe`；记录本次在 gofer server 上产生的临时 hook 会话 id，完成说明给出其归档或删除方式（按当时 `gofer` CLI 的会话子命令；没有对应命令时写明保留并说明原因）。
+  - 真实环境（主机 gofer exec job，脚本 `tmp/suga-5xmf/realenv.ps1`）：在 worktree 根 `go build -o <WP>/tmp/suga-5xmf/suga.exe ./cmd/suga`；以隔离 `SUGA_HOME=<WP>/tmp/suga-5xmf/home`（`config.yaml` 只含从真实配置复制的 provider 段——复制时丢弃 `headers`（本次验证不需要自定义请求头），只保留 `type`、`base_url`、`models`、`api_key`；`api_key` 每个值去掉引号后须匹配 `^\$\{[A-Za-z0-9_]+\}$`，逐值检查全部通过才继续，否则停止并改用引用——与 `hooks.command: [gofer, hook, generic, --agent, suga]`、`hooks.commands: [{command: [idevstd, script, continuation_hook, --agent, suga], timeout_ms: 10000}]`，`.env` 只读引用真实凭据，不复制文件）在 `<WP>/tmp/suga-5xmf/ws` 运行一回合（`"说一句话" | suga.exe chat`，结束后 `/exit`）；随后 `suga.exe inspect trace <id> --json` 确认 SessionStart、UserPromptSubmit、Stop 各有 `entry` 0 与 1 的 hook 事件、无 error 状态，gofer 侧会话列表出现该会话。续跑 block 的真实路径需要 SUPMODE 状态文件，本次不构造：完成说明写 `UNVERIFIED_REAL_ENV: 真实 continuation_hook 的 block 路径（复现：在 ws 下按 IDEV-STD 续跑合同放置状态文件后重跑同一脚本）`；gofer 无 `--wait`/有 `--wait` 的真实差异同样以 T1 结论为准并披露。凭据与残留（HPS13）：脚本不打印环境变量与 `.env` 内容，job 日志只含命令、退出码与 trace 检查结果；结束后删除 `tmp/suga-5xmf/home`、`tmp/suga-5xmf/ws` 与 `suga.exe`；记录本次在 gofer server 上产生的临时 hook 会话 id，完成说明给出其归档或删除方式（按当时 `gofer` CLI 的会话子命令；没有对应命令时写明保留并说明原因）。
+  - 提交 tracker（HPS16、HPF19）：本计划在 suga 主目录写的 issue 评论（T1 结论、T9 验证结果）改动的是主目录的 `.gofer/tracker/`；合并前核对之前，先在主目录只暂存 `.gofer/tracker/` 下的文件（提交前核对 `git diff --cached --name-only` 只含这些路径）并提交 `chore(tracker): suga-5xmf verification notes`。T9 的验证结果评论在此提交之前写完；合并后的收尾评论随关闭 issue 的提交一起提交。
   - 合并前核对（HPS12，fail-closed）：主机 job 运行 `git -C inhere-tools/suga branch --show-current`（须为 `main`）与 `git -C inhere-tools/suga status --short`（须为空）；任一不满足即按 Ownership Conflict 停止。记录合并前 `git -C inhere-tools/suga rev-parse HEAD` 作为恢复点。
   - 合并：主机 `tmp/xhen-p1/host-merge.ps1 -Repo inhere-tools/suga -Branch feat/multi-command-hooks -MsgFile …`，以 `is_ancestor=0` 为收尾前提；CHANGELOG 已发布小节逐字未变。
   - IDEV-STD 消息草稿写进 issue 评论，要点：条目形状只有 `command` 与 `timeout_ms`（示例 YAML）；`suga config set hooks.commands` 整体替换，已有条目需合并后写入；`hooks.commands` 是 protected 键，必须由人在 suga 之外的终端执行，agent 会话或管道 stdin 会被拒（退出码 2），所以安装命令应打印给用户而不是代执行；需要同时包含 `suga-hyj7` 与本特性的 suga 版本（尚未发布，版本号待发版确定）。发送时机：合并到 main 之后、发版前准备草稿，发版后由你确认发送——形状虽在设计 0.6 已定，但只有 T9 全绿后才确认可用，版本号也要发版后才能给出。
