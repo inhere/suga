@@ -188,19 +188,3 @@ func (w *checkpointWait) Interrupt(context.Context) string {
 	w.cancel()
 	return ""
 }
-
-// finishedWait is the Stop wait of a pipeline without a compatible entry: it is
-// already done and answers nothing.
-type finishedWait struct{}
-
-func (finishedWait) Done() <-chan Result { return closedResult() }
-
-func (finishedWait) Interrupt(context.Context) string { return "" }
-
-// closedResult returns a channel already holding the empty result.
-func closedResult() <-chan Result {
-	done := make(chan Result, 1)
-	done <- Result{}
-	close(done)
-	return done
-}
