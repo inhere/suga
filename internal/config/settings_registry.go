@@ -278,6 +278,9 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "skills.list_max", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "skills.always_load", Type: ConfigTypeStringList, Writable: true},
 	{Pattern: "hooks.command", Type: ConfigTypeStringList, Writable: true, Protected: true},
+	// hooks.commands: the multi-entry hook list (command + timeout_ms). The
+	// compatible hooks.command entry above keeps its own default timeout.
+	{Pattern: "hooks.commands", Type: ConfigTypeYAML, Writable: true, Protected: true, Reader: "hooks"},
 	{Pattern: "hooks.timeout_ms", Type: ConfigTypeInt, Writable: true},
 	{Pattern: "hooks.stop_args", Type: ConfigTypeStringList, Writable: true, Protected: true},
 	{Pattern: "hooks.stop_wait_sec", Type: ConfigTypeInt, Writable: true},
@@ -754,6 +757,8 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadMCPServerSettings()
 	case "network_proxy":
 		_, err = ReadNetworkProxy()
+	case "hooks":
+		_, err = ReadHookEntries()
 	case "preferred_tools":
 		_, err = ReadPreferredTools()
 	case "deferred_native":

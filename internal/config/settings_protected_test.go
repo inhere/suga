@@ -174,6 +174,7 @@ var protectedClassification = map[string]string{
 
 	// exec: introduces an external program, instruction file or tool run.
 	"hooks.command":             "exec",
+	"hooks.commands":            "exec",
 	"hooks.stop_args":           "exec",
 	"hooks.pre_tool_use.tools":  "exec",
 	"hooks.pre_tool_use.name":   "exec",
