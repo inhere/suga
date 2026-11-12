@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga chat hooks 多命令 实施计划
 
-> 状态：Draft 0.4 / 待人工计划批准；issue `suga-5xmf`
+> 状态：Draft 0.4 / 已批准（2026-11-12）；issue `suga-5xmf`
 
 ## 修订记录
 
@@ -275,7 +275,7 @@
 
 ## 人工 Gate
 
-1. 计划批准（本稿评审后），同时指定 T2–T8 执行者模型。
+1. 计划批准（本稿评审后），同时指定 T2–T8 执行者模型。已批准：2026-11-12 用户原话“批准 suga 多命令 hook 计划 0.4（接受未复核修订），开始实施；T5 用 gpt-6.1-sol，其余用 oc-go ds4.1”。该原话同时是覆盖 T1–T9 的当前执行请求（含建 worktree 分支与合并到本地 main，不含 push/发版）；执行者：T5 `openai-codex/gpt-6.1-sol`，T2–T4、T6–T8 `opencode-go/deepseek-v4.1-flash`。
 2. 当前执行请求：你指示开始实施。执行请求可先只覆盖 T1；T2 起另需前置条件（hyj7 已合入 main）满足。该请求覆盖建 worktree 分支 `feat/multi-command-hooks` 与合并到本地 main，不含 push。
 3. T1 分支②：gofer 无 `--wait` 会打开 turn 时，停下请求确认，确认后继续 T2。
 4. 外部动作 Gate：push、tag、发版、安装、向 IDEV-STD 会话发送配置形状，均需你另行逐项批准；本计划只准备消息草稿。
