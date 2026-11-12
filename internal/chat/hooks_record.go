@@ -35,7 +35,7 @@ func recordHooks(inner sugahooks.Client, runner *personal.Runner) sugahooks.Clie
 func (h *recordingHooks) Call(ctx context.Context, ev sugahooks.Event) sugahooks.Response {
 	start := time.Now()
 	resp := h.Client.Call(ctx, ev)
-	h.record(ev, sugahooks.Result{Response: resp}, time.Since(start))
+	h.record(ev, sugahooks.Result{Response: resp}, time.Since(start), false)
 	return resp
 }
 
@@ -51,14 +51,36 @@ func (h *recordingHooks) StartStop(ctx context.Context, ev sugahooks.Event) suga
 		if !ok {
 			return
 		}
-		h.record(ev, r, time.Since(start))
+		h.record(ev, r, time.Since(start), true)
 		w.out <- r
 	}()
 	return w
 }
 
-func (h *recordingHooks) record(ev sugahooks.Event, r sugahooks.Result, d time.Duration) {
-	recordHookRun(h.runner, ev, r, d, nil)
+// record writes the command runs behind one answer: a pipeline answers with one
+// run per configured entry, a single command with the one run of its own, so
+// trace shows every entry that ran (HF14). An answer without run records is
+// traced as the single run it was, with the duration of the whole call.
+// keepErr records the error of each run: a Stop wait carries it per entry,
+// while an ordinary event answer reports no error of its own.
+func (h *recordingHooks) record(ev sugahooks.Event, r sugahooks.Result, d time.Duration, keepErr bool) {
+	if len(r.Response.Runs) == 0 {
+		recordHookRun(h.runner, ev, r, d, nil)
+		return
+	}
+	for _, run := range r.Response.Runs {
+		result := sugahooks.Result{Response: run.Response}
+		if keepErr {
+			result.Err = run.Err
+		}
+		recordHookRun(h.runner, ev, result, run.Duration, entryRunAttrs(run))
+	}
+}
+
+// entryRunAttrs names the configured entry and its program in a hook event, so
+// trace tells which of the hooks.commands entries (0: hooks.command) produced it.
+func entryRunAttrs(run sugahooks.EntryRun) map[string]any {
+	return map[string]any{"entry": run.Entry, "program": run.Program}
 }
 
 // recordHookRun writes one hook run as a "hook" event of the session: the event

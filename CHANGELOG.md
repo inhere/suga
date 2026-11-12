@@ -9,6 +9,7 @@
 - 安全相关配置（protected 键）：放宽检查、扩大读写或执行范围、引入外部程序或指令、改变请求去向的配置键标为 protected，按用途分为执行类、放宽类、执行上限类、端点类、裁决与 `log.file`（完整清单见 `docs/usage/gofer-personal-agent.md` 的“安全相关配置”一节）；`suga config set/unset` 只能在 suga 之外的终端里改它们，会话内调用（`shell_exec`、chat `!cmd`、hook 脚本）或 stdin 不是终端（`echo … | suga config set`、Git Bash/mintty、Gofer job 脚本）时退出码 2、配置文件不变，提示改为在终端执行或直接编辑配置文件。非 protected 键不受影响（suga-hyj7）。
 - 启动时的变化提示：chat、run、ACP 与 SDK 读取配置后，把 protected 键的取值摘要与 `$SUGA_HOME/run/protected-config/` 下的快照比较（按 `config.yaml` 里未展开 `${VAR}` 的原始值，注释与缩进不算改动；无法逐键读取的写法比较整个文件）；有改动时 chat 横幅列出键名（不含取值）并在展示后推进快照，run 向 stderr 写一行，会话首个回合记一条 `kind=config`、`name=protected_config_changed` 的 trace；首次运行只建快照，`suga compact` 不比较，快照无法读取时按全部 protected 键已改动提示（suga-hyj7）。
 - 不可写的 `hooks.pre_tool_use.tools`、`hooks.pre_tool_use.name` 描述符（此前未登记，只参与启动比较）（suga-hyj7）。
+- chat hooks 支持多命令：新增 protected 键 `hooks.commands`（列表，每条只有 `command` 与可选的 `timeout_ms`），与 `hooks.command` 同时生效，后者为编号 0 的兼容条目并保留 `stop_args`、`stop_wait_sec`、`stop_background` 与工具过滤；新条目在 SessionStart、UserPromptSubmit、Stop、SessionEnd 时被调用（前台 Stop 等待被打断时收 Interrupt），不收 PreToolUse/PostToolUse、不能等待；Stop 先按顺序执行即时条目、任一 block 即跳过等待型条目，多个 block 的 reason 以空行连接；多条目事件每条运行在 trace 里记一条带 `entry`/`program` 的 `hook` 事件（suga-5xmf）。
 
 ### 变更
 
