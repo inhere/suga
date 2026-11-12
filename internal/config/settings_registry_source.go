@@ -188,6 +188,11 @@ func lookupMap(root map[string]any, path []string) (any, bool) {
 }
 
 func configFileName() string {
+	// Load reads the file from memory through gkconfig.LoadSources, so the
+	// loaded-file list is empty; the path Load resolved is the authority.
+	if path, _, ok := LoadedConfigBytes(); ok {
+		return path
+	}
 	if files := gkconfig.Default().LoadedFiles(); len(files) > 0 {
 		return files[len(files)-1]
 	}

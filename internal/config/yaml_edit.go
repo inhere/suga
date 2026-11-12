@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -100,13 +101,16 @@ func UnsetConfigValue(path, key string, opts ConfigWriteOptions) (ConfigWriteRes
 }
 
 func configLockPath(path string) string {
+	// The lock name and the protected-config snapshot name must agree on what
+	// "the same config file" means, so both use normalizeConfigPath.
+	path = normalizeConfigPath(path)
 	home, err := ResolveSugaHome()
 	if err != nil {
 		return path + ".lock"
 	}
-	homeConfig := filepath.Join(home, "config.yaml")
+	homeConfig := normalizeConfigPath(filepath.Join(home, "config.yaml"))
 	lockName := "config.lock"
-	if filepath.Clean(path) != filepath.Clean(homeConfig) {
+	if path != homeConfig {
 		digest := sha256.Sum256([]byte(path))
 		lockName = "config-" + hex.EncodeToString(digest[:]) + ".lock"
 	}
@@ -114,7 +118,7 @@ func configLockPath(path string) string {
 	// Direct library tests and callers may pass an isolated config without
 	// setting SUGA_HOME; keep those locks beside the isolated file, not in the
 	// user's default home. CLI calls always set or resolve the real home first.
-	if os.Getenv("SUGA_HOME") == "" && os.Getenv("SUGA_CONFIG") == "" && filepath.Clean(path) != filepath.Clean(homeConfig) {
+	if os.Getenv("SUGA_HOME") == "" && os.Getenv("SUGA_CONFIG") == "" && path != homeConfig {
 		lockDir = filepath.Join(filepath.Dir(path), "run", "locks")
 	}
 	// Ensure direct library callers get the same lock location as the CLI. The
@@ -170,6 +174,13 @@ func editConfigFile(path, key string, opts ConfigWriteOptions, edit func(*ast.Ma
 	}
 	if err := validateConfigCandidate(readBack, path, opts); err != nil {
 		return rollbackConfig(path, original, info.Mode().Perm(), backup, fmt.Errorf("validate config after write: %w", err))
+	}
+	// Record the written value for this key only, inside the same critical
+	// section: the snapshot must not absorb changes this write did not make.
+	// Best effort by design (GR109 exception: the snapshot only feeds a notice),
+	// so a failure is logged and the changed key stays reported until chat shows it.
+	if err := updateProtectedKeyLocked(path, key, readBack); err != nil {
+		slog.Warn("update protected config snapshot", "key", key, "path", path, "err", err)
 	}
 	return ConfigWriteResult{Path: path, Backup: backup, Changed: true}, nil
 }
