@@ -1,133 +1,89 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga chat hooks 多命令 实施计划 第 2 轮 Standards/Governance 评审
+# suga chat hooks 多命令 实施计划 第 3 轮（纠正确认轮）Standards/Governance 评审
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `3ef5f642`（`3ef5f64239958d36404022be9381688565c46105`）；subject path `docs/plans/2026-11-12-multi-command-hooks-plan.md`；上轮 candidate `1b747836`（Draft 0.1，本轴 PASS）
-- 修订版本: Draft 0.2
-- 评审者: 独立 Standards/Governance 轴评审者（Claude 子 agent，未参与计划撰写，未读本轮 Spec/Executability 轴报告）；模式 `REPORT_ONLY`，第 2 轮 confirmation
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `147ad4a3`；subject path `docs/plans/2026-11-12-multi-command-hooks-plan.md`；上轮 candidate `3ef5f642`（Draft 0.2，两轴 PASS）
+- 修订版本: Draft 0.3
+- 评审者: 独立 Standards/Governance 轴评审者（Claude 子 agent，未参与计划撰写）；模式 `REPORT_ONLY`；第 3 轮，唯一一轮纠正确认轮
 - 日期: 2026-11-12
-- 排除项: Spec/Executability 轴的状态机正确性、竞态闭合、测试能否跑通（只在影响治理判断时引用）；设计 0.6 本身（已批准）；不改仓库、不提交
+- 排除项: 全量重评；Spec/Executability 轴的状态机与用例正确性（HPF13–HPF16 的语义闭合只在影响治理判断时引用）；设计 0.6；不改仓库、不提交
 
 ## 输入与方法
 
-- 规范：`tmp/idev-std/d/SD95t2uhRN3Z9UqnPguVJg/payload.md` 全文（router、文档、AI 协作及细则、Go 规则、inhere 规则包 SR2001–SR2004、doc-workflow、document-routing、gates、plan-contract、planning-core-rigorous、plan-closure、plan 模板 1.3.1）；`tmp/idev-std/d/8Yz1eltnU9GuyZy8zAtfgA/payload.md` 中 review-contract 与 review 模板 1.2.0。
-- 被评对象：`git show 3ef5f642:<subject>` 全文（290 行）与 `git diff 1b747836 3ef5f642 -- <subject>`。
-- 依据：设计 0.6（`git show 3ef5f642:docs/design/2026-11-12-multi-command-hooks-design.md`，重点 `:235`、`:248-259`、`:286-304`、`:339`）；`AGENTS.md`；上轮本轴报告 `docs/review/2026-11-12-multi-command-hooks-plan/standards-review.md`（HPS1–HPS11）。
-- 事实核对（只读）：`idevstd script validate_document --kind plan`（对 candidate 导出副本，结果 `ok: true, errors: []`）；`host_or_non_offline_action=` 计数 1；`internal/cli/config.go`（candidate 与当前 main）；`tmp/xhen-p1/host-merge.ps1` 全文；`internal/hooks/hooks.go:126-128,254`（`backgroundStopTimeout`）；`hooks_env_test.go:19`（`TestFakeHookEnvProcess`）；gofer `internal/commands/hook.go:158,282-286`；当前 main 上 hyj7 产物（`TestProtectedClassification` `settings_protected_test.go:297`、README `:101` *exec* 清单、usage `:140` 执行类清单）；`git log 3ef5f642..main`、`git merge-base --is-ancestor feat/protected-config-keys main`；`gofer issue show suga-hyj7`。
-- 协调者补充（已采纳）：hyj7 已合入本地 main（`7905a0f4`），`.worktrees/hyj7` 与分支已删除；“前置：hyj7 已合入”已成立，不作为发现。
+- 规范：`tmp/idev-std/d/SD95t2uhRN3Z9UqnPguVJg/payload.md`；review-contract 与 review 模板 1.2.0（同目录含 `review-contract.md` 的 payload）。
+- 上轮报告：`147ad4a3` 中 `docs/review/2026-11-12-multi-command-hooks-plan/standards-review.md`（HPS1 残项、HPS6 残项、HPS12–HPS15）、`spec-review.md`（HPF13–HPF16）。
+- 被评对象：`git diff 3ef5f642..147ad4a3 -- <subject>` 与 `git show 147ad4a3:<subject>` 相关段落（修订记录 `:8-14`、第 2 轮处理表 `:38-50`、CAP-01 `:90`、baseline/前置 `:112-113`、假进程合同 `:121`、T2 `:157`、T5 `:189-205`、T6 `:217-219`、T9 `:248-254`、回滚 `:258-262`）。
+- 事实核对（只读）：当前 main `internal/cli/config.go:274-311`（`writeConfigValue`、`formatConfigValue`、`PreferredTool` 分支 `:305`）；`internal/config/settings_registry.go` 的 `Sensitive: true` 项（`providers.<id>.api_key` `:326`、`providers.<id>.headers` `:327`）；`internal/config/providers.go:214-224`（provider 段读取 `api_key`、`headers` 并 `expandEnv`）；suga 仓库 `.gofer/tracker/issues.jsonl` 存在、`AGENTS.md:13`（任务用 `gofer issue`，数据在 `.gofer/tracker`）；`git status --short` 干净、`git log 3ef5f642..147ad4a3`（区间含 hyj7 合并 `7905a0f4` 与第 2 轮评审提交）。
 
 ## 验收标准
 
-- plan-contract / plan-closure / plan 模板 1.3.1；review-contract（五类 `CORE_BLOCKING` + necessity proof、同类穷尽、结构违规按 `CORE_CORRECTIVE`）。
-- SR1107、SR1137、SR1301、SR1402.1、SR1403/SR1403.1、SR1405、SR1407、SR1409、SR1411、SR1412、SR1432；GR104、GR107–GR110；SR2002、SR2004；AGENTS.md“验证”“项目编码规范”。
+- review-contract：五类 `CORE_BLOCKING` 需 necessity proof；同类穷尽；结构违规按 `CORE_CORRECTIVE`。
+- plan-contract（dirty 工作树保护、Git 根边界、恢复点）、plan-closure、planning-core-rigorous（纠正确认轮只核对修订）；SR1301（秘密、资源归属）、SR1403、SR1412；修订记录版本规则（计划 `:14`）。
 
-### HPS1–HPS11 关闭核对
+### 上轮项关闭核对
 
-| ID | 结论 | 证据（0.2 行号） |
+| ID | 结论 | 证据（0.3 行号） |
 |---|---|---|
-| HPS1 | 基本关闭；第 5 子项后半（“打断时未启动的条目不记”）仍无断言，见下文 HPS1 残项 | T3 兼容用例 `:159`；T6 后台正例 `:206`；T5 Notice `:185`；T7 entry/program 与无 Interrupt `:217`；R0 替代说明 `:207`、`:218` |
-| HPS2 | 关闭 | 可追溯表补 D8 `:264`、HF12 `:272`、HF19 `:273`、HF20 `:274`、真实边界 `:282`、IDEV-STD 消息 `:283`、合并 `:284`；完成定义 6 提及消息 `:54` |
-| HPS3 | 关闭 | T9 真实环境 `:236`，`UNVERIFIED_REAL_ENV` 行含复现命令；完成定义 5 `:53`。凭据处理细节见 HPS13 |
-| HPS4 | 关闭 | 执行者由 Gate 1 指定、不继承 hyj7 单次授权、T5 按 SR1432 建议更强执行者 `:103`；任务书补暂存核对、禁 stash/reset/checkout、提交节奏 `:104` |
-| HPS5 | 关闭 | 授权 `:60`、Gate 2 `:252` 写明建分支与合并到本地 main，不含 push |
-| HPS6 | 部分关闭：Gate 2 与 T1 口径已统一（`:135`、`:252`）；判定式改用分支名，见下文 HPS6 残项 | `:100` |
-| HPS7 | 关闭 | T3 文件含 `pipeline.go` 骨架 `:152`；T1 分支②记入 issue `:131`；T4 `checkpoint` `:169` |
-| HPS8 | 关闭 | CAP-05 `:81`，validator 通过 |
-| HPS9 | 关闭 | Windows `go test ./...` `:235`；容器只跑 `make smoke-chat` `:234` |
-| HPS10 | 关闭 | gofer plan/todo `:101`；retrospective `:289` |
-| HPS11 | 关闭 | 消息要点（形状、整体替换、protected 需终端、版本）与发送时机理由 `:238`；Gate 4 `:254` |
+| HPS12 | 主体关闭：合并前核对分支为 `main`、`status --short` 为空、fail-closed 按 Ownership Conflict 停止，记录合并前 HEAD，回滚节同步。与计划自身 tracker 写入的冲突见 HPS16 | `:251`、`:261` |
+| HPS13 | 基本关闭：四条全部落入 T9（只复制 `${VAR}`+复制后检查、不打印环境与 `.env`、结束删除 home/ws/二进制、记录临时 gofer 会话 id 并给处理方式）。检查式只覆盖 `api_key`，见 HPS17 | `:250` |
+| HPS14 | 关闭：CAP-01 改为 `formatConfigValue` 的 `PreferredTool` 分支（按值类型），T2 写明 `writeConfigValue` 按 `value.Key` 选新 `formatHookEntries`、`formatConfigValue` 签名不改、两行回显格式。与当前代码一致（`config.go:274-276` 单个 `Fprintf` 两行、`:292`、`:305`） | `:90`、`:157` |
+| HPS15 | 关闭：`slow` 删除；措辞改为“`mode` 决定 Stop 行为；`ifail` 另作用于 Interrupt；`timeout` 另作用于全部事件”，不再自相矛盾 | `:121` |
+| HPS6 残项 | 关闭：判定式改为 `git merge-base --is-ancestor 7905a0f4 main`，并注明写作时已满足；HPF9 行补注“0.3 改为合并提交” | `:113`、`:28` |
+| HPS1 残项 | 关闭：T5 between 用例断言 `Runs` 只含 A，新增“第一条启动前”用例断言 `Runs` 为空；T6 包装下 between 打断断言 trace 无 B 事件 | `:198-199`、`:217` |
 
-### 0.2 新增内容的治理核对（无发现者）
+### 治理面核对（无发现者）
 
 | 项 | 结论 | 证据 |
 |---|---|---|
-| 思考与范围声明 | 符合；scope freeze 新增 `internal/cli/config.go` 一处，追溯到设计 §5 `:235`“`config get hooks.commands` 输出 YAML”，不超出设计 | `:39-44` |
-| 修订记录 / 状态 / 模板首行 | 符合：0.2 有语义变化，递增正确；第 1 轮处置表逐项登记 | `:1`、`:4`、`:8-37` |
-| Capability Discovery | 结构符合（validator 通过）；CAP-05 `OWNER_EXTENSION` 与设计 D1/架构一致；`NONE` sentinel 保留正确（无新 Module）。CAP-01 证据位置不准见 HPS14 | `:73-95` |
-| `host_or_non_offline_action` | 恰一个 `REQUIRED`，补列 T9 真实模型调用、gofer server 临时会话记录 | `:61` |
-| 授权与 Gate | 执行者在 Gate 1 指定（SR1412：不跨计划继承）；Gate 2 可只覆盖 T1，T2 起另需前置条件；T1 分支②独立停点；外部动作 Gate 一项覆盖 push/tag/发版/安装/IDEV-STD 消息，逐项列目标（plan-contract“一个外部动作 Gate”） | `:251-254` |
-| 外部动作：IDEV-STD 消息 | 授权行明确“不含向其他会话发消息”`:60`；计划内只写草稿 `:238`；可追溯到设计 `:339`；发送推迟到发版后有理由 | `:238`、`:254`、`:290` |
-| T1 先行 | T1 只读 + issue 评论，无前置限制，Gate 2 允许单独覆盖 | `:116`、`:135`、`:252` |
-| 超出设计的任务 | 未发现。新增项均有来源：`config get` YAML（设计 `:235`）、真实环境验证（SR1402.1）、gofer plan/todo（AGENTS.md）、retrospective（plan-closure） | — |
-| 设计“代码组织”一致性 | `internal/cli/config.go` 未列在设计架构 `:250-259`，但设计 §5 `:235` 要求该输出，计划在 scope freeze 显式说明来源；属 CLI 输出层，不违反分层 | `:42`、`:58` |
-| SR1407 | 任务内 focused；全量、`-race`、staticcheck、smoke、Windows 全量各在 T9 一次；T9 Windows 重跑 `TestChatMultiHooks` 属完成 Gate 的最终树复核，可接受 | `:234-235` |
-| SR1409 | 高暴露（已发布 v0.55.0、命令执行）两轴 + ledger | `:44` |
-| SR1432 | 执行者按任务性质建议，最终由用户指定 | `:103` |
-| GR104 | `hooks.go` 523 行，编排放 `pipeline.go`；chat 两文件净增 ≤25 行 | `:95`、`:208` |
-| GR107 | 不适用（不改 `cmd/*`） | — |
-| GR108 | 装配层 `internal/cli/chat.go`、`internal/wiring/localenv.go` 不改；合并逻辑全在 `internal/hooks` | `:58`；设计 `:257` |
-| GR109 | Stop/普通事件/Interrupt 失败记 Warn，取消/超时记 Debug，并有 `slog` handler 断言；`writeConfigValue` 回落属输出格式化，非状态写入 | `:167`、`:178`、`:185`、`:191` |
-| GR110 | `TestConfigHooksCommands` 经 root 命令真实分发 | `:146` |
-| SR2002 / SR2004 | 符合 | `:106`；设计 `:250` |
-| SR1403 | 无新依赖、无新 Module；假进程合同有一处冗余见 HPS15 | `:110` |
+| 版本递增 | 正确：0.3 含语义变化（状态机初始态、用例断言、T9 新步骤），递增为 0.3；状态行同步 | `:4`、`:12` |
+| baseline 更新是否属元数据 | baseline（HEAD `5266449c`、hyj7 已合入、worktree/分支已删）是写作时事实更新，属元数据；与前置判定式（语义：fail-closed 判据改变）一同进入 0.3，无需另立版本，也未把元数据纠正冒充语义变化。`5266449c` 为 candidate 父提交，事实一致 | `:112-113` |
+| 修订记录 | 0.3 行按类列出全部修订（含 hyj7 同步），与 diff 一致，未发现 diff 中有未登记的语义改动 | `:12` 对照 diff |
+| 处理表 | 第 2 轮全部 10 项（HPF13–HPF16、HPS1 续、HPS6 续、HPS12–HPS15）均有行，合并行（HPF14+HPS1 续、HPF16+HPS15、HPS6 续+HPF15）处理内容覆盖双方建议 | `:38-50` |
+| 无法追溯到设计的新机制 | 未发现。新增均追溯到评审项或已有来源：`formatHookEntries`（设计 §5 `config get` 输出 YAML，HPS14）；`last` 初值 -1、初始 `between`、共用收尾、第一条启动前用例（HPF13，落实设计打断语义）；HF13 的 `timeout_ms: 30000`、任务 ID 过滤、`t.Cleanup`（HPF16，测试编排）；合并前核对（plan-contract dirty 保护）；凭据与残留四条（SR1301） | `:195-199`、`:218`、`:250-251` |
+| 授权与外部动作 | 临时 gofer 会话只“给出归档或删除方式”，不在计划内执行删除，未越过授权行 `:73` 与外部动作 Gate `:269`；`host_or_non_offline_action` 仍为一项 REQUIRED，覆盖该会话记录 | `:250`、`:73`、`:269` |
+| Capability Discovery | CAP-01 更正后与代码一致；其余未改，`NONE` sentinel 保留 | `:90-100` |
+| 恢复点 | 合并前 HEAD 作为恢复点，回滚节写 revert 合并提交并引用该恢复点；任务级恢复点不变 | `:251`、`:260-261` |
 
-### SR1301 安全核对（计划层）
+### SR1301 安全核对（仅修订部分）
 
 | 面 | 结论 |
 |---|---|
-| 鉴权 | 已核对：`Protected:true`，T2 验证 `SUGA_SESSION_ID=x` 下被拒；hyj7 已在 main（`7905a0f4`），`TestProtectedClassification` 存在 |
-| 注入防护 | 已核对：argv 直接执行，复用 `commandClient` |
-| 秘密 | 测试与 trace 已核对（只记 `entry`、`program`）；T9 真实环境的凭据处理未写全，见 HPS13 |
-| 入参校验 | 已核对：`ReadHookEntries` 归一化顺序写全，错误精确到 `hooks.commands[i].<字段>` |
-| 资源归属 | T9 合并目标检出的归属核对缺失，见 HPS12 |
+| 秘密 | 规则写全（只复制 `${VAR}`、不打印、结束删除）；自动检查覆盖不全，见 HPS17 |
+| 资源归属 | 主目录合并前核对已加；与计划自身 issue 评论写入的冲突见 HPS16 |
+| 鉴权 / 注入 / 入参 | 本轮未改，沿用上轮结论 |
 
 无 SECURITY 类违反。
 
 ## 发现
 
-按严重级别排序；全部 `CORE_CORRECTIVE`，无 `CORE_BLOCKING`。
+全部 `CORE_CORRECTIVE`，无 `CORE_BLOCKING`。
 
-### HPS12 [MEDIUM] T9 合并到本地 main 缺目标检出的分支与 dirty 核对（CORE_CORRECTIVE）
+### HPS16 [MEDIUM] 合并前“`status --short` 须为空”与计划自身在主目录写入的 issue 评论冲突，照字面执行会误判停止（CORE_CORRECTIVE）
 
-- 证据: T9 合并动作只写“主机 `host-merge.ps1 -Repo inhere-tools/suga -Branch feat/multi-command-hooks -MsgFile …`，以 `is_ancestor=0` 为收尾前提”（`:237`）。脚本全文（`tmp/xhen-p1/host-merge.ps1`）直接 `git -C $Repo merge --no-ff $Branch`，合并到主目录**当前 HEAD**，不核对当前分支是否为 `main`、工作树是否干净。plan-contract 要求“dirty 工作树保护、Git 根边界”；计划的 baseline 与 fail-closed（`:99`、`:109`）只覆盖 worktree `.worktrees/hooks5x`，没有覆盖合并目标即 suga 主目录。suga 主目录由其他会话并行使用（本轮评审期间 main 已由 `3ef5f642` 前进到 `7905a0f4`，hyj7 由另一会话合入）。同类穷尽：计划中写主目录的动作只有这一处（T1、T2–T8 均在 worktree 或只读）。
-- 影响: 主目录不在 `main` 时会合到错误分支；主目录有他人未提交改动时合并可能失败或把冲突留在他人工作区，构成 Ownership Conflict。不判 `CORE_BLOCKING`（DATA）：`git merge` 遇到会被覆盖的本地改动时会拒绝合并，合到错误分支也可以 reset 恢复，没有不可回滚的数据丢失，necessity proof 不成立。
-- 建议: T9 合并前加核对并写成 fail-closed：主机 job 先跑 `git -C inhere-tools/suga branch --show-current`（须为 `main`）与 `git -C inhere-tools/suga status --short`（须为空，或只含与本分支改动路径不相交且已登记归属的路径）；不满足即按 Ownership Conflict 停止。合并前重新记录 main HEAD 作为恢复点（回滚节 `:246` 相应补一句）。
+- 证据: T9 合并前核对要求 `git -C inhere-tools/suga status --short` 为空，否则按 Ownership Conflict 停止（`:251`）。但计划在合并前多处向 suga 的 tracker 写入：T1 结论写进 issue 评论（`:144-147`）；T9 真实环境结果与 `UNVERIFIED_REAL_ENV` 行记录在 issue 评论（`:254`）。suga 的 issue 数据在仓库内 `.gofer/tracker/issues.jsonl`（`AGENTS.md:13`，文件存在），由主 Agent 在主目录执行 `gofer issue comment` 时写入主目录工作树。计划没有写这些 tracker 变化何时提交（全文 `提交` 相关条目只涉及 worktree 任务提交，`:117`、`:160`、`:182`、`:207`、`:260`）。同类穷尽：计划中在合并前写主目录的只有 issue 评论（T1、T9 两处）；gofer plan/todo 状态在 gofer server，不写工作树；真实环境产物在 WP `tmp/`，不在 suga 仓库。
+- 影响: 主目录会因计划自己的 tracker 写入而 dirty，核对按字面判为 Ownership Conflict 停止（fail-closed 误报，同 HPS6 残项一类）；或执行者为通过核对临时把自己的改动当他人改动处理。不判 `CORE_BLOCKING`：结果是停止而非错误合并，无数据丢失，necessity proof 不成立。
+- 建议: 合并前核对之前加一步“提交本计划产生的 tracker 变化（`.gofer/tracker/*.jsonl`，按功能点随提交）”，再要求 `status --short` 为空；或写明允许的例外仅限已登记为本计划所写的 `.gofer/tracker/issues.jsonl`，且须先提交再合并（与“worktree merge 前先提交 tracker”的既有经验一致）。T9 issue 评论的写入时机（合并前/后）一并写明。
 
-### HPS13 [LOW] T9 真实环境的凭据与残留处理未写全（SR1301 秘密）（CORE_CORRECTIVE）
+### HPS17 [LOW] 真实环境凭据检查式只覆盖 `api_key`，未覆盖同为 Sensitive 的 provider `headers`（CORE_CORRECTIVE）
 
-- 证据: T9 写“`config.yaml` 只含从真实配置复制的 provider 引用……`.env` 只读引用真实凭据，不复制文件”（`:236`）。未写明：①复制进 `tmp/suga-5xmf/home/config.yaml` 的 provider 段只能含 `${VAR}` 引用、不能含字面密钥（真实配置中如有字面 `api_key` 会被复制进 `tmp/`）；②`realenv.ps1` 与 gofer job 日志不打印环境变量或 `.env` 内容；③完成后删除 `tmp/suga-5xmf/home`（含 trace、session 数据）与构建产物，或说明保留理由；④gofer server 上产生的临时 hook 会话（`:61`）的清理方式。AGENTS.md 对同类工具 acpprobe 的约束是“读真实 config.yaml 与 .env 但不复制文件”。同类穷尽：计划中接触真实凭据的只有 T9 这一处（执行者 job 由 gofer 自身凭据处理，不在计划内复制）。
-- 影响: 密钥可能落进 `tmp/` 或 job 日志；残留会话混入用户真实 gofer 会话列表。
-- 建议: T9 加四条：provider 段只复制 `${VAR}` 引用，复制后 `grep -E 'api_key:\s*[^$\s]'` 为空才继续；脚本不 echo 环境；结束删除 `tmp/suga-5xmf/home`；记录临时 gofer 会话 id 并在完成说明中给出归档/删除命令（或写明保留）。
-
-### HPS14 [LOW] CAP-01 与 T2 的复用证据位置不准（CORE_CORRECTIVE）
-
-- 证据: CAP-01 写“`internal/cli/config.go` `writeConfigValue` 的 `PreferredTool` YAML 分支”（`:77`），T2 写“仿 `PreferredTool` 分支”在 `writeConfigValue` 内按键判断（`:145`）。实际 `PreferredTool` 分支在 `formatConfigValue`（candidate `internal/cli/config.go:260`、`:273`；当前 main `:305`），`writeConfigValue`（candidate `:242-247`）只拼 `key = value\nsource = …` 两行，且 `formatConfigValue` 只收值、不收键。同类穷尽：计划中引用 `internal/cli/config.go` 符号的只有 `:77`、`:145`（另 `:22` 处置表同述），三处一致地指向错误函数。
-- 影响: Capability Discovery 的复用证据与代码不符；执行者按“仿 `writeConfigValue` 内的分支”找不到先例，可能自行选择插入点（是否需要改 `formatConfigValue` 签名属 Spec 轴判断）。
-- 建议: CAP-01 改为“`formatConfigValue` 的 `PreferredTool` 分支（按值类型）”；T2 写明分支落点（在 `writeConfigValue` 中按 `value.Key` 选择格式化函数，或给 `formatConfigValue` 传键）与回显的两行格式（`hooks.commands = …` / `source = …`），两处保持一致。
-
-### HPS15 [LOW] 假进程合同含未使用模式与自相矛盾表述（SR1403）（CORE_CORRECTIVE）
-
-- 证据: 假进程合同（`:108`）定义 `slow`（“睡 1s 后无输出”），全文没有任何任务使用（`grep -n slow` 只命中 `:108`）；同句写“`mode` 只作用于 Stop”，随后又写“`timeout` 模式在全部事件上睡 1s”（T4 `:170` 在 SessionStart 上使用）。同类穷尽：其余模式 `block`、`fail`、`wait`、`silent`、`ifail`、`timeout` 均有使用点（`:170`、`:185-191`、`:206`、`:215`）。
-- 影响: 三个包各实现一遍未用的模式（SR1403 不做优先）；“只作用于 Stop”与 `timeout` 冲突，执行者可能实现成 Stop 才超时，T4 超时用例失效。
-- 建议: 删除 `slow`；把表述改为“除 `timeout` 作用于全部事件外，其余 `mode` 只作用于 Stop”。
-
-### HPS6 残项（上轮未穷尽）前置判定式依赖已删除的分支名
-
-- 证据: 0.2 判定改为 `git merge-base --is-ancestor feat/protected-config-keys main`（`:100`；处置表 `:27`）。hyj7 合并后分支已删除，当前运行该命令得 `fatal: Not a valid object name feat/protected-config-keys`、退出码 128。上轮建议是以合并提交判定。
-- 影响: 前置条件事实上已成立（协调者确认，不作为发现），但按计划字面执行，fail-closed 判定会误报不满足而阻止 T2。
-- 建议: 改为 `git merge-base --is-ancestor 7905a0f4 main`（hyj7 合并提交），其余两项（issue 关闭、符号存在）保留。处置沿用 HPS6 的 `CORE_CORRECTIVE`。
-
-### HPS1 残项（上轮未穷尽）“打断时未启动的条目不记”无断言
-
-- 证据: 设计 `:289`“Interrupt 不进 trace；打断时未启动的条目不记”。0.2 只覆盖前半（T6 `:204`、T7 `:217`）；T5 between 用例（`:189`）断言 B 与等待条目没有 `start` 日志，但没有断言 `done` 结果的 `Runs` 不含 B，T6 也没有 between 打断下的 trace 用例。
-- 影响: `Runs` 若给未启动条目填空记录，chat 会多写 hook 事件，现有用例发现不了。
-- 建议: T5 between 用例加 `len(Runs)==1 && Runs[0].Entry==<A>`（或 T6 包装下的 between 打断断言 trace 中没有 B 的 Stop 事件）。处置沿用 HPS1 的 `CORE_CORRECTIVE`。
+- 证据: T9 规则写“provider 段只能含 `${VAR}` 引用”，但自动检查只有 `Select-String -Pattern 'api_key:\s*[^$\s]'`（`:250`）。provider 段中另一个 Sensitive 字段是 `providers.<id>.headers`（`settings_registry.go:327`，`ConfigTypeStringMap`，`providers.go:223` 对其 `expandEnv`），常用于放 `Authorization` 等鉴权头，字面值不会被该正则命中。同类穷尽：provider 段的 Sensitive 字段只有 `api_key` 与 `headers` 两个（registry `Sensitive: true` 共 5 项，其余 `serpapi_key`、`network.proxy.url`、`tools.web_fetch.proxy` 不在 provider 段，计划只复制 provider 段，不涉及）。
+- 影响: 真实配置的 provider 若用字面 `headers` 传凭据，会被复制进 `tmp/suga-5xmf/home/config.yaml` 并在检查后放行；结束删除缩短了暴露期，但规则与检查不一致。
+- 建议: 检查改为覆盖 provider 段全部 Sensitive 字段：`api_key` 与 `headers` 下的每个值都须为 `${VAR}` 形式（例如对复制后的 provider 段逐值检查不含非 `${...}` 的字面值），或复制时直接丢弃 `headers` 并说明不影响本次验证。
 
 ## 覆盖缺口与限制
 
-- 只读核对，未运行测试；validator 对 candidate 导出副本运行，只证结构。
-- 未复核 gofer `internal/hookrelay/run.go`、`internal/httpapi/session_handler.go` 的具体行号（T1 自身会读）；`hook.go:158,282-286` 已核对与计划描述一致。
-- 状态机语义、钩子点能否复现子态、`config get` 回显的精确格式归 Spec/Executability 轴；HPS14 只从“复用证据准确性”角度记录。
-- 计划写作时的 baseline（HEAD `1b747836`、hyj7 在 worktree）在评审时已过时（main 现为 `7905a0f4`）；计划已写“实施开始时重新记录 HEAD 与 status”（`:99`），不构成发现。
-- 本报告写在 `tmp/review/suga-hooks-plan/`；正式评审目录与 ledger 由主 Agent 落盘。
+- 只读核对；未运行 validator 与测试（本轮修订不改结构段落，上轮 validator 已通过）。
+- HPF13–HPF16 的状态机与用例语义闭合归 Spec/Executability 轴确认；本轴只核对其可追溯与登记完整。
+- 未核对 gofer CLI 当前是否有会话归档/删除子命令；计划已写“没有时写明保留”。
+- 未确认 `gofer issue comment` 在本机实际写入的是 suga 仓库 tracker 还是其他位置；结论依据 `AGENTS.md:13` 与仓库内 `.gofer/tracker/issues.jsonl` 的存在。若实际不写工作树，HPS16 降为措辞建议。
 
 ## 结论
 
-PASS（Standards/Governance 轴，第 2 轮）：无 `CORE_BLOCKING`。HPS2–HPS5、HPS7–HPS11 关闭；HPS1、HPS6 各剩一个残项（上轮未穷尽，沿用 `CORE_CORRECTIVE`）；新增 HPS12–HPS15 均为 `CORE_CORRECTIVE`。未发现 GR107–GR110 或规则包结构违规，也没有超出设计的任务。按 planning-core-rigorous，第 2 轮全 PASS 但含 `CORE_CORRECTIVE`，修订后可做唯一一轮纠正确认轮（candidate 须变化）；不做则这些修订按“未复核修订”在 Gate 披露。
+PASS（Standards/Governance 轴，第 3 轮纠正确认轮）：无 `CORE_BLOCKING`。HPS12–HPS15 与 HPS1、HPS6 残项关闭；修订记录与第 2 轮处理表完整；baseline 更新属元数据且与语义修订同版合理；未引入无法追溯到设计的机制。新增 HPS16（MEDIUM）、HPS17（LOW）均为 `CORE_CORRECTIVE`。按 planning-core-rigorous，本轮为唯一纠正确认轮，不再开评审轮；两项可在批准前做小修订（Gate 披露为“未复核修订”），或在 Gate 作为已知风险披露。
 
 ## 剩余风险与后续
 
-- HPS12 不修正时，T9 合并依赖执行时人工确认主目录状态。
-- T9 真实环境不覆盖续跑 block 路径（已按 `UNVERIFIED_REAL_ENV` 披露）。
-- 发版须与 hyj7 同版或其后（D6）；IDEV-STD 消息发送、push、发版仍在外部动作 Gate 之后。
+- HPS16 不修正时，T9 合并前需人工先提交 tracker 变化，否则核对会停止。
+- HPS17 不修正时，真实验证前需人工确认 provider `headers` 无字面凭据。
+- 续跑 block 真实路径仍为 `UNVERIFIED_REAL_ENV`；发版、push、IDEV-STD 消息仍在外部动作 Gate 之后。
