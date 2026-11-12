@@ -4,15 +4,16 @@
  "candidate_progression": "DOCUMENT_REVISION",
  "candidate": {
   "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
-  "commit": "46272dc5e8bceb9729badfc7202b9f327c7518a1",
+  "commit": "c099198b7fdd17d3a3bbfbc6e787ab80c60f0f90",
   "subject_path": "docs/design/2026-11-12-multi-command-hooks-design.md",
-  "document_revision": "0.4"
+  "document_revision": "0.5"
  },
  "author_id": "author-main",
  "required_rounds": [
   1,
   2,
-  3
+  3,
+  4
  ],
  "required_sections": [
   "修订记录",
@@ -719,6 +720,186 @@
      "disposition": "CORE_CORRECTIVE",
      "evidence": "两条目之间与全部结束的边界",
      "impact": "两条目之间与全部结束的边界",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 4,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "c099198b7fdd17d3a3bbfbc6e787ab80c60f0f90",
+    "subject_path": "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "document_revision": "0.5"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r4",
+   "session_id": "reviewer-standards-r4-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "docs/review/2026-11-12-multi-command-hooks/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-12-multi-command-hooks/standards-review.md",
+    "source_report_commit_oid": "48b7672535451dab0f0c90e8aa032413ddc58614",
+    "source_report_blob_oid": "1931ae1844da5610fd520ecb6181a8f78f357baa",
+    "direct_repo_paths": [
+     "docs/design/2026-11-12-multi-command-hooks-design.md",
+     "docs/review/2026-11-12-multi-command-hooks/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "现有 hooks.command 配置行为不变",
+    "多个命令共存时 Stop block 生效",
+    "新键受 protected 约束"
+   ],
+   "findings": [
+    {
+     "finding_id": "HS10",
+     "severity": "LOW",
+     "disposition": "DEFERRED_ENHANCEMENT",
+     "evidence": "测试钩子形式由计划约束",
+     "impact": "测试钩子形式由计划约束",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HS11",
+     "severity": "LOW",
+     "disposition": "DEFERRED_ENHANCEMENT",
+     "evidence": "gofer 核对失败分支由计划写明",
+     "impact": "gofer 核对失败分支由计划写明",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 4,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "c099198b7fdd17d3a3bbfbc6e787ab80c60f0f90",
+    "subject_path": "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "document_revision": "0.5"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r4",
+   "session_id": "reviewer-spec-r4-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-12-multi-command-hooks-design.md",
+    "docs/review/2026-11-12-multi-command-hooks/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-12-multi-command-hooks/spec-review.md",
+    "source_report_commit_oid": "48b7672535451dab0f0c90e8aa032413ddc58614",
+    "source_report_blob_oid": "585124597b550ca2db53007582ad0f96b27b0c6f",
+    "direct_repo_paths": [
+     "docs/design/2026-11-12-multi-command-hooks-design.md",
+     "docs/review/2026-11-12-multi-command-hooks/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "现有 hooks.command 配置行为不变",
+    "多个命令共存时 Stop block 生效",
+    "新键受 protected 约束"
+   ],
+   "findings": [
+    {
+     "finding_id": "HF26",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "失败填 Runs 与现有零值断言冲突",
+     "impact": "失败填 Runs 与现有零值断言冲突",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF27",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "NoSessionEnv 表述不准",
+     "impact": "NoSessionEnv 表述不准",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF28",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "运行中状态打断交回 block",
+     "impact": "运行中状态打断交回 block",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "HF29",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "R0 检查时点",
+     "impact": "R0 检查时点",
      "recommendation": "按报告建议修订设计，下一版复核"
     }
    ],
