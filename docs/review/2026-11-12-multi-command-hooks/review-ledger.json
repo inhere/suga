@@ -52,8 +52,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-12-multi-command-hooks/standards-review.md",
-    "source_report_commit_oid": "f784d0eb778c432b9ea77f7c3b636c673dc946c1",
-    "source_report_blob_oid": "2d5bb35a4069188b8e1c72bd68158bf714714623",
+    "source_report_commit_oid": "4edfb88989bae04f96ad2ade310aa3dac0fd8cb6",
+    "source_report_blob_oid": "46df14c2a7958003a03bc1ad25b4be46f91df992",
     "direct_repo_paths": [
      "docs/design/2026-11-12-multi-command-hooks-design.md",
      "docs/review/2026-11-12-multi-command-hooks/standards-review.md"
@@ -158,8 +158,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-12-multi-command-hooks/spec-review.md",
-    "source_report_commit_oid": "f784d0eb778c432b9ea77f7c3b636c673dc946c1",
-    "source_report_blob_oid": "da1be8d2ccbca9fbc5711082ad1a3e76e3a8dfc3",
+    "source_report_commit_oid": "4edfb88989bae04f96ad2ade310aa3dac0fd8cb6",
+    "source_report_blob_oid": "d5baa3ee68721e4e978b5827cf04d75c3f121708",
     "direct_repo_paths": [
      "docs/design/2026-11-12-multi-command-hooks-design.md",
      "docs/review/2026-11-12-multi-command-hooks/spec-review.md"

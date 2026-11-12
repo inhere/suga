@@ -322,8 +322,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/standards-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "13127d9ad0505539f4ed81b08d75212f7c6d8e25",
+    "source_report_commit_oid": "1c3ffdb781d607ce7a310b0b665eb1b8d4b3f74a",
+    "source_report_blob_oid": "53275c019d26bfcf21555d6914e4fcd0cd021a21",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/standards-review.md"
@@ -440,8 +440,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/spec-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "533ebbfff2a0cc578ae9e09069f29638eaeae585",
+    "source_report_commit_oid": "1c3ffdb781d607ce7a310b0b665eb1b8d4b3f74a",
+    "source_report_blob_oid": "f5fe591d807735973d881450bbb8770f28d9a081",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/spec-review.md"
@@ -581,8 +581,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/standards-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "13127d9ad0505539f4ed81b08d75212f7c6d8e25",
+    "source_report_commit_oid": "4f75296418436ee677aa447236033f8d712d49d3",
+    "source_report_blob_oid": "cbcfdfcd8c43279fd10fae586dea13880c15c02d",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/standards-review.md"
@@ -687,8 +687,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/spec-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "533ebbfff2a0cc578ae9e09069f29638eaeae585",
+    "source_report_commit_oid": "4f75296418436ee677aa447236033f8d712d49d3",
+    "source_report_blob_oid": "383db6c0f1c0ce768e6ae7293228795d9e673bb8",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/spec-review.md"
@@ -837,8 +837,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/standards-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "13127d9ad0505539f4ed81b08d75212f7c6d8e25",
+    "source_report_commit_oid": "b86644d780fb3710931523d595fa423bd3b9534c",
+    "source_report_blob_oid": "61dca0be71045bef2d6f9b739521f9382451b1fc",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/standards-review.md"
@@ -947,8 +947,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/spec-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "533ebbfff2a0cc578ae9e09069f29638eaeae585",
+    "source_report_commit_oid": "b86644d780fb3710931523d595fa423bd3b9534c",
+    "source_report_blob_oid": "5dcafdb8f728254d59bd4c1018ad7b03fd55c9a5",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/spec-review.md"
@@ -1061,8 +1061,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/standards-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "13127d9ad0505539f4ed81b08d75212f7c6d8e25",
+    "source_report_commit_oid": "49e0660d31f693d7df585ec196d5d112a367e851",
+    "source_report_blob_oid": "416e25a8afff74775d75cb33cf501dbd49dcf381",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/standards-review.md"
@@ -1143,8 +1143,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/spec-review.md",
-    "source_report_commit_oid": "9473f1c31ef63dde13d6fed0cd1418b3bd37e6a6",
-    "source_report_blob_oid": "533ebbfff2a0cc578ae9e09069f29638eaeae585",
+    "source_report_commit_oid": "49e0660d31f693d7df585ec196d5d112a367e851",
+    "source_report_blob_oid": "137f9dbc7c48efb1f9bc4310f5b0ab4e778073b6",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/spec-review.md"

@@ -53,8 +53,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-12-protected-config-keys-plan/standards-review.md",
-    "source_report_commit_oid": "3c5acbf8ae8e060fbd7e63fe25195675c212e9f8",
-    "source_report_blob_oid": "ca9a9907da19d178615ffb3d9080ac53050836b3",
+    "source_report_commit_oid": "f0230f4df859fb85fea2bdfeaedcd95c3fd0f921",
+    "source_report_blob_oid": "8ed53385ae126184902476e9f50751c384059ae6",
     "direct_repo_paths": [
      "docs/plans/2026-11-12-protected-config-keys-plan.md",
      "docs/review/2026-11-12-protected-config-keys-plan/standards-review.md"
@@ -269,8 +269,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-12-protected-config-keys-plan/spec-review.md",
-    "source_report_commit_oid": "3c5acbf8ae8e060fbd7e63fe25195675c212e9f8",
-    "source_report_blob_oid": "433aa11626d71f0a678bac9b7e62e6c0b0f8c25f",
+    "source_report_commit_oid": "f0230f4df859fb85fea2bdfeaedcd95c3fd0f921",
+    "source_report_blob_oid": "c87aa0bae650852d284769fdbbb1cac9c5103eba",
     "direct_repo_paths": [
      "docs/plans/2026-11-12-protected-config-keys-plan.md",
      "docs/review/2026-11-12-protected-config-keys-plan/spec-review.md"
@@ -451,8 +451,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-12-protected-config-keys-plan/standards-review.md",
-    "source_report_commit_oid": "3c5acbf8ae8e060fbd7e63fe25195675c212e9f8",
-    "source_report_blob_oid": "ca9a9907da19d178615ffb3d9080ac53050836b3",
+    "source_report_commit_oid": "9b1308f810c93c5b1911374162788da26644e829",
+    "source_report_blob_oid": "dcc002c406ee63e9dd6038b7f67cdcb7cb03cb9f",
     "direct_repo_paths": [
      "docs/plans/2026-11-12-protected-config-keys-plan.md",
      "docs/review/2026-11-12-protected-config-keys-plan/standards-review.md"
@@ -573,8 +573,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-12-protected-config-keys-plan/spec-review.md",
-    "source_report_commit_oid": "3c5acbf8ae8e060fbd7e63fe25195675c212e9f8",
-    "source_report_blob_oid": "433aa11626d71f0a678bac9b7e62e6c0b0f8c25f",
+    "source_report_commit_oid": "9b1308f810c93c5b1911374162788da26644e829",
+    "source_report_blob_oid": "69b0c05fdd017891002076cd9cae5e2985c1d6e0",
     "direct_repo_paths": [
      "docs/plans/2026-11-12-protected-config-keys-plan.md",
      "docs/review/2026-11-12-protected-config-keys-plan/spec-review.md"
