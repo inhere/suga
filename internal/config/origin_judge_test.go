@@ -36,13 +36,18 @@ func TestReadOriginJudgeSettings(t *testing.T) {
 	}
 }
 
-func TestOriginJudgeKeysAreNotWritable(t *testing.T) {
+// TestOriginJudgeKeysAreProtected: the judge keys are writable by a human in a
+// terminal outside suga (config set) but protected, so a session cannot switch
+// the judge off; models.judge stays writable and protected as well.
+func TestOriginJudgeKeysAreProtected(t *testing.T) {
 	for _, key := range []string{keyOriginJudgeEnabled, keyOriginJudgeTimeout} {
 		d, err := MatchConfigKey(key)
 		assert.Require(t, assert.NoErr(t, err), key)
-		assert.False(t, d.Writable, key)
+		assert.True(t, d.Writable, key)
+		assert.True(t, d.Protected, key)
 	}
 	d, err := MatchConfigKey("models.judge")
 	assert.Require(t, assert.NoErr(t, err))
 	assert.True(t, d.Writable)
+	assert.True(t, d.Protected)
 }

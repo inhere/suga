@@ -105,10 +105,14 @@ func TestReadDenyValidation(t *testing.T) {
 	})
 }
 
-func TestReadDenyKeysAreNotWritable(t *testing.T) {
+// TestReadDenyKeysAreProtected: the ban list and its default switch are
+// writable by a human in a terminal outside suga (config set) but protected, so
+// a session cannot switch the ban off.
+func TestReadDenyKeysAreProtected(t *testing.T) {
 	for _, key := range []string{"tools.read_deny", "tools.read_deny_defaults"} {
 		d, err := MatchConfigKey(key)
 		assert.Require(t, assert.NoErr(t, err), key)
-		assert.False(t, d.Writable, key)
+		assert.True(t, d.Writable, key)
+		assert.True(t, d.Protected, key)
 	}
 }
