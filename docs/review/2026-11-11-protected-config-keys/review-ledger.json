@@ -4,14 +4,15 @@
  "candidate_progression": "DOCUMENT_REVISION",
  "candidate": {
   "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
-  "commit": "a08457674817632068a03ef69fcbb8e502ac5bbb",
+  "commit": "4a67c13c65546f3292a6408245ce39e1caf9be84",
   "subject_path": "docs/design/2026-11-11-protected-config-keys-design.md",
-  "document_revision": "0.3"
+  "document_revision": "0.4"
  },
  "author_id": "author-main",
  "required_rounds": [
   1,
-  2
+  2,
+  3
  ],
  "required_sections": [
   "修订记录",
@@ -318,8 +319,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/standards-review.md",
-    "source_report_commit_oid": "1c3ffdb781d607ce7a310b0b665eb1b8d4b3f74a",
-    "source_report_blob_oid": "53275c019d26bfcf21555d6914e4fcd0cd021a21",
+    "source_report_commit_oid": "4f75296418436ee677aa447236033f8d712d49d3",
+    "source_report_blob_oid": "cbcfdfcd8c43279fd10fae586dea13880c15c02d",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/standards-review.md"
@@ -436,8 +437,8 @@
    "scope_evidence": {
     "projection_contract": "inhere-dev-standards://review-read-scope/v1",
     "source_report": "docs/review/2026-11-11-protected-config-keys/spec-review.md",
-    "source_report_commit_oid": "1c3ffdb781d607ce7a310b0b665eb1b8d4b3f74a",
-    "source_report_blob_oid": "f5fe591d807735973d881450bbb8770f28d9a081",
+    "source_report_commit_oid": "4f75296418436ee677aa447236033f8d712d49d3",
+    "source_report_blob_oid": "383db6c0f1c0ce768e6ae7293228795d9e673bb8",
     "direct_repo_paths": [
      "docs/design/2026-11-11-protected-config-keys-design.md",
      "docs/review/2026-11-11-protected-config-keys/spec-review.md"
@@ -556,6 +557,262 @@
     }
    ],
    "verdict": "BLOCKED"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "4a67c13c65546f3292a6408245ce39e1caf9be84",
+    "subject_path": "docs/design/2026-11-11-protected-config-keys-design.md",
+    "document_revision": "0.4"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r3",
+   "session_id": "reviewer-standards-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-11-protected-config-keys-design.md",
+    "docs/review/2026-11-11-protected-config-keys/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-11-protected-config-keys/standards-review.md",
+    "source_report_commit_oid": "4f75296418436ee677aa447236033f8d712d49d3",
+    "source_report_blob_oid": "cbcfdfcd8c43279fd10fae586dea13880c15c02d",
+    "direct_repo_paths": [
+     "docs/design/2026-11-11-protected-config-keys-design.md",
+     "docs/review/2026-11-11-protected-config-keys/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "模型不能经 suga config set 修改 protected 键",
+    "protected 键的其他改动方式在下次启动可见",
+    "人在 suga 之外的终端里修改 protected 键不受影响"
+   ],
+   "findings": [
+    {
+     "finding_id": "S13",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "SR2003 不适用 capp",
+     "impact": "SR2003 不适用 capp",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S14",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "推进值、单键更新锁区间与推进调用方",
+     "impact": "推进值、单键更新锁区间与推进调用方",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S15",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "快照与进程记录共用 run/*.json",
+     "impact": "快照与进程记录共用 run/*.json",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S16",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "入口表漏 compact",
+     "impact": "入口表漏 compact",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "S17",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "修订行日期与自查范围（元数据）",
+     "impact": "修订行日期与自查范围（元数据）",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "4a67c13c65546f3292a6408245ce39e1caf9be84",
+    "subject_path": "docs/design/2026-11-11-protected-config-keys-design.md",
+    "document_revision": "0.4"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r3",
+   "session_id": "reviewer-spec-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-11-protected-config-keys-design.md",
+    "docs/review/2026-11-11-protected-config-keys/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-11-protected-config-keys/spec-review.md",
+    "source_report_commit_oid": "4f75296418436ee677aa447236033f8d712d49d3",
+    "source_report_blob_oid": "383db6c0f1c0ce768e6ae7293228795d9e673bb8",
+    "direct_repo_paths": [
+     "docs/design/2026-11-11-protected-config-keys-design.md",
+     "docs/review/2026-11-11-protected-config-keys/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "模型不能经 suga config set 修改 protected 键",
+    "protected 键的其他改动方式在下次启动可见",
+    "人在 suga 之外的终端里修改 protected 键不受影响"
+   ],
+   "findings": [
+    {
+     "finding_id": "F16",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "比较键集未定，快照缺键被跳过时新增 provider 不提示",
+     "impact": "[BUG] 比较键集未定，快照缺键被跳过时新增 provider 不提示",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "其他方式改动下次启动能被你看到",
+     "necessary_causal_chain": [
+      "直接改文件新增 provider",
+      "快照无该键被跳过",
+      "model 指向它",
+      "无提示"
+     ],
+     "minimal_owner": [
+      "§3 启动时变化提示与快照推进"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "F17",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "字面量点号键、锚点与合并键",
+     "impact": "字面量点号键、锚点与合并键",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F18",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "推进与单键更新的取值与锁",
+     "impact": "推进与单键更新的取值与锁",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F19",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "裁决回退链与 model 分类矛盾",
+     "impact": "裁决回退链与 model 分类矛盾",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F20",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "未归组的可写键",
+     "impact": "未归组的可写键",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F21",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "入口挂点、ACP 每会话、compact、缓存、CLI 反向验证",
+     "impact": "入口挂点、ACP 每会话、compact、缓存、CLI 反向验证",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F22",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "整块值规范化",
+     "impact": "整块值规范化",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F23",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "文档行号",
+     "impact": "文档行号",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "F24",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "pty 自起 chat 与快照文件名规范化风险",
+     "impact": "pty 自起 chat 与快照文件名规范化风险",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
   }
  ],
  "dependency_edges": [
@@ -578,8 +835,7 @@
   "人在 suga 之外的终端里修改 protected 键不受影响"
  ],
  "open_core_blockers": [
-  "S8",
-  "F8"
+  "F16"
  ],
  "status": "BLOCKED"
 }
