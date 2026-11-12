@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga 安全配置键保护 实施计划
 
-> 状态：Draft 0.4 / 待人工计划批准；issue `suga-hyj7`
+> 状态：Draft 0.4 / 已批准（2026-11-12）；issue `suga-hyj7`
 
 ## 修订记录
 
@@ -229,7 +229,7 @@
 
 ## 人工 Gate
 
-1. 计划批准（本稿评审后）。
+1. 计划批准（本稿评审后）。已批准：2026-11-12 用户原话“批准 suga 安全配置键计划 0.4（接受未复核修订），开始实施；实施执行可以用suga oc-go ds4.1”。该原话同时是当前执行请求；执行者由 sonnet 子 agent 改为 `gofer job -a suga --model opencode-go/deepseek-v4.1-flash`（执行者变化不改任务合同），我审查验收。
 2. 当前执行请求：你指示开始实施。
 3. 外部动作 Gate：push、tag、发版、安装、通知使用方，均需你另行逐项批准；本计划不含。
 
