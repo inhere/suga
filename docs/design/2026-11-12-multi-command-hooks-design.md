@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga chat hooks 多命令 设计
 
-> 状态：Draft 0.4 / 待人工计划批准；issue `suga-5xmf`
+> 状态：Draft 0.5 / 待人工计划批准；issue `suga-5xmf`
 
 ## 修订记录
 
@@ -11,6 +11,7 @@
 | 0.2 | 2026-11-12 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-12-multi-command-hooks/`）：新校验只作用于 `hooks.commands` 条目，兼容条目不变（HF1）；Q1 增最小选项 M 并改为推荐，逐项对照验收，A 的追加规则单列，写明 A 与安全配置键设计 F33 的冲突与替代声明（HS1、HS2、HF8）；条目解析放 `internal/config`（HS3、HF7）；写定 Stop 合并结果字段、打断的冻结顺序、Interrupt 失败日志与不进 trace、打断来源全集（HF2、HF3、HF9、HS4）；锁定随 `suga-hyj7` 同版或其后发布（HS5）；补 gofer 影响与验证项、修正引用（HF4–HF6、HF10–HF12） |
 | 0.3 | 2026-11-12 | Claude | 记录用户选择（2026-11-12：“hooks Q1 选 M，Q2–Q7 按推荐”），Q1–Q7 转为决策 D7–D13：新条目只有 `command`+`timeout_ms`，等待与 Pre/PostToolUse 过滤只来自兼容条目；删去未选方案 A 的追加规则、F33 替代声明与只属于 A 的验证项；写明与 `suga-hyj7` 分类表的衔接 |
 | 0.4 | 2026-11-12 | Claude | 处理第 2 轮两轴评审：合并规则加首要规则——流水线 ctx 已取消时 `Err` 取 ctx 错误、不出 block，后台被杀不发过期续跑通知（HF13）；只配兼容条目时仍走现有单条目实现，合同不变；流水线中兼容条目的 Stop 总附加 `stop_args`、等待型只按键判定、流水线已结束时打断仍向最后执行的条目发 Interrupt（HF15–HF17）；`Call` 按事件名分流、`hooks.New` 任一键非空即启用（HF18）；写定逐条 trace 的载体与挂点，普通事件失败的 trace status 与现状一致（HF14）；阶段一 Notice 随最终结果显示的取舍、gofer 描述更正（HF19、HF20）；Stop 单条失败记 Warn、取消与超时记 Debug（HS4）；删去顺带修改 glob 错误文案（HS6） |
+| 0.5 | 2026-11-12 | Claude | 处理第 3 轮纠正项：R0 的取消来源按后台任务机制列全（新 Stop `Kill`、`tasks.max_duration`、chat 退出 `Close`），被杀瞬间恰好完成的 block 也丢弃，写为相对现状的有意收紧（HF21）；`hooks.New` 的 opts 作用于每个条目（HF22）；`hooks.command` 为空时不解析兼容配套键（HF23）；成功、失败、超时、取消都填 `Runs`（HF24）；条目结束与下一步判定同一临界区，打断时 Interrupt 去向唯一（HF25）；gofer 影响补即时型兼容条目的 Interrupt 推论 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -48,6 +49,16 @@
 | HS4（遗留） | Stop 单条失败记 Warn，取消与超时记 Debug（同现状 `StartStop`） |
 | HS6 | 删去“顺带修正 `pre_tool_use` glob 错误文案”，列为 deferred（可另开 Quick issue） |
 | HS7、HS8 | 引用纠正：发布顺序锁定改引 D6；第 1 轮评审来源改指 `docs/review/2026-11-12-multi-command-hooks/` |
+
+第 3 轮评审的处理（两轴 PASS，无阻断；HS9 属 ledger 元数据，设计不改）：
+
+| 评审项 | 处理 |
+|---|---|
+| HF21 | R0 条件与同类穷尽改为后台任务 ctx 的三个取消入口：新 Stop `Kill`、`tasks.max_duration` 到期、chat 退出时 `run.go:193` 的 `Close`→`KillSession`→`Kill`（任务 ctx 来自 `context.Background()`，不继承 chat ctx）；写明“被杀瞬间命令恰好正常完成时其 block 也丢弃”是相对现状的有意收紧 |
+| HF22 | 架构写定：`hooks.New` 的 opts 应用到每个条目各自的 `commandClient`，新条目与兼容条目收到相同的会话环境变量，`NoSessionEnv` 同样作用于全部条目；验证补新条目收到 `SUGA_SESSION_NAME` 的断言 |
+| HF23 | `hooks.command` 为空时不构造兼容条目、不解析其配套键（同现状）；验证补“未设 `hooks.command`、`hooks.stop_args` 类型非法、只配 `hooks.commands` 时照常启动” |
+| HF24 | 成功、失败、超时、取消都填该条 `EntryRun`（失败时回答为空、错误非空）；验证补 PreToolUse 失败与 SessionStart 失败的 trace 仍带 `entry=0`/`program` |
+| HF25 | §4 写定状态机：条目结束与下一步判定同一临界区；“无后续条目”即全部结束（Interrupt 给最后执行的条目）；有下一条时在启动前再取锁检查冻结，被拦下即两条目之间（不发）；条目进程已退出但结束临界区未执行时仍算运行中（发给它）；验证按这三种状态各写期望 |
 
 **思考与范围声明**
 - 思考模式：`RIGOROUS`。
@@ -155,7 +166,7 @@ hooks:
 | Interrupt | 按 §4 打断规则发给一个条目 | 记 Warn（沿用 `Call`，GR109），不影响取消 | 无 |
 
 **逐条 trace 的载体与挂点**（HF14）：
-- `Response` 增加 `Runs []EntryRun`（编号、`filepath.Base(argv[0])`、耗时、该条回答、该条错误）；`Call`、`PreTool` 的返回值与 Stop 的 `Result.Response` 用同一载体，单条目实现也填一条（编号 0）。
+- `Response` 增加 `Runs []EntryRun`（编号、`filepath.Base(argv[0])`、耗时、该条回答、该条错误）；`Call`、`PreTool` 的返回值与 Stop 的 `Result.Response` 用同一载体，单条目实现也填一条（编号 0）。成功、失败、超时、取消都填该条记录（失败时回答为空、错误非空），所以失败的 PreToolUse 与普通事件记录同样带 `entry`/`program`（HF24）。
 - `recordingHooks.Call` 与 Stop 记录：`Runs` 非空时每条写一个 `kind=hook` 事件（attrs 用该条回答，另加 `entry`、`program`），为空时按现状写一条。
 - 普通事件（`Call` 路径）逐条记录的 status 与现状一致：不因该条失败改为 `error`/`cancelled`（现状 `hooks_record.go:38` 不带 `Err`），失败只记 Warn 日志；Stop 逐条记录按该条错误定 status，规则同现状（`hooks_record.go:88-96`）。因此只配兼容条目时 trace 只多 `entry`/`program` 两个 attrs（D2）。
 - PreToolUse：`hooks_gate.go` 从 `response.Runs` 取 `entry=0`/`program` 加入 attrs（`hooks_gate.go` 只此一处改动；拒绝与改写逻辑不变）。
@@ -175,7 +186,7 @@ hooks:
 
 | 规则 | 条件 | `Decision`/`Reason` | `Err` |
 |---|---|---|---|
-| R0（首要） | 流水线 ctx 已取消（后台被新 Stop 杀掉、chat 退出取消父 ctx、前台打断后的取消） | 空 | ctx 错误（`errors.Is` 可判 `context.Canceled`） |
+| R0（首要） | 流水线 ctx 已取消（后台任务 ctx 被取消：新 Stop `Kill`、`tasks.max_duration` 到期、chat 退出时 `Close`；前台打断后的取消） | 空 | ctx 错误（`errors.Is` 可判 `context.Canceled`） |
 | R1 | 阶段一有 block | `block`，各 block 的 reason 按顺序以空行连接 | `nil`（阶段一其他条的失败只记日志与逐条 trace） |
 | R2 | 阶段二已运行 | 取等待条目的回答 | 取等待条目的错误（含其自身上限 `ErrTimedOut`，同现状） |
 | R3 | 其余（无等待条目） | 空 | `nil` |
@@ -183,8 +194,9 @@ hooks:
 `Notice`：已执行条目的 notice 按执行顺序换行连接（各规则相同）。
 
 R0 的同类穷尽（HF13）：
-- 后台被新 Stop 杀掉（`stop_background.go:67-69`）：`Err` 非空且 ctx 已取消 → 任务以 `-1` 结束，不发通知、不置 `blocked`/`stop_hook_active`（与现状单条目被杀一致）；阶段一已得的 block 丢弃，因为它属于已被新 Stop 取代的回合。
-- chat 退出：前台经 `Interrupt`（`chat.go:532-533`）交回 reason 并告警“未投递”，同现状；后台任务随父 ctx 取消按上一条处理。
+- 后台任务的 ctx 来自 `context.WithCancel(context.Background())`（`tasks.go:302`），不继承 chat ctx；运行中的取消入口只有三个，都经 `t.cancel()`：新 Stop 的 `Kill`（`tasks.go:658-667`）、`tasks.max_duration` 到期（`tasks.go:417`；`stop_background` 下兼容条目自身 7 天上限实际由它截断，默认 2 小时）、chat 退出时 `run.go:193` 调 `taskManager.Close`→`KillSession`→`Kill`（`tasks.go:777-799`）。三者都按 R0：`stop_background.go:67-69` 见 `Err` 非空且 ctx 已取消 → 任务以 `-1` 结束，不发通知、不置 `blocked`/`stop_hook_active`；阶段一已得的 block 丢弃，因为它属于已被取代或已结束的回合。
+- **有意收紧**：现状单条目在被杀瞬间命令恰好正常退出时 `Err==nil`，仍会投递通知；R0 只看 ctx，此时也丢弃。这是相对现状更保守的方向，接受。
+- chat 退出时的前台等待：经 `Interrupt`（`chat.go:532-533`）交回 reason 并告警“未投递”，同现状。
 - 前台打断：打断后 chat 不再读 `Done`（`chat.go:739-744`、`:773-777`），已得的 reason 只经 `Interrupt` 返回值交回（见下），`recordingWait.Interrupt` 只在 `Err==nil` 时补取，R0 使其不会重复投递。
 - 单条超时（新条目 `timeout_ms`、兼容条目自身上限）不是流水线取消：只影响该条（阶段一视为无决定；阶段二按 R2，同现状）。
 - trace 逐条记录各条自己的错误，不受合并规则影响。
@@ -193,7 +205,11 @@ R0 的同类穷尽（HF13）：
 
 **打断**（HF3、HF15；来源见“已确认事实”，全部经 `Wait.Interrupt`）：
 1. 先冻结流水线：之后不再启动任何条目（与“启动下一条”在同一把锁内判定，避免阶段切换竞态）；
-2. 发 Interrupt（1 秒超时，失败记 Warn）给一个条目：有条目在运行时发给它；流水线已全部结束（结果已到但未被消费）时发给最后执行的条目，与单条目现状一致；处于两条目之间（前一条已结束、下一条未启动）时不发；
+2. 发 Interrupt（1 秒超时，失败记 Warn）给一个条目，按打断时流水线所处状态唯一确定（HF25）：
+   - **运行中**：某条目已标记为运行（含进程已退出、但其结束临界区尚未执行）→ 发给它；
+   - **全部结束**：最后一条的结束临界区已判定“无后续条目”（含 R1 跳过阶段二、无等待条目），结果已到但未被消费 → 发给最后执行的条目，与单条目现状一致；
+   - **两条目之间**：前一条的结束临界区已判定“有下一条”，下一条启动前再取锁时发现已冻结而被拦下 → 不发，下一条不启动；
+   - 状态转换：条目结束时在同一临界区内标记结束并判定下一步；启动下一条时再取锁检查冻结，未冻结才标记为运行并启动进程。打断取同一把锁，所以只会看到上述三种状态之一；
 3. 再取消正在运行的条目（流水线 ctx 取消，`Done` 结果按 R0）；
 4. 返回值：已完成条目中 R1 意义下的 block reason，或等待条目已到但未消费的 block 回复，交给现有 `lostReply` 路径（`chat_turn.go:244-247`）。
 
@@ -221,7 +237,7 @@ suga 只有一层配置（`SUGA_HOME/config.yaml`），没有读取仓库内配�
 代码组织沿用 suga 现有分层（SR2004；参照本仓库 `internal/config` 的 `ReadMCPServerSettings` 与 Reader 分发、`internal/hooks`、`internal/chat`）：
 - `internal/config` 新文件 `hooks_entries.go`：`ReadHookEntries() ([]HookEntry, error)` 读 `hooks.commands`、校验并返回解析后的新条目（argv、超时），错误指明 `hooks.commands[i].<字段>`；`dispatchConfigReader` 增 `case "hooks"`。基础包 `internal/config` 不依赖功能包 `internal/hooks`。
 - `internal/hooks`：
-  - `hooks.New`：保留兼容条目的现有解析；去掉“`hooks.command` 为空即返回 nil”的提前返回，改为调用 `config.ReadHookEntries` 后按 §2 启用条件决定；无新条目时返回现有 `commandClient`，有新条目时返回流水线（新增依赖方向 `internal/hooks → internal/config`，无环）。
+  - `hooks.New`：`hooks.command` 为空时不构造兼容条目、不解析其配套键（`stop_args`、`pre_tool_use.*`、`post_tool_use.*`，同现状，HF23）；非空时按现有解析构造；随后调用 `config.ReadHookEntries`，两者都空返回 nil；opts（`WithExtraEnv` 等）应用到每个条目各自的 `commandClient`，新条目与兼容条目收到相同的会话环境变量（`SUGA_SESSION_ID`、`SUGA_SESSION_NAME`、`SUGA_TURN_ID`），`NoSessionEnv` 同样作用于全部条目（HF22）；无新条目时返回现有 `commandClient`，有新条目时返回流水线（新增依赖方向 `internal/hooks → internal/config`，无环）。
   - 新文件 `pipeline.go`：多条目 `Client`——按事件名分流、顺序执行与合并、两阶段 Stop、R0–R3、冻结与打断；`PreToolName`/`PostToolName`/`PreTool` 只委托兼容条目，签名不变。
   - `Response` 增加 `Runs`（§3）；现有 `commandClient.call` 与 `stopWait` 保留为单条目执行原语，现有直接构造 `stopWait` 的测试不改。
 - `internal/chat`：`hooks_record.go` 按 `Runs` 逐条写 trace（§3）；`hooks_gate.go` 只加 `entry`/`program` attrs；`chat.go`、`chat_turn.go`、`stop_background.go` 只消费合并结果，逻辑不变（R0 使后台被杀路径沿用现有 `ctx.Err() != nil` 分支）。
@@ -255,6 +271,7 @@ PostToolUse / PreToolUse → 只兼容条目
 - **SR1301**：鉴权——`hooks.commands` 为 protected，且随 `suga-hyj7` 同版或其后发布，模型在会话内不能经 `config set` 写入；注入防护——argv 直接执行，不经 shell；秘密——trace 只记 `filepath.Base(argv[0])` 与条目编号，不记参数；入参校验——启动与 `config set` 同一 `ReadHookEntries` 校验；资源归属——不适用。
 - **执行门不变弱**：PreToolUse 路径不变，仍只由兼容条目决定。
 - **对 gofer 的影响**（HF10、HF20）：只配 gofer 时无变化（走现有实现）。加了续跑条目且它要求继续时，该回合 gofer 不收 Stop，因此以下各项推迟到续跑结束后的那次 Stop：打开等待 web 回复的 turn、上报本回合最后回复与空闲时长、清进度、接管通知、信件与 watched job 的 Stop 送达；中间回合的最后回复不会出现在 web，web 侧会话保持“运行中”（IDEV-STD 以状态不前进与最多 8 次为界）。job 通知经下一次 UserPromptSubmit（带 `injected=true`）的 catch-up 补投，不丢。阶段一被打断时 gofer 该回合既无 Stop 也无 Interrupt：不打开等待 turn，本回合最后回复不上报，web 保持运行中直到下一次 UserPromptSubmit。
+  - 即时型兼容条目（未设 `stop_wait_sec`、未开 `stop_background` 的 gofer hook，即无 `--wait`）在有新条目时排在阶段一最前：照常收 Stop；由 D9 与 §4 的打断规则，它通常不收 Interrupt——只有打断恰在它运行时才收，流水线全部结束时 Interrupt 发给最后执行的新条目。gofer 侧在无 `--wait` 时对“收 Stop、不收 Interrupt”的处理留到计划阶段核对 gofer `internal/hookrelay`。
 - **对 IDEV-STD 的影响**：安装命令改为 `suga config set hooks.commands '<YAML>'`（条目只有 `command` 与 `timeout_ms`）；已有 `hooks.commands` 时整体替换写入，需提示你合并；续跑提示不要依赖 stderr notice（HF19）。
 - **trace**：每个条目每次运行记一条 `kind=hook` 事件，attrs 新增 `entry`、`program`；只配兼容条目时同样带这两个字段，其余字段与 status 不变（§3）。Interrupt 不进 trace（同现状）；打断时未启动的条目不记。
 - **运维**：顺序执行使事件延迟为各条目耗时之和；SessionEnd 在退出时最多等待各条目超时之和；文档建议条目控制在少数几条。
@@ -262,12 +279,14 @@ PostToolUse / PreToolUse → 只兼容条目
 - **回滚**：revert；删掉 `hooks.commands` 即回到单命令行为（现有实现）。旧版本运行时不读取 `hooks.commands`，只剩兼容条目生效（计划阶段核对旧版本 `config validate` 对该键的提示）。
 - **验证要求**（计划中落实）：
   - 兼容（HF1、HF15）：只配 `hooks.command` 的现有配置照常启动，含 `stop_background: true` + `stop_args` 无 `stop_wait_sec`、只配 `stop_args`；`hooks.New` 返回现有单条目实现；现有 `hooks_test.go`、`hooks_pretool_test.go` 断言不改；只配兼容条目时 trace 只多 `entry`/`program`，`Call` 失败仍记 `ok`（HF14）。
-  - 启用（HF18）：只配 `hooks.commands` 时 `New` 返回非 nil、`PostToolName` 为 false、新条目不收 PostToolUse/PreToolUse。
+  - 启用（HF18、HF23）：只配 `hooks.commands` 时 `New` 返回非 nil、`PostToolName` 为 false、新条目不收 PostToolUse/PreToolUse；未设 `hooks.command`、`hooks.stop_args` 类型非法、只配 `hooks.commands` 时照常启动。
+  - 环境（HF22）：新条目的命令收到 `SUGA_SESSION_NAME`/`SUGA_TURN_ID`（与兼容条目相同）；`NoSessionEnv` 时全部条目都不导出。
   - 单元（`internal/config`）：`ReadHookEntries` 全部校验错误与字段路径；未知字段（如 `stop_args`）报错。
-  - 单元（`internal/hooks`，假 hook 进程）：普通事件顺序、各自超时、单条失败不影响其他条、连接规则；即时型兼容条目在阶段一附加 `stop_args`（HF16）；`stop_wait_sec=1`、`timeout_ms=5000` 的兼容条目归阶段二（HF17）；Stop R1 跳过等待条目、多 block 合并、阶段一 block 加另一条失败时 `Err=nil` 且前台续跑（HF2）、R2 取等待条目错误；R0：流水线 ctx 取消时 `Err` 为取消错误且无 block（HF13）；打断：等待条目收 Interrupt、未启动条目不收、阶段一结束瞬间打断不启动等待条目且无条目收 Interrupt（HF3）、流水线已全部结束未消费时打断向最后执行的条目发 Interrupt（HF15）、已得 reason 交回且不重复投递；Stop 失败记 Warn、取消与超时记 Debug；Interrupt 失败记 Warn。
+  - 单元（`internal/hooks`，假 hook 进程）：普通事件顺序、各自超时、单条失败不影响其他条、连接规则；即时型兼容条目在阶段一附加 `stop_args`（HF16）；`stop_wait_sec=1`、`timeout_ms=5000` 的兼容条目归阶段二（HF17）；Stop R1 跳过等待条目、多 block 合并、阶段一 block 加另一条失败时 `Err=nil` 且前台续跑（HF2）、R2 取等待条目错误；R0：流水线 ctx 取消时 `Err` 为取消错误且无 block，含被杀瞬间命令恰好正常完成（HF13、HF21）；打断：等待条目收 Interrupt、未启动条目不收、打断三种状态各一例（HF25，经测试钩子在临界区之间注入打断）：运行中（含进程已退出、结束临界区未执行）→ 该条收 Interrupt；全部结束未消费 → 最后执行的条目收 Interrupt（HF15）；两条目之间 → 无条目收 Interrupt、等待条目不启动（HF3）、已得 reason 交回且不重复投递；Stop 失败记 Warn、取消与超时记 Debug；Interrupt 失败记 Warn。
   - 后台 Stop：R1 block 变为任务通知、输入不打断；**`stop_background` 下条目 A 已 block、条目 B 仍在运行时被新 Stop 杀掉：不发过期续跑通知、不置 `stop_hook_active`、任务以 `-1` 结束、不启动阶段二**（HF13）。
   - GR110：经 `internal/cli` 真实命令分发——`suga config set hooks.commands` 合法值写入、非法值退出码 2 且文件不变、`config get` 输出；protected 拒绝随 `suga-hyj7` 一起验证。
-  - chat 层：逐条 trace（`entry`/`program`/status）；PreToolUse 记录带 `entry=0`/`program`。
+  - chat 层：逐条 trace（`entry`/`program`/status）；PreToolUse 记录带 `entry=0`/`program`；PreToolUse 失败与 SessionStart 失败的记录仍带 `entry=0`/`program`，status 规则不变（HF24）。
+  - 后台取消入口（HF21）：`tasks.max_duration` 到期与 chat 退出（`Close`）时同样不发续跑通知。
   - ptye2e（`test/ptye2e`，参照 `chat_observe_test.go` 的 `TestHookHelper` 假 hook）：配兼容条目（模拟等待型 gofer）与一条新条目（模拟续跑，第一次 block、之后不输出）；假 hook 把收到的事件名与自身标签追加到测试临时目录的记录文件。断言：续跑回合开始且该回合等待条目未收 Stop；下一次 Stop 等待条目运行；等待期间输入后记录文件中 Interrupt 只出现在等待条目；`suga inspect trace --json` 中每条 `hook` 事件的 `entry`/`program`/decision 正确。反向验证：临时去掉阶段一短路、临时把 Interrupt 发给全部条目、临时去掉 R0，确认对应检查失败（确认失败来自断言而非编译错误）。
   - Windows：经 gofer exec job 在主机跑 `go test ./internal/config/... ./internal/hooks/... ./internal/chat/...` 与 ptye2e ConPTY 场景（含被打断条目的进程终止、`filepath.Base` 对反斜杠路径）。
 
@@ -304,4 +323,4 @@ D7–D13 依据用户 2026-11-12 原话：“hooks Q1 选 M，Q2–Q7 按推荐�
 
 ## 结论与人工计划 Gate
 
-本设计为 Draft 0.4：已处理第 2 轮两轴评审（规范轴 PASS；可执行轴 HF13 阻断已在 §4 修正）。之后进行第 3 轮评审，无开放 `CORE_BLOCKING` 并经你批准后才写计划；批准只授权进入计划，不授权实施。定稿后把配置形状回复 IDEV-STD 维护会话（my-tools-dev-08）。
+本设计为 Draft 0.5：第 3 轮两轴评审均 PASS、无阻断，本版处理其纠正项 HF21–HF25。之后只做一轮纠正确认，无开放 `CORE_BLOCKING` 并经你批准后才写计划；批准只授权进入计划，不授权实施。定稿后把配置形状回复 IDEV-STD 维护会话（my-tools-dev-08）。
