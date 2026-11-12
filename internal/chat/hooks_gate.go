@@ -55,6 +55,12 @@ func (g *toolGate) Rewrite(ctx context.Context, call agentcore.ToolCall, _ agent
 	start := time.Now()
 	response, err := g.gate.PreTool(ctx, event)
 	extra := map[string]any{"rewritten_args": len(response.UpdatedInput) > 0}
+	// HF14: name the entry and program behind the answer (a pipeline reports one
+	// run per entry; a single hooks.command reports entry 0).
+	if len(response.Runs) > 0 {
+		extra["entry"] = response.Runs[0].Entry
+		extra["program"] = response.Runs[0].Program
+	}
 	recordHookRun(g.recorder, event, sugahooks.Result{Response: response, Err: err}, time.Since(start), extra)
 	if err != nil {
 		return call, tools.Denied(fmt.Sprintf(trOf(g.translator).T(modelHookPreToolError), call.Name, err))
