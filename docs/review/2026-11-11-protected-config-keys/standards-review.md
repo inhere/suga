@@ -1,135 +1,120 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 安全配置键保护设计 0.3 评审（Standards/Governance 轴，第 2 轮 confirmation）
+# suga 安全配置键保护设计 0.4 评审（Standards/Governance 轴，第 3 轮 blocking closure）
 
 ## 评审目标与范围
 
 - 目标：`docs/design/2026-11-11-protected-config-keys-design.md`
-- 候选四元组：Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；commit `a08457674817632068a03ef69fcbb8e502ac5bbb`；subject `docs/design/2026-11-11-protected-config-keys-design.md`；revision `0.3`（上轮候选 `50950889` / 0.2）
-- 修订版本：Draft 0.3
-- 评审者：Standards/Governance 轴独立子 agent（未参与本设计起草或修订，也未参与第 1 轮）
-- 评审轴：Standards/Governance；第 2 轮 confirmation；`REPORT_ONLY`
-- 日期：2026-11-11
-- 排除项：用户已选的 Q1–Q6 本身（含 D8“加回启动时变化提示”这一选择）不评；只评 D8 是否最小、是否有未追溯的机制、内部是否成立。Spec/Executability 轴的细节只在影响核心验收或治理判定时提及。
+- 候选四元组：Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；commit `4a67c13c65546f3292a6408245ce39e1caf9be84`；subject `docs/design/2026-11-11-protected-config-keys-design.md`；revision `0.4`（上轮候选 `a0845767` / 0.3）
+- 修订版本：Draft 0.4
+- 评审者：Standards/Governance 轴独立子 agent（未参与本设计起草或修订，未参与第 1、2 轮）
+- 评审轴：Standards/Governance；第 3 轮 blocking closure；`REPORT_ONLY`
+- 日期：2026-11-11（容器时间；候选提交时间 2026-11-11 18:33 -0800）
+- 排除项：用户已选的 Q1–Q8 本身（含 D9“只在 chat 横幅展示后推进、人工 set 只更新该键”与 D10“按原始值比较”）不评；只评其落地是否最小、可追溯、内部成立。Spec/Executability 轴的细节只在影响治理判定时提及。
 
 ## 输入与方法
 
 实际读取范围：
-- 规范：`tmp/idev-std/d/3Z3cOanwUM2ILAXHbxiTlQ/payload.md`（全文 760 行，含 review-contract、review 模板 1.2.0、review-candidate-loop）、`tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/delta-OfGu6IpGnHz92hejmPjb9g.md`（全文 201 行，含 design-contract 与 design 模板 1.2.0）；suga `AGENTS.md`（全文）。
-- 上轮本轴报告 `docs/review/2026-11-11-protected-config-keys/standards-review.md`（S1–S7，全文）。
-- 候选：设计 0.3 全文（`git show a0845767:<subject>`，183 行）与 `git diff 50950889..a0845767 -- <subject>`；补读 0.2 第 45–75 行作对照。
-- 代码事实核对（HEAD `520fd9a7`，相对候选只多了评审台账提交，代码未变）：`internal/config/settings_registry.go`（全部静态与动态描述符，93–357、362–379 行）、`internal/config/load.go:30-63`、`internal/config/rules.go:10-35`、`internal/config/paths.go`、`internal/config/providers.go:600-610`、`internal/cli/config.go:21,61-111,154-180,282-284`、`internal/cli/root.go:60-76`、`internal/cli/cwdcheck.go:207-215`、`internal/cli/init.go`、`internal/cli/backup_restore.go:51`、`internal/personal/backup/backup.go:152,432`、`internal/chat/local_cmd.go:79-100`、`pkg/agentcore/tools/native/local_command.go:116-127`、`pkg/agentcore/tools/native/code_exec.go:563`、`internal/wiring/sessionenv.go`、`internal/hooks/hooks.go:354-355`、`pkg/agentcore/internal/proctree/proctree_unix.go:25`、`pkg/agentcore/tools/rules/rules.go:267-292`、`internal/output/streamjson.go:35`、`internal/chat/layout.go:77`、trace 事件 kind 全量检索；`docs/usage/gofer-personal-agent.md:124`；`xhen/README.md:151`；安全设计 `docs/design/2026-11-10-trust-mode-origin-judge-read-deny-design.md:157`；`git tag -l v0.55*`。
-- 方法：先逐项核对 S1–S7 关闭证据；再对 0.3 新增内容按 design-contract 与所列规则核对；所有设计中的文件:行号与键名逐一对照代码；同类问题一次列全。
+- 规范：`tmp/idev-std/d/3Z3cOanwUM2ILAXHbxiTlQ/payload.md`（全文 760 行，含 review-contract、review 模板 1.2.0、review-candidate-loop）、`tmp/idev-std/d/bXLJzNcvvw_ZrjUevizE3A/delta-OfGu6IpGnHz92hejmPjb9g.md`（全文 201 行，含 design-contract、design 模板 1.2.0）；suga `AGENTS.md`（全文）。
+- 上轮本轴报告（`git show 4a67c13c:docs/review/2026-11-11-protected-config-keys/standards-review.md`，S8–S12 及 S2/S5/S7 残留，全文）。
+- 候选：设计 0.4 全文（`git show 4a67c13c:<subject>`，212 行）与 `git diff a0845767..4a67c13c -- <subject>`；按 diff 涉及面，0.4 几乎每节都有改动，故全文复核。
+- 代码事实核对（HEAD = 候选 `4a67c13c`，工作树干净）：`internal/config/settings_registry.go:88-357`（全部静态与动态描述符，逐键对照分类原则）、`internal/config/yaml_edit.go:102-127`、`internal/config/run.go`、`internal/personal/deadline.go:72-91`、`internal/config/network_proxy.go`、`internal/personal/observe.go:100-108`、`internal/personal/store/types.go:57-144`（trace kind 常量与说明）、`internal/personal/process/process.go:650-680`（`run/*.json` 扫描）、`internal/personal/backup/backup.go:432`、`internal/cli/cwdcheck.go:210-215`、`internal/cli/root.go:63-75`、`internal/cli/config.go:14-25`、`internal/cli/backup_restore.go:85`、`internal/cli/gc_maintenance.go:34`、`internal/cli/data_gc.go:212-219`、`internal/cli/compact.go:60`、`internal/cli/run.go:187`、`internal/cli/acp.go:84`、`pkg/sugasdk/session.go:98`、`internal/chat/chat.go:543`、`internal/chat/layout.go:76-99`、`pkg/agentcore/tools/native/local_command.go:124`；CLI 测试中所有 `config set/unset` 调用（`internal/cli/*_test.go`）与 `scripts/`、`test/` 中的调用；`docs/usage/gofer-personal-agent.md:120-128`；`git tag -l 'v0.5[5-9]*'`；`git log -3 --date=iso`。
+- 方法：先逐项核对 S8 关闭证据与 S9–S12、S2/S5/S7 残留；再对 0.4 新增内容按 design-contract 与指定规则核对；设计中出现的文件:行号与键名逐一对照代码；同类问题一次列全。
 
 ## 验收标准
 
-design-contract 必需内容与质量检查；SR1103、SR1108、SR1301、SR1403、SR1405、SR1408、SR1409、SR1410；GR107、GR108、GR109、GR110；SR2004；AGENTS.md“验证”要求；review-contract 的 severity/disposition、CORE_BLOCKING 五类与 necessity proof、新机制 scope necessity、同类穷尽。
+design-contract 必需内容与质量检查；SR1103、SR1108、SR1301、SR1403、SR1405、SR1409、SR1410；GR107、GR108、GR109、GR110；SR2003、SR2004；AGENTS.md“验证”要求；review-contract 的 severity/disposition、CORE_BLOCKING 五类与 necessity proof、新机制 scope necessity、同类穷尽。
 
-## 上轮 S1–S7 关闭核对
+## 上轮 S8–S12 及残留关闭核对
 
 | ID | 状态 | 证据 |
 |---|---|---|
-| S1（CORE_BLOCKING） | 关闭 | 端点类 `providers.<id>.base_url/type`、模型级 `base_url/type`、`models.judge` 进分类表（设计 97 行、D6 173 行），对应代码 `settings_registry.go:311-312,330-331,106`；`workspace`、`log.file`、`memory.*.backend` 进表（95-96 行；代码 114、297、263、267 行）；`Protected` 同时加到动态描述符（91 行）；按键名模式的防漏标测试改为显式分类表覆盖全部可写键（101-102 行）。分类理由的残留问题另列 S9（不属阻断）。 |
-| S2 | 部分关闭 | 刻意绕过（`</dev/tty`、`script`、pty、`env -u`、`NoSessionEnv`）已如实写明（109、151 行，D7 174 行）；D5 相对 v0.55.0 的放宽已写明（110 行）。残留：154 行“外部来源裁决……是另一道防线”仍未写明 `trust` 档不检查（安全设计 157 行“档位 `trust` → 不检查”），上轮建议未落实。disposition 沿用 `CORE_CORRECTIVE`。 |
-| S3 | 关闭 | 83 行列出前序计划 F14/S12 与注释 `:227`、`:250`（代码 226-229、249-251 行核实）、usage `:124`（核实）、两个测试文件（存在）；156 行替代声明含同步清单。 |
-| S4 | 关闭 | 160-164 行“验证要求”：GR110 真实分发、分类表反向验证、ptye2e + `inspect trace --json`、Windows 主机。Git Bash/mintty 由 D7 接受为误拒（155、174 行），不再需要“可用”验证。 |
-| S5 | 关闭（附注） | 受影响项目 71-73 行；退出码 2（53、107 行，代码 `config.go:282-284`）；unset 同样适用（106 行）。附注：72 行“（改为直接编辑文件）”未写明 xhen README 是否改、由谁改，157 行文档清单未含 xhen；属 S5 原建议的未完成小项，不另立 finding。 |
-| S6 | 关闭（依赖 S8） | `init --force`、`data restore` 列入非目标，由启动提示兜底（49、67、151 行）。兜底是否成立取决于 D8，见 S8（含快照位置与 restore 集合的关系）。 |
-| S7（结构项） | 部分关闭 | 123 行改为引用 SR2004 与 suga 现有分层，成立。残留：126 行仍写“命令层只做入口判断，GR107”；GR107 是“`main.go` 薄、命令放 `internal/commands`”，与此句无关（85 行规范列表同）。按合同结构项不得延后，沿用 `CORE_CORRECTIVE`。 |
+| S8（CORE_BLOCKING [BUG]） | 关闭 | (a) run/ACP/SDK 只提示不推进，只有 chat 横幅展示后推进（设计 126-130、159-160 行，D9 196 行）；(b) 人工 set/unset 只更新被改键，不重算其他键（116、131、153 行），写失败按 GR109 记 Warn（134 行）；(c) 读改写持配置锁、临时文件加改名（123 行），验证项含并发启动（182 行）；(d) 快照位置 `SUGA_HOME/run/protected-config*.json`（123、177 行），`data restore` 只替换 `db/sessions.db`、`config.yaml`、`memory/user`、`projects`（设计 84 行，代码 `backup.go:432` 核实，不含 `run/`），`SUGA_CONFIG` 按路径摘要分文件（123 行，与 `yaml_edit.go:102-127` 命名法一致）；(e) 由用户选定的 D10 处理：按原始值比较，限制写入非目标与风险（68、170、197 行），摘要不含展开后的秘密。核心目标改为“你下次打开 chat 能看到”（34 行），有 D9/Q7 用户选择追溯（13、196、203、208 行），不是静默缩窄。主要威胁路径（gofer run 先启动）下 chat 仍会提示，验证项“变化后 run 不推进而 chat 推进”（182 行）直接覆盖。残留细节（推进取值的时点）见 S14，不构成阻断。 |
+| S9 | 关闭（附注） | 分类原则写明（93 行）；`tools.disabled`、`rules.file`、`models.compact`、`compact_model` 列入（97-100 行）；“不保护”分组与理由（103-107 行），`gc.retention.*` 的 trace 风险列为已知（105、171 行）。附注：我按 93 行原则逐键核对注册表全部 190 个 `Writable:true` 静态键与动态键，“等”字未覆盖的键（`run.deadline_env`、`network.proxy.sites`、`transcripts`、`tools.loop_guard`、`hooks.timeout_ms/stop_wait_sec/stop_background`、`memory.*.timeout_sec`、`mcp.*_timeout_sec`、`tasks.wake_on_exit`、`tools.shell_background_after`、`log.level/stderr/max_size/keep/compress`、`tools.spill.*` 等）均不满足原则：`run.deadline_env` 只按 RFC3339 解析且失败只记 Debug（`deadline.go:79-89`），`network.proxy.sites` 只把主机导向不可写的 `network.proxy.url`（`settings_registry.go:120-122`）。未发现按原则应列入而遗漏的键；逐键归属由计划阶段的显式分类表测试（109 行）落定。 |
+| S10 | 部分关闭 | Q4–Q8 的选项与推荐已记录（199-204 行），D6 已列全 0.3、0.4 新增键（193 行）。残留：记录的 Q4 推荐只含“`providers.<id>.base_url/type`、模型级 `base_url`、`workspace`、`models.judge`、`memory.*.backend`”（200 行），而 D6 标注为“（Q4）”却还含模型级 `type`、`models.compact`/`compact_model`、执行上限类、`log.file`、`tools.disabled`、`rules.file`（193 行）；这些键来自评审补入，没有用户选择证据。另外 D4 写“放宽类全部……含 `tools.shell_limits.*`”（191 行），而 0.4 的表把 `tools.shell_limits.*` 移到了新的“执行上限类”（99 行），D4 文字与表不一致。不阻断：设计仍为 Draft，人工计划 Gate 会就整份清单批准，清单在文档中明示，没有越过 Gate。disposition 沿用 `CORE_CORRECTIVE`。 |
+| S11 | 部分关闭 | stream-json 字段已删除（73、129 行，修订记录 13 行），run 改为 stderr 一行，消费方是 gofer job 日志（73 行），成立；trace 新事件已声明为新增接口（74 行）。更正上轮事实：现有 trace kind 中有 `session`（`internal/personal/store/types.go:88-93` `EventSession`，说明为“会话自身生命周期”），上轮 S11 说“没有 `session`”不准；0.4 改用新 kind `config` 与 `EventSession` 的语义不冲突，选择成立。残留：trace kind 的权威说明是 `store/types.go` 中带注释的常量（57-144 行，每个 kind 一条），架构（143 行）只写了 `observe.go`，文档清单（176 行）也没有 trace 事件说明；应在架构中加“`store.EventConfig` 常量与注释”。disposition 沿用 `CORE_CORRECTIVE`（LOW）。 |
+| S12 | 关闭 | 78 行 `:310-357` 核实；79 行 `pkg/agentcore/tools/native/local_command.go`（`:124` `cmd.Env = shellEnv(...)`）核实；80 行 proctree 全路径；81 行 config 命令不接收 stdin（`root.go:69` `newConfigCommand(stdout, stderr)`、`config.go:21`）如实写为待改，并进入架构（141 行）与方案（114 行）；84 行 `backup.go:432` 核实。0.4 新引用 `yaml_edit.go:102-127`、`observe.go:107-108`、`cwdcheck.go:212-215`、usage `:125`、`config_test.go:132-160` 与 `:175-204`、`approval_flags_test.go:133` 均核实成立。 |
+| S2 残留 | 关闭 | 172 行写明 trust 档下外部来源检查被放开，只剩 CLI 判定与启动提示。 |
+| S5 残留 | 关闭（附注） | 72 行写明 xhen README 终端用法不需改，Git Bash/mintty 的说明由 xhen 侧跟进时补。附注：这是跨项目后续动作，建议在 xhen 侧登记 issue，避免只存在于本设计。 |
+| S7 残留 | 关闭 | GR107 已从规范列表（87 行）与架构（141 行）移除。但 0.4 新引入的 SR2003 引用同属“结构条目误引”一类，见 S13。 |
 
-## 0.3 新增内容治理核对摘要
+## 0.4 新增内容治理核对摘要
 
-- design-contract：思考声明（32-38）、修订记录（8-12，0.3 为语义变化，递增正确，SR1103 成立）、背景与用户可见结果（40-54）、名词（56-60，新增“配置快照”）、范围/非目标/受影响项目（62-73）、事实与规则 ID（75-85）、方案（87-119）、架构与代码组织（121-128）、流程图（130-145）、安全/数据/回滚（147-164）、决策（166-175）、待确认（177-179）、Gate（181-183）均在。作者修订摘要写明了按类自查范围（16 行），合乎 review-contract。
-- SR1108 / SR1408：核心目标与 scope freeze 因 Q6 扩为“set/unset 限制 + 启动时变化提示”（34-35 行），有用户原话追溯（12、179 行），不是静默扩围。但 Q4–Q6 的选项与“推荐”内容没有写进任何已提交产物，D6 也没列全 0.3 新增的键，见 S10。
-- SR1409：暴露度高（`v0.55.0` 已发布，已用 `git tag` 核实），两轴独立 + ledger 相称。
-- SR1301：鉴权——已核对，CLI 判定如实定位为提高门槛（D7），本轴无新增阻断；注入防护——已核对，不拼接命令，成立；秘密——已核对，快照存摘要、提示只含键名、秘密键仍不可写（149 行），成立。计划阶段应写明摘要的输入是原始配置文本还是 `${NAME}` 展开后的值（`load.go:47` 启用 `ParseEnv`；`mcp.servers` 等值可能含展开后的令牌），见 S8(e)；入参校验——已核对，沿用现有校验；资源归属——不适用。
-- SR1403 / SR1405 / SR1410（D8 最小性）：快照 + chat 横幅 + trace 事件直接追溯到核心目标后半句，必需。stream-json 字段与新 trace kind 是未声明的 Interface 增量，其中 stream-json 字段没有消费方，必要性未证明，见 S11。“人工 set 刷新快照”可删除且删除后核心验收仍成立（只是人会看到一次自己的改动），并且它会吞掉未提示的改动，见 S8(b)。
-- GR107：残留误用，见 S7。GR108：suga 的 `internal/wiring` 已承载审批策略等逻辑（`approval_policy.go`、`origin_guard.go`），设计让 wiring 调 config 的比较函数并把结果交给各入口（127 行），比较与快照读写放在 `internal/config`（125 行），与现有分层一致；`wiring.Open`/`OpenCLI`（`runtime.go:235,380`）是 chat/run/acp/SDK 的共同入口，挂一处即可覆盖，成立。GR109：快照写失败记 Warn 并写明理由（119 行），成立；人工 set 后刷新快照失败如何处理未写（见 S8(b)）。GR110：161 行经 `internal/cli` 真实分发，成立。SR2004：123 行写明参照 suga 自身分层，成立。GR104：`internal/cli/config.go` 291 行、`settings_registry.go` 737 行，加字段不会超限。
-- 新机制 scope necessity：`Protected` 字段、显式分类表测试——必需；启动时变化提示（快照、横幅、trace）——必需（用户选定，核心目标直接依赖）；stream-json 字段——未证明（S11）；人工 set 刷新快照——非必需（S8(b)）。
+- design-contract：思考声明（32-38）、修订记录（8-13）、背景与用户可见结果（40-54）、名词（56-60）、范围/非目标/受影响项目与接口（62-74）、事实与规则 ID（76-87）、方案（89-134）、架构与代码组织（136-143）、流程（145-162）、安全/数据/运维/回滚/验证（164-184）、决策与选项记录（186-204）、待确认（206-208）、Gate（210-212）均在。作者修订摘要（17-30 行）没有写“按类自查的范围”（0.3 有），见 S17。
+- SR1103：0.4 含语义变化（D9、D10、核心目标措辞、入口表），递增正确；日期元数据不一致见 S17（不需升版）。
+- SR1108 / SR1408：核心目标与 scope freeze 的变化（34-35 行）都追溯到 Q7/Q8 用户选择；D6 中评审补入的键归属见 S10 残留。
+- SR1409：高暴露（`git tag` 核实 `v0.55.0` 存在；涉及持久命令执行与 API key 去向），两轴独立 + ledger 相称。
+- SR1301：鉴权——已核对，CLI 判定如实定位为提高门槛（117 行），本轮无新增阻断；注入防护——已核对，不拼接命令，成立；秘密——已核对：快照只存原始值摘要（D10 后不再接触展开后的秘密）、stderr 与 trace 只含键名（74、128-133 行）、秘密键仍不可写（166 行），成立；快照文件权限未写，见 S15（不构成违规）；入参校验——已核对，沿用现有校验；资源归属——不适用。
+- SR1403 / SR1405 / SR1410（新机制最小性与 scope necessity）：
+  - D9 chat 展示后推进——必需（S8 关闭所依赖，用户选定）；
+  - 人工 set 只更新被改键——非核心验收所必需（删掉后只多一次对自己改动的提示），但无害、已由用户在 D9 中选定，不另立 finding；
+  - 损坏不静默重建——必需（否则删改快照可静默吸收）；
+  - trace `kind=config`——必需（ACP/SDK 唯一可见面），已声明为新接口；
+  - run stderr 一行——必需且最小（替代无消费方的 stream-json 字段）；
+  - 比较结果进程内缓存（133 行）——优化，非必需；配置本就只在进程启动时读一次，缓存不引入陈旧语义，不另立 finding；
+  - 未发现无法追溯到核心目标的新机制。
+- GR107：已不再误引。GR108：wiring 只调用 config 的比较函数并转交键名（142 行），成立；但 chat 横幅后由谁调用“整体推进”没有写进代码组织，见 S14。GR109：快照写失败记 Warn 并写明理由（134 行），对 set 路径同样适用，成立。GR110：经 `internal/cli` 真实分发，含空 `SUGA_SESSION_ID`、注入终端判定（180 行），成立（`RunWithArgs` 已是现有 CLI 测试的分发方式）。SR2003：误引，见 S13。SR2004：参照 suga 自身分层（138 行），成立。GR104：新增文件独立，不会使现有文件超限。
+- 入口表（126-131 行）：chat、run、ACP、SDK、`config set/unset` 与代码入口（`run.go:187`、`acp.go:84`、`pkg/sugasdk/session.go:98`）一致；遗漏 `suga compact`（`compact.go:60` 同样经 `wiring.OpenCLI`），见 S16。
 
 ## 代码事实核对
 
-- 分类表与 D4–D6 中的每个具体键都在注册表中存在：执行类 13 个（`settings_registry.go:192,232,247,263-269,273,275,278-279`）；放宽类具体键均存在；端点类 5 个（`:106,311-312,330-331`）。
-- 带 `*` 的项实际展开为：
-  - `tools.approval_rules.*` = `enabled`、`always_prefix_tokens`、`persist_ask`、`project_trust`（`:287-290`）；
-  - `tools.shell_limits.*` = `memory`、`processes`、`cpu_time`、`off`（`:238-241`）；
-  - `tools.session_message.*` = `enabled`、`in_gofer_jobs`、`max_hops`（`:203,206,207`）；
-  - `tools.origin_judge.*` = `enabled`、`timeout`（`:230-231`，当前无 `Writable`）；
-  - `tasks.max_*` = `max_running`、`max_duration`、`max_output_bytes`（`:180-182`）；
-  - `tools.read_deny*` = `read_deny`、`read_deny_defaults`（`:252-253`，当前无 `Writable`）。
-- 引用的行号核实成立的：`load.go:33-67`、`config.go:61-110`、`:153-169`（函数起于 154）、`:282-284`、`settings_registry.go:371-375`、`:227`、`:250`、`code_exec.go:563`、`sessionenv.go:17`、`cwdcheck.go:214`、`streamjson.go:35`（`type: session` 行）、`layout.go:77`（`BannerInfo`）、usage `:124`、`xhen/README.md:151`。
-- 引用不准的见 S12。
+- 分类表与 D6 中每个具体键在注册表中存在；`*`/`{}` 展开项与注册表一致（`tools.approval_rules.*` 287-290 行附近、`tools.shell_limits.*`、`tools.session_message.*`、`tools.origin_judge.*`、`tasks.max_*`、`tools.read_deny*`）。
+- 快照放在 `SUGA_HOME/run/`：`run/` 同时是会话进程记录目录，`personalprocess.List` 扫描其中所有 `*.json`（`process.go:650-668`），`protected-config.json` 因 PID≤0 / 文件名不匹配会被跳过、不会被删除；`backup_restore.go:85`、`gc_maintenance.go:34`、`data_gc.go:212-219` 只把 `run/` 当锁与进程记录目录使用，没有清空 `run/` 的路径。结论：位置可用，见 S15 的附注。
+- 配置锁目录 `run/locks` 以 `0o700` 创建（`yaml_edit.go:121`）；`editConfigFile` 在写入时持锁（`yaml_edit.go:129` 起）。
+- chat 横幅输出点 `internal/chat/chat.go:543` `render.Banner()`；`BannerInfo` 在 `layout.go:77`。
+- suga 的 CLI 库为 `github.com/gookit/goutil/cflag/capp`（`internal/cli/config.go:14`），不是 gookit/gcli。
 
 ## 发现
 
-### S8 [HIGH] 启动提示的快照更新规则会吞掉提示，主要威胁路径下“下次启动能被你看到”不成立
+### S13 [MEDIUM] 新引用的 SR2003 不适用于 suga 的 CLI 库
 
-- disposition：`CORE_BLOCKING` [BUG]
-- 证据：核心目标“用其他方式改动这些配置时，下次启动能被你看到”（34 行）；用户可见结果（54 行）；“提示后更新快照（每处改动只提示一次）”（118 行，D8 175 行）；run 只在 stream-json 加字段，而 gofer“旧解析器忽略”（73、116 行）；ACP、SDK 只写 trace（117 行）；威胁场景本身就是 gofer 可写任务（44 行）。
-- 影响：模型在 gofer run 任务里用 `shell_exec` 改了 `config.yaml`（非目标，靠 D8 兜底，67 行）。下一次启动多半是另一个 gofer run 任务：提示进了没人读的 stream-json 字段和 trace，随后快照被更新；你之后开 chat 横幅什么也不显示。S6 的兜底（`init --force`、`data restore`）也因此落空。
-- 同类穷尽（快照身份与更新时机，候选中的全部出现点）：
-  - (a) 非交互入口（run/ACP/SDK）先启动就把提示消耗掉（118 行）；
-  - (b) “人工 set 后刷新快照”（108、138 行）如果按全部 protected 键重算，会把之前未提示的改动一并吸收；刷新失败的处理（GR109）也没写；
-  - (c) gofer 并发启动多个 suga 时，快照的读、比较、写没有说明互斥或原子写，可能重复提示或丢失；
-  - (d) 快照位置只写“SUGA_HOME 状态目录”（60、114、158 行），代码里没有这个目录（`internal/config/paths.go` 只有 `db/`、`sessions/` 等）；没写明是否落在 `data restore` 的恢复集合之外（`internal/personal/backup/backup.go:432` 恢复 `db/sessions.db`、`config.yaml`、`memory/user`、`projects`），落在集合内则 restore 会连快照一起换掉；`SUGA_CONFIG` 指向不同文件时共用一个快照，会来回误报；
-  - (e) 摘要的输入是原始值还是 `${NAME}` 展开后的值没写（`load.go:47` `ParseEnv`）：用原始值，则改 SUGA_HOME `.env` 换掉端点不会提示；用展开值，则摘要中含秘密派生内容（SR1301）。
-- necessity proof：
-  - core_acceptance：34 行核心目标后半句；54 行用户可见结果。
-  - necessary_causal_chain：不修 → 第一次非交互启动消耗提示并更新快照 → 人可见的入口（chat 横幅）不再提示 → 主要威胁路径（44 行）下改动对人不可见 → 核心验收不成立。
-  - minimal_owner：本设计第 3 节（114-119 行）与 D8 的快照更新规则。
-  - deletion_alternative：删除 D8 = FAIL（核心目标后半句随之消失，需用户改范围）；收窄为 target-locked corrective = PASS，例如快照只记录“已在 chat 横幅展示过”的状态，或保留待提示键名直到 chat 展示；删掉“人工 set 刷新”或改为只刷新所改的键；写明快照路径（不在 restore 集合内）、按配置路径区分、原子写。
-  - scope_effect：不新增 Module/Interface/Schema；快照多一个“待提示”语义，属本设计已有 state 的细化。它改变了 D8 已记录的“提示一次、人工 set 刷新”细节，按 SR1408/SR1401 须请用户确认。
-- 建议：按上面的收窄方案改第 3 节和 D8，并在验证要求里补 (a)、(b)、(c) 的测试（例如“run 先启动后 chat 仍提示”）。
+- disposition：`CORE_CORRECTIVE`（结构项，按合同计划批准前修正，不得延后）
+- 证据：87 行规范列表新增 SR2003；141 行“config 命令接收 stdin（SR2003 的命令结构不变）”。SR2003 的适用对象是 gookit/gcli 命令；suga 的 config 命令用 `github.com/gookit/goutil/cflag/capp`（`internal/cli/config.go:14,21-22`）。
+- 同类穷尽（规则引用适用性，候选全部出现点）：SR2003（87、141 行）为唯一误引；SR1301（166 行）、SR1403、GR108（142 行）、GR109（134 行）、GR110（180 行）、SR2004（138 行，作为“参照 suga 现有分层”的引用成立）均适用。
+- 影响：计划阶段可能按 gcli 的位置参数/选项约定审查一个 capp 命令；与上轮 S7（GR107 误引）同类。
+- 建议：删去 SR2003，改写为“沿用 `internal/cli` 现有 capp 命令结构，签名改为 `newConfigCommand(stdin, stdout, stderr)`”。
 
-### S9 [MEDIUM] 分类判据不一致、个别不列入理由不实
+### S14 [MEDIUM] 快照推进与单键更新的取值时点、调用点未写明
+
+- disposition：`CORE_CORRECTIVE`（S8 同类：快照身份与更新时机；由 D9 新机制带来的细节）
+- 证据：“横幅显示后整体推进”（128 行）、流程“持锁读快照比较 → chat：横幅显示 → 整体推进快照”（156-159 行）未说明推进写入的是“展示时计算的摘要”还是推进时重新读取配置得到的摘要；“写入 → 快照中只更新该键”（153 行）未说明单键摘要是否在 `editConfigFile` 持有的同一配置锁区间内、按刚写入的值计算；代码组织（140-143 行）写了 config 提供“整体推进”，但没写由谁在横幅之后调用（应为 `internal/chat`，横幅输出点 `chat.go:543`）。
+- 同类穷尽：(a) chat 推进：比较与推进之间另一个 gofer run 改了配置，若推进时重算则吸收未展示的改动；(b) set 单键更新：写入释放锁后再取锁更新快照，其间同键被改则吸收；(c) 推进的调用点不在代码组织中，存在被放进 wiring（违反 GR108）或放在横幅之前的实现歧义。
+- 不判阻断的理由：(a)(b) 窗口为毫秒级，且攻击者删除或改写快照的能力已作为已接受风险（169 行），不改变核心验收的成立条件；缺少从“不采纳”到核心验收失败的必要因果链。
+- 建议：写明“推进只写入本次横幅展示时计算的摘要；单键更新在写配置的同一锁区间内按写入值计算”；代码组织补“`internal/chat`：横幅显示后调用 config 的推进函数”；验证项补一条“比较后、推进前改动的键在下次 chat 仍提示”。
+
+### S15 [LOW] 快照文件与进程记录共用 `run/` 目录、文件权限未写
 
 - disposition：`CORE_CORRECTIVE`
-- 证据与同类穷尽：
-  - `rules.file` 的理由“只接受不带路径的文件名”（99 行）答非所问：S1 指出的问题是换规则文件名能绕开 `ClampAllow` 对规则文件的保护（`pkg/agentcore/tools/rules/rules.go:267-292` 按当前配置的规则文件名保护），模型先写一个未受保护的文件再改 `rules.file` 指向它。真正的理由应是：这与 `shell_exec` 直接改 `AGENTS.md` 同级（`ClampAllow` 只管文件工具，280-283 行），属 D2 已接受的范围。要么改写理由，要么列入。
-  - `models.judge` 的例外理由是“它决定外部来源裁决由谁做”（99 行），但未配置 `models.judge` 时裁决用 `models.compact`、再用主模型（`settings_registry.go:104-105`；usage `:124`）。按同一理由，`models.compact`/`compact_model`/`model` 在缺省配置下同样决定裁决者，判据前后不一。端点去向已由 `base_url/type` 守住，建议统一判据：要么只保护端点、删掉 `models.judge` 例外，要么写明这几个键为何不同。
-  - 资源上限类：放宽类收了 `tools.shell_limits.*`、`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.max_*`（96 行），但同属上限的 `budget.tokens`/`budget.cost_usd`（`:108-109`）、`max_steps`（`:107`）、`agents.max_steps/max_tokens/timeout`（`:186-188`，被 `agents.*` 整体排除）、`hooks.timeout_ms`、`mcp.call_timeout_sec`、`tools.max_output_bytes` 没有列入，也没有给理由。
-  - 兜底“其余显示与性能类键”覆盖不了这些不属显示或性能的可写键：`gc.retention.*`（`:291-292`，缩短保留期会删掉 D8 依赖的 trace 证据）、`transcripts`、`hooks.stop_wait_sec`/`hooks.stop_background`、`network.proxy.sites`、`run.deadline_env`、`tools.snapshots.*`、`tools.loop_guard`、`providers.<id>.compat`、`providers.<id>.models.<name>.model_id`。
-- 影响：计划阶段的显式分类表要逐键写理由（102 行），判据不一会使表的取舍无据可依；理由不实会误导后来的维护者。
-- 建议：在第 1 节写一句判据（例如“改变权限、执行、去向或安全检查”；资源与成本上限归哪一边），按判据重写上述键的归属或理由；如有键移入 protected，属扩大 D4/D6 清单，须请用户确认。
+- 证据：123、177 行快照为 `SUGA_HOME/run/protected-config*.json`；`run/*.json` 是会话进程记录，`personalprocess.List` 逐个读取并按 `<pid>.json` 判定（`process.go:650-668`），当前代码会跳过该文件而不删除，但这是依赖现有判定细节的隐含约定；快照文件模式未写，同目录的锁目录用 `0o700`（`yaml_edit.go:121`）。
+- 影响：日后 `List` 的清理条件放宽（例如删除无法解析的记录）会误删快照，触发“首次运行”语义而静默吸收改动；摘要虽不含秘密，原始值可能含写死的令牌（例如 `mcp.servers` 内联值），文件应只对本人可读。
+- 建议：写明快照放 `run/` 下的子目录（如 `run/state/`）或在设计中注明与进程记录共存的约定；写明文件模式 `0600`、目录 `0700`。
 
-### S10 [MEDIUM] Q4–Q6 的选项没有留痕，D6 没有列全 0.3 新增的键
+### S16 [LOW] 入口表遗漏 `suga compact`
 
 - disposition：`CORE_CORRECTIVE`
-- 证据：12、179 行引用用户原话“Q4–Q6 按推荐”，但 Q4–Q6 的选项与推荐内容不在任何已提交产物中（`git log --all -S'Q4' -- docs/` 只命中本次提交与其他设计；0.1、0.2 只有 Q1–Q3）。0.3 在放宽类新增了 `tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.max_*`、`log.file`（diff 中 86 行对比 0.2 的 62 行），D6（173 行）没有列出这几个键，它们只能经 D4“放宽类全部”带入，而用户为 D4 选的是 0.2 的清单；修订摘要写“`workspace` 等”（12 行）。
-- 影响：无法从文档核对“按推荐”批准的范围与 D6–D8 是否一致；SR1108“不得静默扩大范围”的证据不完整。不阻断，因为人工计划 Gate 会就整份文档批准。
-- 建议：在 D6–D8 各附一句 Q4–Q6 的推荐内容，D6 列全 0.3 新增的键（含上述 4 项），修订摘要去掉“等”。
+- 证据：入口表（126-131 行）与流程（155 行）列 chat/run/acp/SDK；`internal/cli/compact.go:60` 同样经 `wiring.OpenCLI` 打开运行时。
+- 同类穷尽（经 `wiring.Open`/`OpenCLI` 的入口）：`run.go:187`、`compact.go:60`、`acp.go:84`、`pkg/sugasdk/session.go:98`，以及 chat 路径；只有 compact 未列。
+- 影响：比较挂在 wiring 时 compact 也会执行比较，是否写 stderr、是否写 trace 无规定；不推进快照，故不影响核心验收。
+- 建议：入口表加一行“其他入口（如 `suga compact`）：不提示、不推进”或与 run 同等处理。
 
-### S11 [MEDIUM] D8 新增的对外接口未声明，stream-json 字段必要性未证明
+### S17 [LOW] 修订记录元数据：日期不一致、未写按类自查范围
 
-- disposition：`CORE_CORRECTIVE`
-- 证据：116 行 stream-json `session` 行新增 `protected_config_changed`，而唯一已知消费方 gofer 会忽略它（73 行）；117 行 trace 事件 `kind=session`、`name=protected_config_changed`，代码中现有 trace kind 里没有 `session`（全量检索 `Kind: "…"`，只有 `run_started`、`approval`、`hook`、`command` 等），即这是新增的 trace kind；两处都没在“受影响项目”或“文档”（157 行）中写明属于接口变化，也没写进 trace 事件说明。
-- 影响：SR1403/SR1405/SR1410 要求新机制直接追溯到验收。stream-json 字段没有消费方，对“被你看到”没有贡献；新 trace kind 改变了 `suga inspect trace --json` 的输出面，却没有文档合同。
-- 建议：stream-json 字段要么删掉（run 由 trace 与 S8 的 chat 补报覆盖），要么在受影响项目中登记 gofer 侧的展示为后续 issue（跨项目，deferred）；trace 改用已有 kind，或明确声明新 kind 并列入文档更新清单。
-
-### S12 [LOW] 已确认事实中的路径与注入关系引用不准
-
-- disposition：`CORE_CORRECTIVE`
-- 证据（同类全部出现点）：
-  - 78 行 `internal/chat/local_command.go:122-127` 不存在；行号对应的是 `pkg/agentcore/tools/native/local_command.go:122-127`（`cmd.Env = shellEnv(...)`，未设 Stdin），chat 入口在 `internal/chat/local_cmd.go:93`；
-  - 82 行 `internal/cli/backup.go:152,432` 不存在；实际是 `internal/personal/backup/backup.go:152,432`，命令在 `internal/cli/backup_restore.go:51`；
-  - 79 行 `proctree_unix.go:25` 缺目录，实际为 `pkg/agentcore/internal/proctree/proctree_unix.go:25`；
-  - 80 行“命令的 stdin 来自 `internal/cli/root.go:69`”、106 行“stdin 取……root 注入的那个”：`root.go:69` 是 `newConfigCommand(stdout, stderr)`，config 命令目前拿不到 stdin（`config.go:21`），需要改签名；
-  - 77 行动态描述符“`:311-331`”只覆盖到模型级 `base_url`，实际范围为 `:310-357`（provider 级 311-325、模型级 329-345、provider retry/timeouts 349-356），分类表要覆盖全部动态键时应引用完整范围。
-- 影响：计划阶段按错的路径找 owner；stdin 注入是需要做的改动，却被写成现状。
-- 建议：按上列更正；把“config 命令接收 root 的 stdin”写进架构的 `internal/cli` 条目。
+- disposition：`CORE_CORRECTIVE`（纯元数据，按 SR1103 修正时不递增版本、不开新轮）
+- 证据：0.4 行日期 `2026-11-11`（13 行），同一行与 208 行引用的用户原话日期为 `2026-11-12`；候选提交时间 `2026-11-11 18:33 -0800`（即 UTC+8 的 11-12）。review-contract 要求“作者修订摘要写明按类自查的范围”，0.3 写了（“按类自查：清单完整性、判定强度与误拒、其他写入口、验证与兼容”），0.4 的处理表（17-30 行）没有。
+- 建议：统一用一个时区的日期；在处理表前补一句本轮按类自查的范围（如“快照身份与更新时机、入口覆盖、分类判据、接口声明、引用”）。
 
 ## 覆盖缺口与限制
 
-- 未运行代码或测试；S8 的 gofer 消费情况以设计 73 行自述为准，未逐行读 gofer 的 stream-json 解析器。
-- 未逐行追 `gc.retention.*`、`hooks.stop_background` 等的安全含义，只指出缺判据（S9）。
-- Spec/Executability 轴的细节（快照格式、比较算法、i18n 文案）未深评。
-- HEAD 与候选之间只多了评审台账提交，代码事实按 HEAD 核对，与候选时点一致。
+- 未运行代码或测试；并发与锁区间的判断基于代码阅读（`yaml_edit.go`、`process.go`）。
+- gofer 对 suga run stderr 的处理以设计 73 行自述为准，未读 gofer 代码。
+- Spec/Executability 轴的细节（快照 JSON 格式、i18n 文案、ACP 多会话缓存的实现）未深评。
+- S9 附注中的逐键核对只按 93 行原则判断“是否扩大能力”，未逐键追运行时全部用法。
 
 ## 结论
 
-`BLOCKED`：S8 为开放的 `CORE_BLOCKING` [BUG]（启动提示的快照更新规则在主要威胁路径下吞掉提示）。S2、S7 残留与 S9–S12 为 `CORE_CORRECTIVE`，计划批准前应修正（S7 属结构项，按合同不得延后）。上轮 S1、S3、S4、S5、S6 已关闭。
+`PASS`（本轴无开放 `CORE_BLOCKING`）：上轮 S8 已关闭，S9、S12、S2/S5/S7 残留已关闭；S10、S11 部分关闭，残留为 `CORE_CORRECTIVE`；本轮新增 S13–S17 均为 `CORE_CORRECTIVE`，其中 S13 为结构项，计划批准前必须修正。
 
 ## 剩余风险与后续
 
-- S8 的修正会改变 D8 已记录的“提示一次、人工 set 刷新”细节，须请用户确认后出 0.4；下一轮按 `git diff a0845767..<新候选>` 复核 S8 与依赖章节（第 3 节、关键流程、验证要求、D8）。
-- 即使修正后，防护仍是“提高门槛 + 事后可见”：刻意绕过与同时改写或删除快照都挡不住，README/usage 需如实写明。
-- S9 若导致清单扩大（如 `budget.*`、`gc.retention.*`），属扩大用户所选清单，同样须用户确认。
+- S10 残留：D6 中评审补入的键（模型级 `type`、`models.compact`/`compact_model`、执行上限类、`log.file`、`tools.disabled`、`rules.file`）应在人工计划 Gate 中点名请用户确认，或在 D6 中与 Q4 推荐分开标注；D4 文字与表的类别对齐。
+- 若作者按 S13–S17 及残留修订，属含 `CORE_CORRECTIVE` 的全 PASS 之后的纠正，可按 planning-core-rigorous 走唯一一轮纠正确认轮（candidate 须变化）；不做确认轮时这些修订按“未复核修订”在 Gate 披露。
+- 防护本质仍是“提高门槛 + 下次打开 chat 可见”：刻意绕过、同时删改快照、经 `.env` 改 `${VAR}` 都挡不住，README/usage 需如实写明（176 行已列）。
