@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 安全配置键保护 设计
 
-> 状态：Draft 0.5 / 待人工计划批准；issue `suga-hyj7`
+> 状态：Draft 0.6 / 待人工计划批准；issue `suga-hyj7`
 
 ## 修订记录
 
@@ -12,6 +12,7 @@
 | 0.3 | 2026-11-11 | Claude | 处理第 1 轮两轴评审（`docs/review/2026-11-11-protected-config-keys/`）与用户选择（2026-11-11：“Q4–Q6 按推荐”）：清单补端点类、`workspace` 等（D6）；如实写明判定只挡直接调用（D7）；加回启动时变化提示（D8）；显式分类表、验证要求、兼容说明、拒绝细节、替代声明 |
 | 0.4 | 2026-11-12 | Claude | 处理第 2 轮两轴评审与用户选择（2026-11-12：“Q7、Q8 按推荐”）：快照只在 chat 横幅展示后推进、人工 set 只更新该键（D9）；按 config.yaml 原始值比较（D10）；去掉 stream-json 字段，run 改为 stderr 一行；补 `tools.disabled`、`rules.file`、压缩模型；写明分类原则、快照位置与并发、判定细节、受影响测试与引用 |
 | 0.5 | 2026-11-12 | Claude | 处理第 3 轮两轴评审（按类自查：比较键集、取值与规范化、推进与锁、入口挂点、分类归组）：比较取快照与当前键名并集（新增或删除 provider 可被报出）；无法逐键读取的写法改按整文件比较；推进写入启动时的摘要，单键更新与写配置同一临界区；模型与压缩模型不保护、裁决回退列为风险；补全“不保护”分组；D6 区分 Q4 推荐与评审补入的键 |
+| 0.6 | 2026-11-12 | Claude | 处理第 4 轮两轴评审（按类自查：比较范围是否覆盖全部影响执行门与请求去向的键、整文件模式、规范化与路径）：比较范围扩到全部标 Protected 的注册表键（含不可写、秘密键），补 `hooks.pre_tool_use.*` 描述符与 `network.proxy.url`、`tools.web_fetch.proxy`；整文件回退只由顶层点号键、锚点/别名/合并键、多文档触发，快照同存两种摘要；锁与快照路径同一规范化；compact 经装配参数不比较 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -37,6 +38,11 @@
 | 3 | F21、S16 | ACP 按会话记一条；compact 不参与；进程内缓存按配置路径、测试可重置；CLI 拒绝做反向验证 |
 | 3 | F24、S15 | 快照放 `run/protected-config/` 子目录（0700/0600），路径规范化后求哈希；风险补“模型在伪终端里自起 chat” |
 | 3 | S13、F23、S17 | 删 SR2003，改为沿用现有 capp 命令结构；修正文档行号与修订日期；补 trace kind 常量位置 |
+| 4 | S18（阻断） | 比较范围改为全部标 `Protected` 的注册表键（不论是否可写、是否秘密）；补 `hooks.pre_tool_use.tools/name` 描述符（与 post 同为可写+protected）；`network.proxy.url`、`tools.web_fetch.proxy` 标 protected（仍不可经 config set 写）；计划阶段盘点全部字面键读取 |
+| 4 | S19、F25、F26、F27 | 整文件回退只由顶层字面量点号键、锚点/别名、合并键（含内联 `<<: {…}`）、多文档触发；带点模型名仍逐键；快照同存逐键与整文件摘要，整文件模式下人工 set 不改快照；映射键排序、列表保持顺序 |
+| 4 | F28、F29 | 锁与快照路径都先取绝对路径并规范化；比较与 `Load` 读取同一份字节；补“启动后改动下次仍提示”用例 |
+| 4 | F30 | 风险补 `echo /exit \| suga chat` 推进快照、`.env` 中 `SUGA_APPEND_SYSTEM_PROMPT` 持久注入 |
+| 4 | S16、S20 | compact 经装配参数关闭比较；`models.judge` 注明依据 Q4 |
 
 **思考与范围声明**
 - 思考模式：`RIGOROUS`。
@@ -101,14 +107,15 @@
 
 ### 1 清单与显式分类表（D4、D6）
 
-注册表 `ConfigKey` 增字段 `Protected bool`，静态与动态描述符都可设置。分类原则：键能扩大模型可执行、可读写的范围，引入外部程序或指令，改变请求去向，或关闭约束这些能力的检查与上限，即为 protected。
+注册表 `ConfigKey` 增字段 `Protected bool`，静态与动态描述符都可设置；不可写或秘密键也可标 `Protected`，只用于启动比较（不改变其可写性）。分类原则：键能扩大模型可执行、可读写的范围，引入外部程序或指令，改变请求去向，或关闭约束这些能力的检查与上限，即为 protected。
 
 | 类别 | protected 键 |
 |---|---|
-| 执行类 | `hooks.command`、`hooks.stop_args`、`hooks.post_tool_use.tools`、`hooks.post_tool_use.name`、`memory.user.command`、`memory.user.args`、`memory.user.backend`、`memory.project.command`、`memory.project.args`、`memory.project.backend`、`mcp.servers`、`tools.shell`、`tools.interpreters`、`rules.file` |
+| 执行类 | `hooks.command`、`hooks.stop_args`、`hooks.pre_tool_use.tools`、`hooks.pre_tool_use.name`（执行前拒绝门，新增描述符）、`hooks.post_tool_use.tools`、`hooks.post_tool_use.name`、`memory.user.command`、`memory.user.args`、`memory.user.backend`、`memory.project.command`、`memory.project.args`、`memory.project.backend`、`mcp.servers`、`tools.shell`、`tools.interpreters`、`rules.file` |
 | 放宽类 | `tools.allow_write`、`tools.approval`、`tools.auto_allow`、`tools.read_only_allow`、`tools.disabled`、`tools.read_roots`、`tools.dependency_roots`、`tools.standards_roots`、`tools.skill_roots`、`tools.ask_on_external_origin`、`tools.protect_changed_files`、`tools.approval_rules.{enabled,always_prefix_tokens,persist_ask,project_trust}`、`chat.ask_outside_dirs`、`memory.write`、`memory.write_tainted`、`memory.taint_tools`、`memory.taint_on_spill`、`tools.web_fetch.allow_private`、`tools.session_message.{enabled,in_gofer_jobs,max_hops}`、`tools.origin_judge.{enabled,timeout}`、`tools.read_deny`、`tools.read_deny_defaults`、`workspace` |
 | 执行上限类 | `tools.shell_limits.{memory,processes,cpu_time,off}`、`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.{max_running,max_duration,max_output_bytes}` |
-| 端点类 | `providers.<id>.base_url`、`providers.<id>.type`、`providers.<id>.models.<name>.base_url`、`providers.<id>.models.<name>.type`、`models.judge` |
+| 端点类 | `providers.<id>.base_url`、`providers.<id>.type`、`providers.<id>.models.<name>.base_url`、`providers.<id>.models.<name>.type`、`network.proxy.url`、`tools.web_fetch.proxy`（后两者为秘密键，仍不可经 config set 写，只参与比较） |
+| 裁决 | `models.judge`（依据 Q4 用户选择；同组的其他模型选择键不保护，见风险） |
 | 其他 | `log.file`（可把日志写到任意路径） |
 
 不保护（按组；每组都不扩大可执行、可读写范围，不改变请求去向）：
@@ -121,7 +128,9 @@
 - 显示与交互：`language`、`chat.*`（除 `chat.ask_outside_dirs`）；
 - provider 调参：`providers.<id>` 与模型级下除 `base_url`、`type` 外的键。
 
-测试：一张覆盖全部 `Writable:true` 键（含动态描述符）的显式分类表（protected / 不保护 + 所属组）；注册表出现未分类的可写键，或分类与 `Protected` 字段不一致，测试失败。
+计划阶段先盘点代码中全部字面配置键读取（`gkconfig.*` 等），未登记的补描述符。
+
+测试：一张覆盖全部注册表键（含动态描述符、不可写与秘密键）的显式分类表（protected / 不保护 + 所属组）；注册表出现未分类的键，或分类与 `Protected` 字段不一致，测试失败。
 
 ### 2 `suga config set/unset` 的限制（D3、D7）
 
@@ -135,12 +144,14 @@
 ### 3 启动时变化提示（D8、D9、D10）
 
 - **比较**：读配置后，对 protected 键在 `config.yaml` 中的取值计算 SHA-256 摘要，与快照比较，得到改动的键名列表。
-  - 键集：快照中的键与当前文件中 protected 键（含动态 provider 键）的并集；任一侧缺失按“未设置”计，因此新增或删除 provider、设置或删除某个键都会被报出。
-  - 取值：YAML 解析后、未展开 `${VAR}` 的值，按规范形式（列表、映射与 `mcp.servers` 这类整块值序列化为排序后的 JSON）求摘要，注释与缩进变化不算改动。
-  - 文件中出现锚点、别名、合并键，或顶层/中间层的字面量点号键（如 `"tools.approval": auto`）等无法逐键读取的写法时，改为对整个文件求一个摘要并比较；变化时提示“配置文件有变化（含无法逐键比较的写法），请检查 <路径>”。
+  - 范围：全部标 `Protected` 的注册表键，不论是否可写、是否秘密（秘密键只存摘要）。
+  - 键集：快照中的键与当前文件中 protected 键（含从 `providers` 映射逐个枚举的动态键）的并集；任一侧缺失按“未设置”计，因此新增或删除 provider、设置或删除某个键都会被报出。
+  - 取值：YAML 解析后、未展开 `${VAR}` 的值，按规范形式（整块值序列化为 JSON，映射键排序、列表保持原顺序）求摘要，注释与缩进变化不算改动；比较与 `Load` 读取同一份文件字节。
+  - 整文件模式：文件出现顶层字面量点号键（如 `"tools.approval": auto`，运行时会生效）、锚点或别名、合并键（含内联 `<<: {…}`）、多文档时，无法可靠逐键读取，改为对整个文件求摘要并比较；变化时提示“配置文件有变化（含无法逐键比较的写法），请检查 <路径>”。中间层带点的键名（如模型名 `gpt-4.1`）照常逐键比较。
+  - 快照同时存逐键摘要与整文件摘要；当前或快照任一侧处于整文件模式时按整文件摘要比较，快照缺整文件摘要视为有变化。整文件模式下人工 set/unset 不改快照（改动留到 chat 横幅展示）。
   - 快照无法读取或损坏时视为全部 protected 键已改动，提示中注明“快照无法读取”，不静默重建。
   - 升级后注册表新增 protected 键：只要文件里未设置该键，两侧都按“未设置”，不误报。
-- **快照**：`SUGA_HOME/run/protected-config/` 子目录（0700），文件 0600；默认配置为 `default.json`，`SUGA_CONFIG` 指向其他文件时为 `<sha256(规范化路径)>.json`，规范化为绝对路径、`filepath.Clean`，Windows 上再转小写。首次运行（文件不存在）只建快照不提示。
+- **快照**：`SUGA_HOME/run/protected-config/` 子目录（0700），文件 0600；默认配置为 `default.json`，`SUGA_CONFIG` 指向其他文件时为 `<sha256(规范化路径)>.json`，规范化为绝对路径、`filepath.Clean`，Windows 上再转小写；配置锁路径也用同一规范化后的路径（三处一致）。首次运行（文件不存在）只建快照不提示。
 - **锁**：启动时的读、比较与 chat 推进各自取该配置文件的配置锁；人工 set/unset 的单键更新在 `editConfigFile` 已持有的锁内完成（锁不可重入，不再重复获取）。写入用临时文件加改名。
 - **推进的值**：chat 推进写入启动时比较算出的那份摘要，不在推进时重读文件，启动与横幅之间别人做的改动留到下次提示。
 - **各入口**：
@@ -150,7 +161,7 @@
 | chat | 横幅显示“安全相关配置自上次确认以来有变化：<键名>；如果不是你改的，请检查 <config.yaml 路径>”；并写 trace | 横幅显示后整体推进（`internal/chat` 经 `chat.Options` 新增的回调触发） |
 | run | stderr 一行同样内容；写 trace | 否 |
 | ACP、SDK（含 xhen） | 每个会话的首个回合写一条 trace（ACP 每个 prompt 新建 runtime，按会话 ID 去重） | 否 |
-| `suga compact` 等维护命令 | 不参与比较 | 否 |
+| `suga compact` 等维护命令 | 不参与比较（`wiring.OpenCLI` 增装配参数关闭比较，compact 传入） | 否 |
 | `suga config set/unset`（人在终端） | — | 只更新被改键 |
 
 - **trace**：在每个会话首个回合内记一条 `kind=config`、`name=protected_config_changed`、attrs 只含键名列表（回合内才有 session ID，避免被丢弃）；比较结果在进程内按配置文件路径缓存（测试提供重置函数），同一进程多个会话不重复读快照。
@@ -192,7 +203,8 @@ suga 启动（chat / run / acp / SDK）
   - 快照可被同时改写或删除（删除后按首次运行处理），从而掩盖改动，与直接改文件同级；
   - 经 `.env` 或环境变量间接改变 `${VAR}` 引用的值不被比较（D10）；
   - 缩短 `gc.retention.*` 可能提前清掉 trace；
-  - 模型可在伪终端里自起 `suga chat` 让横幅“展示”而推进快照，与改写快照同级；
+  - 模型可自起 `suga chat`（chat 不要求终端，`echo /exit | suga chat` 即可）让横幅“展示”而推进快照，与改写快照同级；
+  - `SUGA_HOME/.env` 中直接写 `SUGA_APPEND_SYSTEM_PROMPT` 即成为持久注入的指令，与 `rules.file` 同类，但 `.env` 不在比较范围（D10）；
   - 未配置 `models.judge` 时裁决回退到压缩模型或主模型，两者不保护，模型可把它们切到已配置的较弱模型；需要时请配置 `models.judge`；
   - trust 档下外部来源检查被放开，这时只剩 CLI 判定与启动提示；其他档位下外部来源裁决对照抄外部内容的此类命令裁决，是另一道防线。
 - **兼容与误拒**：以下人的操作改 protected 键会被拒，提示改在 suga 之外的终端执行或直接编辑文件：chat 里 `!` 执行、hook 脚本、gofer exec 任务里的脚本、Git Bash/mintty（stdin 为管道）、`echo … | suga config set`。非 protected 键不受影响。
@@ -204,7 +216,7 @@ suga 启动（chat / run / acp / SDK）
 - **验证要求**（计划中落实）：
   - GR110：经 `internal/cli` 真实命令分发——会话内（`SUGA_SESSION_ID` 非空）与非终端的 set/unset protected 键被拒、退出码 2、配置文件未变；`SUGA_SESSION_ID` 为空字符串时按无标记处理；非 protected 键照常；注入“是终端”判定时 protected 键可写且快照只更新该键、无快照时不建；临时去掉拒绝分支做反向验证；
   - 显式分类表测试（含动态描述符），并做反向验证；
-  - 快照：首建、无变化、变化后 run 不推进而 chat 推进、人工 set 不吸收其他键的改动、新增与删除 provider 被报出、注释与缩进变化不报、锚点或字面量点号键改走整文件比较、损坏时全部提示、`SUGA_CONFIG` 分别建快照（含相对路径与 Windows 大小写）、并发启动不损坏文件；
+  - 快照：首建、无变化、变化后 run 不推进而 chat 推进、人工 set 不吸收其他键的改动、新增与删除 provider 被报出、注释与缩进变化不报、顶层点号键、锚点、内联合并键、多文档改走整文件比较且带点模型名仍逐键、整文件模式下人工 set 不改快照、启动后横幅前的改动下次仍提示、秘密键（代理地址）改动只报键名、`hooks.pre_tool_use.*` 改动被报出、损坏时全部提示、`SUGA_CONFIG` 分别建快照（含相对路径与 Windows 大小写）、并发启动不损坏文件；
   - chat 横幅用 `test/ptye2e` + `suga inspect trace --json` 断言并反向验证；ACP（同一会话多个 prompt 只记一条）、SDK 的 trace 事件测试；run 的 stderr 行；
   - 主机 Windows：ptye2e ConPTY 下真实二进制在终端里 set protected 键成功、管道输入被拒。
 
@@ -216,7 +228,7 @@ suga 启动（chat / run / acp / SDK）
 - **D4**（Q2）执行类与放宽类全部列为 protected，含 `tools.session_message.*`、`tools.web_fetch.allow_private`；`tools.shell_limits.*` 在 0.4 起归入执行上限类，仍为 protected。
 - **D5**（Q3）`tools.origin_judge.*`、`tools.read_deny*` 改为 `Writable:true` + `Protected:true`，替代前序“不可写”决定。
 - **D6**（Q4）清单增端点类（`providers.<id>.base_url/type`、模型级 `base_url`、`models.judge`）、`workspace`、`memory.*.backend`；显式分类表覆盖全部可写键。
-  - 评审补入、Q4 未涵盖、需你在 Gate 上确认的键：模型级 `type`、执行上限类（`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.max_*`）、`log.file`、`tools.disabled`、`rules.file`。
+  - 评审补入、Q4 未涵盖、需你在 Gate 上确认的键：模型级 `type`、执行上限类（`tools.shell_timeout_max`、`tools.task_timeout_max`、`tasks.max_*`）、`log.file`、`tools.disabled`、`rules.file`；以及 0.6 补入的 `hooks.pre_tool_use.tools/name`（新增可写描述符）与只参与比较的 `network.proxy.url`、`tools.web_fetch.proxy`。
 - **D7**（Q5）CLI 判定如实定位为“挡直接调用、挡不住刻意绕过”；接受“兼容与误拒”中列出的误拒。
 - **D8**（Q6）启动时变化提示：逐键摘要快照，只报键名，不阻断。
 - **D9**（Q7）快照只在 chat 横幅展示后整体推进；run、ACP、SDK 只提示不推进；人工 set/unset 只更新被改键。
