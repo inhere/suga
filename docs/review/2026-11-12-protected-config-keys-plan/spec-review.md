@@ -1,153 +1,123 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 安全配置键保护实施计划 第 1 轮 Spec/Executability 评审
+# suga 安全配置键保护实施计划 第 2 轮 Spec/Executability 评审
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `109ec8c21158ff9238203ebba2ac7e9cd12a767d`；subject `docs/plans/2026-11-12-protected-config-keys-plan.md`
-- 修订版本: Draft 0.1
-- 评审者: 独立评审子 agent（Spec/Executability 轴，第 1 轮 discovery，REPORT_ONLY）
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `f897738008b449672ece282f4a841fe3e93a8443`；subject `docs/plans/2026-11-12-protected-config-keys-plan.md`
+- 修订版本: Draft 0.2（上轮 `109ec8c2` / Draft 0.1）
+- 评审者: 独立评审子 agent（Spec/Executability 轴，第 2 轮 confirmation，REPORT_ONLY）
 - 日期: 2026-11-12
-- 排除项: 设计 D3–D10 的选择本身；Standards/Governance 轴（另一评审者负责）；不改仓库、不提交
+- 排除项: 设计 0.8 的选择本身；Standards/Governance 轴；不改仓库、不提交
 
 ## 输入与方法
 
-- 规范：idev-std payload `SD95t2uhRN3Z9UqnPguVJg`（plan-contract、planning-core-rigorous、plan-closure、plan 模板、SR14xx、GR107–GR110、SR2001–SR2004）；review-contract 与 review 模板取自 base payload `OfGu6IpGnHz92hejmPjb9g`（delta `bXLJzNcvvw_ZrjUevizE3A` 相对它移除了 review-contract，因此改读 base 中的正文）。
-- 读取：仓库 `AGENTS.md`；计划全文；设计 `docs/design/2026-11-11-protected-config-keys-design.md` Draft 0.8 全文。
-- 对照代码（HEAD = candidate）：`internal/cli/{config,root,cwdcheck,run,chat,compact,acp}.go`、`internal/cli/{config,config_origin_judge,config_read_deny,approval_flags,i18n_cli,preferred_tools}_test.go`、`internal/config/{settings_registry,yaml_edit,load,bootstrap_lock,bootstrap_unix,bootstrap_windows,config_candidate,settings_registry_source}.go` 与测试名、`internal/wiring/runtime.go`、`internal/chat/{chat,layout,render}.go`、`internal/personal/{runner,observe,turncontext,subagent}.go`、`internal/personal/store/types.go`、`pkg/sugasdk/{session,engine}.go`、`cmd/suga/main.go`、`test/ptye2e/*`、`Makefile`、`scripts/ptysmoke/chat_onboarding.py`、`internal/i18n/catalog/*`、gookit/config v2.2.9 `load.go`。
-- 实际执行（只读）：`go test ./test/ptye2e -run 'TestChatProtectedConfig' -count=1`（证明 PF1）；用 grep 盘点字面配置键读取与注册表的差集。
+- 规范：payload `SD95t2uhRN3Z9UqnPguVJg`（plan-contract、planning-core-rigorous、plan-closure、plan 模板、SR14xx、GR107–GR110、SR2001–SR2004）；review-contract 与 review 模板取自 payload `3Z3cOanwUM2ILAXHbxiTlQ`。
+- 读取：`AGENTS.md`；上轮本轴报告 `docs/review/2026-11-12-protected-config-keys-plan/spec-review.md`（PF1–PF12）；计划 0.2 全文，以及 `git diff 109ec8c2..f8977380`；设计 0.8 中 §1–§3、架构与验证要求。
+- 对照代码（HEAD = candidate，工作树干净）：
+  - `internal/cli/{config,root,run,chat,i18n,cwdcheck,acp,compact}.go`，以及 `config_test.go`、`approval_flags_test.go`、`config_read_deny_test.go`、`config_origin_judge_test.go`；
+  - `internal/config/{load,yaml_edit,config_candidate,settings_registry,settings_registry_source}.go`；
+  - `internal/wiring/{runtime,subagent}.go`；`internal/personal/{runner,turncontext}.go`、`store/types.go`；
+  - `internal/chat/{chat,render,layout}.go`；`internal/i18n/{i18n.go,catalog/*}`；`pkg/sugasdk/session.go`、`engine.go`；`cmd/suga/main.go`；
+  - `test/ptye2e/{smoke_helpers_test,chat_smoke_test}.go`；`scripts/ptysmoke/chat_onboarding.py`；`scripts/acpprobe/acp_probe.py`；
+  - 依赖源码：gookit/gopty v0.1.2 `ptytest`、goutil v0.8.6 `cflag/capp/app.go`、gookit/config v2.2.9 `load.go`；主机脚本 `tmp/xhen-p1/{wt-repo,host-merge}.ps1`。
+- 方法：逐条核对 PF1–PF12 的关闭情况。对 0.2 新写的签名、调用点和验证命令，逐项与代码比对。验证命令的 `-run` 正则与现有测试名比对，反向验证逐条判断能否编译。本轮未执行 `go test`。
 
 ## 验收标准
 
-- plan-contract：每个任务的文件/符号/动作/验证/完成标准能被只读计划与设计的实施者唯一、正确执行；跨模块函数写出签名、返回与错误处理；验证命令写明运行目录，且真能证明完成标准；反向验证可编译。
-- plan-closure：任务可追溯到设计核心目标与“验证要求”。
-- review-contract：`CORE_BLOCKING` 只限 BUG/SECURITY/DATA/MISSING_FUNCTION/AUTHORITY，并给 necessity proof；同类穷尽。
+- plan-contract / plan-closure：每个任务的文件、符号、动作、验证和完成标准能被实施者唯一、正确地执行；跨模块函数写出签名与错误处理；验证命令能真实证明完成标准。
+- review-contract：`CORE_BLOCKING` 只限五类，并给 necessity proof；同类穷尽。
+
+## 上轮发现关闭情况
+
+| ID | 状态 | 依据 |
+|---|---|---|
+| PF1（阻断） | 关闭 | T5、T7 的 ptye2e 命令都带 `-tags ptye2e`，T5 新文件首行是 `//go:build ptye2e`。`-run 'TestChatProtectedConfig\|TestConfigSetProtectedInTerminal'` 能匹配计划里两个用例名。T5 增加了“终端 set 成功、非终端被拒”的真实二进制用例；T7 在 Windows 上跑同一条带 tag 的命令。Windows 可行性已核实：`sugaRun`（`smoke_helpers_test.go:196`）不设 Stdin，子进程拿到的是 NUL，`isTerminalInput` 判为假；pty 用 `ptytest.StartSpec` 启动，用 `WaitExit` 取退出码（gopty `ptytest.go:89,227`）。`testEnv` 会剥掉 `SUGA_*`（`chat_smoke_test.go:435`）。 |
+| PF2（阻断） | 关闭 | 比较结果与按会话去重放进 `internal/wiring` 的进程级缓存（键为配置路径）。回调签名和调用点（`runner.go:669` 的 `recordTurnContext` 之前，此时 `withObserveScope` 已在 :568/:613 设置）都已写定。ACP 每个 prompt 都 `wiring.Open`（`acp.go:84`），缓存在进程级，所以只记一条。 |
+| PF3 | 关闭 | `AdvanceProtectedSnapshot` 只在比较成功且变化非空时写入；chat 遇到错误记 Warn。 |
+| PF4 | 基本关闭 | 签名、Load 阶段取绝对路径、`ok` 语义、`configFileName` 都已写明。残留问题见 PF18、PF19：`Reload` 的合同与代码结构矛盾；`SUGA_CONFIG` 下 source 输出没有对应验证。 |
+| PF5 | 基本关闭 | 文件清单补了 `chat.go`、`render.go`；比较只在 `Open` 中做；常量为 `EventConfig`；推进不再需要外部传入 path。展示用的 `{path}` 从哪里来仍没写，见 PF16（同类，上轮未穷尽）。 |
+| PF6 | 关闭 | 写定了 handler 的 stdin 签名；`setupConfigCLI` 注入“是终端”并清空 `SUGA_SESSION_ID`；负向测试点了名。核实：`TestConfigRefusesTrustTier`、read_deny、origin_judge 三个测试和 `TestConfigSetAllowsSimpleRuntimeKeys` 都经 `setupConfigCLI`。 |
+| PF7 | 关闭 | T6 改 `chat_onboarding.py`，改用的 `chat.markdown` 可写（`settings_registry.go:151`）。 |
+| PF8 | 关闭 | 新增 T3b；T3 的用例补齐了 hooks、只有注释、快照 `mode=file` 时“下次仍报”；字面键盘点放进 T1。 |
+| PF9 | 基本关闭 | 比较两侧都用 `normalizeConfigPath`。`ResolveSugaHome` 出错这一分支没有写，见 PF19。 |
+| PF10 | 基本关闭 | 修正了 T1 的 `-run`，覆盖四张动态表，T6 grep 补了英文表述。i18n 调用方式与键前缀仍有误，见 PF13；T3 出现新的空匹配 `-run` 片段，见 PF18（同类）。 |
+| PF11 | 关闭 | 子 agent 不记录。已核实子 runner 由 `wiring/subagent.go:189` 另行调用 `personal.New` 构造，不共用 Runner，所以计划里“若共用”的假设分支用不上（见 PF17）。 |
+| PF12 | 关闭 | baseline 写明 HEAD `97e26d11` 与工作树干净，并登记了并行的 hooks 设计；当前 `git status --short` 为空，与之一致。 |
 
 ## 发现
 
-### PF1 [BLOCKER] ptye2e 验证命令不带 `-tags ptye2e`，无法执行；主机 Windows 的 ConPTY 验收证明不了
-
-- disposition: `CORE_BLOCKING` [BUG]
-- 证据:
-  - `test/ptye2e/*.go` 全部以 `//go:build ptye2e` 开头；`Makefile:170` 的 `smoke-go` 是 `go test -tags ptye2e -count=1 -timeout 30m ./test/ptye2e/`。
-  - T5 的验证命令 `go test ./test/ptye2e -run 'TestChatProtectedConfig' -count=1`（计划 :149）在 candidate 上实际执行得到 `build constraints exclude all Go files ... FAIL [setup failed]`。如果新文件不带 tag，它会成为唯一被编译的文件，但用不到 `buildSuga`、`testEnv`、`traceEvents` 等 helper，结果是编译失败。
-  - T7（计划 :164）的 Windows 命令 `go test ./...` 不带 tag，会静默跳过 `test/ptye2e`；`go test ./test/ptye2e -run TestChatProtectedConfig` 同样缺 tag。
-  - 设计“验证要求”最后一项（设计 :231）要求 ConPTY 下真实二进制在终端里 set protected 键成功、管道输入被拒。T5 只有“终端里 set 成功”一个用例，没有“真实二进制 + 管道 stdin 被拒”。
-- necessity proof: 完成定义 4（计划 :27）要求“设计验证要求全部有对应测试且通过，含……主机 Windows”。按计划原文执行，T5 的命令会失败，T7 的 Windows 全量会“全绿”但没有跑任何 ConPTY 用例。实施者照计划执行时，要么卡在不可执行的命令上，要么在验收没有证据的情况下宣称完成。这属于“不可执行或结果错误”。
-- 影响: 主机 Windows 这一核心验收没有可执行的证明路径。
-- 建议: T5、T7 的 ptye2e 命令统一改为 `go test -tags ptye2e -count=1 -run 'TestChatProtectedConfig' ./test/ptye2e/`，注明运行目录为 worktree 根，Windows 用同一条命令；新文件首行写 `//go:build ptye2e`。T5 增加“真实二进制、`exec.Command` 管道 stdin 执行 `config set tools.read_roots …` → 退出码 2、文件字节不变”的用例。另外写明 `startChatOpts` 固定在参数前加 `chat`（`smoke_helpers_test.go:85`），终端里的 `config set` 需要直接构造 `gopty.Spec{Command: binary, Args: []string{"config","set",…}, Env: testEnv(home)}`。`testEnv` 会剥掉全部 `SUGA_*`，因此 `SUGA_SESSION_ID` 为空；pty 的 stdin 让 `isTerminalInput` 为真。
-
-### PF2 [BLOCKER] trace 去重写成“在 runtime 内”，而 ACP 每个 prompt 都新建 runtime，验收用例必然失败；wiring 到 personal 的接口也没有写
-
-- disposition: `CORE_BLOCKING` [BUG]
-- 证据:
-  - 计划 T4（:139）写“按会话 ID 在 runtime 内去重，使 ACP 同一会话多个 prompt 只记一条”。
-  - `internal/cli/acp.go:67-87`：`acpserver.Serve` 的工厂对每个 prompt 调用一次 `wiring.Open` 并新建 Runtime；设计 :171 也写明“ACP 每个 prompt 新建 runtime”。
-  - `pkg/sugasdk/session.go:98`：每个 SDK 会话也各自 `wiring.Open`。
-  - `internal/personal/runner.go:667` 一带（`recordTurnContext`）是回合开始的记录点，但 `personal.Runner` 没有任何途径拿到比较结果。计划没有给出 `personal` 的配置字段、回调签名，也没有写去重集合放在哪里。
-- necessity proof: 按计划原文，去重集合挂在 Runtime 上。ACP 第二个 prompt 拿到的是新 Runtime，集合为空，会再记一条，T4 的验收用例“ACP 同会话两次 prompt 只有一条 trace”必然失败。设计只说“按会话 ID 去重”和“进程内按配置路径缓存比较结果”，没有指定去重放在哪一层，所以实施者无法从计划和设计唯一推出正确做法。
-- 影响: 结果错误（重复 trace），或实施者自行决定跨模块接口。
-- 建议: 写定去重与比较结果放在同一个进程级缓存条目里，键为规范化配置路径，条目含 `change`、`digest`、`path` 和 `recorded map[sessionID]struct{}`，用 mutex 保护。写定 wiring 交给 personal 的接口签名，例如 `personal.Config.ConfigNotice func(sessionID string) (attrs map[string]any, ok bool)`：首次对某个会话调用时返回 attrs 并标记已记录，之后返回 false。写定调用点：`Runner.Run` 中 `withObserveScope` 之后、`recordTurnContext` 之前，事件经 `r.rec.record` 写入。同时写明子 agent 会话（`internal/personal/subagent.go:95` 的 `child.Run`）是否记录（见 PF11）。
-
-### PF3 [HIGH] chat 推进快照的前提与错误处理没有写定，一种合理读法会吸收未展示的改动
+### PF13 [MEDIUM] i18n 调用写法和键名与代码不符；`TestConfigProtected` 断言“stderr 含键名”在单元测试里拿不到
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: T4（:137）写“横幅后有变化时显示一行……随后调用 `OnBannerShown`，由 `internal/cli` 调 `AdvanceProtected(path, digest)`”，可以理解成无论有无变化都调用。T3（:123）规定锁获取失败时“调用方记 Warn 并视为无变化”。另外，`LoadedConfigBytes` 返回 `ok=false` 或 `SkipProtectedCheck` 时，Runtime 上的 digest 是零值。设计 :169 的入口表只在“有改动时”推进，:163 写锁失败时“跳过比较”。
-- 影响: 如果无条件推进，比较失败或被跳过时会用启动摘要（甚至零值摘要）覆盖快照，把从未展示过的改动吸收掉，违反核心目标“你下次打开 chat 能看到”。设计能消解这个歧义，所以不定为阻断；但计划应当写成一句不会读错的话。
-- 建议: 写明只有比较成功且 `!change.Empty()` 时，`OnBannerShown` 才推进；比较出错、跳过或 `ok=false` 时不推进。`AdvanceProtected` 返回错误时用 `slog.Warn` 记录，不影响 chat（GR109 例外，理由同设计 :176）。`OnBannerShown` 每个进程最多调用一次。
+- 证据（同类穷尽：计划中所有文案键和错误输出断言）:
+  1. T2（计划 :136）写的是 `i18n.T("config.protected_refused", map{…})`。`internal/i18n` 没有包级 `T`，只有 `(*Catalog).T`（`i18n.go:158`）。CLI 里的惯例是 `cliText(tr, "cli.config.written", …)`（`config.go:83`、`cli/i18n.go:39`）。
+  2. catalog 的键要带 ini 节名前缀：`cli.ini` 的 `[cli]` 节下 `config.written` 要用 `cli.config.written` 查；`status.ini` 的 `[status]` 节下 `banner.session` 要用 `status.banner.session` 查（`layout.go:112`）。计划 T2 写的键是 `config.protected_refused`，T4 写的是 `protected.changed`、`protected.changed_file`、`protected.unreadable`，都没有写出查找时用的完整键（`cli.…`、`status.…`）。键找不到时只记一条 warn，并原样返回键名。
+  3. 文案里的 `{keys}` 占位是列表，计划没有写拼接方式（例如用“、”或“, ”连接）。直接传 `[]string` 会渲染成 `[a b]`。
+  4. T2 验证（:139）要求 `TestConfigProtected` 断言“stderr 含键名”。但 `capp.App.RunWithArgs` 只返回错误，不打印（goutil `cflag/capp/app.go:154-166`）；打印发生在 `cmd/suga/main.go:70-72`。现有测试都断言 `err.Error()`（例如 `config_read_deny_test.go:31`）。按原文写，正确的实现反而会让这条断言失败。
+- 影响: 实施者会在测试失败后自行修正，但计划给出的写法本身不对。
+- 建议: T2 写成 `configInputError(cliText(tr, "cli.config.protected_refused", map[string]any{"key": key, "path": path}))`；T4 写出完整键 `status.protected.changed` 等，并规定 `{keys}` 用 `strings.Join(keys, ", ")`。单元测试改为断言 `err.Error()` 含键名；只有 ptye2e 的真实二进制用例断言 stderr。
 
-### PF4 [HIGH] `LoadedConfigBytes` 的合同不完整：路径在什么时刻取绝对路径、`ok=false` 时怎么处理、与 `Reload` 和 `LoadedFiles` 的关系都没写
-
-- disposition: `CORE_CORRECTIVE`
-- 证据:
-  - `cmd/suga/main.go:52` 在命令分发前调用 `Load`。`internal/cli/run.go:163` 的 `guardResumeCwd` 可能把进程切到会话目录（chat 的第一选择），之后才在 :187 调 `OpenCLI`。计划 T3（:125）的 `protectedSnapshotPath` 在比较时才做 `filepath.Abs`。如果 `SUGA_CONFIG` 是相对路径（设计 :229 要求覆盖这个用例），Load 读的是原 cwd 下的文件，快照和锁却算在新 cwd 下：会找到错误的快照文件，按首次运行处理而不提示，chat 还会推进错误的文件。
-  - wiring 有大量测试直接调用 `Open`/`OpenCLI` 而不调用 `Load`（如 `internal/wiring/allow_write_test.go`、`approval_mode_test.go`、`capabilities_test.go` 等）。计划没有写 `ok=false` 时 Open 应当跳过比较，而不是报错。
-  - 默认 `config.yaml` 不存在时（SDK 的 `ensureConfigHome`，`pkg/sugasdk/engine.go:157`，不走 EnsureHome），返回值 `ok`/`data` 的语义没有写。
-  - `Reload`（`internal/config/config_candidate.go:50`）会再调用 `Load` 并覆盖字节。目前只有 `internal/cli/config.go:197` 调用它，计划应写明这是预期行为。
-  - 改用 `gkconfig.LoadSources` 后，`gkconfig.Default().LoadedFiles()` 会变空（gookit/config `load.go:497-525` 只有 `loadFile` 会追加），`internal/config/settings_registry_source.go:191` 的 `configFileName()` 会退回到环境变量或家目录的拼接。现有输出（`config get` 的 `source = config: <路径>`）基本不变，但计划没有提到这个依赖。
-- 影响: 相对 `SUGA_CONFIG` 加跨目录续接时漏报；实施者需要自行决定多处语义。
-- 建议: 签名改为 `func LoadedConfigBytes() (absPath string, data []byte, ok bool)`。`absPath` 在 `Load` 内、读文件时就用 `filepath.Abs` 求出。默认文件不存在时返回 `ok=true, data=nil`，按“全部未设置”处理。只有 Load 从未运行时才返回 `ok=false`，此时 Open 跳过比较。写明 `Reload` 会刷新这份字节。`configFileName()` 改用 `LoadedConfigBytes` 的路径（或在计划中写明接受回退），并在 T3 的验证里加一条 `config get` 的 source 断言（`TestConfigCommandsUseTheRealCappPath` 已覆盖默认 home，`SUGA_CONFIG` 场景需要补）。
-
-### PF5 [MEDIUM] T4 的文件与符号定位有误或缺漏
+### PF14 [MEDIUM] `ProtectedNotice` 在没有变化或比较失败时的返回值没有写；失败结果是否缓存没有写
 
 - disposition: `CORE_CORRECTIVE`
-- 证据（同类穷尽）:
-  1. chat 的 `chat.Options` 在 `internal/cli/chat.go:89`（`runChat`）构造，不在 `run.go`；`run.go:187` 只负责 `OpenCLI`。计划 :134 把“chat 的回调”放在 `run.go`，文件清单里没有 `internal/cli/chat.go`。
-  2. 横幅由 `internal/chat/render.go:740` 的 `Renderer.Banner()` 从 renderer opts 组装 `BannerInfo`，再在 `chat.go:543` 调用。计划只列了 `layout.go`（`BannerInfo`）和 `chat.go`，漏了 `render.go`。
-  3. 计划写“`Open`/`OpenCLI` 在 `Load` 之后比较”，但 `OpenCLI` 内部会调用 `Open`（`runtime.go:319`），两处都做就会重复比较。wiring 也不调用 `Load`，Load 在 `main` 和 `sugasdk/engine.go` 里。
-  4. `AdvanceProtected(path, digest)` 需要的 `path` 从哪里来没有写；Runtime 只暴露了 `ProtectedChange()` 和 `ProtectedDigest()`。
-  5. 新常量写成 `store.KindConfig`，现有约定是 `EventModel`、`EventTurnContext`、`EventSchedule` 等（`internal/personal/store/types.go:56-70`）。
-- 建议: T4 的文件清单补上 `internal/cli/chat.go`、`internal/chat/render.go`；写明比较只在 `Open` 里做一次；Runtime 增加 `ProtectedConfigPath()`，或把三者合成一个结构返回；常量命名为 `EventConfig = "config"`。
+- 证据: T4（计划 :173）只写了“对同一 session ID 只返回一次 `ok=true`”和 attrs 的三种形态，没有写 `change.Empty()` 或 `protectedCheck` 出错时返回 `ok=false`。T4 的用例只测了“有变化时一条”，没有“无变化时零条”的断言。按字面实现，每个会话都可能记一条空的 `protected_config_changed`，现有用例都发现不了。设计入口表（设计 §3）只在“有改动时”写 trace，因此不定为阻断。另外，`protectedCheck` 失败（例如锁超时）后，ACP 后续的 prompt 是沿用失败结果还是重新比较，计划也没有写。
+- 建议: 写明 `change.Empty()` 或比较失败时 `ProtectedNotice` 返回 `ok=false`、不写事件；写明失败结果是否缓存（建议缓存，与“进程内比较一次”一致）。T4 补一个用例：无变化的会话没有 `kind=config` 事件。
 
-### PF6 [MEDIUM] T2 让现有负向测试变成空过，测试的密封性也没有交代
+### PF15 [MEDIUM] T7 的 acpprobe 验证必然空过，证明不了“至多一条”
+
+- disposition: `CORE_CORRECTIVE`
+- 证据: `scripts/acpprobe/acp_probe.py:262-263` 启动时会 `shutil.rmtree(home)`，`--home` 的帮助文字（:241）也写着 “reset at start”；:272 让 `SUGA_CONFIG` 指向真实配置。因此每次运行快照都不存在，`CompareProtected` 首建后返回空变化，trace 里一定没有 `kind=config`，“确认至多一条”恒为真。T7 的命令也没有给出必填参数 `--bin`、`--cwd`、`--config-from`，以及两个 `--prompt`。去重的实际证明在 T4 的单元测试，所以不阻断；但计划把它列为完成定义 4 的 real-env 证据，这个证据是空的。
+- 建议: 二选一。（a）把 T7 的 acpprobe 验收改成“真实 provider 下两次 prompt 跑通，首次运行 0 条 `kind=config`（首建快照）”，并写明去重由 T4 与 T5 证明；（b）如果要真实证明去重，需要能预置快照（脚本加“不重置 home”选项，这属于扩大文件范围），或者不用脚本，用同一个 home 手工跑两次 ACP。无论选哪个，都写全命令参数。
+
+### PF16 [LOW] 横幅和 run stderr 文案里的 `{path}` 从哪里来没有写；横幅数据经 `rendererOptions` 传递也没有写（PF5 同类，上轮未穷尽）
+
+- disposition: `CORE_CORRECTIVE`
+- 证据: `status.ini` 的三条文案都含 `{path}`（计划 :177）。`Runtime` 只新增了 `ProtectedChange()` 和 `AdvanceProtectedSnapshot()`（:172），`ProtectedChange` 结构里没有路径（:149）。横幅由 `Renderer.Banner()` 从 `r.opts`（`rendererOptions`，`render.go:43`、:740-747）组装，`rendererOptions` 在 `chat.go:412` 由 `chat.Options` 映射而来。计划只写了 `chat.Options` 字段和 `render.go` 的追加行，没有写 `rendererOptions` 字段和 :412 的映射。
+- 建议: 二选一：`ProtectedChange` 增加 `Path string`；或者 `Runtime` 增加 `ProtectedConfigPath()`。同时写明 `rendererOptions` 加一个对应字段，在 `chat.go:412` 映射。
+
+### PF17 [LOW] 回调写成“`Runner` 新字段”，但 Runner 由 `personal.New(personal.Config{…})` 构造；`runtime.go` 改动范围写少了
+
+- disposition: `CORE_CORRECTIVE`
+- 证据: `Runner` 只有未导出字段和 `cfg Config`（`runner.go:410-411`），wiring 在 `runtime.go:722` 与 `subagent.go:189` 各自调用 `personal.New(personal.Config{…})`。计划（:173）写“`Runner` 新字段……由 wiring 设置”，并保留“若共用 Runner”的假设分支。T4 的文件说明写 `runtime.go`“只加 Options 字段与一处调用”，但实际还需要 Runtime 结构字段（保存 `*protectedState`），以及 :722 处 Config 的一行。
+- 建议: 写定为 `personal.Config.ProtectedNotice`，在 `runtime.go:722` 设置，`subagent.go:189` 不设置，删掉“若共用”分支。`runtime.go` 的改动范围按实际列出，净增 ≤20 行的约束保留。
+
+### PF18 [LOW] T3 的 `-run` 含空匹配片段，而受 T3 影响的 CLI 回归用例不在 T3 的 focused 范围内（PF10.1 同类）
+
+- disposition: `CORE_CORRECTIVE`
+- 证据: T3 验证（:155）中的 `TestConfigLockPath` 不匹配任何现有测试。锁名的回归断言 `run/locks/config.lock` 在 `internal/cli/config_test.go:158-159`（`TestConfigSetAllowsSimpleRuntimeKeys`）。`configFileName` 改用 `LoadedConfigBytes` 会影响 `config get` 的 `source` 输出（`TestConfigCommandsUseTheRealCappPath`），而 T3 只跑 `./internal/config`。PF4 建议补的 `SUGA_CONFIG` 场景 source 断言也没有加。
+- 建议: 删除 `TestConfigLockPath`。T3 验证追加 `go test ./internal/cli -run 'TestConfigSetAllowsSimpleRuntimeKeys|TestConfigCommands' -count=1`，并补一条相对 `SUGA_CONFIG` 下 `config get` 的 source 断言（绝对路径）。
+
+### PF19 [LOW] `Reload` 的合同与代码结构矛盾；快照路径规则漏了 `configLockPath` 的一个分支（PF4、PF9 残留）
 
 - disposition: `CORE_CORRECTIVE`
 - 证据:
-  - 计划把检查放在 `writableConfigKey` 之后、`ParseConfigValue` 之前，测试都通过 `strings.NewReader("")` 传 stdin，属于非终端。
-  - `approval_flags_test.go:130-135` 的 `TestConfigRefusesTrustTier` 只断言 `assert.Error`，改动后会因为 protected 拒绝而通过，“trust 档不可写”就不再被测试。
-  - `config_test.go:192-206` 的 “invalid yaml list” 子测试断言退出码 2 且错误含 `tools.auto_allow`，而新文案里含键名，所以同样会空过。
-  - 计划 :113 只泛泛写“改为会话内拒绝、终端可写”，没有要求这些负向用例注入“是终端”以保留原来的断言。
-  - `setupConfigCLI`（`config_test.go:306`）没有清空 `SUGA_SESSION_ID`。如果在 suga 会话里跑测试（例如 `gofer job -a suga`），会继承非空值，“终端可写”用例会失败。
-  - `newConfigLeaf` 和 `configLeafHandler` 的签名是 `func(io.Writer, *capp.Cmd) error`（`config.go:36-47`），计划没有写 stdin 怎样传到 `runConfigSet`/`runConfigUnset`。
-- 建议: `setupConfigCLI` 里加 `t.Setenv("SUGA_SESSION_ID", "")`，并默认注入 `configStdinIsTerminal = func(io.Reader) bool { return true }`（用 `t.Cleanup` 还原），只有拒绝用例改成 false。在 T2 中点名 `TestConfigRefusesTrustTier` 和 invalid yaml list 子测试必须在“是终端”下断言原来的错误文案。写明 handler 改为 `func(stdin io.Reader, out io.Writer, c *capp.Cmd) error`，或用闭包捕获 stdin。
+  1. 计划（:154）写“`Reload` 不改变它”，但 `Reload` 就是 `gkconfig.Reset()` 加 `Load()`（`config_candidate.go:50-53`）。如果 `Load` 记录字节，`Reload` 必然刷新它。要满足合同，需要拆分 Load 或者在 Reload 中保存再恢复，计划没有写机制。`Reload` 只在 `config set/unset` 写入后调用（`cli/config.go:197`），之后该进程不再比较，所以两种语义的结果一样。
+  2. `configLockPath` 有三个回退分支：`ResolveSugaHome` 出错时用 `path + ".lock"`（`yaml_edit.go:103-105`）；无 env 且非默认文件时放在文件旁（:116-118）；建目录失败时（:121-124）。计划 :152 只写了后两个。
+- 建议: 改写为“`Reload` 会刷新字节，路径不变，不影响比较”（最简单），或者写明保存与恢复的机制。补一句 `ResolveSugaHome` 出错时快照放在哪里（或跳过比较，并返回错误交给调用方记 Warn）。
 
-### PF7 [MEDIUM] `scripts/ptysmoke/chat_onboarding.py` 会被拒，T7 却写“确认未受影响”
+### PF20 [LOW] T5、T6 的写法细节
 
 - disposition: `CORE_CORRECTIVE`
-- 证据: `chat_onboarding.py:199-206` 用 `subprocess.run(..., capture_output=True)` 执行 `config set/unset tools.allow_write`（protected 键）。stdin 继承自父进程，没有终端时（CI、gofer job、容器后台）会被拒，退出码 2；在交互终端里跑又会通过，结果取决于环境。这个脚本属于 `make smoke-chat`（`Makefile:146`）。T2 只泛泛要求 grep `scripts/`，T7（:164）却写“grep `scripts/` 中 `suga config set` 调用并确认未受影响”，两处互相矛盾。
-- 建议: 在 T2 的文件清单里点名 `scripts/ptysmoke/chat_onboarding.py`，改成非 protected 键（例如 `tools.minimize_output`），或者显式传 `stdin=subprocess.DEVNULL` 并断言被拒。T7 改成“确认已同步修改”。
-
-### PF8 [MEDIUM] 设计“验证要求”与 §1 有几项没有落进任务
-
-- disposition: `CORE_CORRECTIVE`
-- 证据（逐项对照设计 :227-231 与 :138）:
-  1. GR110 中“注入是终端时 protected 键可写、快照只更新该键、无快照时不建”要求经 CLI 真实分发验证。T2 在 T3 之前完成，测不到快照；T3 的用例在 `internal/config`，不经 CLI 分发。没有任务覆盖这一项。
-  2. “`hooks.pre_tool_use.*` 改动被报出”：T3 的用例清单没有（T2 只测了不可写）。
-  3. “只有注释的文件按全部未设置”：T3 只写了“空文件”。
-  4. “整文件模式（当前或快照一侧）下人工 set 不改快照，且下次仍提示”：T3 只写了“整文件模式人工 set 不改快照”，没有区分快照一侧为 `mode=file` 的情形，也没有“下次仍提示”的断言。
-  5. 设计 :138 要求“计划阶段先盘点代码中全部字面配置键读取，未登记的补描述符”，计划里没有盘点结果，也没有对应任务。本评审用 grep 粗查，`gkconfig.X("…")` 字面读取中未登记的叶子只有 `hooks.pre_tool_use.{tools,name}`（计划已补）；`gkconfig.Get("hooks")`（`internal/wiring/localenv.go:188`）等整树读取没有逐一核对。
-- 建议: 在 T4（或 T3 之后新增一个小任务）里加一条 CLI 分发用例：先建快照，注入“是终端”后 set 某个 protected 键，断言快照只有 `keys[<键>]` 变化；没有快照时 set 不建快照。T3 补上第 2–4 项。在“前置检查”里记录键盘点的结论和所用命令。
-
-### PF9 [LOW] 路径规范化在 `configLockPath` 现有分支中的落法没有写
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: `yaml_edit.go:102-127` 用 `filepath.Clean(path) != filepath.Clean(homeConfig)` 决定锁名是 `config.lock` 还是 hash。Windows 上如果只把一侧转小写，默认配置的锁会变成 hash 名，`TestConfigSetAllowsSimpleRuntimeKeys`（`config_test.go:158-159` 断言 `run/locks/config.lock`）在 Windows 上会失败。另外还有两个分支：`ResolveSugaHome` 出错时锁放在 `path + ".lock"`；未设 `SUGA_HOME`/`SUGA_CONFIG` 的库调用方锁放在文件旁的 `run/locks`。快照路径在这两种情形下怎么算，计划没有写。
-- 建议: 写明比较两侧都用同一个 `normalizeConfigPath`；快照目录在这两个分支里与锁目录同源（同一个 `run/` 根），或者明确此时跳过快照。
-
-### PF10 [LOW] 验证命令与文案的小处
-
-- disposition: `CORE_CORRECTIVE`
-- 证据（同类穷尽）:
-  1. T1 的 `-run 'TestProtected|TestSettingsRegistry'`：`TestSettingsRegistry` 匹配不到任何现有测试（`settings_registry_test.go` 里的是 `TestReferenceConfigLeavesAreRegistered`、`TestDocumentedSimpleKeysRemainWritable`、`TestMatchConfigKey`）。
-  2. T1 只点名了 `providerKeyDescriptors` 和 `providerModelKeyDescriptors`，但动态描述符共有四张表，还有 `providerModelNestedDescriptors` 和 `providerNestedDescriptors`（`settings_registry.go:341-357`）。分类表测试必须遍历四张表；另外 `KnownConfigKeys()` 只返回静态表（:361）。
-  3. T2 的文案写成 `%s`，而 catalog 是 ini 格式，用 `{name}` 占位（`internal/i18n/catalog/zh/cli.ini:3`），调用方式为 `cliText(tr, key, map[string]any{...})`。
-  4. T6 只 grep `docs/usage/gofer-personal-agent.md` 中的“只能写在配置文件里”。`README.md:133-134` 的英文表述 “file-only settings” 和 “(both file-only)” 同样需要更新，但不在检查范围内。
-- 建议: 按上面逐条修正；T1 的命令改为 `-run 'TestProtected|TestMatchConfigKey|TestDocumentedSimpleKeysRemainWritable'`。
-
-### PF11 [LOW] trace 的“会话”是否包括子 agent 会话没有写
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: `internal/personal/subagent.go:95` 的 `child.Run` 会为子会话走同一个 `Runner.Run` 回合路径。如果 notice 回调注入到 child runner，每个子 agent 会话都会各记一条。
-- 建议: 写明只在顶层会话记录，child runner 不注入该回调；或者明确子会话也记录，并在测试里固定。
-
-### PF12 [LOW] workspace baseline 与当前状态不符
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 计划 :70 写“`git status --short` 干净”“HEAD 以计划批准时为准”。candidate 时实际有 `?? docs/design/2026-11-12-multi-command-hooks-design.md`（并行的 hooks 设计会话），HEAD 为 `109ec8c2`。plan-contract 要求 baseline 写明 HEAD 和 dirty/untracked 的归属。
-- 建议: 写明 HEAD，把该 untracked 文件列为“保留的无关路径（另一会话）”。实施在 worktree 里进行，不受它影响。
+- 证据（同类穷尽：ptye2e 与 grep 验证的可执行细节）:
+  1. `startChatOpts` 每次调用都会重写 `config.yaml`（`smoke_helpers_test.go:44-63`）。T5 写“直接改 `config.yaml` 的 `tools.read_roots`，再开 chat”：如果改完文件再用 `startChatOpts` 打开，改动会被覆盖。应改为第二、三次调用都通过 `ToolsExtra` 带上同一个 `read_roots`。
+  2. trace 事件在回合内才记录（回调在 `Runner.Run` 中）。T5 第二次 chat 需要发一条 prompt，由 `exitAfterTurn` 拿到 session id 后再调用 `traceEvents`。计划没有写“发一个回合”。
+  3. `TestConfigSetProtectedInTerminal` 需要自己写 `config.yaml` 和空 `.env`，避免出现首次启动提示（参照 `startChatOpts` :60-63）；非终端用例可以直接用 `sugaRun`；pty 用例用 `ptytest.StartSpec` 加 `WaitExit`。
+  4. T6 的 grep 只匹配 `config", "set"` 和 `config set`，漏了 `"config", "unset"`（`chat_onboarding.py:206`），而且 `grep -v _test.go` 会把整个 `test/ptye2e` 排除。
+- 建议: 按以上各条补进 T5、T6 的动作和验证；T6 的 grep 改为 `grep -rnE '"config", "(set|unset)"|config (set|unset)' scripts/ test/`，并逐条核对命中的键。
 
 ## 覆盖缺口与限制
 
-- 没有运行任何会修改仓库的命令；除 PF1 的一条 `go test` 外，没有预跑其他验证命令。
-- 没有核对 goccy AST 能否区分顶层字面量点号键、锚点、内联合并键、多文档（计划 :74 声称 v1.19.2 支持 `MergeKeyType`，未验证）。
-- 没有核对 `chat` 在非终端 stdin（`echo /exit | suga chat`）下是否同样调用 `render.Banner()`（设计把这一点列为风险，本轮不评）。
-- 字面键盘点只用 grep 粗查了 `gkconfig.X("literal")` 形式，没有覆盖 `MapStruct` 和整树读取。
-- Standards/Governance 轴（Capability Discovery、SR1409、GR107–GR110 结构）不在本轴范围。
+- 本轮没有运行任何 `go test` 或 ptye2e。Windows 可行性的结论来自源码推断（Go 的 `exec.Cmd` 在 Stdin 为 nil 时使用 NUL；ConPTY 子进程的标准句柄是控制台句柄），没有实际执行。
+- 没有验证 `staticcheck@2026.2.1` 版本是否存在（属 Standards 轴 PS8）。
+- 没有核对 goccy AST 对内联合并键、多文档的识别能力（延续上轮限制）。
+- 未变更的章节沿用上轮结论。
 
 ## 结论
 
-BLOCKED。开放的 `CORE_BLOCKING` 为 PF1（ptye2e/Windows 验证命令不可执行）和 PF2（trace 去重作用域错误，跨模块接口缺失）。另有 `CORE_CORRECTIVE` PF3–PF12，其中 PF3、PF4 为 HIGH，建议与阻断项一起修订。
+PASS。PF1、PF2 两个阻断项已关闭；PF3–PF12 已处理，其中 PF4、PF5、PF9、PF10 有少量残留，已并入本轮发现。本轮没有新的 `CORE_BLOCKING`。新增 `CORE_CORRECTIVE` PF13–PF20：MEDIUM 三项（PF13–PF15），LOW 五项（PF16–PF20）。按 planning-core-rigorous，本轮 PASS 但含 `CORE_CORRECTIVE`，修订后可以增加唯一一轮纠正确认轮；不修订的话，应在 Gate 上披露。
 
 ## 剩余风险与后续
 
-- 修订后的第 2 轮只需复核 T2–T5、T7 及“前置检查”的变化部分；PF3、PF4 修订时要同步更新 T3 的签名合同。
-- 即使 PF1 修好，Windows ConPTY 用例仍依赖主机 gofer exec job，结果要以 job 日志为证据。
+- PF13、PF14 都会被测试或设计兜住，但按原文实施会多一轮返工；建议与 PF15 一起在 0.3 里修订。
+- PF15 不修的话，完成定义 4 中 “acpprobe” 这一项的证据为空，交付说明应如实写明。
+- ptye2e 的 Windows 结果仍要以主机 gofer job 日志为证。
