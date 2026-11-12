@@ -220,6 +220,27 @@ gofer job resume <job-id> --prompt "继续上个问题"
 - 历史折叠（默认关闭）：`context.fold_every`（默认 0 即关闭，设为如 10 开启）与 `context.fold_keep`（默认 5）。最近 5 步之前的步骤在请求中去掉思考内容，超过 1000 字符的字符串参数换成说明；折叠点每 10 步前移一次。只影响请求，存储不变；`suga inspect trace` 显示 `fold` 行。
 - `compact_model` 指定分段交接摘要（自动、`:compact`、空闲整理）使用的模型；会话按段组织，旧段可用 `session_search`/`recall` 取回；`providers.<id>.models.<model>.context_window` 覆盖上下文窗口。
 
+### stream-json 事件契约（供调用方按回合解析）
+
+`suga run --output-format stream-json` 每行一个 JSON 对象，`type` 区分事件（实现 `internal/output/streamjson.go`）。
+
+- 事件顺序：先一行 `session`，然后是一个或多个回合，每个回合由 `turn_start` 开始、`turn_end` 结束，回合之间是过程事件；最后是 `input_required`（可选），以及 `result` 或 `error` 二者之一。
+- 一次运行可能不止一个回合，每个回合都有各自的 `turn_start`/`turn_end`（`run_id` 各不相同）。多出的回合有以下几种：
+  - 回合结束时仍有后台任务，追加一个注入回合提醒模型等待或结束它们；
+  - `--output-contract` 校验不通过时的纠正回合；
+  - `--verify` 与 nudge 的推进回合。
+- `result.result` 是最后一个回合的答复。
+- `message_delta`：`text` 是模型答复的文本增量，只有文本，没有思考或工具参数增量。一个回合里可能有多条模型消息：每次模型请求产出一条，中间以 `tool_call`/`tool_result` 分隔。suga 不插入分隔符，前后两条消息的增量会直接相连，按回合拼接时由调用方在 `tool_call` 处自行分段。
+- `retry`：`reason`、`attempt`、`wait_ms`、`restart`。
+  - `restart: true` 表示失败那次尝试已经输出过文本：作废的是**当前这条模型消息**已收到的 `message_delta`，即从本回合的 `turn_start` 或最近一次 `tool_result`（取较晚者）之后的增量，该消息会从头重新输出。
+  - 同一回合里更早的、已经完成的模型消息不受影响。
+  - `restart: false` 表示失败前还没有输出文本，无需丢弃。
+- 回合结束：`turn_end` 带 `status`（回合状态）、可选的 `usage`、`context` 与预算字段；整次运行结束看 `result` 或 `error`。
+- 其他过程事件：`usage`、`budget`、`plan`、`tool_call`、`tool_result`、`agent_progress`、`verify`、`nudge`；每行都带 `session_id`，回合内的事件还带 `run_id`。
+- 稳定性：上面列出的 `type` 值与字段名、含义是稳定接口。
+  - 新增事件类型或字段属于兼容变更，调用方应忽略不认识的 `type` 和字段。
+  - 删除、改名或改变已有字段的含义属于不兼容变更，写进 CHANGELOG 的“不兼容”一节，并在发版时另行通知 gofer。
+
 ### run 的 stream-json 输出与 chat hooks
 
 - `run --output-format stream-json` 先输出 `session` 事件，再输出过程事件，最后输出一行 `result`。`result`、`input_required`、`error` 都带 `usage`（本回合）和 `session_usage`（会话累计，持久化在会话元数据中）。两者均含 `input_tokens`（不含缓存）、`output_tokens`、可选的 `cache_read_tokens`/`cache_write_tokens`，以及 `total_tokens`（输入、输出与缓存之和）。
