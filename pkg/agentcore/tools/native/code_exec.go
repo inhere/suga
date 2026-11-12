@@ -179,6 +179,9 @@ func (t *ShellExecTool) Description() string {
 		t.shell.name(), syntax, int(t.timeout.Seconds()), int(t.maxTimeout.Seconds()), t.taskTimeoutMax)
 	if t.shell.powershell {
 		desc += " " + PowerShellQuoteAdvice
+		// A model-made | Select-Object -First N can crash the shell process itself
+		// on a long pipeline, so steer it to the file instead (suga-oup1).
+		desc += " For long output (go test, builds) do not truncate with | Select-Object -First N: the tool already trims output; to filter a command, redirect it to a file first."
 		// With an interpreter at hand a script file beats a long single line of
 		// PowerShell quoting (the environment section names the interpreters).
 		if len(t.interpreters) > 0 {
@@ -387,6 +390,15 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	if limitHit {
 		status += "\n" + t.limits.notice()
 	}
+	// A shell that crashed (rather than a command that failed) also drops what its
+	// pipeline had not returned yet: a limits hit keeps its own notice only.
+	shellCrashed := false
+	if !limitHit {
+		if notice := shellCrashNotice(exitCode); notice != "" {
+			status += "\n" + notice
+			shellCrashed = true
+		}
+	}
 	if content != "" {
 		content += "\n"
 	}
@@ -398,6 +410,9 @@ func (t *ShellExecTool) Execute(ctx context.Context, call api.ToolCall) (*api.To
 	}
 	if limitHit {
 		result.Metadata["limits_exceeded"] = true
+	}
+	if shellCrashed {
+		result.Metadata["shell_crashed"] = true
 	}
 	return result, nil
 }
