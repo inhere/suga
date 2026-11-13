@@ -28,6 +28,9 @@ import (
 //	        update_plan (a tool without a summary of its own), then Reply.
 //	memory  shell_exec of Command, then memory add ("Smoke rule"), then Reply;
 //	        a user message containing "直接" skips the shell_exec.
+//	nudge   a file_write of WritePath (WriteBody) once, then the text Reply: the
+//	        change is never checked and the answer promises to continue, so both
+//	        "stopped too early" rules hit (chat_nudge_test.go).
 //
 //	adddir  every user message gets file_read of ReadPath, then file_write of
 //	        WritePath (WriteBody); "只读"/"只写" in the message narrows it to
@@ -45,7 +48,7 @@ import (
 // The agent and session modes (with the sub-agent paths) live in
 // fakellm_agent_test.go.
 //
-// Not ported yet (used by scripts that are still Python): demo, nudge.
+// Not ported yet (used by scripts that are still Python): demo.
 type fakeLLM struct {
 	Mode       string
 	Delay      time.Duration // before every response (fakellm.py --delay, default 1s)
@@ -457,6 +460,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "loop", "loop-edit", "loop-fail":
 		call = f.loopCall(step)
 	case "empty-final":
+		if !toolDone {
+			call = &toolCall{"file_write", map[string]any{"path": f.WritePath, "content": f.WriteBody}}
+		}
+	case "nudge":
+		// nudge mode: a change that is never checked, then an answer that promises
+		// to continue, so both rules of personal.CheckNudge hit.
 		if !toolDone {
 			call = &toolCall{"file_write", map[string]any{"path": f.WritePath, "content": f.WriteBody}}
 		}

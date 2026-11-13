@@ -137,7 +137,6 @@ smoke-chat: smoke-go
 	go build -o tmp/smoke/suga ./cmd/suga
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
 	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
-	python3 -I scripts/ptysmoke/chat_nudge.py --bin tmp/smoke/suga --work tmp/smoke-nudge
 
 ## demo-cast: record the chat demo (docs/demo/suga-chat.cast) with the fake model (Linux/macOS)
 demo-cast:
