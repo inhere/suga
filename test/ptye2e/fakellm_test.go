@@ -36,11 +36,14 @@ import (
 //	deferred  tool_search select:memory, then tool_call of memory through the
 //	        segment apply mode (only to a request that offers tools: the
 //	        compaction summary call gets text).
+//	preferred  the MCP tool named by PreferredTool, then the text Reply: the
+//	        preferred-tool smoke, whose environment section the request log
+//	        carries as Preferred.
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
 //
 // Not ported yet (used by scripts that are still Python): refs, demo, loop*,
-// nudge, session, preferred and the sub-agent paths.
+// nudge, session and the sub-agent paths.
 type fakeLLM struct {
 	Mode       string
 	Delay      time.Duration // before every response (fakellm.py --delay, default 1s)
@@ -94,6 +97,9 @@ type fakeLLM struct {
 	PageURL, PageText string
 	JudgeReply        string
 
+	// PreferredTool is the MCP tool preferred mode calls (default preferred_lookup).
+	PreferredTool string
+
 	mu       sync.Mutex
 	served   int
 	arrived  int // requests received, counted before the delay (served counts after it)
@@ -123,6 +129,9 @@ type fakeRequest struct {
 	UserRaw    string
 	// ToolTextFull is the last tool result without the 300-byte cap of ToolText.
 	ToolTextFull string
+	// Preferred holds the "Preferred tool:" lines of the environment the model was
+	// sent (fakellm.py's preferred field): what the prompt listed, in order.
+	Preferred []string
 }
 
 type fakeMessage struct {
@@ -222,6 +231,14 @@ func (f *fakeLLM) command() string {
 	return f.Command
 }
 
+// preferredTool is the MCP tool preferred mode calls (fakellm.py --preferred-tool).
+func (f *fakeLLM) preferredTool() string {
+	if f.PreferredTool == "" {
+		return "preferred_lookup"
+	}
+	return f.PreferredTool
+}
+
 // SetCommand changes the shell_exec command between the phases of a scenario.
 func (f *fakeLLM) SetCommand(command string) {
 	f.mu.Lock()
@@ -299,6 +316,15 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		texts = append(texts, m.text())
 	}
 	req.Messages = strings.Join(texts, "\n")
+	// The "Preferred tool:" lines of the environment the model was sent (they never
+	// reach the terminal), fakellm.py's preferred field.
+	for _, text := range texts {
+		for _, line := range strings.Split(text, "\n") {
+			if strings.Contains(line, "Preferred tool:") {
+				req.Preferred = append(req.Preferred, strings.TrimSpace(line))
+			}
+		}
+	}
 	req.Msgs = captureMessages(body.Messages)
 	for _, m := range body.Messages {
 		if m.Role == "user" {
@@ -403,6 +429,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "edit":
 		if calls := f.editCalls(user); step < len(calls) {
 			call = &calls[step]
+		}
+	case "preferred":
+		// The preferred MCP tool, then the closing text: the tool is listed in the
+		// environment but not auto-allowed, so chat and run deny the call.
+		if !toolDone {
+			call = &toolCall{f.preferredTool(), map[string]any{"query": "SMOKE_PREFERRED"}}
 		}
 	case "origin":
 		call = f.originCall(step)
