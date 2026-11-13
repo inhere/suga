@@ -213,6 +213,10 @@ const (
 	// chatCols is the pty width startChatOpts starts a chat with: the screen model
 	// (vtscreen_test.go) lays its rows out with it.
 	chatCols = 100
+	// chatRows is the pty height of the same chat: the screen model needs it, since
+	// ConPTY places the cursor with absolute rows of the window and scrolls when the
+	// output grows past its last row.
+	chatRows = 40
 	// approvalTurnEnd is the status line every turn ends with: the context share
 	// and the local time.
 	approvalTurnEnd = `tokens · ctx \d+% · [\d.]+m?s · \d{2}:\d{2}`

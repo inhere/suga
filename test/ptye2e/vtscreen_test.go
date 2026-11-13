@@ -19,26 +19,35 @@ import (
 // It handles CR, LF, backspace, ESC[K (erase to the end of the line), ESC[nK
 // (erase the line), ESC[2J (erase the screen), ESC[nA/B/C/D (cursor
 // up/down/right/left), ESC[nG (column), ESC[n;mH (absolute row and column, what
-// ConPTY repaints with) and wraps at the window width; every other
-// escape (colors, titles, cursor visibility) is skipped. Rows are kept as written
-// (no scrolling), and a wide character marks its two columns as one (the second
-// cell stays empty).
+// ConPTY repaints with), wraps at the window width and scrolls at its height; every
+// other escape (colors, titles, cursor visibility) is skipped. A wide character
+// marks its two columns as one (the second cell stays empty).
+//
+// The height matters as much as the width: ConPTY positions the cursor with absolute
+// rows (ESC[39;100H) of its own screen, which is the window - a chat whose output has
+// grown past the last row scrolls, so the same row number means a row further down
+// than the model's count of written rows says. Without the scroll those moves landed
+// rows too high and put text of one row onto another (TestChatMemory on ConPTY).
 //
 // A byte-stream regexp cannot replace it: a terminal that repaints the whole row
 // (ConPTY) and a terminal editor that only writes the new text (a Linux pty after
 // Ctrl-C cleared the line) produce different bytes for the same screen, so the
 // check has to read the screen, as the Python smokes did.
 type vtScreen struct {
-	width int
+	width, height int
 	// rows holds one cell per column; the second cell of a wide rune stays zero.
+	// Every row ever written stays in it (lines returns them all, so text a check
+	// looks for is found after it scrolled off too); rows[top] is the window's first
+	// row, the screen rows are rows[top:top+height].
 	rows [][]rune
+	top  int
+	// x is the cursor column, y its row in the window (0 .. height-1).
 	x, y int
 	// pending is the deferred wrap of a real terminal: once a row is filled to the
 	// width the cursor stays on its last column and only moves to the next row when
 	// the following rune arrives, so a line break in between moves down a single row.
 	// ConPTY writes such a row whole (exactly <width> columns) and then CRLF; without
-	// the deferred wrap every one of those lines moved the model two rows down and it
-	// kept text the terminal no longer showed.
+	// the deferred wrap every one of those lines moved the model two rows down.
 	pending bool
 }
 
@@ -49,9 +58,25 @@ var (
 	vtOSC = regexp.MustCompile("^\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)")
 )
 
-func newVTScreen(width int) *vtScreen {
-	return &vtScreen{width: width, rows: [][]rune{{}}}
+// newVTScreen is an empty screen of the given window size (the pty's columns and
+// rows: chat repaints and scrolls within it).
+func newVTScreen(width, height int) *vtScreen {
+	return &vtScreen{width: width, height: max(1, height), rows: [][]rune{{}}}
 }
+
+// down moves the cursor n rows down, scrolling the window when it leaves the last
+// row: the top row moves out of the window (it stays in rows, see vtScreen.rows) and
+// the cursor stays on the last row. LF and the wrap of a filled row scroll this way;
+// ESC[nB does not (see csi).
+func (s *vtScreen) down(n int) {
+	s.y += n
+	for s.y >= s.height {
+		s.y, s.top = s.y-1, s.top+1
+	}
+}
+
+// row is the index in rows of the window row y holds the cursor on.
+func (s *vtScreen) row() int { return s.top + s.y }
 
 // feed applies raw pty output (ptytest's RawText) to the screen.
 func (s *vtScreen) feed(data string) {
@@ -61,7 +86,8 @@ func (s *vtScreen) feed(data string) {
 		case '\r':
 			s.x, s.pending = 0, false
 		case '\n':
-			s.y, s.pending = s.y+1, false
+			s.pending = false
+			s.down(1)
 		case '\b':
 			if s.pending {
 				// The cursor waits on the last column of the row: there is nothing to
@@ -118,18 +144,20 @@ func (s *vtScreen) csi(params, final string) {
 	case "A":
 		s.y = max(0, s.y-n)
 	case "B":
-		s.y += n
+		// Cursor down stops on the last row: unlike a line feed it does not scroll.
+		s.y = min(s.y+n, s.height-1)
 	case "C":
-		s.x += n
+		s.x = min(s.x+n, s.width-1)
 	case "D":
 		s.x = max(0, s.x-n)
 	case "G":
 		s.x = max(0, n-1)
 	case "H", "f":
 		// Absolute cursor positioning: row;column, 1 based (ConPTY repaints a row it
-		// has already written with it, e.g. ESC[8;1H for the status line of a turn).
+		// has already written with it, e.g. ESC[8;1H for the status line of a turn
+		// and ESC[39;100H for the last column of the window's last row).
 		row, col := csiRowCol(params)
-		s.y, s.x = row-1, col-1
+		s.y, s.x = min(row-1, s.height-1), col-1
 	case "K":
 		s.eraseLine(params)
 	case "J":
@@ -141,7 +169,7 @@ func (s *vtScreen) csi(params, final string) {
 // eraseLine clears the row the cursor is on: all of it for ESC[2K, up to the
 // cursor for ESC[1K, and from the cursor for the plain form.
 func (s *vtScreen) eraseLine(params string) {
-	row := s.cells(s.y)
+	row := s.cells(s.row())
 	switch params {
 	case "2":
 		row = row[:0]
@@ -154,7 +182,7 @@ func (s *vtScreen) eraseLine(params string) {
 			row = row[:s.x]
 		}
 	}
-	s.rows[s.y] = row
+	s.rows[s.row()] = row
 }
 
 // eraseDisplay clears everything for ESC[2J and ESC[3J.
@@ -163,10 +191,11 @@ func (s *vtScreen) eraseDisplay(n int) {
 		return
 	}
 	s.rows = [][]rune{{}}
-	s.x, s.y = 0, 0
+	s.x, s.y, s.top = 0, 0, 0
 }
 
-// cells returns row y, creating the rows up to it with empty ones.
+// cells returns the row with the given index in rows, creating the rows up to it
+// with empty ones.
 func (s *vtScreen) cells(y int) []rune {
 	for len(s.rows) <= y {
 		s.rows = append(s.rows, nil)
@@ -181,14 +210,16 @@ func (s *vtScreen) cells(y int) []rune {
 func (s *vtScreen) put(r rune) {
 	width := vtCharWidth(r)
 	if s.pending {
-		s.x, s.y, s.pending = 0, s.y+1, false
+		s.x, s.pending = 0, false
+		s.down(1)
 	}
 	if width == 2 && s.width >= 2 && s.x == s.width-1 {
 		s.put(' ') // a wide character never straddles the end of a row
 		// The space filled the row: the wide rune starts on the next one.
-		s.x, s.y, s.pending = 0, s.y+1, false
+		s.x, s.pending = 0, false
+		s.down(1)
 	}
-	row := s.cells(s.y)
+	row := s.cells(s.row())
 	for len(row) < s.x {
 		row = append(row, ' ')
 	}
@@ -205,7 +236,7 @@ func (s *vtScreen) put(r rune) {
 			row[s.x+1] = 0
 		}
 	}
-	s.rows[s.y] = row
+	s.rows[s.row()] = row
 	s.x += width
 	if s.width > 0 && s.x >= s.width {
 		// The cursor stays on the last column and wraps when the next rune comes.
@@ -237,7 +268,7 @@ func (s *vtScreen) lines() []string {
 // prompts, trailing spaces removed, so a cleared line reads as the prompt alone
 // and a line holding text reads as the prompt plus that text.
 func inputRow(s *ptytest.Session, cols int) string {
-	screen := newVTScreen(cols)
+	screen := newVTScreen(cols, chatRows)
 	screen.feed(s.RawText())
 	rows := screen.lines()
 	for i := len(rows) - 1; i >= 0; i-- {
@@ -251,7 +282,7 @@ func inputRow(s *ptytest.Session, cols int) string {
 // screenRows is what the terminal shows right now: the raw output fed through the
 // screen model, one string per row.
 func screenRows(s *ptytest.Session, cols int) []string {
-	screen := newVTScreen(cols)
+	screen := newVTScreen(cols, chatRows)
 	screen.feed(s.RawText())
 	return screen.lines()
 }
@@ -383,32 +414,38 @@ var vtWide = [][2]rune{
 func selfTestVTScreen(t *testing.T) {
 	t.Helper()
 	cases := []struct {
-		name  string
-		width int
-		feed  string
-		want  []string
+		name          string
+		width, height int
+		feed          string
+		want          []string
 	}{
-		{"lines", 10, "hello\r\nworld", []string{"hello", "world"}},
-		{"wrap", 10, "abcdefghijklm", []string{"abcdefghij", "klm"}},
-		{"erase whole row", 10, "abc\r\n\x1b[2Kdef", []string{"abc", "def"}},
-		{"up, column 0, erase to end", 10, "first\r\nsecond\x1b[1A\r\x1b[Kthird", []string{"third", "second"}},
-		{"absolute row and column", 10, "first\r\nsecond\x1b[1;1Hthird", []string{"third", "second"}},
-		{"colors, title, column move", 10, "\x1b[31mred\x1b[0m \x1b]0;suga\x07\x1b[9Gok", []string{"red     ok"}},
-		{"wide rune takes two columns", 8, strings.Repeat("宽", 5), []string{"宽宽宽宽", "宽"}},
+		{"lines", 10, 40, "hello\r\nworld", []string{"hello", "world"}},
+		{"wrap", 10, 40, "abcdefghijklm", []string{"abcdefghij", "klm"}},
+		{"erase whole row", 10, 40, "abc\r\n\x1b[2Kdef", []string{"abc", "def"}},
+		{"up, column 0, erase to end", 10, 40, "first\r\nsecond\x1b[1A\r\x1b[Kthird", []string{"third", "second"}},
+		{"absolute row and column", 10, 40, "first\r\nsecond\x1b[1;1Hthird", []string{"third", "second"}},
+		{"colors, title, column move", 10, 40, "\x1b[31mred\x1b[0m \x1b]0;suga\x07\x1b[9Gok", []string{"red     ok"}},
+		{"wide rune takes two columns", 8, 40, strings.Repeat("宽", 5), []string{"宽宽宽宽", "宽"}},
 		// ConPTY writes a row it filled to the width whole and then a line break: the
 		// cursor still sits on the row's last column when the break arrives, so the
 		// break moves down one row and no empty row is left behind.
-		{"a full row then a line break", 10, "abcdefghij\r\nklm", []string{"abcdefghij", "klm"}},
-		{"a full row then a carriage return", 10, "abcdefghij\rX", []string{"Xbcdefghij"}},
-		{"a wrapped row then a line break", 10, "abcdefghijklm\r\nn", []string{"abcdefghij", "klm", "n"}},
-		{"wide runes fill a row then a line break", 8, strings.Repeat("宽", 4) + "\r\n宽", []string{"宽宽宽宽", "宽"}},
+		{"a full row then a line break", 10, 40, "abcdefghij\r\nklm", []string{"abcdefghij", "klm"}},
+		{"a full row then a carriage return", 10, 40, "abcdefghij\rX", []string{"Xbcdefghij"}},
+		{"a wrapped row then a line break", 10, 40, "abcdefghijklm\r\nn", []string{"abcdefghij", "klm", "n"}},
+		{"wide runes fill a row then a line break", 8, 40, strings.Repeat("宽", 4) + "\r\n宽", []string{"宽宽宽宽", "宽"}},
 		// A move cancels the pending wrap instead of leaving the cursor a row ahead.
-		{"backspace on a full row", 10, "abcdefghij\bX", []string{"abcdefghiX"}},
-		{"cursor left on a full row", 10, "abcdefghij\x1b[3DX", []string{"abcdefXhij"}},
+		{"backspace on a full row", 10, 40, "abcdefghij\bX", []string{"abcdefghiX"}},
+		{"cursor left on a full row", 10, 40, "abcdefghij\x1b[3DX", []string{"abcdefXhij"}},
+		// A chat whose output grows past the window scrolls, so the absolute row ConPTY
+		// moves to is a row of the window and not the model's count of written rows
+		// (the ConPTY shape of TestChatMemory: a full last row, then ESC[<last>;<width>H).
+		{"a line break on the last row scrolls the window", 10, 3, "a\r\nb\r\nc\r\nd", []string{"a", "b", "c", "d"}},
+		{"absolute row after scrolling", 10, 3, "a\r\nb\r\nc\r\nd\r\n\x1b[1;1HX", []string{"a", "b", "X", "d"}},
+		{"cursor down stops on the last row", 10, 3, "a\r\nb\r\nc\x1b[9BX", []string{"a", "b", "cX"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			s := newVTScreen(c.width)
+			s := newVTScreen(c.width, c.height)
 			s.feed(c.feed)
 			got := s.lines()
 			if strings.Join(got, "|") != strings.Join(c.want, "|") {
