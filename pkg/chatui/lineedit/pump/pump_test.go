@@ -244,6 +244,17 @@ func TestPump_Lifecycle(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.True(t, bytes.Equal([]byte("a\n"), got))
 	})
+
+	t.Run("no terminal: the LF of a CRLF pair is handed over", func(t *testing.T) {
+		// Without an editor the CR is not an Enter a following LF would repeat: the
+		// LF is the line's terminator of a line-oriented read (a pipe, the
+		// bufio.Scanner of chat). Dropping it left the read waiting for a byte after
+		// a finished line (suga-b8ag).
+		in := &bufInput{buf: []byte("a\r\n")}
+		got, err := io.ReadAll(New(in, nil, &DefaultHooks{}))
+		assert.NoErr(t, err)
+		assert.True(t, bytes.Equal([]byte("a\r\n"), got))
+	})
 }
 
 func TestDefaultHooks(t *testing.T) {

@@ -757,7 +757,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 				stopDone = nil
 				continue
 			}
-			in.interrupted = interrupted
+			in.interrupted = interrupted || in.interrupted
 			return in, err
 		case <-source.taskWake:
 			// A background task ended while chat waits: its notice starts a turn.
@@ -791,7 +791,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 				stopDone = nil
 				continue
 			}
-			in.interrupted = interrupted
+			in.interrupted = interrupted || in.interrupted
 			return in, err
 		case result, ok := <-stopDone:
 			if ok && result.Response.Notice != "" {
@@ -843,7 +843,13 @@ func processChatInputEvent(source *chatInputSource, event chatInputEvent, waitin
 	}
 	if event.err != nil && waiting != nil {
 		*lost = appendContext(*lost, waiting.Interrupt(context.Background()))
-		return chatInput{line: event.line}, true, event.err
+		// The read that produced this event is over (serve returns after delivering it),
+		// so no read is in flight any more: reporting "again" would wait for an event
+		// nobody produces. The error goes to the main loop instead, which ends chat on
+		// the EOF of an input that ended while a Stop hook was still waiting (a pipe at
+		// its end, a closed stdin: suga-b8ag), asks to leave on Ctrl-C and reports any
+		// other error.
+		return chatInput{interrupted: true, line: event.line}, false, event.err
 	}
 	source.CompleteLine()
 	return chatInput{line: event.line, hasLine: event.err == nil}, false, event.err

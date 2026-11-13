@@ -97,7 +97,9 @@ type Pump struct {
 	// crHanded is true while the byte read last is a CR: the LF directly after it is
 	// the LF half of a CRLF pair (a pre-typed line from the Windows console, a CRLF
 	// paste), not an Enter of its own — x/term drops the same LF when both bytes
-	// arrive in one read. Any other byte clears it.
+	// arrive in one read. Any other byte clears it. Only a read on a terminal has
+	// such a pair: the CR before the LF is the Enter an editor takes there (see
+	// nextByte).
 	crHanded bool
 	// held is a byte the pump read one step ahead while deciding whether a newline
 	// is pasted text, with the epoch it was read in: it is handed to the editor by
@@ -260,7 +262,14 @@ func (r *Pump) nextByte() (b byte, epoch uint64, ok bool, err error) {
 		r.hooks.OnEOF(err)
 		return 0, 0, false, err
 	}
-	pairLF := one[0] == lfByte && r.crHanded
+	// The pairing matters only where an editor takes the CR before the LF as its
+	// Enter: there the LF of a CRLF pair is a second Enter and is dropped. Without a
+	// terminal (input read line by line, a pipe: chat reads it with bufio.Scanner)
+	// the LF is the line's only terminator, and dropping it left the read waiting
+	// for a byte after a finished line — a feeder's "prompt\r\n" was not submitted
+	// until its next write (or the end of the pipe), which in turn interrupted a
+	// waiting Stop hook (suga-b8ag).
+	pairLF := one[0] == lfByte && r.crHanded && r.term != nil
 	r.crHanded = one[0] == crByte
 	if pairLF {
 		return 0, 0, false, nil
