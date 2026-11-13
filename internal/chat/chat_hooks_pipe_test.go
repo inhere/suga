@@ -4,8 +4,8 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
-	"testing/iotest"
 	"time"
 
 	gkconfig "github.com/gookit/config/v2"
@@ -84,14 +84,17 @@ func TestPersonalChatInputErrorEndsWaitingStopHook(t *testing.T) {
 	}, nil, multiHookSpec{label: "wait", mode: "stopwait", timeoutMS: 30000})
 	runner, _ := newCLITestRunner(t, &hookTestProvider{})
 	boom := errors.New("stdin broke")
-	stdin := io.MultiReader(strings.NewReader("hi\n"), iotest.ErrReader(boom))
+	// The failing stdin is held back until the Stop hook runs: otherwise the error
+	// races the hook's own start and the case would prove less than it claims.
+	stdin := &gatedErrInput{buf: []byte("hi\n"), gate: make(chan struct{}), err: boom}
 	var stdout, stderr strings.Builder
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(testCtx(t), runner, Options{}, stdin, &stdout, &stderr, hooks)
 	}()
-	// The read of the next prompt hits the failing stdin while the Stop hook waits.
+	// Only now does the read of the next prompt hit the error.
 	waitMultiHookLine(t, logPath, "wait Stop start")
+	stdin.release()
 	select {
 	case err := <-done:
 		assert.True(t, errors.Is(err, boom), "chat reports the input error, got %v", err)
@@ -100,6 +103,31 @@ func TestPersonalChatInputErrorEndsWaitingStopHook(t *testing.T) {
 			multiHookLogLines(t, logPath), stdout.String(), stderr.String())
 	}
 }
+
+// gatedErrInput hands over buf one byte at a time and then waits for release: from
+// then on every Read answers err (the failing stdin of a test).
+type gatedErrInput struct {
+	mu   sync.Mutex
+	buf  []byte
+	gate chan struct{}
+	err  error
+}
+
+func (r *gatedErrInput) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	if len(r.buf) > 0 {
+		p[0] = r.buf[0]
+		r.buf = r.buf[1:]
+		r.mu.Unlock()
+		return 1, nil
+	}
+	r.mu.Unlock()
+	<-r.gate
+	return 0, r.err
+}
+
+// release lets the reads that waited answer the error.
+func (r *gatedErrInput) release() { close(r.gate) }
 
 // waitPipeProviderCalls waits (20s) until the fake provider took count model
 // requests: the spawned hook commands make the second call slower than the
