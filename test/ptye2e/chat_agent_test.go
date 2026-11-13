@@ -293,7 +293,7 @@ func agentCancelStatusScenario(t *testing.T, s *ptytest.Session) {
 	until(t, s, "cancel-status: turn interrupted", `已中断本轮`, m)
 	// The prompt is redrawn with cursor moves (which Text strips): wait for a
 	// line-start prompt rather than the prompt's trailing space.
-	check(t, "cancel-status: chat takes the next line", s.Expect(`(?:\n|↳ )`+oscRun+`❯`, m, 15*time.Second))
+	check(t, "cancel-status: chat takes the next line", s.Expect(freshPrompt, m, 15*time.Second))
 	// A plain turn (no 调研 in the message: the fake answers with text): its
 	// waiting line must not count the cancelled sub-agent.
 	m = s.Mark()

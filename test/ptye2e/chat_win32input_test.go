@@ -81,7 +81,7 @@ func TestChatWin32Input(t *testing.T) {
 	cmdRaw := len(s.RawText())
 	s.SendLine("!echo 本地命令")
 	outputLine(t, s, "the local command runs", `本地命令`, cmdMark)
-	check(t, "the prompt comes back", s.Expect(`(?:\n|↳ )`+oscRun+`❯`, cmdMark, 15*time.Second))
+	check(t, "the prompt comes back", s.Expect(freshPrompt, cmdMark, 15*time.Second))
 	// A POSIX pty has no console input mode to switch, and ConPTY does not pass the
 	// DECRST through to the driver the way a terminal does, so the sequence is only
 	// read where a real console reports it (the Linux/macOS runs of this scenario in
