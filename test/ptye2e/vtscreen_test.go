@@ -33,6 +33,13 @@ type vtScreen struct {
 	// rows holds one cell per column; the second cell of a wide rune stays zero.
 	rows [][]rune
 	x, y int
+	// pending is the deferred wrap of a real terminal: once a row is filled to the
+	// width the cursor stays on its last column and only moves to the next row when
+	// the following rune arrives, so a line break in between moves down a single row.
+	// ConPTY writes such a row whole (exactly <width> columns) and then CRLF; without
+	// the deferred wrap every one of those lines moved the model two rows down and it
+	// kept text the terminal no longer showed.
+	pending bool
 }
 
 var (
@@ -52,11 +59,15 @@ func (s *vtScreen) feed(data string) {
 		r, size := utf8.DecodeRuneInString(data[i:])
 		switch r {
 		case '\r':
-			s.x = 0
+			s.x, s.pending = 0, false
 		case '\n':
-			s.y++
+			s.y, s.pending = s.y+1, false
 		case '\b':
-			if s.x > 0 {
+			if s.pending {
+				// The cursor waits on the last column of the row: there is nothing to
+				// move back to.
+				s.pending = false
+			} else if s.x > 0 {
 				s.x--
 			}
 		case '\a':
@@ -97,6 +108,12 @@ func (s *vtScreen) escape(data string) int {
 // csi applies one control sequence: the cursor moves and the erases.
 func (s *vtScreen) csi(params, final string) {
 	n := csiParam(params)
+	switch final {
+	case "A", "B", "C", "D", "G", "H", "f":
+		// A cursor move cancels a pending wrap: the terminal stops waiting to break
+		// the row once the cursor is moved.
+		s.pending = false
+	}
 	switch final {
 	case "A":
 		s.y = max(0, s.y-n)
@@ -157,11 +174,19 @@ func (s *vtScreen) cells(y int) []rune {
 	return s.rows[y]
 }
 
-// put writes one rune at the cursor and advances it, wrapping at the width.
+// put writes one rune at the cursor and advances it, wrapping at the width. A row
+// filled to the width leaves the cursor on its last column with the wrap pending
+// (see vtScreen.pending), so the line break ConPTY writes after such a row moves
+// down one row instead of two.
 func (s *vtScreen) put(r rune) {
 	width := vtCharWidth(r)
+	if s.pending {
+		s.x, s.y, s.pending = 0, s.y+1, false
+	}
 	if width == 2 && s.width >= 2 && s.x == s.width-1 {
 		s.put(' ') // a wide character never straddles the end of a row
+		// The space filled the row: the wide rune starts on the next one.
+		s.x, s.y, s.pending = 0, s.y+1, false
 	}
 	row := s.cells(s.y)
 	for len(row) < s.x {
@@ -182,8 +207,9 @@ func (s *vtScreen) put(r rune) {
 	}
 	s.rows[s.y] = row
 	s.x += width
-	for s.x >= s.width && s.width > 0 {
-		s.x, s.y = s.x-s.width, s.y+1
+	if s.width > 0 && s.x >= s.width {
+		// The cursor stays on the last column and wraps when the next rune comes.
+		s.x, s.pending = s.width-1, true
 	}
 }
 
@@ -369,6 +395,16 @@ func selfTestVTScreen(t *testing.T) {
 		{"absolute row and column", 10, "first\r\nsecond\x1b[1;1Hthird", []string{"third", "second"}},
 		{"colors, title, column move", 10, "\x1b[31mred\x1b[0m \x1b]0;suga\x07\x1b[9Gok", []string{"red     ok"}},
 		{"wide rune takes two columns", 8, strings.Repeat("宽", 5), []string{"宽宽宽宽", "宽"}},
+		// ConPTY writes a row it filled to the width whole and then a line break: the
+		// cursor still sits on the row's last column when the break arrives, so the
+		// break moves down one row and no empty row is left behind.
+		{"a full row then a line break", 10, "abcdefghij\r\nklm", []string{"abcdefghij", "klm"}},
+		{"a full row then a carriage return", 10, "abcdefghij\rX", []string{"Xbcdefghij"}},
+		{"a wrapped row then a line break", 10, "abcdefghijklm\r\nn", []string{"abcdefghij", "klm", "n"}},
+		{"wide runes fill a row then a line break", 8, strings.Repeat("宽", 4) + "\r\n宽", []string{"宽宽宽宽", "宽"}},
+		// A move cancels the pending wrap instead of leaving the cursor a row ahead.
+		{"backspace on a full row", 10, "abcdefghij\bX", []string{"abcdefghiX"}},
+		{"cursor left on a full row", 10, "abcdefghij\x1b[3DX", []string{"abcdefXhij"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
