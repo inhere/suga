@@ -335,7 +335,7 @@ Gofer 给 job 注入 `GOFER_JOB_ID`。suga 据此判断“本进程是 job，不
 - 设置 `tools.session_message.in_gofer_jobs: true` 后 job 才拿到该工具（仍然只单向：愿意接受“发了没人回”的语义时才打开）。
 - 优先级：`tools.session_message.enabled: false` 或 `SUGA_SESSION_MESSAGE=off` 仍是全局关闭，优先于 `in_gofer_jobs`（即使 `in_gofer_jobs: true` 也不提供）；反过来 `SUGA_SESSION_MESSAGE` 只能关不能开，设为 `on` 等值也不会越过 `in_gofer_jobs`。
 - 不提供 session_message 时，模型若在 gofer job 里需要别人完成任务，正确做法是用 `gofer` 自己的手段（`gofer issue`/`gofer work report`）或把请求写进汇报，而不是让主机上的 chat 会话代办——那条链路本来就不通。
-- 判定只看进程环境，各入口一致：人行着的 chat 不属于 job（一般也没有该变量）；job 拉起的 ACP 服务端同样不登记端点，所以同样拿不到工具。用 gofer job 拉起 chat 做伪终端冒烟这类测试时，应在脚本里清掉 `GOFER_JOB_ID`，否则 chat 会以 job 身份跑、拿不到工具（`scripts/ptysmoke/chat_session_message.py` 即如此处理）。
+- 判定只看进程环境，各入口一致：人行着的 chat 不属于 job（一般也没有该变量）；job 拉起的 ACP 服务端同样不登记端点，所以同样拿不到工具。用 gofer job 拉起 chat 做伪终端冒烟这类测试时，应在脚本里清掉 `GOFER_JOB_ID`，否则 chat 会以 job 身份跑、拿不到工具（`test/ptye2e/chat_session_message_test.go` 即如此处理）。
 
 ### Gofer job 的截止时间提示（run.deadline_env）
 
