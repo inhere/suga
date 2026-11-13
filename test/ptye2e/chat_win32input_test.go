@@ -30,9 +30,13 @@ func TestChatWin32Input(t *testing.T) {
 		Extra: "chat:\n  win32_input_mode: on\n",
 	})
 
-	// chat asks for the mode while the line is editable.
-	expectRaw(t, s, `\x1b\[\?9001h`, 0)
-	mark := s.Mark()
+	// chat asks for the mode while the line is editable. Both marks are taken
+	// BEFORE either wait: the mode request and the prompt are two writes that a pty
+	// reads as one chunk (Linux), so a mark taken after waiting for the request can
+	// already sit behind the prompt - the original script waited from one mark taken
+	// before both, which does not depend on the order the two arrive in.
+	mark, rawModeMark := s.Mark(), len(s.RawText())
+	expectRaw(t, s, `\x1b\[\?9001h`, rawModeMark)
 	expect(t, s, `❯ `, mark)
 
 	// CJK text arrives through the records (one per UTF-16 code unit), then

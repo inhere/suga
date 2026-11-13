@@ -374,7 +374,13 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "origin":
 		call = f.originCall(step)
 	case "tool":
-		if !toolDone && !strings.Contains(user, "[background task") {
+		// The step of THIS turn decides, not whether any tool result is the last
+		// message: an interrupted turn leaves its own tool result in the
+		// transcript, so the next user message arrives after a tool result that
+		// belongs to the turn before it (chat's transcript keeps the pair, see
+		// chat_tool_ctrlc_test.go). Step 0 is "no tool result for this user message
+		// yet", which is the same answer as !toolDone in a turn that was not cut.
+		if step == 0 && !strings.Contains(user, "[background task") {
 			args := map[string]any{"command": f.command()}
 			if f.Background {
 				args["background"] = true
