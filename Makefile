@@ -139,7 +139,6 @@ smoke-chat: smoke-go
 	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
 	python3 -I scripts/ptysmoke/chat_agent.py --bin tmp/smoke/suga --work tmp/smoke-agent
-	python3 -I scripts/ptysmoke/chat_resume_cwd.py --bin tmp/smoke/suga --work tmp/smoke-resume-cwd
 	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
 	python3 -I scripts/ptysmoke/chat_nudge.py --bin tmp/smoke/suga --work tmp/smoke-nudge
 	python3 -I scripts/ptysmoke/chat_session_message.py --bin tmp/smoke/suga --work tmp/smoke-session-message
