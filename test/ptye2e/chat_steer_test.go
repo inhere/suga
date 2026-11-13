@@ -370,7 +370,9 @@ func steerSend(t *testing.T, binary string) {
 	untilWithin(t, s, "send: esc ends this turn only", `已中断本轮`, m, 15*time.Second)
 
 	// --- an idle chat queues it --------------------------------------------
-	promptReady(t, s, m)
+	// The aborted turn put the eight messages back on the input line, so the
+	// prompt is not empty: wait for the prompt glyph only, as the Python check did.
+	untilWithin(t, s, "send: chat is back at the prompt", `❯ `, m, 15*time.Second)
 	code, out = sugaSend(binary, ws, env, 60*time.Second, "--session", sid, "--steer", steerSendText4)
 	check(t, "send: an idle chat queues the message instead",
 		code == 0 && trimSpace(out) == "未插入当前回合，已排队")
