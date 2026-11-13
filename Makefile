@@ -137,9 +137,6 @@ smoke-chat: smoke-go
 	go build -o tmp/smoke/suga ./cmd/suga
 	python3 -I scripts/ptysmoke/chat_approval.py --bin tmp/smoke/suga --work tmp/smoke
 	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
-	python3 -I scripts/ptysmoke/chat_images.py --bin tmp/smoke/suga --work tmp/smoke-images
-	python3 -I scripts/ptysmoke/chat_read_image.py --bin tmp/smoke/suga --work tmp/smoke-read-image
-	python3 -I scripts/ptysmoke/chat_send_image.py --bin tmp/smoke/suga --work tmp/smoke-send-image
 	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
 	python3 -I scripts/ptysmoke/chat_agent.py --bin tmp/smoke/suga --work tmp/smoke-agent

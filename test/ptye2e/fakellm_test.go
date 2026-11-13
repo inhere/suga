@@ -32,17 +32,15 @@ import (
 //	adddir  every user message gets file_read of ReadPath, then file_write of
 //	        WritePath (WriteBody); "只读"/"只写" in the message narrows it to
 //	        one of the two calls.
+//	image  one file_read of ReadPath (a picture), then the text Reply.
 //	deferred  tool_search select:memory, then tool_call of memory through the
 //	        segment apply mode (only to a request that offers tools: the
 //	        compaction summary call gets text).
-//	empty-final  file_write of WritePath, then an empty streamed completion
-//	        after the tool result (the resamples too).
-//
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
 //
-// Not ported yet (used by scripts that are still Python): refs, image,
-// deferred, demo, loop*, nudge, session, preferred and the sub-agent paths.
+// Not ported yet (used by scripts that are still Python): refs, demo, loop*,
+// nudge, session, preferred and the sub-agent paths.
 type fakeLLM struct {
 	Mode       string
 	Delay      time.Duration // before every response (fakellm.py --delay, default 1s)
@@ -114,6 +112,13 @@ type fakeRequest struct {
 	Step int
 	// Msgs is every message of the request in full (rewind plan T0).
 	Msgs []fakeMsg
+	// ImageParts counts the image_url parts of the last user message and UserRaw
+	// is that message's raw content (the pictures a request carries), for the
+	// image scenarios.
+	ImageParts int
+	UserRaw    string
+	// ToolTextFull is the last tool result without the 300-byte cap of ToolText.
+	ToolTextFull string
 }
 
 type fakeMessage struct {
@@ -291,8 +296,15 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Messages = strings.Join(texts, "\n")
 	req.Msgs = captureMessages(body.Messages)
+	for _, m := range body.Messages {
+		if m.Role == "user" {
+			req.UserRaw = string(m.Content)
+			req.ImageParts = len(imageParts(m))
+		}
+	}
 	if lastTool >= 0 {
 		req.ToolText = body.Messages[lastTool].text()
+		req.ToolTextFull = req.ToolText
 		if len(req.ToolText) > 300 {
 			req.ToolText = req.ToolText[:300]
 		}
@@ -359,6 +371,10 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if step < len(calls) {
 			call = &calls[step]
+		}
+	case "image":
+		if step < 1 {
+			call = &toolCall{"file_read", map[string]any{"path": orDefault(f.ReadPath, "shot.png")}}
 		}
 	case "writev":
 		call = f.writevCall(user, step, req.Tools)
@@ -486,18 +502,24 @@ func orDefault(v, d string) string {
 
 // isImagePart reports a user message that only carries a tool result's picture.
 func isImagePart(m fakeMessage) bool {
+	return len(imageParts(m)) > 0
+}
+
+// imageParts lists the image_url parts of a message (nil when it holds none).
+func imageParts(m fakeMessage) []string {
 	var parts []struct {
 		Type string `json:"type"`
 	}
 	if json.Unmarshal(m.Content, &parts) != nil {
-		return false
+		return nil
 	}
+	var found []string
 	for _, p := range parts {
 		if p.Type == "image_url" {
-			return true
+			found = append(found, p.Type)
 		}
 	}
-	return false
+	return found
 }
 
 // overload answers 200 with only a temporary API error: as an SSE error event

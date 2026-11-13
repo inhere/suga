@@ -23,6 +23,7 @@ import (
 // into the config (Extra at the top level, the others under their own key).
 type chatOpts struct {
 	Home, Work, URL string
+	Model           string   // the model id (default fake/m1, e.g. fake/gpt-4o for vision)
 	ToolsExtra      string   // lines under tools: (two-space indented)
 	MemoryExtra     string   // lines under memory:
 	ProviderExtra   string   // lines under providers.fake:
@@ -54,7 +55,7 @@ func writeChatHome(t *testing.T, o chatOpts) {
 		t.Fatal(err)
 	}
 	config := fmt.Sprintf(`language: %s
-model: fake/m1
+model: %s
 providers:
   fake:
     type: openai
@@ -65,7 +66,7 @@ providers:
 %smemory:
   project:
     backend: files
-%s%s`, orDefault(o.Language, "zh"), o.URL, o.ProviderExtra, o.ToolsExtra, o.MemoryExtra, o.Extra)
+%s%s`, orDefault(o.Language, "zh"), orDefault(o.Model, "fake/m1"), o.URL, o.ProviderExtra, o.ToolsExtra, o.MemoryExtra, o.Extra)
 	if err := os.WriteFile(filepath.Join(o.Home, "config.yaml"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
