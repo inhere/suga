@@ -43,7 +43,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ptydrive import PtySession, resolve_port  # noqa: E402
-from chat_approval import isolate_ws, wait_port, write_home  # noqa: E402
+from ptydrive import isolate_ws, wait_port, write_home  # noqa: E402
 
 MARK = "SMOKE_RESUME_CWD_A"
 # The relative path the model reads: only A has it, so where the read succeeds is

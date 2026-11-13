@@ -8,12 +8,14 @@ Lessons built in (see docs/plans/2026-10-09-chat-write-approval-retrospective.md
   - check result lines ("⎿ ok: ...") rather than text a prompt also echoes.
 """
 import fcntl
+import json
 import os
 import pty
 import re
 import select
 import socket
 import struct
+import subprocess
 import termios
 import time
 import unicodedata
@@ -382,3 +384,75 @@ class PtySession:
 
     def failed(self):
         return [name for name, ok in self.results if not ok]
+
+
+# Shared scenario fixtures (moved here from chat_approval.py, which the Go
+# migration deleted): every Python smoke writes its SUGA_HOME and reads a
+# session's trace through these.
+
+def isolate_ws(ws):
+    """Make ws its own git root, so suga does not pick up the enclosing
+    repository (e.g. its root MEMORY.md would switch project memory to the
+    repository layout and the smoke would write into the real repo)."""
+    subprocess.run(["git", "init", "-q", ws], check=True)
+
+
+def write_home(home, port, tools_extra="", memory_extra="", provider_extra="", extra="", language="zh"):
+    """Writes SUGA_HOME/config.yaml. Project memory is forced to the files
+    backend: the scratch workspace lives inside this repository, whose
+    .gofer/tracker would otherwise select (and call) the real gofer.
+    provider_extra goes under providers.fake, extra at the top level.
+
+    language pins the UI language of the scenario the way a real user does it:
+    the checks assert specific UI words, and auto would follow the machine
+    locale. chat_i18n_en.py passes "en" for its English checks."""
+    os.makedirs(home, exist_ok=True)
+    # An empty .env makes this a home that was already set up: without it the
+    # first run creates one and prints a notice naming the work directory,
+    # which other scenes would then see (chat_onboarding covers first runs).
+    open(os.path.join(home, ".env"), "a", encoding="utf-8").close()
+    with open(os.path.join(home, "config.yaml"), "w", encoding="utf-8") as f:
+        f.write(f"""language: {language}
+model: fake/m1
+providers:
+  fake:
+    type: openai
+    base_url: http://127.0.0.1:{port}/v1
+    api_key: k
+{provider_extra}tools:
+  allow_write: true
+{tools_extra}memory:
+  project:
+    backend: files
+{memory_extra}{extra}""")
+
+
+def wait_port(proc):
+    line = proc.stdout.readline()  # {"listening": port}
+    if "listening" not in line:
+        raise SystemExit("fake model did not start: " + line)
+
+
+def check_answered_prompt(s, cols, name):
+    """The input row after a turn whose question was answered (issue suga-9ew7):
+    it must look the way a turn without a question ends - the row holds the
+    prompt alone, and what is typed next is a line of its own. Without the
+    repaint the row kept the steer prompt plus the question's width."""
+    s.drain(0.5)
+    s.check(name + ": prompt row is ❯", input_row(s, cols) == "❯")
+    s.send("abc")
+    s.drain(0.4)
+    s.check(name + ": typed text is a prompt line", input_row(s, cols) == "❯ abc")
+    s.send(CTRL_U)
+    s.drain(0.2)
+
+
+def trace_events(binary, env, session):
+    out = subprocess.run([binary, "inspect", "trace", session, "--json"], capture_output=True, text=True, env=env, timeout=60)
+    events = []
+    for line in out.stdout.splitlines():
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            pass
+    return events

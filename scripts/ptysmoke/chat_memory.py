@@ -22,7 +22,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ptydrive import CTRL_C, PtySession, resolve_port  # noqa: E402
-from chat_approval import check_answered_prompt, isolate_ws, wait_port, write_home  # noqa: E402
+from ptydrive import check_answered_prompt, isolate_ws, wait_port, write_home  # noqa: E402
 
 QUESTION = r"写入记忆？\[y\]是 \[N\]否 \[a\]本会话不再问"
 SAVED = r"已记住：Smoke rule（project）"

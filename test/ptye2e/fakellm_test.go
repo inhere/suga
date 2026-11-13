@@ -82,6 +82,10 @@ type fakeLLM struct {
 	// loop modes: the successful command of loop-edit (default echo SMOKE_LOOP_SHELL)
 	// and the failing one of loop-fail (default false).
 	LoopCommand, LoopFailCommand string
+	// ToolOnce makes tool mode call the command only while the request carries no
+	// tool result at all: a steer inserted after the result must not start the call
+	// again (fakellm.py's tool_done rule, chat_approval_test.go).
+	ToolOnce bool
 
 	// origin mode (fakellm_origin_test.go; suga safety plan T5): web_fetch of
 	// PageURL (served by this same server as PageText), then shell_exec of
@@ -409,7 +413,13 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// belongs to the turn before it (chat's transcript keeps the pair, see
 		// chat_tool_ctrlc_test.go). Step 0 is "no tool result for this user message
 		// yet", which is the same answer as !toolDone in a turn that was not cut.
-		if step == 0 && !strings.Contains(user, "[background task") {
+		want := step == 0
+		if f.ToolOnce {
+			// A steer after the result is a user message, so the step count starts
+			// over: only a request without any tool result may call again.
+			want = !hasToolResult(body.Messages)
+		}
+		if want && !strings.Contains(user, "[background task") {
 			args := map[string]any{"command": f.command()}
 			if f.Background {
 				args["background"] = true
@@ -491,6 +501,17 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		send(map[string]any{"choices": []any{}, "usage": usage})
 	}
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+// hasToolResult reports whether the request carries any tool result at all (any
+// turn, not only the last one), which is what ToolOnce keys on.
+func hasToolResult(messages []fakeMessage) bool {
+	for _, m := range messages {
+		if m.Role == "tool" {
+			return true
+		}
+	}
+	return false
 }
 
 func orDefault(v, d string) string {
