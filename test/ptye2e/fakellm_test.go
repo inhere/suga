@@ -66,6 +66,12 @@ type fakeLLM struct {
 	// cache (prompt_tokens_details.cached_tokens); 0 reports none.
 	CachedTokens int
 
+	// Chunk splits a streamed text reply into pieces of that many characters with
+	// ChunkDelay between them (fakellm.py --chunk/--chunk-delay): the answer arrives
+	// slowly, one line at a time, so a scenario can type while it streams.
+	Chunk      int
+	ChunkDelay time.Duration
+
 	// FailFirst answers the first N requests with HTTP 503, then OverloadFirst
 	// requests answer 200 with only a temporary API error, then BreakFirst
 	// streams hang up after half the reply.
@@ -209,6 +215,22 @@ func (f *fakeLLM) reply() string {
 		lines[i] = line
 	}
 	return strings.Join(lines, "\n")
+}
+
+// deltas is the SSE events a streamed reply goes out as: the delta itself, or - with
+// Chunk set - the text of a plain content reply in pieces of that many characters
+// (fakellm.py chunked: a tool call or a reply of one piece stays whole).
+func (f *fakeLLM) deltas(delta map[string]any) []map[string]any {
+	text, ok := delta["content"].(string)
+	if f.Chunk <= 0 || !ok || len([]rune(text)) <= f.Chunk {
+		return []map[string]any{delta}
+	}
+	runes := []rune(text)
+	pieces := make([]map[string]any, 0, len(runes)/f.Chunk+1)
+	for i := 0; i < len(runes); i += f.Chunk {
+		pieces = append(pieces, map[string]any{"content": string(runes[i:min(i+f.Chunk, len(runes))])})
+	}
+	return pieces
 }
 
 // toolCall is one scripted call: the tool name and its JSON arguments.
@@ -596,7 +618,18 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}}}})
 		panic(http.ErrAbortHandler)
 	}
-	send(map[string]any{"choices": []any{map[string]any{"delta": delta}}})
+	for _, piece := range f.deltas(delta) {
+		if f.Chunk > 0 && f.ChunkDelay > 0 {
+			// The reply arrives slowly, one piece after the other
+			// (fakellm.py --chunk-delay), so a scenario can type while it streams.
+			select {
+			case <-time.After(f.ChunkDelay):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		send(map[string]any{"choices": []any{map[string]any{"delta": piece}}})
+	}
 	if usage != nil {
 		send(map[string]any{"choices": []any{}, "usage": usage})
 	}

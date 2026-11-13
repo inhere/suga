@@ -18,7 +18,8 @@ import (
 //
 // It handles CR, LF, backspace, ESC[K (erase to the end of the line), ESC[nK
 // (erase the line), ESC[2J (erase the screen), ESC[nA/B/C/D (cursor
-// up/down/right/left), ESC[nG (column) and wraps at the window width; every other
+// up/down/right/left), ESC[nG (column), ESC[n;mH (absolute row and column, what
+// ConPTY repaints with) and wraps at the window width; every other
 // escape (colors, titles, cursor visibility) is skipped. Rows are kept as written
 // (no scrolling), and a wide character marks its two columns as one (the second
 // cell stays empty).
@@ -107,6 +108,11 @@ func (s *vtScreen) csi(params, final string) {
 		s.x = max(0, s.x-n)
 	case "G":
 		s.x = max(0, n-1)
+	case "H", "f":
+		// Absolute cursor positioning: row;column, 1 based (ConPTY repaints a row it
+		// has already written with it, e.g. ESC[8;1H for the status line of a turn).
+		row, col := csiRowCol(params)
+		s.y, s.x = row-1, col-1
 	case "K":
 		s.eraseLine(params)
 	case "J":
@@ -282,6 +288,30 @@ func waitInputRow(t *testing.T, s *ptytest.Session, cols int, want string, timeo
 	}
 }
 
+// csiRowCol is the row and column an absolute cursor move carries (row;column, 1
+// based): 1 for a parameter the sequence leaves out or does not spell out as a
+// number.
+func csiRowCol(params string) (row, col int) {
+	fields := strings.Split(params, ";")
+	part := func(i int) int {
+		if i >= len(fields) {
+			return 1
+		}
+		n := 0
+		for _, r := range fields[i] {
+			if r < '0' || r > '9' {
+				return 1
+			}
+			n = n*10 + int(r-'0')
+		}
+		if n == 0 {
+			return 1
+		}
+		return n
+	}
+	return part(0), part(1)
+}
+
 // csiParam is the count one control sequence carries: its decimal parameter, or 1
 // when the parameters are empty or not a single number ("1;2", "?").
 func csiParam(params string) int {
@@ -336,6 +366,7 @@ func selfTestVTScreen(t *testing.T) {
 		{"wrap", 10, "abcdefghijklm", []string{"abcdefghij", "klm"}},
 		{"erase whole row", 10, "abc\r\n\x1b[2Kdef", []string{"abc", "def"}},
 		{"up, column 0, erase to end", 10, "first\r\nsecond\x1b[1A\r\x1b[Kthird", []string{"third", "second"}},
+		{"absolute row and column", 10, "first\r\nsecond\x1b[1;1Hthird", []string{"third", "second"}},
 		{"colors, title, column move", 10, "\x1b[31mred\x1b[0m \x1b]0;suga\x07\x1b[9Gok", []string{"red     ok"}},
 		{"wide rune takes two columns", 8, strings.Repeat("宽", 5), []string{"宽宽宽宽", "宽"}},
 	}

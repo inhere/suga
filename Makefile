@@ -135,7 +135,6 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 smoke-chat: smoke-go
 	@mkdir -p tmp/smoke
 	go build -o tmp/smoke/suga ./cmd/suga
-	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
 
 ## demo-cast: record the chat demo (docs/demo/suga-chat.cast) with the fake model (Linux/macOS)
 demo-cast:
