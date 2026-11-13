@@ -146,15 +146,11 @@ smoke-chat: smoke-go
 	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
 	python3 -I scripts/ptysmoke/chat_agent.py --bin tmp/smoke/suga --work tmp/smoke-agent
-	python3 -I scripts/ptysmoke/chat_spinner.py --bin tmp/smoke/suga --work tmp/smoke-spinner
 	python3 -I scripts/ptysmoke/chat_resume_cwd.py --bin tmp/smoke/suga --work tmp/smoke-resume-cwd
 	python3 -I scripts/ptysmoke/chat_tool_ctrlc.py --bin tmp/smoke/suga --work tmp/smoke-tool-ctrlc
 	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
-	python3 -I scripts/ptysmoke/chat_paste.py --bin tmp/smoke/suga --work tmp/smoke-paste
-	python3 -I scripts/ptysmoke/chat_win32input.py --bin tmp/smoke/suga --work tmp/smoke-win32input
 	python3 -I scripts/ptysmoke/chat_history.py --bin tmp/smoke/suga --work tmp/smoke-history
 	python3 -I scripts/ptysmoke/chat_nudge.py --bin tmp/smoke/suga --work tmp/smoke-nudge
-	python3 -I scripts/ptysmoke/chat_tool_lines.py --bin tmp/smoke/suga --work tmp/smoke-toollines
 	python3 -I scripts/ptysmoke/chat_session_message.py --bin tmp/smoke/suga --work tmp/smoke-session-message
 	python3 -I scripts/ptysmoke/preferred_tools.py --bin tmp/smoke/suga --work tmp/smoke-preferred-tools
 
