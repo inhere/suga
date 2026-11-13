@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- chat：stdin 是管道（或已关闭）且配置了会等待的 Stop hook 时，输入在最后一个提示行后结束会让 chat 卡住不退出（`/exit`、`/quit` 也无效，只能杀掉进程）；现在输入结束会像提示符处的 EOF 一样先打断 Stop 等待并正常退出（退出码 0），终端里手输的行为不变（suga-b8ag）。
+
 ## [0.56.0] - 2026-11-12
 
 本版加入安全相关配置键保护（设计 `docs/design/2026-11-11-protected-config-keys-design.md`）与 chat hooks 多命令（设计 `docs/design/2026-11-12-multi-command-hooks-design.md`）。注意：脚本、CI、gofer exec 任务或 chat `!` 里用 `suga config set/unset` 改 protected 键会以退出码 2 被拒，请改在 suga 之外的终端执行或直接编辑 `config.yaml`。

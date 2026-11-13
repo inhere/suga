@@ -757,7 +757,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 				stopDone = nil
 				continue
 			}
-			in.interrupted = interrupted
+			in.interrupted = interrupted || in.interrupted
 			return in, err
 		case <-source.taskWake:
 			// A background task ended while chat waits: its notice starts a turn.
@@ -791,7 +791,7 @@ func nextChatInput(ctx context.Context, source *chatInputSource, render *Rendere
 				stopDone = nil
 				continue
 			}
-			in.interrupted = interrupted
+			in.interrupted = interrupted || in.interrupted
 			return in, err
 		case result, ok := <-stopDone:
 			if ok && result.Response.Notice != "" {
@@ -843,6 +843,15 @@ func processChatInputEvent(source *chatInputSource, event chatInputEvent, waitin
 	}
 	if event.err != nil && waiting != nil {
 		*lost = appendContext(*lost, waiting.Interrupt(context.Background()))
+		if errors.Is(event.err, io.EOF) {
+			// The input ended (a pipe at its end, a closed stdin) while a Stop hook
+			// was still waiting: the wait was cut short above, and no further read
+			// can be asked for to go on with - reporting "again" would leave the
+			// read loop waiting for an event nobody produces. So the EOF ends chat
+			// the way an EOF ending the prompt input does, however long the hook
+			// waits (suga-b8ag).
+			return chatInput{interrupted: true}, false, event.err
+		}
 		return chatInput{line: event.line}, true, event.err
 	}
 	source.CompleteLine()
