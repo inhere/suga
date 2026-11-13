@@ -104,6 +104,9 @@ type fakeLLM struct {
 
 	// PreferredTool is the MCP tool preferred mode calls (default preferred_lookup).
 	PreferredTool string
+	// WatchPaths (tool mode with Background) adds watch_paths to the shell_exec
+	// call: a watch task instead of a plain background command.
+	WatchPaths []string
 
 	// agent mode (fakellm_agent_test.go; fakellm.py --agent/--agent-when): the
 	// agent tool, and the sub-agent's own grep-then-report exchange. AgentWhen
@@ -498,6 +501,9 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			args := map[string]any{"command": f.command()}
 			if f.Background {
 				args["background"] = true
+			}
+			if len(f.WatchPaths) > 0 {
+				args["watch_paths"] = f.WatchPaths
 			}
 			call = &toolCall{"shell_exec", args}
 		}
