@@ -106,7 +106,7 @@ func TestChatSpinner(t *testing.T) {
 		s, _ := startChatOpts(t, binary, chatOpts{
 			Home: t.TempDir(), Work: work, URL: server.URL, Color: true,
 			ToolsExtra: "  approval: auto\n",
-			Extra: "chat:\n  spinner: false\n  highlight_input: false\n  terminal_title: false\n",
+			Extra:      "chat:\n  spinner: false\n  highlight_input: false\n  terminal_title: false\n",
 		})
 		mark := s.Mark()
 		expect(t, s, `❯ `, mark)

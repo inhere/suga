@@ -43,7 +43,8 @@ import (
 //	a: approved note shown / executed again / remembered call: no note / no question again
 //	                                      note, OK, !Contains(note), !Contains(QUESTION)
 //	ctrl-c non-empty: no exit hint / chat alive / the input line is empty /
-//	  the next text is a line of its own  !Contains(再按一次), !Contains(续接：), approvalLineOfPrompt
+//	  the next text is a line of its own  !Contains(再按一次), !Contains(续接：),
+//	                                      waitInputRow(❯) + waitInputRow(❯ def)
 //	ctrl-c once: hint / chat alive / ctrl-c late: hint again  再按一次 Ctrl+C 退出, !Contains(续接：)
 //	exit: usage summary / resume command  本次 N 轮 · in .. tokens, 续接：suga chat --resume
 //	pre-typed y (both steering groups): inserted into the turn / question still
@@ -145,9 +146,13 @@ func TestChatApproval(t *testing.T) {
 		time.Sleep(600 * time.Millisecond)
 		check(t, "ctrl-c non-empty: no exit hint", !s.Contains(`再按一次 Ctrl\+C 退出`, m))
 		check(t, "ctrl-c non-empty: chat alive", !s.Contains(`续接：`, m))
-		// The cleared text is really gone: what is typed next is a line of its own
-		// starting at the prompt (ptydrive's input_row == "❯" and then "❯ def").
-		approvalLineOfPrompt(t, s, "ctrl-c non-empty: the input line is empty", "def", m)
+		// The cleared text is really gone: the row holds the prompt alone, and what is
+		// typed next is a line of its own (ptydrive's input_row: "❯" then "❯ def").
+		check(t, "ctrl-c non-empty: the input line is empty", waitInputRow(t, s, chatCols, approvalPrompt, 15*time.Second))
+		s.Send("def")
+		check(t, "ctrl-c non-empty: the next text is a line of its own", waitInputRow(t, s, chatCols, approvalPrompt+" def", 15*time.Second))
+		s.Send("\x15") // Ctrl-U drops the line again
+		time.Sleep(300 * time.Millisecond)
 
 		// An empty line: one Ctrl-C only asks for another (the old meaning).
 		m = s.Mark()
@@ -201,6 +206,13 @@ func TestChatApproval(t *testing.T) {
 const (
 	approvalOK       = `⎿ ok: SMOKE_OK`
 	approvalQuestion = `允许执行 shell_exec`
+	// approvalPrompt is the input prompt as the screen shows it (ptydrive's
+	// input_row compared whole rows: a cleared line reads as the prompt alone, a
+	// line holding text as the prompt, its own space and the text).
+	approvalPrompt = `❯`
+	// chatCols is the pty width startChatOpts starts a chat with: the screen model
+	// (vtscreen_test.go) lays its rows out with it.
+	chatCols = 100
 	// approvalTurnEnd is the status line every turn ends with: the context share
 	// and the local time.
 	approvalTurnEnd = `tokens · ctx \d+% · [\d.]+m?s · \d{2}:\d{2}`
@@ -216,16 +228,21 @@ func approvalAnsweredPrompt(t *testing.T, s *ptytest.Session, name string, mark 
 	if !s.Expect(`(?s)完成.*❯`, mark, 15*time.Second) {
 		t.Fatalf("%s: no ❯ after the answer; terminal tail:\n%s", name, tail(s.Text()))
 	}
-	approvalLineOfPrompt(t, s, name+": typed text is a prompt line", "abc", mark)
+	approvalLineOfPrompt(t, s, name)
 }
 
-// approvalLineOfPrompt checks that text sent now becomes a line of the prompt
-// itself (ptydrive's input_row == "❯ <text>"): the text arrives in one paste, so
-// the row holds it right after the prompt, and the line is cleared again.
-func approvalLineOfPrompt(t *testing.T, s *ptytest.Session, name, text string, mark int) {
+// approvalLineOfPrompt reads the input row off the screen the way ptydrive's
+// input_row did: the row must hold the prompt alone, and the text sent next must
+// be a line of that prompt ("❯ abc"), then the line is cleared again.
+//
+// The row, not the byte stream, decides: whether the editor repaints the whole row
+// (ConPTY) or only writes the new text (a Linux pty after Ctrl-C cleared the line),
+// the screen shows the same row, while the bytes differ.
+func approvalLineOfPrompt(t *testing.T, s *ptytest.Session, name string) {
 	t.Helper()
-	s.Send("\x1b[200~" + text + "\x1b[201~")
-	check(t, name, s.Expect(`(?m)(?:[\r\n]|↳ )`+oscRun+`❯ ?`+regexp.QuoteMeta(text), mark, 15*time.Second))
+	check(t, name+": prompt row is ❯", waitInputRow(t, s, chatCols, approvalPrompt, 15*time.Second))
+	s.Send("abc")
+	check(t, name+": typed text is a prompt line", waitInputRow(t, s, chatCols, approvalPrompt+" abc", 15*time.Second))
 	s.Send("\x15") // Ctrl-U drops the line again
 	time.Sleep(200 * time.Millisecond)
 }
