@@ -94,6 +94,11 @@ type fakeLLM struct {
 	// tool result at all: a steer inserted after the result must not start the call
 	// again (fakellm.py's tool_done rule, chat_approval_test.go).
 	ToolOnce bool
+	// ToolDoneRule is fakellm.py's own tool-mode rule: the command is called unless
+	// the last tool result comes after the last assistant message, so a tool result
+	// of an earlier turn (or one a steer follows) does not call it again, while a
+	// result an interrupted turn closed with an "[上一回合…" note still does.
+	ToolDoneRule bool
 
 	// origin mode (fakellm_origin_test.go; suga safety plan T5): web_fetch of
 	// PageURL (served by this same server as PageText), then shell_exec of
@@ -492,6 +497,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// chat_tool_ctrlc_test.go). Step 0 is "no tool result for this user message
 		// yet", which is the same answer as !toolDone in a turn that was not cut.
 		want := step == 0
+		if f.ToolDoneRule {
+			// fakellm.py's rule: a tool result after the last assistant message means
+			// this turn already ran its tool, unless an interruption note follows it
+			// (that result belongs to the turn an interrupt cut).
+			want = !toolDone || interruptedNoteAfter(body.Messages, lastTool)
+		}
 		if f.ToolOnce {
 			// A steer after the result is a user message, so the step count starts
 			// over: only a request without any tool result may call again.
@@ -608,6 +619,18 @@ func orDefault(v, d string) string {
 		return d
 	}
 	return v
+}
+
+// interruptedNoteAfter reports whether a user message after the tool result at
+// lastTool starts with the note an interrupted turn leaves ("[上一回合…"): the
+// result belongs to that turn, so this turn has not run its tool yet.
+func interruptedNoteAfter(messages []fakeMessage, lastTool int) bool {
+	for _, m := range messages[lastTool+1:] {
+		if m.Role == "user" && strings.HasPrefix(strings.TrimSpace(m.text()), "[上一回合") {
+			return true
+		}
+	}
+	return false
 }
 
 // isImagePart reports a user message that only carries a tool result's picture.

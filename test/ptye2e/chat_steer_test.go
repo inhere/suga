@@ -5,8 +5,10 @@ package ptye2e
 import (
 	"fmt"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +48,10 @@ func TestChatSteer(t *testing.T) {
 	t.Run("next-turn", func(t *testing.T) { steerNextTurn(t, binary) })
 	t.Run("followup", func(t *testing.T) { steerFollowup(t, binary) })
 	t.Run("abort", func(t *testing.T) { steerAbort(t, binary) })
+	t.Run("clear", func(t *testing.T) { steerClear(t, binary) })
+	t.Run("withdraw", func(t *testing.T) { steerWithdraw(t, binary) })
+	t.Run("approval", func(t *testing.T) { steerApproval(t, binary) })
+	t.Run("off", func(t *testing.T) { steerOff(t, binary) })
 }
 
 // steerToolCommand is the fake model's shell_exec: write the marker the scenario
@@ -133,6 +139,20 @@ func hasRole(roles []string, want string) bool {
 	return false
 }
 
+// normalized is text with every run of whitespace collapsed to one space: what a
+// message the fake model recorded reads as when its own line breaks are not the
+// subject (the Python fake model collapsed them, the Go one keeps them).
+func normalized(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+// normalizedList is list with every item normalized.
+func normalizedList(list []string) []string {
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		out = append(out, normalized(item))
+	}
+	return out
+}
+
 // steerEvents lists the trace events of the kind (and of the name, when it is
 // not empty).
 func steerEvents(events []map[string]any, kind, name string) []map[string]any {
@@ -143,6 +163,309 @@ func steerEvents(events []map[string]any, kind, name string) []map[string]any {
 		}
 	}
 	return found
+}
+
+// steerClearCols is the pty width of the clear scenario: the screen model lays the
+// rows out with it (the input row is read off the screen to tell a cleared line
+// from one with text).
+const steerClearCols = 100
+
+// steerClear: Ctrl-C on a non-empty input line drops that line and nothing else
+// (wll1); an empty line keeps the old meaning and ends this turn only.
+//
+//	❯ prompt / tool call shown / ↳ / tool started   until(❯ ) / ($ shell_exec) / (↳ ) / marker file
+//	the text is on the input line                    until(这行要被清掉)
+//	ctrl-c with text: the turn is not ended          no 已中断本轮 after 0.8s
+//	ctrl-c with text: nothing was inserted           no [插话]
+//	ctrl-c with text: no request carried it          still 1 request after 0.3s
+//	ctrl-c with text: the input line is empty        the input row is the ↳ prompt alone
+//	the new message is shown as waiting              until([插话] 只改 README（等待送达）)
+//	the dropped text did not come along              no [插话] 这行要被清掉只改 README
+//	tool result / delivered / answer / counts one    until(⎿ ok: TOOL_DONE) / (已送达) / answer / 插话 1
+//	the next request carries only the new message     last user == 只改 README, none carries the dropped text
+//	ctrl-c on an empty line still ends this turn     until(已中断本轮) after the second turn's tool started
+//	chat stays after it                              no 续接
+func steerClear(t *testing.T, binary string) {
+	ws := t.TempDir()
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(20)}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	s, _ := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, ""), steerClearCols, 40)
+	const (
+		dropped = "这行要被清掉"
+		clear   = "只改 README"
+	)
+
+	m := s.Mark()
+	until(t, s, "clear: ❯ prompt", `❯ `, m)
+	m = s.Mark()
+	s.SendLine("跑一个长命令")
+	until(t, s, "clear: tool call shown", `\$ shell_exec`, m)
+	until(t, s, "clear: the prompt becomes ↳ while the turn runs", steerPrompt, m)
+	if !check2(t, "clear: tool started (marker file)", waitMarker(filepath.Join(ws, steerStarted), 30*time.Second)) {
+		return
+	}
+
+	// A half-typed message, then Ctrl-C: the line goes away, the turn runs on.
+	m = s.Mark()
+	s.Send(dropped)
+	until(t, s, "clear: the text is on the input line", regexp.QuoteMeta(dropped), m)
+	s.SendCtrlC()
+	settleOutput(s, len(s.RawText()), 800*time.Millisecond)
+	check(t, "clear: ctrl-c with text: the turn is not ended", !s.Contains(`已中断本轮`, m))
+	check(t, "clear: ctrl-c with text: nothing was inserted", !s.Contains(`\[插话\]`, m))
+	time.Sleep(300 * time.Millisecond)
+	check(t, "clear: ctrl-c with text: no request carried it", len(fake.Requests()) == 1)
+	// The input line is empty again: the row holds the prompt and nothing else (a
+	// dropped line left on the screen would still be there).
+	check(t, "clear: ctrl-c with text: the input line is empty", waitInputRow(t, s, steerClearCols, strings.TrimSpace(steerPrompt), 3*time.Second))
+
+	// What is typed next is a line of its own: the dropped text did not come along.
+	m = s.Mark()
+	s.SendLine(clear)
+	until(t, s, "clear: the new message is shown as waiting", steerNotice(clear, steerWaiting), m)
+	check(t, "clear: the dropped text did not come along",
+		!s.Contains(steerNotice(dropped+clear, steerWaiting), m))
+	// The tool ends and the model is asked again: the message reached this turn, so
+	// the press dropped a line and did not end anything.
+	untilWithin(t, s, "clear: tool result shown", `⎿ ok: TOOL_DONE`, m, 40*time.Second)
+	until(t, s, "clear: shown as delivered", steerNotice(clear, steerTaken), m)
+	untilScreen(t, s, steerClearCols, "clear: the turn answers", regexp.QuoteMeta(steerReply))
+	until(t, s, "clear: the end-of-turn line counts one message", `插话 1`, m)
+
+	reqs := waitRequests(fake, 2, 30*time.Second)
+	check(t, "clear: two requests", len(reqs) >= 2)
+	if len(reqs) >= 2 {
+		carried := steerUserTexts(reqs[1])
+		check(t, "clear: the next request carries only the message typed after the ctrl-c",
+			reqs[1].User == clear && !strings.Contains(strings.Join(carried, " "), dropped))
+	}
+
+	// An empty line keeps the old meaning during a turn: Ctrl-C ends this turn.
+	if err := os.Remove(filepath.Join(ws, steerStarted)); err != nil {
+		t.Fatal(err)
+	}
+	m = s.Mark()
+	s.SendLine("再跑一个长命令")
+	until(t, s, "clear: tool call shown again", `\$ shell_exec`, m)
+	if !check2(t, "clear: the second tool started", waitMarker(filepath.Join(ws, steerStarted), 30*time.Second)) {
+		return
+	}
+	s.SendCtrlC()
+	untilWithin(t, s, "clear: ctrl-c on an empty line still ends this turn", `已中断本轮`, m, 15*time.Second)
+	check(t, "clear: chat stays after it", !s.Contains(`续接：`, m))
+	exitChat(t, s)
+}
+
+// The two messages the withdraw scenario types into the running turn, the message
+// `suga send --steer` adds to the same inbox, and the word added to the withdrawn
+// ones before submitting them again.
+const (
+	steerWithdrawText  = "撤回这一句"
+	steerWithdrawText2 = "还有这一句"
+	steerWithdrawEdit  = "补充说明"
+	// steerSendText is the text `suga send --steer` carries: chat labels every
+	// message from elsewhere with its source (--source defaults to cli).
+	steerSendText   = "只改 README"
+	steerSendPrefix = "[来自 cli] "
+)
+
+// steerWithdraw: Up on the empty input line of a running turn takes the messages
+// still waiting to be delivered back, while a `suga send --steer` message stays.
+//
+//	❯ prompt / session id / tool call shown / ↳ / tool started   until(❯ ) / the startup session id / ($ shell_exec) / (↳ ) / marker
+//	the two typed messages are shown as waiting                  until([插话] 撤回这一句（等待送达）) / (还有这一句)
+//	the sent message is steered into the turn and shown           send --steer exits 0 with "steered"; until([来自 cli] 只改 README（等待送达）)
+//	no request carried them while they waited                    still 1 request after 0.3s
+//	the first and second are shown as withdrawn                   until(...（已撤回）) for both
+//	the sent one is not withdrawn                                no [来自 cli] 只改 README（已撤回）
+//	both are back on the input line, in order                    raw output: 撤回这一句\r*\n还有这一句
+//	nothing was submitted by the Up key                           no [插话] <edited>（等待送达）
+//	the edited text is shown as waiting                           until([插话] 撤回这一句 还有这一句补充说明（等待送达）)
+//	tool result / the sent one delivered / the edited delivered    until(⎿ ok: TOOL_DONE) / (已送达) both
+//	the turn answers / counts the delivered two                  until(answer) / until(插话 2)
+//	the withdrawn ones are not counted                            no 插话 4
+//	the first request has none of the three                      1st request carries none of them
+//	the withdrawn ones are not in the next request               no exact user text of them (nor in Seen)
+//	the sent and the edited one are in the next request          the sent one is carried, the edited one is last
+//	the trace records both withdrawals                           2 steer "withdrawn", source keyboard, count 2
+//	the delivered ones are the edited and the sent one           delivered sources sorted == [keyboard send:cli]
+func steerWithdraw(t *testing.T, binary string) {
+	ws := t.TempDir()
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(25)}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	s, env := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, ""), 100, 40)
+
+	m := s.Mark()
+	until(t, s, "withdraw: ❯ prompt", `❯ `, m)
+	sid := ""
+	if found := chatSessionID.FindStringSubmatch(s.Text()); found != nil {
+		sid = found[1]
+	}
+	if !check2(t, "withdraw: session id", sid != "") {
+		return
+	}
+
+	m = s.Mark()
+	s.SendLine("跑一个长命令")
+	until(t, s, "withdraw: tool call shown", `\$ shell_exec`, m)
+	until(t, s, "withdraw: the prompt becomes ↳ while the turn runs", steerPrompt, m)
+	if !check2(t, "withdraw: tool started (marker file)", waitMarker(filepath.Join(ws, steerStarted), 30*time.Second)) {
+		return
+	}
+
+	// Two messages typed into the running turn: both wait for a model request.
+	m = s.Mark()
+	s.SendLine(steerWithdrawText)
+	until(t, s, "withdraw: the first message is shown as waiting", steerNotice(steerWithdrawText, steerWaiting), m)
+	s.SendLine(steerWithdrawText2)
+	until(t, s, "withdraw: the second message is shown as waiting", steerNotice(steerWithdrawText2, steerWaiting), m)
+	// And one sent from elsewhere: it waits in the same inbox.
+	code, out := sugaSend(binary, ws, env, 60*time.Second, "--session", sid, "--steer", steerSendText)
+	check(t, "withdraw: the sent message is steered into the turn", code == 0 && strings.TrimSpace(out) == "steered")
+	until(t, s, "withdraw: the sent message is shown as waiting", steerNotice(steerSendPrefix+steerSendText, steerWaiting), m)
+	time.Sleep(300 * time.Millisecond)
+	check(t, "withdraw: no request carried them while they waited", len(fake.Requests()) == 1)
+
+	// Up on the empty input line: the typed ones come back, the sent one stays (its
+	// sender is waiting for it).
+	m, rawMark := s.Mark(), len(s.RawText())
+	s.Send("\x1b[A")
+	until(t, s, "withdraw: the first is shown as withdrawn", steerNotice(steerWithdrawText, steerWithdrawn), m)
+	until(t, s, "withdraw: the second is shown as withdrawn", steerNotice(steerWithdrawText2, steerWithdrawn), m)
+	check(t, "withdraw: the sent one is not withdrawn",
+		!s.Contains(steerNotice(steerSendPrefix+steerSendText, steerWithdrawn), m))
+	// Both texts are on the input line, one line each, in the order they were typed.
+	check(t, "withdraw: both are back on the input line, in order",
+		rawContains(s, regexp.QuoteMeta(steerWithdrawText)+"\r*\n"+regexp.QuoteMeta(steerWithdrawText2), rawMark, 15*time.Second))
+	edited := steerWithdrawText + " " + steerWithdrawText2 + steerWithdrawEdit
+	check(t, "withdraw: nothing was submitted by the Up key", !s.Contains(steerNotice(edited, steerWaiting), m))
+
+	// Edited at the end of the line and submitted again: one new message of the
+	// same turn.
+	m = s.Mark()
+	s.SendLine(steerWithdrawEdit)
+	until(t, s, "withdraw: the edited text is shown as waiting", steerNotice(edited, steerWaiting), m)
+
+	// The tool ends and the model is asked again: it carries the sent message and
+	// the edited one, not the withdrawn pair.
+	untilWithin(t, s, "withdraw: tool result shown", `⎿ ok: TOOL_DONE`, m, 40*time.Second)
+	until(t, s, "withdraw: the sent one is delivered", steerNotice(steerSendPrefix+steerSendText, steerTaken), m)
+	until(t, s, "withdraw: the edited one is delivered", steerNotice(edited, steerTaken), m)
+	untilScreen(t, s, 100, "withdraw: the turn answers", regexp.QuoteMeta(steerReply))
+	until(t, s, "withdraw: the end-of-turn line counts the delivered two", `插话 2`, m)
+	check(t, "withdraw: the withdrawn ones are not counted", !s.Contains(`插话 4`, m))
+
+	reqs := waitRequests(fake, 2, 30*time.Second)
+	check(t, "withdraw: two requests", len(reqs) >= 2)
+	if len(reqs) >= 2 {
+		first := strings.Join(steerUserTexts(reqs[0]), " ")
+		check(t, "withdraw: the first request has no inserted message",
+			!strings.Contains(first, steerWithdrawText) && !strings.Contains(first, steerWithdrawText2) &&
+				!strings.Contains(first, steerSendPrefix+steerSendText))
+		// Neither of the withdrawn texts is a message of the next request (exact
+		// match: the edited one starts with the first of them), while the sent one
+		// and the edited one are.
+		carried := normalizedList(steerUserTexts(reqs[1]))
+		seen := reqs[1].Seen
+		check(t, "withdraw: the withdrawn ones are not in the next request",
+			!containsString(carried, steerWithdrawText) && !containsString(carried, steerWithdrawText2) &&
+				!containsString(seen, "user:"+steerWithdrawText) && !containsString(seen, "user:"+steerWithdrawText2))
+		check(t, "withdraw: the sent one is in the next request", containsString(carried, steerSendPrefix+steerSendText))
+		check(t, "withdraw: the edited one is what the next request carries last", normalized(reqs[1].User) == edited)
+	}
+
+	events := steerExit(t, s, binary, ws, env)
+	withdrawn := steerEvents(events, "steer", "withdrawn")
+	check(t, "withdraw: the trace records both withdrawals", len(withdrawn) == 2)
+	counted := true
+	for _, e := range withdrawn {
+		n, _ := attrs(e)["count"].(float64)
+		if str(attrs(e)["source"]) != "keyboard" || n != 2 {
+			counted = false
+		}
+	}
+	check(t, "withdraw: each names the keyboard source and the batch size", counted)
+	delivered := steerEvents(events, "steer", "delivered")
+	var sources []string
+	for _, e := range delivered {
+		sources = append(sources, str(attrs(e)["source"]))
+	}
+	slices.Sort(sources)
+	check(t, "withdraw: the delivered ones are the edited and the sent one",
+		strings.Join(sources, ",") == "keyboard,send:cli")
+}
+
+// steerApproval: typing at an approval question is the answer, never an inserted
+// message.
+//
+//	the question is asked                   until(允许执行 shell_exec)
+//	the answer is used as the answer        until(用户拒绝执行 shell_exec)
+//	no inserted message was shown          no [插话]
+//	the turn ends                           until(tokens ·)
+//	no request carried that text           no request whose user message is 插一句
+//	no steer in the trace                  no steer event at all
+func steerApproval(t *testing.T, binary string) {
+	ws := t.TempDir()
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(4)}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	// No approval override: the default is asking, and the question is the subject.
+	s, env := startSteer(t, binary, chatOpts{Home: t.TempDir(), Work: ws, URL: server.URL}, 100, 40)
+
+	m := s.Mark()
+	until(t, s, "approval: ❯ prompt", `❯ `, m)
+	m = s.Mark()
+	s.SendLine("跑一下")
+	until(t, s, "approval: the question is asked", `允许执行 shell_exec`, m)
+	s.SendLine("插一句") // not y/a: the answer, not a steer
+	until(t, s, "approval: the answer is used as the answer", `用户拒绝执行 shell_exec`, m)
+	check(t, "approval: no inserted message was shown", !s.Contains(`\[插话\]`, m))
+	until(t, s, "approval: the turn ends", `tokens · `, m)
+	time.Sleep(500 * time.Millisecond)
+	carried := false
+	for _, req := range fake.Requests() {
+		if req.User == "插一句" {
+			carried = true
+		}
+	}
+	check(t, "approval: no request carried that text", !carried)
+	events := steerExit(t, s, binary, ws, env)
+	check(t, "approval: no steer in the trace", len(steerEvents(events, "steer", "")) == 0)
+}
+
+// steerOff: chat.steering: false keeps the old behaviour.
+//
+//	❯ prompt / tool call shown / tool started   until(❯ ) / ($ shell_exec) / marker file
+//	no ↳ prompt during the turn                 no ↳ on screen
+//	typing during the turn inserts nothing      no [插话] after 0.5s
+//	one ctrl-c still ends the chat              until(续接：suga chat --resume …)
+func steerOff(t *testing.T, binary string) {
+	ws := t.TempDir()
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(60)}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	s, _ := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, "chat:\n  steering: false\n"), 100, 40)
+
+	m := s.Mark()
+	until(t, s, "off: ❯ prompt", `❯ `, m)
+	m = s.Mark()
+	s.SendLine("跑一个长命令")
+	until(t, s, "off: tool call shown", `\$ shell_exec`, m)
+	if !check2(t, "off: tool started (marker file)", waitMarker(filepath.Join(ws, steerStarted), 30*time.Second)) {
+		return
+	}
+	check(t, "off: no ↳ prompt during the turn", !s.Contains(steerPrompt, m))
+	// Cooked mode: the bytes wait in the tty, nothing reads them, so nothing is
+	// inserted into the turn.
+	s.Send("插一句")
+	time.Sleep(500 * time.Millisecond)
+	check(t, "off: typing during the turn inserts nothing", !s.Contains(`\[插话\]`, m))
+	m = s.Mark()
+	s.SendCtrlC()
+	expectWithin(t, s, `续接：suga chat --resume (?:sess_|sg_|s_)`, m, 20*time.Second)
+	waitGone(t, s)
 }
 
 // steerExit leaves chat, checks that its resume line named a session and returns
@@ -172,7 +495,7 @@ func steerExit(t *testing.T, s *ptytest.Session, binary, ws string, env []string
 //	it names the keyboard source                         attrs.source == keyboard
 func steerSameTurn(t *testing.T, binary string) {
 	ws := t.TempDir()
-	fake := &fakeLLM{Mode: "tool", Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(4)}
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(4)}
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 	s, env := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, ""), 100, 40)
@@ -225,7 +548,7 @@ func steerSameTurn(t *testing.T, binary string) {
 //	the trace records one delivery / keyboard source    1 steer "delivered", source keyboard
 func steerPaste(t *testing.T, binary string) {
 	ws := t.TempDir()
-	fake := &fakeLLM{Mode: "tool", Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(10)}
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(10)}
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 	s, env := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, ""), 100, 40)
@@ -395,7 +718,7 @@ func steerFollowup(t *testing.T, binary string) {
 //	one ctrl-c ends this turn only              until(已中断本轮); no 续接
 func steerAbort(t *testing.T, binary string) {
 	ws := t.TempDir()
-	fake := &fakeLLM{Mode: "tool", Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(60)}
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 200 * time.Millisecond, Reply: steerReply, Command: steerToolCommand(60)}
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 	s, _ := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, ""), 100, 40)
