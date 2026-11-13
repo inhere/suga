@@ -32,6 +32,9 @@ import (
 //	adddir  every user message gets file_read of ReadPath, then file_write of
 //	        WritePath (WriteBody); "只读"/"只写" in the message narrows it to
 //	        one of the two calls.
+//	deferred  tool_search select:memory, then tool_call of memory through the
+//	        segment apply mode (only to a request that offers tools: the
+//	        compaction summary call gets text).
 //	empty-final  file_write of WritePath, then an empty streamed completion
 //	        after the tool result (the resamples too).
 //
@@ -359,6 +362,16 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "writev":
 		call = f.writevCall(user, step, req.Tools)
+	case "deferred":
+		// A request without tools (the compaction summary) is answered with text:
+		// a tool call there leaves the summary empty and the segment break fails.
+		calls := []toolCall{
+			{"tool_search", map[string]any{"query": "select:memory"}},
+			{"tool_call", map[string]any{"name": "memory", "arguments": map[string]any{"action": "search", "query": "smoke"}}},
+		}
+		if step < len(calls) && len(req.Tools) > 0 {
+			call = &calls[step]
+		}
 	case "refs":
 		call = f.refsCall(step)
 	case "loop", "loop-edit", "loop-fail":
