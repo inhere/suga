@@ -314,12 +314,26 @@ func agentKillStatusScenario(t *testing.T, s *ptytest.Session) {
 	until(t, s, "kill-status: turn ends", `tokens · `, m)
 	m = agentStep(t, s, m, ":tasks", "kill-status: task listed as running", `t1 · running`)
 	m = agentStep(t, s, m, ":tasks -k t1", "kill-status: killed", `已终止任务 t1：`)
-	m = agentStep(t, s, m, ":tasks", "kill-status: task listed as killed", `t1 · killed`)
+	// The listing itself is read off the screen: chat's write of the row can be
+	// split by a repaint, which the terminal applies while the byte stream, ANSI
+	// stripped, no longer spells the row out.
+	m = agentRowStep(t, s, m, ":tasks", "kill-status: task listed as killed", `t1 · killed`)
 	m = agentStep(t, s, m, ":tasks -k t1", "kill-status: killing it again says it ended",
 		`任务 t1 已结束（killed），无需终止`)
 	m = agentStep(t, s, m, agentPlain, "kill-status: turn ends", `tokens · `)
 	check(t, "kill-status: no stale sub-agent count", !s.Contains(`子 agent：`, m))
 	exitChat(t, s)
+}
+
+// agentRowStep is agentStep for a check on a line: it waits for a fresh prompt
+// after mark, sends one line and reads the answer off the screen (untilRow).
+func agentRowStep(t *testing.T, s *ptytest.Session, mark int, line, name, pattern string) int {
+	t.Helper()
+	promptReady(t, s, mark)
+	m := s.Mark()
+	s.SendLine(line)
+	untilRow(t, s, chatCols, name, pattern)
+	return m
 }
 
 // agentStep waits for a fresh prompt after mark, sends one line and waits for its

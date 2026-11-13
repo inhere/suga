@@ -216,6 +216,48 @@ func inputRow(s *ptytest.Session, cols int) string {
 	return ""
 }
 
+// screenRows is what the terminal shows right now: the raw output fed through the
+// screen model, one string per row.
+func screenRows(s *ptytest.Session, cols int) []string {
+	screen := newVTScreen(cols)
+	screen.feed(s.RawText())
+	return screen.lines()
+}
+
+// waitRow polls the screen until some row matches pattern, and reports whether it
+// did within the timeout.
+//
+// A line-content check (the :tasks listing, an answer line) reads the screen, not
+// the byte stream: chat's own writes can be split by a repaint of the input or
+// status row, which a terminal applies (the row still reads whole) while the same
+// bytes, ANSI stripped, no longer match the regular expression.
+func waitRow(s *ptytest.Session, cols int, pattern *regexp.Regexp, timeout time.Duration) bool {
+	end := time.Now().Add(timeout)
+	for {
+		for _, row := range screenRows(s, cols) {
+			if pattern.MatchString(row) {
+				return true
+			}
+		}
+		if time.Now().After(end) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// untilRow is until for a check on a line: it waits for the row on the screen and
+// records the verdict as the named check (the rows are logged on a miss).
+func untilRow(t *testing.T, s *ptytest.Session, cols int, name, pattern string) bool {
+	t.Helper()
+	ok := waitRow(s, cols, regexp.MustCompile(pattern), 15*time.Second)
+	if !ok {
+		t.Logf("%s: no row matched %q; rows %q", name, pattern, screenRows(s, cols))
+	}
+	check(t, name, ok)
+	return ok
+}
+
 // waitInputRow polls the input row until it is want, and reports whether it got
 // there within the timeout (a failed wait logs the row it saw).
 func waitInputRow(t *testing.T, s *ptytest.Session, cols int, want string, timeout time.Duration) bool {
