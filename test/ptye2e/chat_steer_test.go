@@ -48,6 +48,7 @@ func TestChatSteer(t *testing.T) {
 	t.Run("next-turn", func(t *testing.T) { steerNextTurn(t, binary) })
 	t.Run("followup", func(t *testing.T) { steerFollowup(t, binary) })
 	t.Run("abort", func(t *testing.T) { steerAbort(t, binary) })
+	t.Run("send", func(t *testing.T) { steerSend(t, binary) })
 	t.Run("clear", func(t *testing.T) { steerClear(t, binary) })
 	t.Run("withdraw", func(t *testing.T) { steerWithdraw(t, binary) })
 	t.Run("approval", func(t *testing.T) { steerApproval(t, binary) })
@@ -165,9 +166,232 @@ func steerEvents(events []map[string]any, kind, name string) []map[string]any {
 	return found
 }
 
-// steerClearCols is the pty width of the clear scenario: the screen model lays the
-// rows out with it (the input row is read off the screen to tell a cleared line
-// from one with text).
+// The three messages the send scenario delivers through the CLI (steerSendText is
+// the withdraw scenario's), and the text of the turn that finds chat idle.
+const (
+	steerSendText2 = "再改一处"
+	steerSendText3 = "别改了"
+	steerSendText4 = "空闲时的话"
+)
+
+// steerSendResult is what a `suga send` started in the background returned.
+type steerSendResult struct {
+	code int
+	out  string
+}
+
+// steerSendAsync starts `suga send` in the background, the way a Gofer-style
+// caller does: a scenario can check when it returns relative to the turn its
+// message went into (a steered message is answered while the model still works on
+// it, a queued one only once its own turn started).
+func steerSendAsync(binary, work string, env []string, args ...string) <-chan steerSendResult {
+	done := make(chan steerSendResult, 1)
+	go func() {
+		code, out := sugaSend(binary, work, env, 60*time.Second, args...)
+		done <- steerSendResult{code: code, out: out}
+	}()
+	return done
+}
+
+// steerSendWait waits for a `suga send` started with steerSendAsync and reports
+// its exit code and output (124 when it never returned).
+func steerSendWait(t *testing.T, done <-chan steerSendResult) steerSendResult {
+	t.Helper()
+	select {
+	case res := <-done:
+		return res
+	case <-time.After(60 * time.Second):
+		t.Logf("send --wait did not return within 60s")
+		return steerSendResult{code: 124, out: "timeout"}
+	}
+}
+
+// steerRemoveMarker removes the tool's marker file so the next phase can wait for
+// its own tool to write it again.
+func steerRemoveMarker(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// steerSend: `suga send --steer` from outside (the way gofer delivers) puts the
+// message into the turn running right now, and what became of it decides the exit
+// code of the sender (suga-fvnm).
+//
+//	❯ prompt / session id                         until(❯ ) / the startup session id
+//	tool call shown / ↳ / tool started            until($ shell_exec) / (↳ ) / marker file
+//	the first response is steered (no --wait)      send --steer exits 0 with "steered"
+//	the message is shown as waiting                until([来自 cli] 只改 README（等待送达）)
+//	tool result shown / shown as delivered         until(⎿ ok: TOOL_DONE) / (已送达)
+//	the turn answers / the end-of-turn line        until(STEER_OK) / until(插话 1)
+//	two requests, the first without it             2 requests; no 只改 README in request 1
+//	the next request carries it after the result  last user == [来自 cli] 只改 README, [.., tool, user]
+//	--wait exits 0                                 send --steer --wait exits 0
+//	--wait returned before the turn ended          no 完成 line and no answer since the mark
+//	shown as delivered in the running turn         the （已送达） notice is on screen
+//	four requests, the second turn reached          4 requests; request 4's user is the second one
+//	the second / third / fourth tool started        the marker file of each phase
+//	a message of an aborted turn exits 3             send --wait exits 3 after Esc
+//	esc ends this turn only / chat stays / back     until(已中断本轮) / no 续接 / until([来自 cli] 别改了)
+//	eight messages fit the inbox                   8 send --steer exit 0 with "steered"
+//	the ninth is refused with queue_full            exit 1 and queue_full in its output
+//	an idle chat queues the message                 exit 0 with 未插入当前回合，已排队
+//	the queued message runs as the next turn        until([来自 cli] 空闲时的话)
+//	the trace records both deliveries               2 steer "delivered", source send:cli
+//	the aborted turn's messages are traced back     a steer "returned" with disposition input_line
+func steerSend(t *testing.T, binary string) {
+	ws := t.TempDir()
+	// The model's own delay keeps the turn running after the tool result: that is
+	// what the --wait timing check needs.
+	fake := &fakeLLM{Mode: "tool", ToolDoneRule: true, Delay: 3 * time.Second, Reply: steerReply, Command: steerToolCommand(6)}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	s, env := startSteer(t, binary, steerChatOpts(t.TempDir(), ws, server.URL, ""), 100, 40)
+
+	m := s.Mark()
+	until(t, s, "send: ❯ prompt", `❯ `, m)
+	sid := ""
+	if found := chatSessionID.FindStringSubmatch(s.Text()); found != nil {
+		sid = found[1]
+	}
+	if !check2(t, "send: session id", sid != "") {
+		return
+	}
+	marker := filepath.Join(ws, steerStarted)
+
+	// --- steered into the turn running right now ---------------------------
+	m = s.Mark()
+	s.SendLine("跑一个长命令")
+	until(t, s, "send: tool call shown", `\$ shell_exec`, m)
+	until(t, s, "send: the prompt becomes ↳ while the turn runs", steerPrompt, m)
+	if !check2(t, "send: tool started (marker file)", waitMarker(marker, 30*time.Second)) {
+		return
+	}
+
+	// The notice of the inserted message is written before the response leaves, so
+	// the mark goes up before the send runs.
+	m = s.Mark()
+	code, out := sugaSend(binary, ws, env, 60*time.Second, "--session", sid, "--steer", steerSendText)
+	check(t, "send: the first response is steered (no --wait)", code == 0 && trimSpace(out) == "steered")
+	until(t, s, "send: the message is shown as waiting", steerNotice(steerSendPrefix+steerSendText, steerWaiting), m)
+	until(t, s, "send: tool result shown", `⎿ ok: TOOL_DONE`, m)
+	until(t, s, "send: shown as delivered", steerNotice(steerSendPrefix+steerSendText, steerTaken), m)
+	until(t, s, "send: the turn answers", regexp.QuoteMeta(steerReply), m)
+	until(t, s, "send: the end-of-turn line counts it", `插话 1`, m)
+
+	reqs := waitRequests(fake, 2, 30*time.Second)
+	check(t, "send: two requests", len(reqs) >= 2)
+	if len(reqs) >= 2 {
+		check(t, "send: the first request has no inserted message",
+			!strings.Contains(strings.Join(steerUserTexts(reqs[0]), " "), steerSendText))
+		roles := steerRoles(reqs[1])
+		check(t, "send: the turn's next request carries it after the tool result",
+			normalized(reqs[1].User) == steerSendPrefix+steerSendText && hasRole(roles, "tool") && roles[len(roles)-1] == "user")
+	}
+
+	// --- --wait returns before that turn ends ------------------------------
+	steerRemoveMarker(t, marker)
+	m = s.Mark()
+	s.SendLine("再跑一个长命令")
+	until(t, s, "send: tool call shown again", `\$ shell_exec`, m)
+	if !check2(t, "send: the second tool started", waitMarker(marker, 30*time.Second)) {
+		return
+	}
+
+	done := steerSendAsync(binary, ws, env, "--session", sid, "--steer", "--wait", steerSendText2)
+	res := steerSendWait(t, done)
+	// The message was taken by this turn's next request, so the sender is answered
+	// while the model is still working on it: neither the end-of-turn line nor the
+	// answer is there yet. (A queued message would answer only once this turn had
+	// ended and the message's own turn had started - which is the reverse check.)
+	settleOutput(s, len(s.RawText()), 300*time.Millisecond)
+	check(t, "send: --wait exits 0", res.code == 0)
+	check(t, "send: --wait returned before the turn ended",
+		!s.Contains(`tokens · `, m) && !s.Contains(steerReply, m))
+	check(t, "send: shown as delivered in the running turn",
+		s.Contains(steerNotice(steerSendPrefix+steerSendText2, steerTaken), m))
+	until(t, s, "send: the turn answers", regexp.QuoteMeta(steerReply), m)
+	reqs = waitRequests(fake, 4, 30*time.Second)
+	check(t, "send: four requests", len(reqs) >= 4)
+	if len(reqs) >= 4 {
+		check(t, "send: the message reached the second turn's next request",
+			normalized(reqs[3].User) == steerSendPrefix+steerSendText2)
+	}
+
+	// --- an aborted turn discards the message (exit 3) ----------------------
+	steerRemoveMarker(t, marker)
+	m = s.Mark()
+	s.SendLine("再跑一个长命令")
+	until(t, s, "send: tool call shown (third turn)", `\$ shell_exec`, m)
+	if !check2(t, "send: the third tool started", waitMarker(marker, 30*time.Second)) {
+		return
+	}
+
+	done = steerSendAsync(binary, ws, env, "--session", sid, "--steer", "--wait", steerSendText3)
+	until(t, s, "send: the message is shown as waiting", steerNotice(steerSendPrefix+steerSendText3, steerWaiting), m)
+	s.Send("\x1b") // Esc: the lone-Esc decision waits 50ms, so send nothing right after
+	time.Sleep(300 * time.Millisecond)
+	res = steerSendWait(t, done)
+	check(t, "send: a message of an aborted turn exits 3", res.code == 3)
+	untilWithin(t, s, "send: esc ends this turn only", `已中断本轮`, m, 15*time.Second)
+	check(t, "send: chat stays after esc", !s.Contains(`续接：`, m))
+	until(t, s, "send: the message is back in the input line", regexp.QuoteMeta(steerSendPrefix+steerSendText3), m)
+
+	// --- a full inbox is refused with queue_full ---------------------------
+	// The fourth turn's tool sleeps longer than the six seconds of the others: nine
+	// `suga send` processes have to arrive while it runs, and a phase that outran
+	// the tool left the ninth answered "queued" instead of queue_full.
+	fake.SetCommand(steerToolCommand(30))
+	steerRemoveMarker(t, marker)
+	m = s.Mark()
+	s.SendLine("再跑一个长命令")
+	until(t, s, "send: tool call shown (fourth turn)", `\$ shell_exec`, m)
+	if !check2(t, "send: the fourth tool started", waitMarker(marker, 30*time.Second)) {
+		return
+	}
+
+	filled := true
+	for i := 0; i < 8; i++ {
+		code, out = sugaSend(binary, ws, env, 60*time.Second, "--session", sid, "--steer", fmt.Sprintf("插话 %d", i))
+		if code != 0 || trimSpace(out) != "steered" {
+			t.Logf("message %d: exit %d, output %q", i, code, out)
+			filled = false
+		}
+	}
+	check(t, "send: eight messages fit the inbox", filled)
+	code, out = sugaSend(binary, ws, env, 60*time.Second, "--session", sid, "--steer", "第九条")
+	check(t, "send: the ninth is refused with queue_full", code == 1 && strings.Contains(out, "queue_full"))
+	s.Send("\x1b")
+	untilWithin(t, s, "send: esc ends this turn only", `已中断本轮`, m, 15*time.Second)
+
+	// --- an idle chat queues it --------------------------------------------
+	promptReady(t, s, m)
+	code, out = sugaSend(binary, ws, env, 60*time.Second, "--session", sid, "--steer", steerSendText4)
+	check(t, "send: an idle chat queues the message instead",
+		code == 0 && trimSpace(out) == "未插入当前回合，已排队")
+	until(t, s, "send: the queued message runs as the next turn",
+		regexp.QuoteMeta(steerSendPrefix+steerSendText4), m)
+
+	events := steerExit(t, s, binary, ws, env)
+	delivered := steerEvents(events, "steer", "delivered")
+	check(t, "send: the trace records both deliveries", len(delivered) == 2)
+	cpu := true
+	for _, e := range delivered {
+		if str(attrs(e)["source"]) != "send:cli" {
+			cpu = false
+		}
+	}
+	check(t, "send: they name the send source", cpu)
+	returnedToLine := false
+	for _, e := range steerEvents(events, "steer", "returned") {
+		if str(attrs(e)["disposition"]) == "input_line" {
+			returnedToLine = true
+		}
+	}
+	check(t, "send: the aborted turn's messages are traced back to the input line", returnedToLine)
+}
+
 const steerClearCols = 100
 
 // steerClear: Ctrl-C on a non-empty input line drops that line and nothing else
