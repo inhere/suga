@@ -52,6 +52,7 @@ func TestChatSteer(t *testing.T) {
 	t.Run("screen", func(t *testing.T) { steerScreen(t, binary) })
 	t.Run("status", func(t *testing.T) { steerStatus(t, binary) })
 	t.Run("status-off", func(t *testing.T) { steerStatusOff(t, binary) })
+	t.Run("hook", func(t *testing.T) { steerHook(t, binary) })
 	t.Run("clear", func(t *testing.T) { steerClear(t, binary) })
 	t.Run("withdraw", func(t *testing.T) { steerWithdraw(t, binary) })
 	t.Run("approval", func(t *testing.T) { steerApproval(t, binary) })
