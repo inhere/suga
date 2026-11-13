@@ -26,7 +26,6 @@
 | `chat_tool_lines.py` | 工具调用行按工具定制显示：假模型（`display` 模式）一轮里返回 `file_read target.txt`（offset/limit）、两行 `shell_exec`、`update_plan`；检查终端上是 `▸ file_read target.txt:1-2`、`$ shell_exec echo SMOKE_DISPLAY …`（工具族的符号：读 `▸`、命令 `$`、会话/计划 `✦`，只显首行）与未定制工具的 JSON 回退，`suga inspect trace --json` 仍保留调用参数摘要（显示层改动不影响记录）；同时检查 banner 不再列出 `:add-dir`、`:checkpoints`、`:undo` 而 `:help` 仍然列出；反向验证见脚本 docstring |
 | `chat_session_message.py` | 会话之间互发消息（`session_message` 工具、两个 chat 共用一个 SUGA_HOME）：A 的模型 `send` 给 B，B 自动开一轮并回信，A 再回……第 3 跳（默认 `tools.session_message.max_hops`）到 B 时不再开一轮，B 只显示 `来自会话 <A> 的消息已排队（连续自动回复已达上限…）`，两个会话的回合数与模型请求数都有上限（超时兜底，循环停不下来会判失败）；消息以 `[来自会话 <短名称>（<会话 ID>）的消息] ` 进入对方用户消息；反向验证见脚本 docstring。**本机无 pty，未运行，待在 Linux 容器验证** |
 | `preferred_tools.py` | 配置优先 command/MCP，检查 manifest 的 found/missing/configured reason、chat 环境过滤、`tools.deferred: always` 下 preferred MCP 直显且仍需审批，以及 trace 只记录名字；反向验证见脚本 docstring |
-| `chat_i18n_en.py` | 英文界面（i18n）：`language: en` 的 SUGA_HOME + 假模型（`--mode tool --reply SMOKE_EN_DONE`），覆盖横幅（标题/帮助行/工具行）、一次需要审批的 shell_exec（英文问句与选项、`Command:` 明细、拒绝后 `Tools denied this turn: shell_exec`、再答 y 执行并作答）、回合结束状态行、`:help`、`:context` 标题、未知命令、退出摘要与续接命令；第二个 home 先是 `language: zh`，跑 `suga config set language en_US` 后检查 CLI 报出规范值 `language = en`、文件里写的是 `en`，随后的 chat 说英文。其余脚本用 `write_home` 固定 `language: zh`，断言不随机器语言变化。**本机无 pty，未运行，待监督在 Linux 容器验证** |
 
 - `make smoke-pty-go`：运行 `test/ptye2e` 的 Go `ptytest` 场景；Windows 使用 ConPTY，Linux/macOS 使用 Unix pty。若宿主不允许 ConPTY，测试框架会跳过并打印原因。
 

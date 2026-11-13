@@ -131,12 +131,11 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 ## chat_tool_ctrlc covers Ctrl-C during a foreground shell_exec; the Windows
 ## twin is scripts/wincons (a Windows console cannot be driven from Python).
 # Every scenario pins its own UI language in the SUGA_HOME config it writes
-# (chat_i18n_en.py pins en); auto would follow the machine locale.
+# (the English UI scenario chat_i18n_test.go pins en); auto would follow the locale.
 smoke-chat: smoke-go
 	@mkdir -p tmp/smoke
 	go build -o tmp/smoke/suga ./cmd/suga
 	python3 -I scripts/ptysmoke/chat_approval.py --bin tmp/smoke/suga --work tmp/smoke
-	python3 -I scripts/ptysmoke/chat_i18n_en.py --bin tmp/smoke/suga --work tmp/smoke-i18n
 	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
 	python3 -I scripts/ptysmoke/chat_deferred_native.py --bin tmp/smoke/suga --work tmp/smoke-deferred
 	python3 -I scripts/ptysmoke/chat_pretool.py --bin tmp/smoke/suga --work tmp/smoke-pretool

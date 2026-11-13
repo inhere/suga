@@ -86,6 +86,14 @@ func chatEnv(t *testing.T, o chatOpts) []string {
 		if o.Color && key == "NO_COLOR" || containsString(o.DropEnv, key) {
 			continue
 		}
+		// An explicit Language makes the config file the only source of the UI
+		// language: an exported SUGA_LANGUAGE wins over `language:` in the file
+		// (the same pop chat_i18n_en.py did), so a scenario that proves the
+		// configured value drives the UI must not set it. Without one the shared
+		// zh default keeps the scenarios independent of the host locale.
+		if key == "SUGA_LANGUAGE" && o.Language != "" {
+			continue
+		}
 		// A variable the scenario sets itself replaces the default, never doubles.
 		overridden := false
 		for _, set := range o.SetEnv {
