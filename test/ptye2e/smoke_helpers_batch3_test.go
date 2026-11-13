@@ -28,15 +28,50 @@ import (
 // turn it would be taken as a steer.
 func promptReady(t *testing.T, s *ptytest.Session, mark int) {
 	t.Helper()
-	// OSC sequences (the console title ConPTY writes on windows-latest) may sit
-	// between the line break and the prompt; on a miss the tail is logged.
-	if !until(t, s, "next prompt is up", `(?:\n|↳ )`+oscRun+`❯`, mark) {
+	if !until(t, s, "next prompt is up", freshPrompt, mark) {
 		t.Logf("next prompt is up: text tail %q", tail(s.Since(mark)))
 	}
 }
 
 // oscRun matches any run of OSC sequences (ESC ] ... BEL or ST).
 const oscRun = `(?:\x1b\][^\a\x1b]*(?:\a|\x1b\\))*`
+
+// promptGap matches what may sit between the line break (or the steer prompt "↳ ")
+// and the ❯ of a fresh prompt: the OSC titles ConPTY writes (oscRun one sequence at
+// a time, so the repetition never matches the empty string) and the carriage
+// returns of a repaint. The line editor returns to column 0 before drawing a
+// prompt whose predecessor started a different column, so after a turn the bytes
+// can read "↳ \r❯" instead of "↳ ❯" - the same prompt on the same row (suga-itjl on
+// a slow windows-latest runner: the screen said ready, the bytes did not match).
+const promptGap = `(?:\r|\x1b\][^\a\x1b]*(?:\a|\x1b\\))*`
+
+// freshPrompt is a prompt drawn on a row of its own: after a line break, or after
+// the steer prompt of a turn that just ended (promptReady).
+const freshPrompt = `(?:\n|↳ )` + promptGap + `❯`
+
+// TestFreshPromptPattern keeps promptReady's pattern honest against the byte orders
+// a repaint produces: the tail below is the one recorded on a windows-latest runner
+// (suga-itjl) where the prompt WAS up but the pattern of that time missed it.
+func TestFreshPromptPattern(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"a prompt on a fresh line", "❯ 你好\r\n▣ 完成\r\nfake/m1 · in 10 / out 2 tokens · ctx 0% · 326ms · 11:16\r\n❯ ", true},
+		{"a prompt drawn over the steer prompt", "你好\r\n↳ ❯ ", true},
+		{"a prompt after a repaint's carriage return (suga-itjl)", "你好\r\n↳ \r❯", true},
+		{"a carriage return before the line break's prompt", "tokens · 1s\r\n\r❯ ", true},
+		{"a console title between the break and the prompt", "tokens · 1s\r\n\x1b]0;Administrator: pwsh\x07❯ ", true},
+		{"the turn is still running: bare steer prompt", "你好\r\n↳ ", false},
+		{"the echo of the line just sent", "❯ echo hi", false},
+	}
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+			assert(t, c.name, regexp.MustCompile(freshPrompt).MatchString(c.text) == c.want)
+		})
+	}
+}
 
 var anySpace = regexp.MustCompile(`\s+`)
 

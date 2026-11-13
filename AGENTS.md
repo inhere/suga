@@ -29,8 +29,8 @@
 ## 验证
 
 - 单元测试：`go test -race ./...`；Windows 行为经 gofer exec job 在主机跑 `go test ./...`。
-- 终端交互改动（chat 输入、提示符、确认交互、Ctrl-C、渲染）必须再跑伪终端端到端冒烟：`make smoke-chat`（`scripts/ptysmoke/`，说明见其 README）；新增交互行为时在 `chat_approval.py` 补对应检查或新建场景脚本。冒烟正逐批迁到 Go（`test/ptye2e`，`github.com/gookit/gopty/ptytest`，Linux 与 Windows ConPTY 同一套，假模型 `test/ptye2e/fakellm_test.go`），入口 `make smoke-go`；已迁移的场景以 Go 测试为准，新场景优先写成 Go 测试。
-- 只有交互式 chat 才会出现的行为（人工审批、hook、空闲整理、记忆询问，以及它们写进 trace 的事件）不要留给人工验证：用伪终端冒烟脚本 + `fakellm.py` 自动跑，结束后用 `suga inspect trace --json` 检查记录（参考 `test/ptye2e/chat_observe_test.go`），并加进 `make smoke-chat`。新场景写完要做一次反向验证（临时去掉被测逻辑，确认对应检查会失败）。
+- 终端交互改动（chat 输入、提示符、确认交互、Ctrl-C、渲染）必须再跑伪终端端到端冒烟：`make smoke-go`（`make smoke-chat` 是它的别名，即 `test/ptye2e`，`-tags ptye2e`，`github.com/gookit/gopty/ptytest`，Linux 与 Windows ConPTY 同一套）。新场景就写在 `test/ptye2e`：驱动真实二进制的辅助函数见 `test/ptye2e/smoke_helpers_test.go`，假模型见 `test/ptye2e/fakellm_test.go`，屏幕模型见 `test/ptye2e/vtscreen_test.go`（行内容用屏幕判断，字节流正则会漏掉重绘顺序）。
+- 只有交互式 chat 才会出现的行为（人工审批、hook、空闲整理、记忆询问，以及它们写进 trace 的事件）不要留给人工验证：用 `test/ptye2e` 的 ptytest + 假模型自动跑，结束后用 `suga inspect trace --json` 检查记录（参考 `test/ptye2e/chat_observe_test.go`），并加进 `make smoke-go`。新场景写完要做一次反向验证（临时去掉被测逻辑，确认对应检查会失败）。
 - 涉及 provider 协议的改动，至少用一个真实 provider 跑一轮带工具调用的对话；做不到时在交付说明中写明未经真实模型验证。
 - ACP 行为的真实模型验证用 `scripts/acpprobe/acp_probe.py`（最小 ACP 客户端：隔离 SUGA_HOME、读真实 config.yaml 与 .env 但不复制文件、自动允许权限、多个 prompt 之间可等待，结束后列出 trace 里的任务与工具事件）；Windows 行为经 gofer exec job 在主机上跑。
 

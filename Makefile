@@ -127,36 +127,13 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 	zip ../release/$(APP)-windows-amd64.zip $(APP)-windows-amd64.exe;
 	@echo "Release archives created in release/"
 
-## smoke-chat: run smoke-go, then build to tmp/smoke and run the remaining Python PTY chat smoke scripts (Linux/macOS)
-## chat_tool_ctrlc covers Ctrl-C during a foreground shell_exec; the Windows
-## twin is scripts/wincons (a Windows console cannot be driven from Python).
+## smoke-chat: alias of smoke-go (the Python PTY suite this target used to run is
+## gone); it also builds tmp/smoke/suga, the binary scripts/eval runs by default.
 # Every scenario pins its own UI language in the SUGA_HOME config it writes
-# (chat_i18n_en.py pins en); auto would follow the machine locale.
+# (the English UI scenario chat_i18n_test.go pins en); auto would follow the locale.
 smoke-chat: smoke-go
 	@mkdir -p tmp/smoke
 	go build -o tmp/smoke/suga ./cmd/suga
-	python3 -I scripts/ptysmoke/chat_approval.py --bin tmp/smoke/suga --work tmp/smoke
-	python3 -I scripts/ptysmoke/chat_i18n_en.py --bin tmp/smoke/suga --work tmp/smoke-i18n
-	python3 -I scripts/ptysmoke/chat_memory.py --bin tmp/smoke/suga --work tmp/smoke-memory
-	python3 -I scripts/ptysmoke/chat_deferred_native.py --bin tmp/smoke/suga --work tmp/smoke-deferred
-	python3 -I scripts/ptysmoke/chat_pretool.py --bin tmp/smoke/suga --work tmp/smoke-pretool
-	python3 -I scripts/ptysmoke/chat_images.py --bin tmp/smoke/suga --work tmp/smoke-images
-	python3 -I scripts/ptysmoke/chat_read_image.py --bin tmp/smoke/suga --work tmp/smoke-read-image
-	python3 -I scripts/ptysmoke/chat_send_image.py --bin tmp/smoke/suga --work tmp/smoke-send-image
-	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
-	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
-	python3 -I scripts/ptysmoke/chat_agent.py --bin tmp/smoke/suga --work tmp/smoke-agent
-	python3 -I scripts/ptysmoke/chat_spinner.py --bin tmp/smoke/suga --work tmp/smoke-spinner
-	python3 -I scripts/ptysmoke/chat_resume_cwd.py --bin tmp/smoke/suga --work tmp/smoke-resume-cwd
-	python3 -I scripts/ptysmoke/chat_tool_ctrlc.py --bin tmp/smoke/suga --work tmp/smoke-tool-ctrlc
-	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
-	python3 -I scripts/ptysmoke/chat_paste.py --bin tmp/smoke/suga --work tmp/smoke-paste
-	python3 -I scripts/ptysmoke/chat_win32input.py --bin tmp/smoke/suga --work tmp/smoke-win32input
-	python3 -I scripts/ptysmoke/chat_history.py --bin tmp/smoke/suga --work tmp/smoke-history
-	python3 -I scripts/ptysmoke/chat_nudge.py --bin tmp/smoke/suga --work tmp/smoke-nudge
-	python3 -I scripts/ptysmoke/chat_tool_lines.py --bin tmp/smoke/suga --work tmp/smoke-toollines
-	python3 -I scripts/ptysmoke/chat_session_message.py --bin tmp/smoke/suga --work tmp/smoke-session-message
-	python3 -I scripts/ptysmoke/preferred_tools.py --bin tmp/smoke/suga --work tmp/smoke-preferred-tools
 
 ## demo-cast: record the chat demo (docs/demo/suga-chat.cast) with the fake model (Linux/macOS)
 demo-cast:
@@ -165,7 +142,7 @@ demo-cast:
 	python3 -I scripts/demo/record.py --bin tmp/smoke/suga
 
 ## smoke-go: run the Go ptytest chat smoke (Linux pty and Windows ConPTY, one suite);
-## scenarios migrate here from scripts/ptysmoke batch by batch
+## every scenario of the retired Python suite (scripts/ptysmoke) lives here now
 smoke-go:
 	go test -tags ptye2e -count=1 -timeout 30m ./test/ptye2e/
 

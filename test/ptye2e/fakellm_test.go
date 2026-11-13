@@ -28,18 +28,27 @@ import (
 //	        update_plan (a tool without a summary of its own), then Reply.
 //	memory  shell_exec of Command, then memory add ("Smoke rule"), then Reply;
 //	        a user message containing "直接" skips the shell_exec.
+//	nudge   a file_write of WritePath (WriteBody) once, then the text Reply: the
+//	        change is never checked and the answer promises to continue, so both
+//	        "stopped too early" rules hit (chat_nudge_test.go).
 //
 //	adddir  every user message gets file_read of ReadPath, then file_write of
 //	        WritePath (WriteBody); "只读"/"只写" in the message narrows it to
 //	        one of the two calls.
-//	empty-final  file_write of WritePath, then an empty streamed completion
-//	        after the tool result (the resamples too).
-//
+//	image  one file_read of ReadPath (a picture), then the text Reply.
+//	deferred  tool_search select:memory, then tool_call of memory through the
+//	        segment apply mode (only to a request that offers tools: the
+//	        compaction summary call gets text).
+//	preferred  the MCP tool named by PreferredTool, then the text Reply: the
+//	        preferred-tool smoke, whose environment section the request log
+//	        carries as Preferred.
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
 //
-// Not ported yet (used by scripts that are still Python): refs, image,
-// deferred, demo, loop*, nudge, session, preferred and the sub-agent paths.
+// The agent and session modes (with the sub-agent paths) live in
+// fakellm_agent_test.go.
+//
+// Not ported yet (used by scripts that are still Python): demo.
 type fakeLLM struct {
 	Mode       string
 	Delay      time.Duration // before every response (fakellm.py --delay, default 1s)
@@ -56,6 +65,12 @@ type fakeLLM struct {
 	// CachedTokens is the part of the prompt reported as served from the provider
 	// cache (prompt_tokens_details.cached_tokens); 0 reports none.
 	CachedTokens int
+
+	// Chunk splits a streamed text reply into pieces of that many characters with
+	// ChunkDelay between them (fakellm.py --chunk/--chunk-delay): the answer arrives
+	// slowly, one line at a time, so a scenario can type while it streams.
+	Chunk      int
+	ChunkDelay time.Duration
 
 	// FailFirst answers the first N requests with HTTP 503, then OverloadFirst
 	// requests answer 200 with only a temporary API error, then BreakFirst
@@ -81,6 +96,15 @@ type fakeLLM struct {
 	// loop modes: the successful command of loop-edit (default echo SMOKE_LOOP_SHELL)
 	// and the failing one of loop-fail (default false).
 	LoopCommand, LoopFailCommand string
+	// ToolOnce makes tool mode call the command only while the request carries no
+	// tool result at all: a steer inserted after the result must not start the call
+	// again (fakellm.py's tool_done rule, chat_approval_test.go).
+	ToolOnce bool
+	// ToolDoneRule is fakellm.py's own tool-mode rule: the command is called unless
+	// the last tool result comes after the last assistant message, so a tool result
+	// of an earlier turn (or one a steer follows) does not call it again, while a
+	// result an interrupted turn closed with an "[上一回合…" note still does.
+	ToolDoneRule bool
 
 	// origin mode (fakellm_origin_test.go; suga safety plan T5): web_fetch of
 	// PageURL (served by this same server as PageText), then shell_exec of
@@ -88,6 +112,25 @@ type fakeLLM struct {
 	// with JudgeReply whatever the mode.
 	PageURL, PageText string
 	JudgeReply        string
+
+	// PreferredTool is the MCP tool preferred mode calls (default preferred_lookup).
+	PreferredTool string
+	// WatchPaths (tool mode with Background) adds watch_paths to the shell_exec
+	// call: a watch task instead of a plain background command.
+	WatchPaths []string
+
+	// agent mode (fakellm_agent_test.go; fakellm.py --agent/--agent-when): the
+	// agent tool, and the sub-agent's own grep-then-report exchange. AgentWhen
+	// narrows the agent call to the user messages containing it (a plain turn
+	// otherwise), ChildFail makes the sub-agent's model call fail for good (a 400,
+	// not retried) and ChildDelay slows its report.
+	Agent      bool
+	AgentWhen  string
+	ChildFail  bool
+	ChildDelay time.Duration
+	// SessionText is the text a session mode session_message send carries
+	// (fakellm.py --session-text).
+	SessionText string
 
 	mu       sync.Mutex
 	served   int
@@ -111,6 +154,16 @@ type fakeRequest struct {
 	Step int
 	// Msgs is every message of the request in full (rewind plan T0).
 	Msgs []fakeMsg
+	// ImageParts counts the image_url parts of the last user message and UserRaw
+	// is that message's raw content (the pictures a request carries), for the
+	// image scenarios.
+	ImageParts int
+	UserRaw    string
+	// ToolTextFull is the last tool result without the 300-byte cap of ToolText.
+	ToolTextFull string
+	// Preferred holds the "Preferred tool:" lines of the environment the model was
+	// sent (fakellm.py's preferred field): what the prompt listed, in order.
+	Preferred []string
 }
 
 type fakeMessage struct {
@@ -164,6 +217,22 @@ func (f *fakeLLM) reply() string {
 	return strings.Join(lines, "\n")
 }
 
+// deltas is the SSE events a streamed reply goes out as: the delta itself, or - with
+// Chunk set - the text of a plain content reply in pieces of that many characters
+// (fakellm.py chunked: a tool call or a reply of one piece stays whole).
+func (f *fakeLLM) deltas(delta map[string]any) []map[string]any {
+	text, ok := delta["content"].(string)
+	if f.Chunk <= 0 || !ok || len([]rune(text)) <= f.Chunk {
+		return []map[string]any{delta}
+	}
+	runes := []rune(text)
+	pieces := make([]map[string]any, 0, len(runes)/f.Chunk+1)
+	for i := 0; i < len(runes); i += f.Chunk {
+		pieces = append(pieces, map[string]any{"content": string(runes[i:min(i+f.Chunk, len(runes))])})
+	}
+	return pieces
+}
+
 // toolCall is one scripted call: the tool name and its JSON arguments.
 type toolCall struct {
 	name string
@@ -210,6 +279,14 @@ func (f *fakeLLM) command() string {
 	return f.Command
 }
 
+// preferredTool is the MCP tool preferred mode calls (fakellm.py --preferred-tool).
+func (f *fakeLLM) preferredTool() string {
+	if f.PreferredTool == "" {
+		return "preferred_lookup"
+	}
+	return f.PreferredTool
+}
+
 // SetCommand changes the shell_exec command between the phases of a scenario.
 func (f *fakeLLM) SetCommand(command string) {
 	f.mu.Lock()
@@ -240,6 +317,15 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f.countArrival()
+
+	// A sub-agent's request names itself in its system prompt; its model call
+	// fails for good with ChildFail (a 400 is not retried), so the agent tool
+	// answers with an error result and no report.
+	sub := f.isSubAgent(body.Messages)
+	if sub && f.ChildFail {
+		http.Error(w, `{"error":{"message":"child model is broken"}}`, http.StatusBadRequest)
+		return
+	}
 
 	// step counts the tool results since the last user message: the step of this
 	// turn. lastTool/lastAssistant tell whether the step's result is already in.
@@ -287,16 +373,37 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		texts = append(texts, m.text())
 	}
 	req.Messages = strings.Join(texts, "\n")
+	// The "Preferred tool:" lines of the environment the model was sent (they never
+	// reach the terminal), fakellm.py's preferred field.
+	for _, text := range texts {
+		for _, line := range strings.Split(text, "\n") {
+			if strings.Contains(line, "Preferred tool:") {
+				req.Preferred = append(req.Preferred, strings.TrimSpace(line))
+			}
+		}
+	}
 	req.Msgs = captureMessages(body.Messages)
+	for _, m := range body.Messages {
+		if m.Role == "user" {
+			req.UserRaw = string(m.Content)
+			req.ImageParts = len(imageParts(m))
+		}
+	}
 	if lastTool >= 0 {
 		req.ToolText = body.Messages[lastTool].text()
+		req.ToolTextFull = req.ToolText
 		if len(req.ToolText) > 300 {
 			req.ToolText = req.ToolText[:300]
 		}
 	}
 
+	delay := f.delay()
+	if sub && f.ChildDelay > 0 && body.Messages[len(body.Messages)-1].Role == "tool" {
+		// ChildDelay slows the sub-agent's report (after its grep).
+		delay += f.ChildDelay
+	}
 	select {
-	case <-time.After(f.delay()):
+	case <-time.After(delay):
 	case <-r.Context().Done():
 		return
 	}
@@ -322,7 +429,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	broken := afterFailures <= f.OverloadFirst+f.BreakFirst
 
 	var call *toolCall
+	subText := "" // a sub-agent's scripted text reply
 	switch f.Mode {
+	case "agent":
+		call = f.agentCall(user, toolDone)
+	case "session":
+		call = f.sessionCall(user, toolDone)
 	case "memory":
 		calls := []toolCall{
 			{"shell_exec", map[string]any{"command": f.command()}},
@@ -357,8 +469,22 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if step < len(calls) {
 			call = &calls[step]
 		}
+	case "image":
+		if step < 1 {
+			call = &toolCall{"file_read", map[string]any{"path": orDefault(f.ReadPath, "shot.png")}}
+		}
 	case "writev":
 		call = f.writevCall(user, step, req.Tools)
+	case "deferred":
+		// A request without tools (the compaction summary) is answered with text:
+		// a tool call there leaves the summary empty and the segment break fails.
+		calls := []toolCall{
+			{"tool_search", map[string]any{"query": "select:memory"}},
+			{"tool_call", map[string]any{"name": "memory", "arguments": map[string]any{"action": "search", "query": "smoke"}}},
+		}
+		if step < len(calls) && len(req.Tools) > 0 {
+			call = &calls[step]
+		}
 	case "refs":
 		call = f.refsCall(step)
 	case "loop", "loop-edit", "loop-fail":
@@ -367,20 +493,59 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !toolDone {
 			call = &toolCall{"file_write", map[string]any{"path": f.WritePath, "content": f.WriteBody}}
 		}
+	case "nudge":
+		// nudge mode: a change that is never checked, then an answer that promises
+		// to continue, so both rules of personal.CheckNudge hit.
+		if !toolDone {
+			call = &toolCall{"file_write", map[string]any{"path": f.WritePath, "content": f.WriteBody}}
+		}
 	case "edit":
 		if calls := f.editCalls(user); step < len(calls) {
 			call = &calls[step]
 		}
+	case "preferred":
+		// The preferred MCP tool, then the closing text: the tool is listed in the
+		// environment but not auto-allowed, so chat and run deny the call.
+		if !toolDone {
+			call = &toolCall{f.preferredTool(), map[string]any{"query": "SMOKE_PREFERRED"}}
+		}
 	case "origin":
 		call = f.originCall(step)
 	case "tool":
-		if !toolDone && !strings.Contains(user, "[background task") {
+		// The step of THIS turn decides, not whether any tool result is the last
+		// message: an interrupted turn leaves its own tool result in the
+		// transcript, so the next user message arrives after a tool result that
+		// belongs to the turn before it (chat's transcript keeps the pair, see
+		// chat_tool_ctrlc_test.go). Step 0 is "no tool result for this user message
+		// yet", which is the same answer as !toolDone in a turn that was not cut.
+		want := step == 0
+		if f.ToolDoneRule {
+			// fakellm.py's rule: a tool result after the last assistant message means
+			// this turn already ran its tool, unless an interruption note follows it
+			// (that result belongs to the turn an interrupt cut).
+			want = !toolDone || interruptedNoteAfter(body.Messages, lastTool)
+		}
+		if f.ToolOnce {
+			// A steer after the result is a user message, so the step count starts
+			// over: only a request without any tool result may call again.
+			want = !hasToolResult(body.Messages)
+		}
+		if want && !strings.Contains(user, "[background task") {
 			args := map[string]any{"command": f.command()}
 			if f.Background {
 				args["background"] = true
 			}
+			if len(f.WatchPaths) > 0 {
+				args["watch_paths"] = f.WatchPaths
+			}
 			call = &toolCall{"shell_exec", args}
 		}
+	}
+
+	// A sub-agent's request is answered by the child script in every mode
+	// (fakellm.py's child branch): one file_grep, then the report.
+	if sub {
+		call, subText = f.subAgentPlan(body.Messages)
 	}
 
 	judge := isJudgeRequest(body.Messages)
@@ -394,6 +559,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"index": 0, "id": fmt.Sprintf("call_%d", time.Now().UnixNano()),
 			"function": map[string]any{"name": call.name, "arguments": string(raw)},
 		}}}
+	} else if sub {
+		delta = map[string]any{"content": subText}
 	} else if f.Mode == "empty-final" {
 		delta = map[string]any{}
 	} else if judge {
@@ -451,11 +618,33 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}}}})
 		panic(http.ErrAbortHandler)
 	}
-	send(map[string]any{"choices": []any{map[string]any{"delta": delta}}})
+	for _, piece := range f.deltas(delta) {
+		if f.Chunk > 0 && f.ChunkDelay > 0 {
+			// The reply arrives slowly, one piece after the other
+			// (fakellm.py --chunk-delay), so a scenario can type while it streams.
+			select {
+			case <-time.After(f.ChunkDelay):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		send(map[string]any{"choices": []any{map[string]any{"delta": piece}}})
+	}
 	if usage != nil {
 		send(map[string]any{"choices": []any{}, "usage": usage})
 	}
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+// hasToolResult reports whether the request carries any tool result at all (any
+// turn, not only the last one), which is what ToolOnce keys on.
+func hasToolResult(messages []fakeMessage) bool {
+	for _, m := range messages {
+		if m.Role == "tool" {
+			return true
+		}
+	}
+	return false
 }
 
 func orDefault(v, d string) string {
@@ -465,20 +654,38 @@ func orDefault(v, d string) string {
 	return v
 }
 
-// isImagePart reports a user message that only carries a tool result's picture.
-func isImagePart(m fakeMessage) bool {
-	var parts []struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(m.Content, &parts) != nil {
-		return false
-	}
-	for _, p := range parts {
-		if p.Type == "image_url" {
+// interruptedNoteAfter reports whether a user message after the tool result at
+// lastTool starts with the note an interrupted turn leaves ("[上一回合…"): the
+// result belongs to that turn, so this turn has not run its tool yet.
+func interruptedNoteAfter(messages []fakeMessage, lastTool int) bool {
+	for _, m := range messages[lastTool+1:] {
+		if m.Role == "user" && strings.HasPrefix(strings.TrimSpace(m.text()), "[上一回合") {
 			return true
 		}
 	}
 	return false
+}
+
+// isImagePart reports a user message that only carries a tool result's picture.
+func isImagePart(m fakeMessage) bool {
+	return len(imageParts(m)) > 0
+}
+
+// imageParts lists the image_url parts of a message (nil when it holds none).
+func imageParts(m fakeMessage) []string {
+	var parts []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(m.Content, &parts) != nil {
+		return nil
+	}
+	var found []string
+	for _, p := range parts {
+		if p.Type == "image_url" {
+			found = append(found, p.Type)
+		}
+	}
+	return found
 }
 
 // overload answers 200 with only a temporary API error: as an SSE error event

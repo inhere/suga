@@ -23,10 +23,12 @@ import (
 // into the config (Extra at the top level, the others under their own key).
 type chatOpts struct {
 	Home, Work, URL string
+	Model           string   // the model id (default fake/m1, e.g. fake/gpt-4o for vision)
 	ToolsExtra      string   // lines under tools: (two-space indented)
 	MemoryExtra     string   // lines under memory:
 	ProviderExtra   string   // lines under providers.fake:
 	Extra           string   // top-level YAML appended after memory:
+	Language        string   // UI language (default zh, the template's)
 	Color           bool     // leave NO_COLOR unset so chat renders colors
 	DropEnv         []string // inherited variables to remove (e.g. COLORFGBG)
 	SetEnv          []string // KEY=VALUE appended last (e.g. SUGA_HOOKS=on)
@@ -39,11 +41,21 @@ type chatOpts struct {
 // these scenarios run the defaults a person sees.
 func startChatOpts(t *testing.T, binary string, o chatOpts) (*ptytest.Session, []string) {
 	t.Helper()
+	writeChatHome(t, o)
+	env := chatEnv(t, o)
+	return startChatIn(t, binary, o.Work, 100, 40, append([]string{"chat"}, o.Args...), env)
+}
+
+// writeChatHome writes SUGA_HOME/config.yaml (and the empty .env of a home that
+// was already set up) without starting a chat: a scenario that changes the
+// config through `suga config set` needs the file written first.
+func writeChatHome(t *testing.T, o chatOpts) {
+	t.Helper()
 	if err := os.MkdirAll(o.Home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	config := fmt.Sprintf(`language: zh
-model: fake/m1
+	config := fmt.Sprintf(`language: %s
+model: %s
 providers:
   fake:
     type: openai
@@ -54,7 +66,7 @@ providers:
 %smemory:
   project:
     backend: files
-%s%s`, o.URL, o.ProviderExtra, o.ToolsExtra, o.MemoryExtra, o.Extra)
+%s%s`, orDefault(o.Language, "zh"), orDefault(o.Model, "fake/m1"), o.URL, o.ProviderExtra, o.ToolsExtra, o.MemoryExtra, o.Extra)
 	if err := os.WriteFile(filepath.Join(o.Home, "config.yaml"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -63,10 +75,24 @@ providers:
 	if err := os.WriteFile(filepath.Join(o.Home, ".env"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// chatEnv is the environment the scenario's chat runs with: the shared test env
+// minus NO_COLOR (Color) and the dropped variables, plus the ones it sets itself.
+func chatEnv(t *testing.T, o chatOpts) []string {
+	t.Helper()
 	var env []string
 	for _, entry := range testEnv(o.Home) {
 		key, _, _ := strings.Cut(entry, "=")
 		if o.Color && key == "NO_COLOR" || containsString(o.DropEnv, key) {
+			continue
+		}
+		// An explicit Language makes the config file the only source of the UI
+		// language: an exported SUGA_LANGUAGE wins over `language:` in the file
+		// (the same pop chat_i18n_en.py did), so a scenario that proves the
+		// configured value drives the UI must not set it. Without one the shared
+		// zh default keeps the scenarios independent of the host locale.
+		if key == "SUGA_LANGUAGE" && o.Language != "" {
 			continue
 		}
 		// A variable the scenario sets itself replaces the default, never doubles.
@@ -81,8 +107,15 @@ providers:
 		}
 		env = append(env, entry)
 	}
-	env = append(env, o.SetEnv...)
-	spec := gopty.Spec{Command: binary, Args: append([]string{"chat"}, o.Args...), Dir: o.Work, Env: env, Cols: 100, Rows: 40}
+	return append(env, o.SetEnv...)
+}
+
+// startChatIn starts the real binary in a pty with an explicit argument list and
+// environment, for the scenarios whose home is written by something else (the
+// config the smoke's own `suga config set` produced).
+func startChatIn(t *testing.T, binary, work string, cols, rows int, args, env []string) (*ptytest.Session, []string) {
+	t.Helper()
+	spec := gopty.Spec{Command: binary, Args: args, Dir: work, Env: env, Cols: cols, Rows: rows}
 	return ptytest.StartSpec(t, spec), env
 }
 

@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
+	"time"
 
 	"github.com/gookit/gopty"
 	"github.com/gookit/gopty/ptytest"
@@ -109,9 +111,84 @@ func TestChatPTYSmokeHistoryScope(t *testing.T) {
 	})
 }
 
-// startHistoryChat is startChatSpec with the input history on and an explicit
-// chat.history_scope, since the shared config template keeps history off.
+// TestChatHistoryRecallAndCompletion ports scripts/ptysmoke/chat_history.py: the
+// input history a chat writes is read back by the next chat of the same project
+// (Up), Ctrl-R searches it incrementally, and Tab completes a :command and a
+// directory argument of :add-dir.
+func TestChatHistoryRecallAndCompletion(t *testing.T) {
+	binary := buildSuga(t)
+	server := httptest.NewServer(&fakeChat{mode: "text"})
+	defer server.Close()
+	home, work := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(work, "tm-dir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A wide window: the completed absolute path must not wrap (the check reads
+	// the output, where a wrapped line is broken by the editor redraw).
+	const cols, rows = 240, 50
+
+	// The first chat fills the persisted history with two lines.
+	first := startHistoryChatSize(t, binary, server.URL, home, work, "project", cols, rows)
+	expect(t, first, `❯ `, first.Mark())
+	first.SendLine("first history line")
+	replied := first.Mark()
+	expect(t, first, `收到：first history line`, replied)
+	// The next line is typed only once the prompt is back: a line sent while the
+	// reply is still being drawn can be lost on Windows ConPTY.
+	promptReady(t, first, replied)
+	first.SendLine("second history line")
+	replied = first.Mark()
+	expect(t, first, `收到：second history line`, replied)
+	promptReady(t, first, replied)
+	check(t, "first chat: exit names the resume command", ctrlCTwice(t, first) != "")
+
+	// The next chat of the same project reads both lines back.
+	s := startHistoryChatSize(t, binary, server.URL, home, work, "project", cols, rows)
+	mark := s.Mark()
+	expect(t, s, `❯ `, mark)
+	s.Send(upArrow)
+	until(t, s, "Up restores prior local input", `second history line`, mark)
+
+	// Ctrl-R searches the history incrementally: "second" narrows to the line that
+	// carries it, and Ctrl-G drops the search again.
+	mark = s.Mark()
+	s.Send("\x15") // Ctrl-U empties the line the Up left there
+	s.Send("\x12") // Ctrl-R
+	s.Send("second")
+	check(t, "Ctrl-R finds a match",
+		s.Expect(`reverse-i-search`, mark, 15*time.Second) && s.Contains(`second history line`, mark))
+	s.Send("\x07") // Ctrl-G
+
+	// Tab completes a :command.
+	mark = s.Mark()
+	s.Send(":se\t")
+	until(t, s, "command Tab completion (:session)", `:session`, mark)
+
+	// Tab completes a directory of a :add-dir argument, with its separator.
+	mark = s.Mark()
+	s.Send("\x15:add-dir " + filepath.Join(work, "tm") + "\t")
+	until(t, s, "directory Tab completion",
+		`:add-dir `+quoteRegex(filepath.Join(work, "tm-dir"))+`[\\/]`, mark)
+	// Ctrl-U empties the line the completion left there: Ctrl-C on a non-empty
+	// line drops the line instead of counting as the first exit press.
+	s.Send("\x15")
+	check(t, "second chat: exit names the resume command", ctrlCTwice(t, s) != "")
+}
+
+// quoteRegex escapes a filesystem path for a check pattern (Windows separators).
+func quoteRegex(path string) string { return regexp.QuoteMeta(path) }
+
+// startHistoryChat is startHistoryChatSize in the window the scope checks read:
+// a completed absolute path must not wrap, since a check reads the text where a
+// wrapped line is broken by the editor's redraw.
 func startHistoryChat(t *testing.T, binary, baseURL, home, work, scope string) *ptytest.Session {
+	t.Helper()
+	return startHistoryChatSize(t, binary, baseURL, home, work, scope, 100, 40)
+}
+
+// startHistoryChatSize is startChatSpec with the input history on and an explicit
+// chat.history_scope, since the shared config template keeps history off.
+func startHistoryChatSize(t *testing.T, binary, baseURL, home, work, scope string, cols, rows int) *ptytest.Session {
 	t.Helper()
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
@@ -131,8 +208,8 @@ func startHistoryChat(t *testing.T, binary, baseURL, home, work, scope string) *
 		Args:    []string{"chat"},
 		Dir:     work,
 		Env:     testEnv(home),
-		Cols:    100,
-		Rows:    40,
+		Cols:    cols,
+		Rows:    rows,
 	}
 	return ptytest.StartSpec(t, spec)
 }

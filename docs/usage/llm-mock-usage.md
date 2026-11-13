@@ -1,6 +1,6 @@
 # 测试用的假模型与假工具
 
-单元测试用 `pkg/agentcore/mock`：脚本化的 Provider 与 Tool，不访问网络、结果确定。端到端（真实二进制 + 伪终端）测试用 `scripts/ptysmoke/fakellm.py`，它是一个 OpenAI 兼容的 SSE 假服务，见 [ptysmoke README](../../scripts/ptysmoke/README.md)。
+单元测试用 `pkg/agentcore/mock`：脚本化的 Provider 与 Tool，不访问网络、结果确定。端到端（真实二进制 + 伪终端）测试用 `test/ptye2e/fakellm_test.go` 的假模型，它是一个 OpenAI 兼容的 SSE 假服务（用法与场景写法见同目录的 `smoke_helpers_test.go`、`vtscreen_test.go`）。
 
 ## Provider
 

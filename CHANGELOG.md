@@ -7,6 +7,11 @@
 ### 修复
 
 - chat：stdin 是管道（或已关闭）且配置了会等待的 Stop hook 时，输入结束或读错误会让 chat 卡住不退出（`/exit`、`:quit` 也无效，只能杀掉进程），管道保持打开时（如 IDE feeder 先写提示、稍后再写 `:quit`）后续输入也读不进来；现在输入结束会像提示符处的 EOF 一样先打断 Stop 等待并正常退出（退出码 0），读错误会上报到主循环，管道上没有新字节时不再打断 Stop 等待、等完照常读下一行；顺带修掉 Windows feeder 的 `\r\n` 行被丢弃 LF 卡住不提交的问题，终端里手输的行为不变（suga-b8ag）。
+- 测试：Windows CI 上 `TestChatBang` 偶发等不到下一个提示符——回合结束重画提示符时行编辑器先回到 0 列再画，字节流里是 `↳ \r❯`，等提示符的正则只认 `\n❯`/`↳ ❯`；改为容忍重画的回车与 OSC 标题，并用记录到的 CI 输出固定这个匹配（suga-itjl）。
+
+### 变更
+
+- 终端冒烟全部迁到 Go：`test/ptye2e`（`-tags ptye2e`，真实二进制 + 假模型，Linux 与 Windows ConPTY 同一套）承接原 Python 冒烟的全部场景，入口 `make smoke-go`（`make smoke-chat` 成为它的别名），`scripts/ptysmoke/` 与其中的 `fakellm.py`、`ptydrive.py` 删除（suga-hb8v、suga-fksc、suga-fvnm）。
 
 ## [0.56.0] - 2026-11-12
 
