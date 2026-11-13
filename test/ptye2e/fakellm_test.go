@@ -42,8 +42,10 @@ import (
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
 //
-// Not ported yet (used by scripts that are still Python): refs, demo, loop*,
-// nudge, session and the sub-agent paths.
+// The agent and session modes (with the sub-agent paths) live in
+// fakellm_agent_test.go.
+//
+// Not ported yet (used by scripts that are still Python): demo, nudge.
 type fakeLLM struct {
 	Mode       string
 	Delay      time.Duration // before every response (fakellm.py --delay, default 1s)
@@ -99,6 +101,19 @@ type fakeLLM struct {
 
 	// PreferredTool is the MCP tool preferred mode calls (default preferred_lookup).
 	PreferredTool string
+
+	// agent mode (fakellm_agent_test.go; fakellm.py --agent/--agent-when): the
+	// agent tool, and the sub-agent's own grep-then-report exchange. AgentWhen
+	// narrows the agent call to the user messages containing it (a plain turn
+	// otherwise), ChildFail makes the sub-agent's model call fail for good (a 400,
+	// not retried) and ChildDelay slows its report.
+	Agent      bool
+	AgentWhen  string
+	ChildFail  bool
+	ChildDelay time.Duration
+	// SessionText is the text a session mode session_message send carries
+	// (fakellm.py --session-text).
+	SessionText string
 
 	mu       sync.Mutex
 	served   int
@@ -270,6 +285,15 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	f.countArrival()
 
+	// A sub-agent's request names itself in its system prompt; its model call
+	// fails for good with ChildFail (a 400 is not retried), so the agent tool
+	// answers with an error result and no report.
+	sub := f.isSubAgent(body.Messages)
+	if sub && f.ChildFail {
+		http.Error(w, `{"error":{"message":"child model is broken"}}`, http.StatusBadRequest)
+		return
+	}
+
 	// step counts the tool results since the last user message: the step of this
 	// turn. lastTool/lastAssistant tell whether the step's result is already in.
 	user, step := "", 0
@@ -340,8 +364,13 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	delay := f.delay()
+	if sub && f.ChildDelay > 0 && body.Messages[len(body.Messages)-1].Role == "tool" {
+		// ChildDelay slows the sub-agent's report (after its grep).
+		delay += f.ChildDelay
+	}
 	select {
-	case <-time.After(f.delay()):
+	case <-time.After(delay):
 	case <-r.Context().Done():
 		return
 	}
@@ -367,7 +396,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	broken := afterFailures <= f.OverloadFirst+f.BreakFirst
 
 	var call *toolCall
+	subText := "" // a sub-agent's scripted text reply
 	switch f.Mode {
+	case "agent":
+		call = f.agentCall(user, toolDone)
+	case "session":
+		call = f.sessionCall(user, toolDone)
 	case "memory":
 		calls := []toolCall{
 			{"shell_exec", map[string]any{"command": f.command()}},
@@ -460,6 +494,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A sub-agent's request is answered by the child script in every mode
+	// (fakellm.py's child branch): one file_grep, then the report.
+	if sub {
+		call, subText = f.subAgentPlan(body.Messages)
+	}
+
 	judge := isJudgeRequest(body.Messages)
 	if judge {
 		call = nil // the judge only ever answers with its verdict text
@@ -471,6 +511,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"index": 0, "id": fmt.Sprintf("call_%d", time.Now().UnixNano()),
 			"function": map[string]any{"name": call.name, "arguments": string(raw)},
 		}}}
+	} else if sub {
+		delta = map[string]any{"content": subText}
 	} else if f.Mode == "empty-final" {
 		delta = map[string]any{}
 	} else if judge {
