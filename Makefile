@@ -135,7 +135,6 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 smoke-chat: smoke-go
 	@mkdir -p tmp/smoke
 	go build -o tmp/smoke/suga ./cmd/suga
-	python3 -I scripts/ptysmoke/chat_onboarding.py --bin tmp/smoke/suga --work tmp/smoke-onboarding
 	python3 -I scripts/ptysmoke/chat_watch.py --bin tmp/smoke/suga --work tmp/smoke-watch
 	python3 -I scripts/ptysmoke/chat_steer.py --bin tmp/smoke/suga --work tmp/smoke-steer
 	python3 -I scripts/ptysmoke/chat_nudge.py --bin tmp/smoke/suga --work tmp/smoke-nudge
