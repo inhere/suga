@@ -208,7 +208,7 @@ suga ps | suga inspect manifest                                # 运行中的 ch
 
 ```bash
 go test -race ./...     # 单元测试
-make smoke-chat         # 伪终端端到端 chat 测试，含 chat_memory（Linux/macOS，需 Python 3）；`make smoke-go` 跑 Go ptytest 场景（Linux 与 Windows ConPTY）
+make smoke-go            # 伪终端端到端 chat 测试（test/ptye2e，Linux 与 Windows ConPTY 同一套）；`make smoke-chat` 是它的别名，并构建 tmp/smoke/suga
 go run ./scripts/eval --fake --bin tmp/smoke/suga   # 任务评测，见 scripts/eval/README.md
 make build-all          # 交叉编译到 dist/
 ```

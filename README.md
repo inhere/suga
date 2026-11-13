@@ -89,7 +89,7 @@ Details: [references/chat.md](skills/suga-guide/references/chat.md) (Chinese)
 - **`!` local commands**: `!cmd` runs in the local shell without the model; `!!cmd` also attaches the result to your next message.
 - **Resume preview**: resuming shows the last model reply first; a session left `running` by a killed process is recovered.
 - **Demo**: `make demo-cast` records a 30-second terminal demo of chat (tool lines, Tab queueing, write approval, `:context`, the resume line) to `docs/demo/suga-chat.cast`, replayed with `asciinema play`; [docs/demo/README.md](docs/demo/README.md) covers the timeline, the fake model behind it and how to turn it into a GIF.
-- **Terminal smoke suites**: `make smoke-chat` runs the comprehensive Python PTY scenarios on Linux/macOS (`scripts/ptysmoke`, including steering, shell cancellation and paste). `make smoke-pty-go` runs the smaller Go `ptytest` suite on Windows ConPTY and Unix, covering approval prompt redraw, local commands, unknown colon input and bracketed paste. The Go suite is the Windows regression gate; the Python suite remains the Linux/macOS behavior oracle.
+- **Terminal smoke tests**: `make smoke-go` (alias: `make smoke-chat`) runs the chat end-to-end suite in `test/ptye2e` - the real binary in a pty (`-tags ptye2e`, `github.com/gookit/gopty/ptytest`) with a fake model, one suite for Linux and Windows ConPTY: approval prompt redraw, steering, local commands, Ctrl-C during a tool call, hooks, idle consolidation, memory questions, bracketed paste and rendering. New scenarios go there; `smoke_helpers_test.go`, `fakellm_test.go` and `vtscreen_test.go` are the helpers (pty driving, fake model, screen model) to start from.
 
 ## Configuration
 
@@ -243,7 +243,7 @@ suga ps | suga inspect manifest                                # running chats /
 
 ```bash
 go test -race ./...     # unit tests
-make smoke-chat         # PTY end-to-end chat tests incl. chat_memory (Linux/macOS, Python 3); make smoke-go runs the Go ptytest scenarios (Linux and Windows ConPTY)
+make smoke-go            # PTY end-to-end chat tests (test/ptye2e, Linux and Windows ConPTY); make smoke-chat is an alias and also builds tmp/smoke/suga
 go run ./scripts/eval --fake --bin tmp/smoke/suga   # task evals, see scripts/eval/README.md
 make build-all          # cross-compile to dist/
 ```

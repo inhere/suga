@@ -127,9 +127,8 @@ release: build-all ## Create release archives for all platforms TODO 还未启�
 	zip ../release/$(APP)-windows-amd64.zip $(APP)-windows-amd64.exe;
 	@echo "Release archives created in release/"
 
-## smoke-chat: run smoke-go, then build to tmp/smoke and run the remaining Python PTY chat smoke scripts (Linux/macOS)
-## chat_tool_ctrlc covers Ctrl-C during a foreground shell_exec; the Windows
-## twin is scripts/wincons (a Windows console cannot be driven from Python).
+## smoke-chat: alias of smoke-go (the Python PTY suite this target used to run is
+## gone); it also builds tmp/smoke/suga, the binary scripts/eval runs by default.
 # Every scenario pins its own UI language in the SUGA_HOME config it writes
 # (the English UI scenario chat_i18n_test.go pins en); auto would follow the locale.
 smoke-chat: smoke-go
@@ -143,7 +142,7 @@ demo-cast:
 	python3 -I scripts/demo/record.py --bin tmp/smoke/suga
 
 ## smoke-go: run the Go ptytest chat smoke (Linux pty and Windows ConPTY, one suite);
-## scenarios migrate here from scripts/ptysmoke batch by batch
+## every scenario of the retired Python suite (scripts/ptysmoke) lives here now
 smoke-go:
 	go test -tags ptye2e -count=1 -timeout 30m ./test/ptye2e/
 

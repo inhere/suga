@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+### 变更
+
+- 终端冒烟全部迁到 Go：`test/ptye2e`（`-tags ptye2e`，真实二进制 + 假模型，Linux 与 Windows ConPTY 同一套）承接原 Python 冒烟的全部场景，入口 `make smoke-go`（`make smoke-chat` 成为它的别名），`scripts/ptysmoke/` 与其中的 `fakellm.py`、`ptydrive.py` 删除（suga-hb8v、suga-fksc、suga-fvnm）。
+
+### 修复
+
+- 测试：Windows CI 上 `TestChatBang` 偶发等不到下一个提示符——回合结束重画提示符时行编辑器先回到 0 列再画，字节流里是 `↳ \r❯`，等提示符的正则只认 `\n❯`/`↳ ❯`；改为容忍重画的回车与 OSC 标题，并用记录到的 CI 输出固定这个匹配（suga-itjl）。
+
 ## [0.56.0] - 2026-11-12
 
 本版加入安全相关配置键保护（设计 `docs/design/2026-11-11-protected-config-keys-design.md`）与 chat hooks 多命令（设计 `docs/design/2026-11-12-multi-command-hooks-design.md`）。注意：脚本、CI、gofer exec 任务或 chat `!` 里用 `suga config set/unset` 改 protected 键会以退出码 2 被拒，请改在 suga 之外的终端执行或直接编辑 `config.yaml`。
