@@ -75,6 +75,13 @@ func TestMultiHookProcess(t *testing.T) {
 		case "wait", "ifail":
 			// Runs until the hook's bound or the caller's cancel kills it.
 			time.Sleep(30 * time.Second)
+		case "stopwait":
+			// Like wait, but only the Stop event waits: the other events (SessionEnd
+			// above all) answer at once, so a case that ends chat is not held up by
+			// the hook its own exit calls.
+			if name == "Stop" {
+				time.Sleep(30 * time.Second)
+			}
 		}
 	}
 	end()
