@@ -224,20 +224,26 @@ func screenRows(s *ptytest.Session, cols int) []string {
 	return screen.lines()
 }
 
-// waitRow polls the screen until some row matches pattern, and reports whether it
-// did within the timeout.
+// screenText is the whole screen as one string with every run of whitespace
+// dropped: a line the terminal wrapped is joined again ("用户 " + "拒绝写入记忆"
+// reads as 用户拒绝写入记忆) and the padding a ConPTY wrap may add does not count.
+func screenText(s *ptytest.Session, cols int) string {
+	return unspaced(strings.Join(screenRows(s, cols), ""))
+}
+
+// waitScreen polls the screen until pattern shows up on it - on a row, or over
+// the break of a wrapped row - and reports whether it did within the timeout.
 //
-// A line-content check (the :tasks listing, an answer line) reads the screen, not
-// the byte stream: chat's own writes can be split by a repaint of the input or
-// status row, which a terminal applies (the row still reads whole) while the same
-// bytes, ANSI stripped, no longer match the regular expression.
-func waitRow(s *ptytest.Session, cols int, pattern *regexp.Regexp, timeout time.Duration) bool {
+// A line-content check reads the screen, not the byte stream: chat's own writes
+// can be split by a repaint of the input or status row, which a terminal applies
+// (the row still reads whole) while the same bytes, ANSI stripped, no longer
+// spell the text out.
+func waitScreen(s *ptytest.Session, cols int, pattern *regexp.Regexp, timeout time.Duration) bool {
+	re := regexp.MustCompile(unspaced(pattern.String()))
 	end := time.Now().Add(timeout)
 	for {
-		for _, row := range screenRows(s, cols) {
-			if pattern.MatchString(row) {
-				return true
-			}
+		if re.MatchString(screenText(s, cols)) {
+			return true
 		}
 		if time.Now().After(end) {
 			return false
@@ -246,11 +252,12 @@ func waitRow(s *ptytest.Session, cols int, pattern *regexp.Regexp, timeout time.
 	}
 }
 
-// untilRow is until for a check on a line: it waits for the row on the screen and
-// records the verdict as the named check (the rows are logged on a miss).
-func untilRow(t *testing.T, s *ptytest.Session, cols int, name, pattern string) bool {
+// untilScreen is until for a check on the text a line carries: it waits for the
+// screen to show it and records the verdict as the named check (the rows are
+// logged on a miss).
+func untilScreen(t *testing.T, s *ptytest.Session, cols int, name, pattern string) bool {
 	t.Helper()
-	ok := waitRow(s, cols, regexp.MustCompile(pattern), 15*time.Second)
+	ok := waitScreen(s, cols, regexp.MustCompile(pattern), 15*time.Second)
 	if !ok {
 		t.Logf("%s: no row matched %q; rows %q", name, pattern, screenRows(s, cols))
 	}

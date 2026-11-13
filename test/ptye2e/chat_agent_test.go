@@ -332,7 +332,7 @@ func agentRowStep(t *testing.T, s *ptytest.Session, mark int, line, name, patter
 	promptReady(t, s, mark)
 	m := s.Mark()
 	s.SendLine(line)
-	untilRow(t, s, chatCols, name, pattern)
+	untilScreen(t, s, chatCols, name, pattern)
 	return m
 }
 
