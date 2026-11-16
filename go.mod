@@ -8,7 +8,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/gookit/cliui v0.5.3
 	github.com/gookit/color v1.6.3
-	github.com/gookit/config/v2 v2.2.9
+	github.com/gookit/config/v2 v2.2.10
 	github.com/gookit/gopty v0.1.2
 	github.com/gookit/goutil v0.8.6
 	github.com/gookit/i18n v1.3.0
