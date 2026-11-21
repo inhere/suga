@@ -55,6 +55,20 @@ func TestTerminal_pasteIsText(t *testing.T) {
 	})
 }
 
+func TestTerminal_pasteCallbackReplacesBracketedText(t *testing.T) {
+	tm, mem := newMem("> ", 0)
+	var got string
+	tm.PasteCallback = func(text string) (string, bool) {
+		got = text
+		return "[paste-file]", true
+	}
+	mem.in = []string{"\x1b[200~one\ntwo\x1b[201~", "\r"}
+	line, err := tm.ReadLine()
+	assert.NoErr(t, err)
+	assert.Eq(t, "one\ntwo", got)
+	assert.Eq(t, "[paste-file]", line)
+}
+
 // pasteMem is terminal input that hands out one chunk per Read and, like chat's
 // byte pump on a terminal that does not bracket pastes, declares a chunk that is
 // exactly a newline as text of a paste before the editor parses it

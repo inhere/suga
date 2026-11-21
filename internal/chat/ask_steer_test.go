@@ -34,6 +34,10 @@ func TestChatInputSource_AskOnSteerReadRepaintsTheNextPrompt(t *testing.T) {
 			res := h.answer(t, asked)
 			assert.NoErr(t, res.err)
 
+			// The real turn keeps the re-armed steer read until it ends. This test
+			// models that end before asking for the next prompt.
+			h.source.SetBusy(false)
+
 			// The turn is over: Run's loop asks for the prompt read like nextChatInput
 			// does. The block on screen is still the one the turn's read left there
 			// (endAsk repainted the steer prompt into it), and the fresh read owns it
@@ -57,6 +61,28 @@ func TestChatInputSource_AskOnSteerReadRepaintsTheNextPrompt(t *testing.T) {
 			assert.Eq(t, "abc", event.line)
 		})
 	}
+}
+
+func TestChatInputSource_AskOnSteerReadRearmsTheTurn(t *testing.T) {
+	h := newAskHarness(t)
+	h.source.SetSteering(true)
+	h.source.SetBusy(true)
+	_, ok := h.source.RequestSteer(steerPrompt)
+	assert.True(t, ok)
+	waitUntil(t, "steer read", func() bool { return h.kb.Reading() > 0 })
+
+	done := h.ask()
+	h.waitPrompt(t)
+	h.kb.Type("y\r")
+	res := h.answer(t, done)
+	assert.NoErr(t, res.err)
+
+	// Answering a question borrowed the steer read, so Ask must open another read
+	// before the still-running turn can receive an inserted message or Esc.
+	waitKbIdle(t, h.kb)
+	h.kb.Type("\x03")
+	event := h.nextTurnEvent(t)
+	assert.Eq(t, keyAbort, event.key)
 }
 
 func TestChatInputSource_AskTwiceInOneSteerReadShowsBothQuestions(t *testing.T) {

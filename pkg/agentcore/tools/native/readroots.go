@@ -125,6 +125,13 @@ func resolveWrite(workspace string, roots []string, arg string) (readTarget, err
 func resolveRooted(workspace string, roots []string, arg, what string) (readTarget, error) {
 	abs, err := ResolveSandboxedPath(workspace, arg)
 	if err == nil {
+		// A workspace may expose a configured read root through a directory
+		// symlink (for example .agents/skills on Windows). Keep the lexical
+		// argument for display, but perform the I/O from the authorized root so
+		// os.Root does not reject the symlink as an escape.
+		if mapped, ok := resolveSymlinkedReadRoot(roots, abs); ok {
+			return mapped, nil
+		}
 		return readTarget{base: workspace, abs: abs}, nil
 	}
 	if !filepath.IsAbs(arg) || len(roots) == 0 {
@@ -136,6 +143,22 @@ func resolveRooted(workspace string, roots []string, arg, what string) (readTarg
 		}
 	}
 	return readTarget{}, fmt.Errorf("path escape: %q is outside the workspace and %s", arg, what)
+}
+
+// resolveSymlinkedReadRoot maps an existing workspace path whose real target is
+// under an authorized read root. It intentionally only handles existing paths:
+// write tools still use resolveWrite and never inherit read-only roots.
+func resolveSymlinkedReadRoot(roots []string, abs string) (readTarget, bool) {
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return readTarget{}, false
+	}
+	for _, root := range roots {
+		if mapped, ok := absUnderWorkspace(root, real, foldPathCase); ok {
+			return readTarget{base: root, abs: mapped, outside: true}, true
+		}
+	}
+	return readTarget{}, false
 }
 
 // withAddDirs appends the session's added directories to a tool's configured

@@ -165,6 +165,12 @@ type Terminal struct {
 	// "[已附图 …]" note above the input line. Called with the terminal lock
 	// released (like WithdrawCallback), so it may write to the terminal.
 	PasteImageCallback func()
+	// PasteCallback receives a completed bracketed paste before it is inserted.
+	// handled=true replaces the pasted text (chat uses this for large pastes).
+	PasteCallback func(text string) (replacement string, handled bool)
+	// pasteBuffer holds bracketed-paste text until the end marker, so a large
+	// paste can be redirected to a file before any of it reaches the screen.
+	pasteBuffer []rune
 	// ctrlCClearsLine is set by SetCtrlCClearsLine: a Ctrl-C on a non-empty line
 	// drops what was typed and the read goes on, instead of ending it with
 	// ErrInterrupt. An empty line always ends the read.
@@ -340,10 +346,12 @@ func (t *Terminal) readLine() (line string, err error) {
 				}
 				if key == keyPasteStart {
 					t.pasteActive = true
+					t.pasteBuffer = t.pasteBuffer[:0]
 					continue
 				}
 			} else if key == keyPasteEnd {
 				t.pasteActive = false
+				t.finishPaste()
 				continue
 			}
 			line, lineOk = t.handleKey(key)
@@ -375,6 +383,24 @@ func (t *Terminal) readLine() (line string, err error) {
 		}
 
 		t.remainder = t.inBuf[:n+len(t.remainder)]
+	}
+}
+
+// finishPaste inserts a bracketed paste after giving the chat callback a
+// chance to replace it with a short file reference. t.lock is held.
+func (t *Terminal) finishPaste() {
+	text := string(t.pasteBuffer)
+	t.pasteBuffer = nil
+	if t.PasteCallback != nil {
+		t.lock.Unlock()
+		replacement, handled := t.PasteCallback(text)
+		t.lock.Lock()
+		if handled {
+			text = replacement
+		}
+	}
+	for _, r := range text {
+		t.addKeyToLine(r)
 	}
 }
 

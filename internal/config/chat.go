@@ -155,6 +155,42 @@ func ChatCodeMaxLines() (int, error) {
 	return n, nil
 }
 
+// DefaultChatPasteMaxLines is the largest number of lines kept inline when a
+// bracketed paste is inserted into chat.
+const DefaultChatPasteMaxLines = 6
+
+// ChatPasteMaxLines reads chat.paste_max_lines. A paste with more lines is
+// written to a temporary workspace file and the model receives its path.
+func ChatPasteMaxLines() (int, error) {
+	if gkconfig.Get("chat.paste_max_lines") == nil {
+		return DefaultChatPasteMaxLines, nil
+	}
+	raw := strings.TrimSpace(gkconfig.String("chat.paste_max_lines"))
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("chat.paste_max_lines must be a whole number >= 1, got %q", raw)
+	}
+	return n, nil
+}
+
+// DefaultChatPasteMaxChars is the largest number of Unicode characters kept
+// inline when a bracketed paste is inserted into chat.
+const DefaultChatPasteMaxChars = 1280
+
+// ChatPasteMaxChars reads chat.paste_max_chars. A paste over the limit is
+// written to a temporary workspace file and the model receives its path.
+func ChatPasteMaxChars() (int, error) {
+	if gkconfig.Get("chat.paste_max_chars") == nil {
+		return DefaultChatPasteMaxChars, nil
+	}
+	raw := strings.TrimSpace(gkconfig.String("chat.paste_max_chars"))
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("chat.paste_max_chars must be a whole number >= 1, got %q", raw)
+	}
+	return n, nil
+}
+
 // ChatAskOutsideDirs reports whether an interactive chat asks the person to
 // authorize a directory a file tool wants to reach outside the workspace and the
 // session's added directories (chat.ask_outside_dirs, on by default). It takes

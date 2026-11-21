@@ -12,6 +12,32 @@ import (
 
 func call(args map[string]any) api.ToolCall { return api.ToolCall{CallID: "c", Arguments: args} }
 
+func TestFileTools_WorkspaceSymlinkToReadRoot(t *testing.T) {
+	base := t.TempDir()
+	ws := filepath.Join(base, "workspace")
+	root := filepath.Join(base, "skills")
+	assert.NoErr(t, os.MkdirAll(ws, 0o755))
+	assert.NoErr(t, os.MkdirAll(root, 0o755))
+	file := filepath.Join(root, "skills", "plc-hmi-develop", "SKILL.md")
+	assert.NoErr(t, os.MkdirAll(filepath.Dir(file), 0o755))
+	assert.NoErr(t, os.WriteFile(file, []byte("plaintext hmicli cscli\n"), 0o644))
+	if err := os.Symlink(root, filepath.Join(ws, ".agents")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	ctx := context.Background()
+	read := &FileReadTool{workspace: ws, readRoots: []string{root}}
+	grep := &FileGrepTool{workspace: ws, readRoots: []string{root}}
+	res, err := read.Execute(ctx, call(map[string]any{"path": ".agents/skills/plc-hmi-develop/SKILL.md"}))
+	assert.NoErr(t, err)
+	assert.StrContains(t, res.Content, "plaintext hmicli cscli")
+	res, err = grep.Execute(ctx, call(map[string]any{
+		"path":    ".agents/skills/plc-hmi-develop/SKILL.md",
+		"pattern": "plaintext|hmicli|cscli",
+	}))
+	assert.NoErr(t, err)
+	assert.StrContains(t, res.Content, "SKILL.md:1:")
+}
 func TestResolveSandboxedPath(t *testing.T) {
 	ws := filepath.Join(t.TempDir(), "ws")
 

@@ -206,6 +206,8 @@ providers:
 #   terminal_title: true
 #   status_metrics: true
 #   steering: true
+#   paste_max_lines: 6      # larger bracketed pastes go to workspace/tmp
+#   paste_max_chars: 1280   # Unicode characters; either threshold triggers it
 #   history: true       # persist keyboard input in $SUGA_HOME/history.jsonl
 #   history_size: 1000  # maximum saved input lines
 #   # Ask before a file tool reaches outside the workspace and the added

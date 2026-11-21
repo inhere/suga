@@ -204,13 +204,13 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 	declaredNewline := t.newlineAsText
 	t.newlineAsText = false
 	if t.pasteActive {
+		// Keep bracketed-paste text off screen until the end marker, so a
+		// callback can replace a large paste before it is echoed.
 		if key == keyEnter || key == keyLF {
-			// Text of the paste, not a submit: the line stays on screen and the
-			// person's own Enter (with nothing following it) ends the read.
-			t.addKeyToLine('\n')
-			return
+			t.pasteBuffer = append(t.pasteBuffer, '\n')
+		} else {
+			t.pasteBuffer = append(t.pasteBuffer, key)
 		}
-		t.addKeyToLine(key)
 		return
 	}
 	if declaredNewline && (key == keyEnter || key == keyLF) {

@@ -166,6 +166,8 @@ var configKeyDescriptors = []ConfigKey{
 	{Pattern: "chat.diff_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_highlight", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.code_max_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
+	{Pattern: "chat.paste_max_lines", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
+	{Pattern: "chat.paste_max_chars", Type: ConfigTypeInt, Writable: true, Reader: "chat"},
 	{Pattern: "chat.ask_outside_dirs", Type: ConfigTypeSwitch, Writable: true, Reader: "chat", Protected: true},
 	{Pattern: "chat.undo_confirm", Type: ConfigTypeSwitch, Writable: true, Reader: "chat"},
 	{Pattern: "chat.notify", Type: ConfigTypeEnum, Writable: true, Reader: "chat"},

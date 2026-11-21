@@ -22,6 +22,7 @@ type ChatSettings struct {
 	HistoryScope                               string
 	CodeHighlight                              bool
 	CodeMaxLines                               int
+	PasteMaxLines, PasteMaxChars               int
 	Notify                                     string
 	NotifyAfter                                time.Duration
 	Win32InputMode                             string
@@ -45,6 +46,14 @@ func ReadChatSettings() (ChatSettings, error) {
 		return ChatSettings{}, err
 	}
 	codeMaxLines, err := ChatCodeMaxLines()
+	if err != nil {
+		return ChatSettings{}, err
+	}
+	pasteMaxLines, err := ChatPasteMaxLines()
+	if err != nil {
+		return ChatSettings{}, err
+	}
+	pasteMaxChars, err := ChatPasteMaxChars()
 	if err != nil {
 		return ChatSettings{}, err
 	}
@@ -82,6 +91,7 @@ func ReadChatSettings() (ChatSettings, error) {
 		HistorySize:   historySize, DiffLines: diffLines, Notify: notify, NotifyAfter: notifyAfter,
 		HistoryScope:  historyScope,
 		CodeHighlight: ChatCodeHighlightEnabled(), CodeMaxLines: codeMaxLines,
+		PasteMaxLines: pasteMaxLines, PasteMaxChars: pasteMaxChars,
 		Win32InputMode: win32InputMode, Theme: theme,
 		Colors: colors,
 	}, nil
@@ -265,7 +275,7 @@ func effectiveConfigValue(key string) (any, bool, error) {
 			return settings.KeepUserWordsBudget, true, nil
 		}
 		return settings.SummaryMaxTokens, true, nil
-	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.status_metrics", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme", "chat.colors":
+	case "chat.history", "chat.history_scope", "chat.markdown", "chat.spinner", "chat.highlight_input", "chat.steering", "chat.terminal_title", "chat.status_metrics", "chat.diff", "chat.ask_outside_dirs", "chat.undo_confirm", "chat.history_size", "chat.diff_lines", "chat.paste_max_lines", "chat.paste_max_chars", "chat.notify", "chat.notify_after", "chat.agent_progress", "chat.code_highlight", "chat.code_max_lines", "chat.win32_input_mode", "chat.theme", "chat.colors":
 		settings, err := ReadChatSettings()
 		if err != nil {
 			return nil, false, err
@@ -459,6 +469,10 @@ func chatSettingValue(key string, settings ChatSettings) any {
 		return settings.CodeHighlight
 	case "chat.code_max_lines":
 		return settings.CodeMaxLines
+	case "chat.paste_max_lines":
+		return settings.PasteMaxLines
+	case "chat.paste_max_chars":
+		return settings.PasteMaxChars
 	case "chat.notify":
 		return settings.Notify
 	case "chat.win32_input_mode":

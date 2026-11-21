@@ -333,7 +333,16 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		return sugahooks.Event{Name: name, SessionID: sessionID, CWD: cwd, TranscriptPath: transcriptPath(sessionID)}
 	}
 	inputSource, err := newChatInputSource(ctx, stdin, stdout)
+	var pasteMaxLines, pasteMaxChars int
 	if err == nil {
+		pasteMaxLines, err = appconfig.ChatPasteMaxLines()
+		if err != nil {
+			return err
+		}
+		pasteMaxChars, err = appconfig.ChatPasteMaxChars()
+		if err != nil {
+			return err
+		}
 		size, sizeErr := appconfig.ChatHistorySize()
 		if sizeErr != nil {
 			return sizeErr
@@ -409,6 +418,13 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 	workspace := ""
 	if opts.Dirs != nil {
 		workspace = opts.Dirs.Workspace()
+	}
+	pasteWorkspace := workspace
+	if pasteWorkspace == "" {
+		pasteWorkspace = cwd
+	}
+	if inputSource.terminal != nil {
+		inputSource.terminal.PasteCallback = newLargePasteCallback(pasteWorkspace, pasteMaxLines, pasteMaxChars)
 	}
 	// The status line counts a running background agent by its task in the manager
 	// (renderer.runningAgents): a task that ended, failed or was killed stops

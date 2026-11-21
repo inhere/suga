@@ -110,7 +110,17 @@ func (s *chatInputSource) Ask(ctx context.Context, detail, prompt string) (strin
 
 	var held *chatInputEvent
 	answerRead := false // an answer read is outstanding (its event not consumed)
-	defer func() { s.endAsk(held, answerRead, prevMode, prevClears) }()
+	answered := false   // the answer was consumed; a borrowed steer read must be re-armed
+	defer func() {
+		s.endAsk(held, answerRead, prevMode, prevClears)
+		// Ask may borrow the read that keeps chat.steering alive during the turn. That
+		// read ends after delivering the answer (serve stops for modeAsk), so restore
+		// the same generation before the model asks its next question. A failed or
+		// cancelled answer must not start a new read after the turn is ending.
+		if answered && prevMode == modeSteer && ctx.Err() == nil {
+			_ = s.request(steerPrompt, modeSteer, prevClears)
+		}
+	}()
 
 	reuse := false
 	if pending {
@@ -174,6 +184,7 @@ func (s *chatInputSource) Ask(ctx context.Context, detail, prompt string) (strin
 			s.terminal.AbortLine()
 			return "", errAskCancelled
 		}
+		answered = true
 		return event.line, nil
 	}
 }

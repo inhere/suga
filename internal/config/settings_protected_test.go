@@ -27,6 +27,8 @@ var protectedClassification = map[string]string{
 	"chat.diff_lines":       "display",
 	"chat.code_highlight":   "display",
 	"chat.code_max_lines":   "display",
+	"chat.paste_max_lines":  "display",
+	"chat.paste_max_chars":  "display",
 	"chat.undo_confirm":     "display",
 	"chat.notify":           "display",
 	"chat.notify_after":     "display",
