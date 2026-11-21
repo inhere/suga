@@ -77,6 +77,22 @@ func TestMultiLineArrowKeys(t *testing.T) {
 		tm.handleKey(keyDown) // back to the input as it was
 		assert.Eq(t, "abcd\nefgh", string(tm.line))
 	})
+
+	t.Run("soft-wrapped rows are navigable without embedded newlines", func(t *testing.T) {
+		tm := newMultiLineTerminal("abcdefghij")
+		tm.termWidth = 6
+		tm.history.Add("old")
+		assert.True(t, tm.multiLineInput())
+		tm.handleKey(keyUp)
+		assert.Eq(t, 4, tm.pos) // start of the last soft-wrapped row
+		tm.handleKey(keyUp)
+		assert.Eq(t, 0, tm.pos) // same text column on the first row
+		tm.handleKey(keyDown)
+		assert.Eq(t, 4, tm.pos)
+		tm.handleKey(keyDown)
+		assert.Eq(t, 10, tm.pos)
+		assert.Eq(t, "abcdefghij", string(tm.line))
+	})
 }
 
 // TestDeclaredNewlineInsertsNewline: the pump declares a newline as text (Alt+Enter,

@@ -86,15 +86,17 @@ func (t *Terminal) cellIndex(pos int) int {
 	return y*t.termWidth + x
 }
 
-// multiLineInput reports whether the line being edited holds a newline: Up and Down
-// then move inside the input instead of walking the history.
+// multiLineInput reports whether the line being edited occupies more than one
+// display row. Explicit newlines and automatic soft wrapping both make Up/Down
+// navigate within the input instead of walking history.
 func (t *Terminal) multiLineInput() bool {
 	for _, r := range t.line {
 		if r == '\n' {
 			return true
 		}
 	}
-	return false
+	_, y := t.posToXY(len(t.line))
+	return y > 0
 }
 
 // moveCursorVertically moves the cursor one display row up (dy -1) or down (dy +1)
