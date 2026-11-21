@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/gookit/goutil/strutil"
 )
 
 // GFM tables of chat's markdown output: a table is a header line, a delimiter
@@ -79,7 +79,7 @@ func mdTableCells(line string) []string {
 
 // mdDisplayWidth is the column count of a rendered cell, without its ANSI
 // styles: chat pads by what the terminal shows, not by the escape bytes.
-func mdDisplayWidth(s string) int { return runewidth.StringWidth(mdStripANSI(s)) }
+func mdDisplayWidth(s string) int { return strutil.TextWidth(mdStripANSI(s)) }
 
 // mdStripANSI removes the SGR sequences of this renderer, so a styled cell can
 // be measured and re-styled.

@@ -14,7 +14,6 @@ require (
 	github.com/gookit/i18n v1.3.0
 	github.com/gookit/ini/v2 v2.3.3
 	github.com/gookit/rotatefile v0.3.3
-	github.com/mattn/go-runewidth v0.0.24
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
@@ -26,7 +25,6 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
