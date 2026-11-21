@@ -120,8 +120,18 @@ func TestSpinnerOwnLine(t *testing.T) {
 		s.Stop()
 		assert.False(t, s.Running())
 		assert.Eq(t, SpinnerSpeed, clock.interval())
-		assert.Eq(t, SpinnerClear+string(SpinnerChars[0])+" 思考中… 3s"+SpinnerClear, out.String())
+		assert.Eq(t, SpinnerClear+string(SpinnerChars[0])+" 思考中… 3s · 0 tokens"+SpinnerClear, out.String())
 		assert.False(t, s.StatusRow())
+	})
+
+	t.Run("shows output tokens and formats long elapsed time", func(t *testing.T) {
+		out, clock := &syncBuf{}, newFakeClock()
+		s := NewSpinner(SpinnerConfig{Enabled: true, Out: out, Now: clock.Now, Ticks: clock.ticks})
+		s.Start()
+		clock.tick(65 * time.Second)
+		s.SetOutputTokens(123)
+		assert.Require(t, waitBuf(out, "思考中… 1m 05s · 123 tokens"))
+		s.Stop()
 	})
 
 	t.Run("disabled draws nothing and starts nothing", func(t *testing.T) {
@@ -150,9 +160,9 @@ func TestSpinnerOwnLine(t *testing.T) {
 		})
 		s.Start()
 		clock.tick(5 * time.Second)
-		assert.Require(t, waitBuf(out, "思考中… 5s>"))
+		assert.Require(t, waitBuf(out, "思考中… 5s · 0 tokens>"))
 		s.SetLabel(ToolLabel(nil, "shell_exec"))
-		assert.Require(t, waitBuf(out, "执行 shell_exec… 0s>"))
+		assert.Require(t, waitBuf(out, "执行 shell_exec… 0s · 0 tokens>"))
 		s.Stop()
 	})
 }
@@ -168,7 +178,7 @@ func TestSpinnerStatusRow(t *testing.T) {
 		for time.Now().Before(deadline) && log.last() == "" {
 			time.Sleep(time.Millisecond)
 		}
-		assert.Eq(t, string(SpinnerChars[0])+" 思考中… 1s", log.last())
+		assert.Eq(t, string(SpinnerChars[0])+" 思考中… 1s · 0 tokens", log.last())
 		s.Stop()
 		assert.Eq(t, "", log.last())
 		assert.Eq(t, "", out.String())
@@ -189,7 +199,7 @@ func TestSpinnerStatusRow(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		assert.Eq(t, n, len(log.all()))
 		s.Resume()
-		assert.StrContains(t, log.last(), "思考中… 2s")
+		assert.StrContains(t, log.last(), "思考中… 2s · 0 tokens")
 		s.Stop()
 	})
 }
@@ -200,7 +210,7 @@ func TestSpinnerTranslator(t *testing.T) {
 		s := NewSpinner(SpinnerConfig{Enabled: true, Out: out, Translator: upperTr{}, Now: clock.Now, Ticks: clock.ticks})
 		s.Start()
 		clock.tick(time.Second)
-		assert.Require(t, waitBuf(out, "T:status.spinner.thinking 1s"))
+		assert.Require(t, waitBuf(out, "T:status.spinner.thinking 1s · 0 tokens"))
 		s.Stop()
 		assert.Eq(t, "T:status.spinner.tool", ToolLabel(upperTr{}, "x"))
 	})

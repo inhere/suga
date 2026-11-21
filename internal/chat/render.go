@@ -114,10 +114,8 @@ type rendererOptions struct {
 	// was killed stops being counted whether or not its notice reached the model
 	// (nil: a background agent is not shown, nothing could tell that it ended).
 	AgentTasks func() []tasks.Info
-	// StatusMetrics adds the compact metrics line under the end-of-turn status line
-	// (config chat.status_metrics, on by default). Like Markdown it needs a
-	// colored terminal: a pipe, a redirected output or NO_COLOR keeps the end of
-	// a turn as it was.
+	// StatusMetrics adds the compact background-task line under the end-of-turn status
+	// line. Context and cache percentages are already part of the primary line.
 	StatusMetrics bool
 	// FoldThreshold returns the input size (tokens) at which the context is folded
 	// (nil or 0: the headroom item stays out of the metrics line).
@@ -161,6 +159,8 @@ type Renderer struct {
 	pending *diffview.Change
 	// budget is the latest budget snapshot received during this turn.
 	budget *personal.BudgetSnapshot
+	// streamedOutputTokens is the live output estimate shown by the waiting spinner.
+	streamedOutputTokens int
 	// budgetNoticed prevents repeated threshold reminders within one turn.
 	budgetNoticed bool
 	// agentProgress tracks the running agent tool calls of this chat by call ID
@@ -298,6 +298,7 @@ func (r *Renderer) resetLive() {
 		r.live.SetCode(r.opts.CodeHighlight, r.opts.CodeMaxLines, r.highlightWidth())
 	}
 	r.memory = nil
+	r.streamedOutputTokens = 0
 }
 
 // startThinking shows the waiting state: the model is working on its next
@@ -355,6 +356,16 @@ func (r *Renderer) answerPrefix() string { return r.paint(color.Green, "▣") + 
 // ...) leave the waiting line alone; budget observations update the final line
 // and may emit one threshold reminder per turn.
 func (r *Renderer) Handle(event personal.Event) {
+	if event.Usage != nil {
+		if n := event.Usage.Run.Usage.OutputTokens; n > r.streamedOutputTokens {
+			r.streamedOutputTokens = n
+			r.spin.SetOutputTokens(n)
+		}
+	}
+	if event.Kind == string(agentcore.StreamEventTextDelta) && event.Text != "" {
+		r.streamedOutputTokens += estimateStreamTokens(event.Text)
+		r.spin.SetOutputTokens(r.streamedOutputTokens)
+	}
 	if budget := eventBudget(event); budget != nil {
 		r.noteBudget(budget)
 	}
@@ -426,6 +437,21 @@ func (r *Renderer) Handle(event personal.Event) {
 		fmt.Fprintln(r.opts.Out, r.paint(color.Yellow, personal.SessionRecoveredNoticeWithTranslator(r.tr())))
 		r.startThinking()
 	}
+}
+
+func estimateStreamTokens(text string) int {
+	ascii, other := 0, 0
+	for _, r := range text {
+		if r < 0x80 {
+			ascii++
+		} else {
+			other++
+		}
+	}
+	if ascii > 0 {
+		ascii = (ascii + 3) / 4
+	}
+	return ascii + other
 }
 
 // eventBudget reads both locations used by the personal event stream: budget

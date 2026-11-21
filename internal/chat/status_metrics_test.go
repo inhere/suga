@@ -30,34 +30,34 @@ func TestBuildTurnMetrics(t *testing.T) {
 			Usage:           agentcore.Usage{InputTokens: 1000, CacheReadTokens: 820},
 			LastInputTokens: 4100, ContextWindow: 10000, FoldThreshold: 6500, Background: 2,
 		})
-		assert.Eq(t, "cache 82% · ctx 41% · 折叠余量 36% · 后台 2", got)
+		assert.Eq(t, "后台 2", got)
 	})
 	t.Run("english catalog", func(t *testing.T) {
 		got := metricsText(t, TurnMetrics{
 			Usage:           agentcore.Usage{InputTokens: 100, CacheReadTokens: 50},
 			LastInputTokens: 100, FoldThreshold: 200, Background: 1, Translator: enTranslator(t),
 		})
-		assert.Eq(t, "cache 50% · fold headroom 50% · bg 1", got)
+		assert.Eq(t, "bg 1", got)
 	})
 	t.Run("no usage leaves cache out", func(t *testing.T) {
 		got := metricsText(t, TurnMetrics{LastInputTokens: 500, ContextWindow: 1000})
-		assert.Eq(t, "ctx 50%", got)
+		assert.Eq(t, "", got)
 	})
 	t.Run("zero cache read is a real 0%", func(t *testing.T) {
 		got := metricsText(t, TurnMetrics{Usage: agentcore.Usage{InputTokens: 10}})
-		assert.Eq(t, "cache 0%", got)
+		assert.Eq(t, "", got)
 	})
 	t.Run("unknown window leaves ctx out", func(t *testing.T) {
 		got := metricsText(t, TurnMetrics{LastInputTokens: 500, FoldThreshold: 1000})
-		assert.Eq(t, "折叠余量 50%", got)
+		assert.Eq(t, "", got)
 	})
 	t.Run("past the threshold the headroom is 0", func(t *testing.T) {
 		got := metricsText(t, TurnMetrics{LastInputTokens: 1500, FoldThreshold: 1000})
-		assert.Eq(t, "折叠余量 0%", got)
+		assert.Eq(t, "", got)
 	})
 	t.Run("cache over input is capped", func(t *testing.T) {
 		got := metricsText(t, TurnMetrics{Usage: agentcore.Usage{InputTokens: 10, CacheReadTokens: 30}})
-		assert.Eq(t, "cache 100%", got)
+		assert.Eq(t, "", got)
 	})
 	t.Run("no data prints no line", func(t *testing.T) {
 		assert.Nil(t, BuildTurnMetrics(TurnMetrics{}))
@@ -104,22 +104,22 @@ func TestRendererStatusMetrics(t *testing.T) {
 		o.Color = true
 		got := run(o)
 		lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
-		assert.StrContains(t, lines[len(lines)-2], "in 1000 / out 5 tokens")
-		assert.StrContains(t, lines[len(lines)-1], "cache 90% · ctx 25% · 折叠余量 60% · 后台 2")
+		assert.StrContains(t, lines[len(lines)-2], "ctx 25% · cache 90%")
+		assert.StrContains(t, lines[len(lines)-1], "后台 2")
 	})
 	t.Run("switch off prints the old output", func(t *testing.T) {
 		on, off := base, base
 		on.Color, off.Color, off.StatusMetrics = true, true, false
 		got := run(off)
-		assert.StrNotContains(t, got, "cache ")
-		assert.StrNotContains(t, got, "折叠余量")
+		assert.StrContains(t, got, "cache 90%")
+		assert.StrNotContains(t, got, "后台 2")
 		assert.StrContains(t, got, "in 1000 / out 5 tokens")
 	})
 	t.Run("without color the output is byte for byte the old one", func(t *testing.T) {
 		withMetrics, without := base, base
 		without.StatusMetrics, without.AgentTasks, without.FoldThreshold = false, nil, nil
 		assert.Eq(t, run(without), run(withMetrics))
-		assert.StrNotContains(t, run(withMetrics), "cache ")
+		assert.StrContains(t, run(withMetrics), "cache 90%")
 	})
 	t.Run("a turn without data adds no line", func(t *testing.T) {
 		var out, ref bytes.Buffer

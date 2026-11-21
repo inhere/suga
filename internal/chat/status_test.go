@@ -114,7 +114,7 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 	assert.Eq(t, spinnerSpeed, clock.frameInterval())
 
 	clock.tick(time.Second)
-	assert.Require(t, waitStatusText(t, log, string(spinnerChars[0])+" 思考中… 1s"))
+	assert.Require(t, waitStatusText(t, log, string(spinnerChars[0])+" 思考中… 1s · 0 tokens"))
 
 	t.Run("a tool call names the tool, after its own line", func(t *testing.T) {
 		before := len(log.all())
@@ -126,15 +126,15 @@ func TestStatusLineFollowsTheTurn(t *testing.T) {
 
 		// The elapsed seconds of the tool count from the tool call.
 		clock.tick(2 * time.Second)
-		assert.Require(t, waitStatusContains(t, log, toolLabel(nil, "shell_exec")+" 2s"))
-		assertFrame(t, log, "执行 shell_exec…", "2s")
+		assert.Require(t, waitStatusContains(t, log, toolLabel(nil, "shell_exec")+" 2s · 0 tokens"))
+		assertFrame(t, log, "执行 shell_exec…", "2s · 0 tokens")
 	})
 
 	t.Run("the result brings the model's own wording back", func(t *testing.T) {
 		before := len(log.all())
 		r.Handle(personal.Event{Kind: "tool_result", ToolName: "shell_exec", Text: "hi"})
 		assert.Eq(t, "out:   ⎿ ok: hi\n", log.all()[before])
-		assert.StrContains(t, log.last(), zhSpinnerLabel+" 0s")
+		assert.StrContains(t, log.last(), zhSpinnerLabel+" 0s · 0 tokens")
 	})
 
 	t.Run("a sub-agent keeps the wording of a waiting turn", func(t *testing.T) {
@@ -165,7 +165,7 @@ func TestStatusLineSuspendedForAQuestion(t *testing.T) {
 	r, log, clock := newStatusRenderer(t, enabledOptions())
 	r.BeginTurn()
 	clock.tick(time.Second)
-	assert.Require(t, waitStatusText(t, log, string(spinnerChars[0])+" 思考中… 1s"))
+	assert.Require(t, waitStatusText(t, log, string(spinnerChars[0])+" 思考中… 1s · 0 tokens"))
 
 	r.suspendStatus()
 	assert.Eq(t, "", log.last())
@@ -175,9 +175,9 @@ func TestStatusLineSuspendedForAQuestion(t *testing.T) {
 	assert.Eq(t, before, len(log.all())) // the frames of the turn draw nothing
 
 	r.resumeStatus()
-	assert.Require(t, waitStatusContains(t, log, zhSpinnerLabel+" 2s"))
+	assert.Require(t, waitStatusContains(t, log, zhSpinnerLabel+" 2s · 0 tokens"))
 	clock.tick(time.Second)
-	assert.Require(t, waitStatusContains(t, log, zhSpinnerLabel+" 3s"))
+	assert.Require(t, waitStatusContains(t, log, zhSpinnerLabel+" 3s · 0 tokens"))
 
 	// Leaving chat (or any other write) ends the line for good.
 	r.endThinking()
@@ -193,7 +193,7 @@ func TestStatusLineTurnEndOrder(t *testing.T) {
 	r, log, clock := newStatusRenderer(t, enabledOptions())
 	r.BeginTurn()
 	clock.tick(time.Second)
-	assert.Require(t, waitStatusText(t, log, string(spinnerChars[0])+" 思考中… 1s"))
+	assert.Require(t, waitStatusText(t, log, string(spinnerChars[0])+" 思考中… 1s · 0 tokens"))
 
 	before := len(log.all())
 	r.Finish()

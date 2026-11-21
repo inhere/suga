@@ -10,8 +10,8 @@ package chat
 //     between the two);
 //   - end of turn: TurnStatus/BuildTurnStatus is what Renderer.Status prints
 //     after each finished turn - the memory lines of the turn, then the status
-//     line, then (colored terminal, chat.status_metrics) the metrics line of
-//     TurnMetrics/BuildTurnMetrics;
+//     line (including context/cache percentages), then an optional background-task
+//     metrics line;
 //   - exit: ExitSummary/BuildExitSummary is what chatStats.print writes to
 //     stderr on the way out, below the prompt (its own blank line first).
 //
@@ -217,6 +217,9 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 	if share := output.ContextShare(s.LastInputTokens, s.ContextWindow); share != "" {
 		parts = append(parts, share)
 	}
+	if cache := cacheShare(s.Translator, s.Usage); cache != "" {
+		parts = append(parts, cache)
+	}
 	parts = append(parts,
 		formatElapsed(s.Elapsed),
 		// When the turn ended, so the person can tell long sessions apart (:03).
@@ -254,8 +257,8 @@ func BuildTurnStatus(s TurnStatus) []LayoutLine {
 // (chat.status_metrics). Every field is "unknown" at its zero value, and an
 // unknown item stays out of the line.
 type TurnMetrics struct {
-	// Usage is this turn's model usage: CacheReadTokens over InputTokens (the
-	// input count already includes the cache) is the turn's cache hit rate.
+	// Usage is retained for callers that build metrics data; cache is rendered on
+	// the primary status line to avoid duplication.
 	Usage agentcore.Usage
 	// LastInputTokens and ContextWindow give the context share, the same
 	// "ctx 55%" figure as the status line (either unknown keeps it out).
@@ -270,33 +273,23 @@ type TurnMetrics struct {
 	Translator i18n.Translator
 }
 
-// BuildTurnMetrics builds the compact metrics line, "cache 82% · ctx 41% ·
-// 折叠余量 37% · 后台 2": gray, one line. An item without data is left out, and
-// nil comes back when no item has any, so a turn without usage prints nothing.
+// BuildTurnMetrics builds the optional compact line under the status line. It
+// now only carries background-task activity; context and cache are part of the
+// primary status line so they are not repeated.
 func BuildTurnMetrics(m TurnMetrics) []LayoutLine {
 	t := trOf(m.Translator)
-	var parts []string
-	// Input includes the cache read, so the rate cannot pass 100%; a turn that
-	// reported no input has no rate.
-	if m.Usage.InputTokens > 0 && m.Usage.CacheReadTokens >= 0 {
-		pct := min(m.Usage.CacheReadTokens*100/m.Usage.InputTokens, 100)
-		parts = append(parts, t.T("status.metrics.cache", map[string]any{"pct": pct}))
-	}
-	if _, _, share, ok := output.ContextUsage(m.LastInputTokens, m.ContextWindow); ok {
-		parts = append(parts, t.T("status.metrics.ctx", map[string]any{"pct": share}))
-	}
-	// Headroom: the part of the fold threshold the last request has not used yet.
-	if m.FoldThreshold > 0 && m.LastInputTokens > 0 {
-		pct := max(0, (m.FoldThreshold-m.LastInputTokens)*100/m.FoldThreshold)
-		parts = append(parts, t.T("status.metrics.headroom", map[string]any{"pct": pct}))
-	}
-	if m.Background > 0 {
-		parts = append(parts, t.T("status.metrics.background", map[string]any{"count": m.Background}))
-	}
-	if len(parts) == 0 {
+	if m.Background <= 0 {
 		return nil
 	}
-	return []LayoutLine{{Text: strings.Join(parts, " · "), Color: color.Gray}}
+	return []LayoutLine{{Text: t.T("status.metrics.background", map[string]any{"count": m.Background}), Color: color.Gray}}
+}
+
+func cacheShare(tr i18n.Translator, u agentcore.Usage) string {
+	if u.InputTokens <= 0 || u.CacheReadTokens <= 0 {
+		return ""
+	}
+	pct := min(u.CacheReadTokens*100/u.InputTokens, 100)
+	return trOf(tr).T("status.metrics.cache", map[string]any{"pct": pct})
 }
 
 // budgetShare returns the largest configured dimension's percentage. Showing

@@ -96,10 +96,10 @@ func TestLayoutTurnStatus(t *testing.T) {
 		memoryTurn(r)
 		out.Reset() // the memory tool's own result line is not what these cases pin
 		r.Status(personal.RunResult{
-			Usage: agentcore.Usage{InputTokens: 1200, OutputTokens: 34}, LastInputTokens: 550,
+			Usage: agentcore.Usage{InputTokens: 1200, OutputTokens: 34, CacheReadTokens: 600}, LastInputTokens: 550,
 		}, 2340*time.Millisecond, 2)
 		assert.Eq(t, "已记住：Use tabs（project）\n"+
-			"opencode/glm-5 · in 1200 / out 34 tokens · ctx 55% · 2.3s · 12:34 · 插话 2\n", out.String())
+			"opencode/glm-5 · in 1200 / out 34 tokens · ctx 55% · cache 50% · 2.3s · 12:34 · 插话 2\n", out.String())
 		assert.StrNotContains(t, out.String(), "\x1b[")
 	})
 

@@ -41,10 +41,10 @@ type StatusSetter interface{ SetStatus(s string) }
 var SpinnerChars = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
 // Spinner shows one self-updating line while chat waits for the model
-// ("⠋ 思考中… 3s", dimmed on a colored terminal), or what the turn does right now
-// while a tool runs ("⠋ 执行 shell_exec… 3s"). The model is asked for its next
-// message at every turn start and after every tool result; the line ends with the
-// model's first output or the first line chat prints itself.
+// ("⠋ 思考中… 3s · 0 tokens", dimmed on a colored terminal), or what the turn does
+// right now while a tool runs ("⠋ 执行 shell_exec… 3s · 0 tokens"). The elapsed
+// time switches to minute/hour formatting for long waits; the output token count is
+// a live estimate from streamed text until provider usage becomes available.
 //
 // Where the line goes depends on the input line: a terminal chat keeps one on
 // screen for the whole turn (chat.steering), so the frames go to the row above it
@@ -75,10 +75,11 @@ type Spinner struct {
 	// label is what the line says right now (SetLabel).
 	label string
 
-	mu      sync.Mutex // guards the state below, the frames and Stop's erase
-	active  bool       // a frame goroutine is running
-	drew    bool       // a frame was written: Stop must erase the line
-	started time.Time  // the line appeared at; the elapsed seconds count from it
+	mu           sync.Mutex // guards the state below, the frames and Stop's erase
+	active       bool       // a frame goroutine is running
+	drew         bool       // a frame was written: Stop must erase the line
+	started      time.Time  // the line appeared at; the elapsed timer counts from it
+	outputTokens int        // estimated output tokens shown beside the elapsed time
 	// suspended is set by Suspend while something else owns the input line (an
 	// approval question asks on it): no frame is drawn until Resume.
 	suspended bool
@@ -150,13 +151,33 @@ func (s *Spinner) SetLabel(label string) {
 		return
 	}
 	s.label = label
+	s.outputTokens = 0
 	s.started = s.now()
 	if s.active {
 		s.drawLocked()
 	}
 }
 
-// Suspend takes the status line off screen while another part of chat owns the
+// SetOutputTokens updates the streamed output token estimate shown beside the
+// waiting line. It keeps the elapsed timer intact and redraws an active line.
+func (s *Spinner) SetOutputTokens(tokens int) {
+	if !s.enabled {
+		return
+	}
+	if tokens < 0 {
+		tokens = 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.outputTokens == tokens {
+		return
+	}
+	s.outputTokens = tokens
+	if s.active {
+		s.drawLocked()
+	}
+}
+
 // input line (an approval question asks on it): the frames of the running turn
 // stop drawing until Resume, which shows the line again with what the turn waits
 // for. Both are no-ops without a status line.
@@ -201,7 +222,7 @@ func (s *Spinner) Start() {
 	if s.active {
 		return
 	}
-	s.active, s.drew, s.started = true, false, s.now()
+	s.active, s.drew, s.started, s.outputTokens = true, false, s.now(), 0
 	s.suspended = false
 	s.stopCh, s.done = make(chan struct{}), make(chan struct{})
 	tick, cancel := s.ticks(s.speed)
@@ -287,15 +308,27 @@ func (s *Spinner) drawLocked() {
 // line is the text of one frame: the animation character, what the turn does right
 // now (label) and the seconds it has been doing it.
 func (s *Spinner) line() string {
-	elapsed := int(s.now().Sub(s.started).Seconds())
+	elapsed := s.now().Sub(s.started)
 	if elapsed < 0 {
 		elapsed = 0
 	}
-	text := fmt.Sprintf("%s %s %ds", s.frame(nil), s.label, elapsed)
+	text := fmt.Sprintf("%s %s %s · %d tokens", s.frame(nil), s.label, formatSpinnerElapsed(elapsed), s.outputTokens)
 	if s.paint != nil {
 		text = s.paint(text)
 	}
 	return text
+}
+
+func formatSpinnerElapsed(d time.Duration) string {
+	seconds := int(d / time.Second)
+	switch {
+	case seconds < 60:
+		return fmt.Sprintf("%ds", seconds)
+	case seconds < 3600:
+		return fmt.Sprintf("%dm %02ds", seconds/60, seconds%60)
+	default:
+		return fmt.Sprintf("%dh %02dm %02ds", seconds/3600, (seconds/60)%60, seconds%60)
+	}
 }
 
 // Running reports whether the frame goroutine is alive: a stopped spinner has

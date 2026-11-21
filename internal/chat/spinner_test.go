@@ -113,10 +113,10 @@ func TestSpinnerWaitingLine(t *testing.T) {
 
 	clock.tick(3 * time.Second)
 	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
-	assert.Eq(t, spinnerClear+string(spinnerChars[0])+" 思考中… 3s", out.String())
+	assert.Eq(t, spinnerClear+string(spinnerChars[0])+" 思考中… 3s · 0 tokens", out.String())
 
 	clock.tick(time.Second)
-	assert.Require(t, waitOutput(t, out, "思考中… 4s"))
+	assert.Require(t, waitOutput(t, out, "思考中… 4s · 0 tokens"))
 	assert.Eq(t, 2, strings.Count(out.String(), zhSpinnerLabel))
 	assert.Eq(t, 2, strings.Count(out.String(), spinnerClear))
 
@@ -332,6 +332,6 @@ func TestSpinnerPaintsTheLine(t *testing.T) {
 	assert.Require(t, waitOutput(t, out, zhSpinnerLabel))
 	s.Stop()
 
-	assert.StrContains(t, out.String(), "\x1b[90m"+string(spinnerChars[0])+" 思考中… 1s\x1b[0m")
+	assert.StrContains(t, out.String(), "\x1b[90m"+string(spinnerChars[0])+" 思考中… 1s · 0 tokens\x1b[0m")
 	assert.True(t, strings.HasSuffix(out.String(), spinnerClear))
 }
