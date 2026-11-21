@@ -6,7 +6,7 @@ require (
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/dlclark/regexp2/v2 v2.13.0
 	github.com/goccy/go-yaml v1.19.2
-	github.com/gookit/cliui v0.5.3
+	github.com/gookit/cliui v0.5.4
 	github.com/gookit/color v1.6.3
 	github.com/gookit/config/v2 v2.2.10
 	github.com/gookit/gopty v0.1.2
