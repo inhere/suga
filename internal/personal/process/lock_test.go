@@ -50,6 +50,19 @@ func TestSessionLockSingleOwnerUnderContention(t *testing.T) {
 	assert.Eq(t, int32(1), maxHolders.Load())
 }
 
+func TestSessionLockErrorIncludesOwnerInfo(t *testing.T) {
+	root := filepath.Join(shortProcessRoot(t), "locks")
+	owner, err := AcquireSessionLock(root, "diagnostic", 0)
+	assert.Require(t, assert.NoErr(t, err))
+	defer owner.Close()
+
+	_, err = AcquireSessionLock(root, "diagnostic", 0)
+	assert.Require(t, assert.Err(t, err))
+	assert.True(t, errors.Is(err, ErrSessionLocked))
+	assert.StrContains(t, err.Error(), "pid=")
+	assert.StrContains(t, err.Error(), "host=")
+	assert.StrContains(t, err.Error(), "locked_at=")
+}
 func TestSessionLockReleasedWhenOwnerIsKilled(t *testing.T) {
 	root := shortProcessRoot(t)
 	lockRoot := filepath.Join(root, "locks")

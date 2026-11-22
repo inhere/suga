@@ -57,7 +57,7 @@ func AcquireSessionLockContext(ctx context.Context, root, sessionID string, wait
 			return lock, nil
 		}
 		if wait <= 0 || time.Now().After(deadline) {
-			return nil, fmt.Errorf("%w: %s", ErrSessionLocked, sessionID)
+			return nil, lockedError(path, sessionID)
 		}
 		select {
 		case <-ctx.Done():
@@ -65,6 +65,37 @@ func AcquireSessionLockContext(ctx context.Context, root, sessionID string, wait
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+// lockedError keeps ErrSessionLocked for callers while adding best-effort details from
+// the diagnostic record written by the process holding the OS lock. The record is
+// intentionally not part of lock ownership, so a missing or partial record never
+// changes the locking result.
+func lockedError(path, sessionID string) error {
+	owner, ok := readLockRecord(path)
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrSessionLocked, sessionID)
+	}
+	details := []string{fmt.Sprintf("pid=%d", owner.PID)}
+	if owner.Host != "" {
+		details = append(details, "host="+owner.Host)
+	}
+	if !owner.CreatedAt.IsZero() {
+		details = append(details, "locked_at="+owner.CreatedAt.Format(time.RFC3339))
+	}
+	return fmt.Errorf("%w: %s (owner %s)", ErrSessionLocked, sessionID, strings.Join(details, ", "))
+}
+
+func readLockRecord(path string) (lockRecord, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 || len(data) > 4096 {
+		return lockRecord{}, false
+	}
+	var record lockRecord
+	if err := json.Unmarshal(data, &record); err != nil || record.PID <= 0 {
+		return lockRecord{}, false
+	}
+	return record, true
 }
 
 // tryAcquire returns (nil, nil) when another process holds the lock.
