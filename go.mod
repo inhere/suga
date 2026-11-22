@@ -3,7 +3,7 @@ module github.com/inhere/suga
 go 1.26.0
 
 require (
-	github.com/coder/acp-go-sdk v0.13.5
+	github.com/coder/acp-go-sdk v0.20.0
 	github.com/dlclark/regexp2/v2 v2.13.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/gookit/cliui v0.5.3
