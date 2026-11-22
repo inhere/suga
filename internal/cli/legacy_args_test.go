@@ -21,6 +21,8 @@ func TestNormalizeArgs(t *testing.T) {
 		}{
 			{"resume", []string{"--resume", "x"}, []string{"chat", "--resume", "x"}},
 			{"model short", []string{"-m", "y"}, []string{"chat", "-m", "y"}},
+			{"top-level prompt", []string{"-p", "hello"}, []string{"run", "-p", "hello"}},
+			{"top-level prompt equals", []string{"--prompt=hello"}, []string{"run", "--prompt=hello"}},
 			{"resume then another word", []string{"--resume", "x", "run"},
 				[]string{"chat", "--resume", "x", "run"}},
 			{"empty", []string{}, []string{}},

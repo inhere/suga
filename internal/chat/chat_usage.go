@@ -43,7 +43,8 @@ var chatCommandSpecs = []chatCommandSpec{
 		Names:      []string{":session"},
 		SummaryKey: "cmd.summary.session",
 		UsageKey:   "cmd.usage.session",
-		Options:    []string{"-h"},
+		TakesArgs:  true,
+		Options:    []string{"--pin", "-h"},
 	},
 	{
 		Names:      []string{":compact"},
@@ -348,6 +349,9 @@ func commandUsageReply(tr i18n.Translator, line string, dirsAvailable bool) stri
 		return tr.T(spec.UsageKey)
 	}
 	if arg != "" && !spec.TakesArgs {
+		return tr.T("cmd.unknown.arg.usage", map[string]any{"arg": arg, "usage": tr.T(spec.UsageKey)})
+	}
+	if name == ":session" && !sessionCommandArgsValid(arg) {
 		return tr.T("cmd.unknown.arg.usage", map[string]any{"arg": arg, "usage": tr.T(spec.UsageKey)})
 	}
 	return ""

@@ -97,6 +97,10 @@ func NormalizeArgs(args []string) []string {
 	if len(args) == 0 {
 		return args
 	}
+	// A top-level prompt is a one-shot run, not a chat option.
+	if isTopLevelPrompt(args[0]) {
+		return append([]string{"run"}, args...)
+	}
 	// No subcommand: an option in front is a chat option (design D6).
 	if strings.HasPrefix(args[0], "-") && !rootOnlyFlags[args[0]] {
 		return append([]string{"chat"}, args...)
@@ -110,6 +114,10 @@ func NormalizeArgs(args []string) []string {
 		return append(append([]string{}, moved...), args[1:]...)
 	}
 	return args
+}
+
+func isTopLevelPrompt(arg string) bool {
+	return arg == "-p" || arg == "--prompt" || strings.HasPrefix(arg, "-p=") || strings.HasPrefix(arg, "--prompt=")
 }
 
 // RunArgs runs the command tree with args. A pre-v0.36 top-level command form

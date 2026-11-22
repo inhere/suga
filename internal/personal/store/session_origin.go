@@ -18,6 +18,8 @@ const (
 	// MetaPinned marks a session that an embedding host still references. GC
 	// treats a JSON boolean true as a keep-forever marker until it is cleared.
 	MetaPinned = "pinned"
+	// MetaPin is an optional human-chosen label for a pinned session.
+	MetaPin = "pin"
 	// MetaUsedInteractively marks a session created by a non-interactive entry
 	// point that a chat continued afterwards: from then on it counts as
 	// interactive.
@@ -59,4 +61,10 @@ func InteractiveSession(sess Session) bool {
 func PinnedSession(sess Session) bool {
 	pinned, _ := sess.Meta[MetaPinned].(bool)
 	return pinned
+}
+
+// SessionPin returns the optional human-chosen label of a pinned session.
+func SessionPin(sess Session) string {
+	pin, _ := sess.Meta[MetaPin].(string)
+	return pin
 }

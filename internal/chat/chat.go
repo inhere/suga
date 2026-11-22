@@ -657,8 +657,8 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		case line == ":quit", line == ":exit":
 			// Both spellings leave chat; :exit is the familiar one from other REPLs.
 			return nil
-		case line == ":session":
-			fmt.Fprintln(inputSource, sessionLine(sessionID, sessionName, state.tr()))
+		case isSessionCommand(line):
+			state.runSessionCommand(line)
 			continue
 		case line == ":compact":
 			// Compress the session context now; token figures are estimates.

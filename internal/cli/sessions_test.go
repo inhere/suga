@@ -106,12 +106,29 @@ func TestSessionsCommand(t *testing.T) {
 		assert.NotEmpty(t, full)
 		assert.Eq(t, full, aliased)
 	})
+	t.Run("pin filter and label", func(t *testing.T) {
+		_, _, err := runCLIAll(t, ctx, "session", "pin", "s02", "favorite")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, []string{"s02"}, listed(t, ctx, "--pin"))
+		out, _, err := runCLIAll(t, ctx, "session", "list", "--json", "--pin")
+		assert.Require(t, assert.NoErr(t, err))
+		var rows []sessionRow
+		assert.Require(t, assert.NoErr(t, json.Unmarshal([]byte(out), &rows)))
+		assert.Eq(t, "favorite", rows[0].Pin)
+		_, _, err = runCLIAll(t, ctx, "session", "unpin", "s02")
+		assert.NoError(t, err)
+		assert.Eq(t, []string{}, listed(t, ctx, "--pin"))
+	})
 	t.Run("time range", func(t *testing.T) {
 		assert.Eq(t, 2, len(listed(t, ctx, "--since", "3h")))
 		assert.Eq(t, 3, len(listed(t, ctx, "--since", "3h", "--all")))
 		assert.Eq(t, 1, len(listed(t, ctx, "--until", "10h")))
 		_, err := runCLI(t, ctx, "session", "list", "--since", "soon")
 		assert.ErrMsgContains(t, err, "want 12h, 7d or a date")
+	})
+	t.Run("multiple keywords and exclusions", func(t *testing.T) {
+		assert.Eq(t, []string{"s05"}, listed(t, ctx, "--all", "flaky", "ping"))
+		assert.Eq(t, []string{}, listed(t, ctx, "--all", "flaky", "!ping"))
 	})
 	t.Run("keywords in the fields or the conversation", func(t *testing.T) {
 		// s03 lives in /work/b: --all reaches it, the default scope does not.

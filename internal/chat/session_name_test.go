@@ -91,12 +91,16 @@ func TestChatShowsAndRegistersStoredShortName(t *testing.T) {
 	assert.Eq(t, "ws-k7", record.Name)
 	assert.Eq(t, model.ID, record.SessionID)
 
-	_, err = io.WriteString(writer, ":session\n:quit\n")
+	_, err = io.WriteString(writer, ":session\n:session --pin favorite\n:session\n:quit\n")
 	assert.NoErr(t, err)
 	assert.NoErr(t, writer.Close())
 	assert.NoErr(t, <-done)
 	assert.StrContains(t, stdout.String(), "Suga chat · 会话 ws-k7\n")
 	assert.StrContains(t, stdout.String(), "session id: "+model.ID+" · 会话 ws-k7")
+	pinned, err := repo.GetSession(ctx, model.ID)
+	assert.Require(t, assert.NoError(t, err))
+	assert.True(t, store.PinnedSession(pinned))
+	assert.Eq(t, "favorite", store.SessionPin(pinned))
 	// The exit summary names the session next to the resume command.
 	assert.StrContains(t, stderr.String(), "会话 ws-k7 · 续接：suga chat --resume "+model.ID+"\n")
 }

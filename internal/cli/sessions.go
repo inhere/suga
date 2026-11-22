@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,8 @@ type sessionsOptions struct {
 	// origin keeps only the sessions of one entry point (chat, run, acp or agent);
 	// "all" lists every origin.
 	origin string
+	// pin keeps only sessions explicitly marked as pinned.
+	pin bool
 }
 
 // newSessionListCommand builds `suga session list` (alias `ls`): the session
@@ -60,6 +63,7 @@ func newSessionListCommand(ctx context.Context, stdout, stderr io.Writer) *capp.
 	cmd.BoolVar(&opts.asJSON, "json", false, "write a JSON array")
 	cmd.BoolVar(&opts.agents, "agents", false, "list sub-agent sessions too (each names its parent session)")
 	cmd.StringVar(&opts.origin, "origin", "", "only sessions this entry point created: chat, run, acp or agent; 'all' lists every origin")
+	cmd.BoolVar(&opts.pin, "pin", false, "only pinned sessions")
 	cmd.AddArg("keywords", "keywords, like --query", false, nil, true)
 	return cmd
 }
@@ -77,6 +81,9 @@ type sessionRow struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	// Match is a snippet of the conversation when the keyword matched there.
 	Match string `json:"match,omitempty"`
+	// Pin is the optional human-chosen label of a pinned session.
+	Pin    string `json:"pin,omitempty"`
+	Pinned bool   `json:"pinned,omitempty"`
 	// Parent is the session that started this sub-agent session (--agents).
 	Parent string `json:"parent,omitempty"`
 	// Origin is the entry point that created the session (meta.origin); empty
@@ -123,11 +130,12 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		return err
 	}
 	// Keywords match the session's own fields, or its conversation (the
-	// ledger index; the first snippet is shown).
-	terms := strings.Fields(strings.ToLower(opts.query))
+	// ledger index; the first snippet is shown). A leading ! excludes a term.
+	includeTerms, excludeTerms := sessionQueryTerms(opts.query)
+	includeQuery := strings.Join(includeTerms, " ")
 	snippets := map[string]string{}
-	if len(terms) > 0 {
-		hits, err := repo.SearchEntries(ctx, store.EntrySearch{Query: opts.query, Limit: 100, IncludeAgents: opts.agents})
+	if len(includeTerms) > 0 {
+		hits, err := repo.SearchEntries(ctx, store.EntrySearch{Query: includeQuery, Limit: 100, IncludeAgents: opts.agents})
 		if err != nil {
 			return err
 		}
@@ -137,6 +145,17 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 			}
 		}
 	}
+	excluded := map[string]bool{}
+	for _, term := range excludeTerms {
+		hits, err := repo.SearchEntries(ctx, store.EntrySearch{Query: term, Limit: 100, IncludeAgents: opts.agents})
+		if err != nil {
+			return err
+		}
+		for _, h := range hits {
+			excluded[h.SessionID] = true
+		}
+	}
+	terms := includeTerms
 	var rows []sessionRow
 	// inScope reports whether a session falls into the directory scope of this
 	// call (the current directory by default, a path prefix or everything).
@@ -177,14 +196,18 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		if opts.origin != "" && opts.origin != "all" && origin != opts.origin {
 			continue
 		}
+		if opts.pin && !store.PinnedSession(s) {
+			continue
+		}
 		// Older sessions stored the whole first prompt as the title.
-		row := sessionRow{ID: s.ID, Title: personal.SessionTitle(s.Title), Cwd: s.Cwd, Status: s.Status, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Origin: origin}
+		pinned := store.PinnedSession(s)
+		row := sessionRow{ID: s.ID, Title: personal.SessionTitle(s.Title), Cwd: s.Cwd, Status: s.Status, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Origin: origin, Pin: store.SessionPin(s), Pinned: pinned}
 		row.Provider, _ = s.Meta["provider"].(string)
 		row.Model, _ = s.Meta["model"].(string)
 		row.SugaVersion, _ = s.Meta["suga_version"].(string)
 		row.Parent = store.ParentSession(s)
 		if len(terms) > 0 {
-			own := strings.ToLower(strings.Join([]string{s.ID, s.Title, s.Cwd, row.Provider, row.Model}, " "))
+			own := strings.ToLower(strings.Join([]string{s.ID, s.Title, s.Cwd, row.Provider, row.Model, row.Pin}, " "))
 			matched := true
 			for _, t := range terms {
 				matched = matched && strings.Contains(own, t)
@@ -193,6 +216,19 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 				row.Match, matched = snippet, true
 			}
 			if !matched {
+				continue
+			}
+		}
+		if len(excludeTerms) > 0 {
+			own := strings.ToLower(strings.Join([]string{s.ID, s.Title, s.Cwd, row.Provider, row.Model, row.Pin}, " "))
+			excludedOwn := false
+			for _, term := range excludeTerms {
+				if strings.Contains(own, term) {
+					excludedOwn = true
+					break
+				}
+			}
+			if excluded[s.ID] || excludedOwn {
 				continue
 			}
 		}
@@ -214,6 +250,68 @@ func runSessions(ctx context.Context, out, errOut io.Writer, opts sessionsOption
 		return nil
 	}
 	return writeSessionRows(out, rows, total, here, sameDirScope)
+}
+
+// newSessionPinCommand builds `suga session pin SID [PIN]`.
+func newSessionPinCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+	cmd := capp.NewCmd("pin", "Pin a session so it can be listed with --pin", func(c *capp.Cmd) error {
+		id := strings.TrimSpace(c.Arg("session").String())
+		if id == "" {
+			return errors.New("session pin: a session id is required")
+		}
+		patch := map[string]any{store.MetaPinned: true}
+		if pin := strings.TrimSpace(c.Arg("pin").String()); pin != "" {
+			patch[store.MetaPin] = pin
+		}
+		repo, err := openCoreStore()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+		if err := repo.PatchSessionMeta(ctx, id, patch); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(stdout, "pinned session %s\n", id)
+		return err
+	})
+	cmd.SetOutput(stderr)
+	cmd.AddArg("session", "session id", true)
+	cmd.AddArg("pin", "optional pin label", false)
+	return cmd
+}
+
+// newSessionUnpinCommand builds `suga session unpin SID`.
+func newSessionUnpinCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
+	cmd := capp.NewCmd("unpin", "Remove a session pin", func(c *capp.Cmd) error {
+		id := strings.TrimSpace(c.Arg("session").String())
+		if id == "" {
+			return errors.New("session unpin: a session id is required")
+		}
+		repo, err := openCoreStore()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+		if err := repo.PatchSessionMeta(ctx, id, map[string]any{store.MetaPinned: nil, store.MetaPin: nil}); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(stdout, "unpinned session %s\n", id)
+		return err
+	})
+	cmd.SetOutput(stderr)
+	cmd.AddArg("session", "session id", true)
+	return cmd
+}
+
+func sessionQueryTerms(query string) (include, exclude []string) {
+	for _, term := range strings.Fields(strings.ToLower(query)) {
+		if strings.HasPrefix(term, "!") && len(term) > 1 {
+			exclude = append(exclude, strings.TrimPrefix(term, "!"))
+			continue
+		}
+		include = append(include, term)
+	}
+	return include, exclude
 }
 
 // emptyScopeHint is the stderr line of an empty result (design 2026-10-20):
@@ -243,7 +341,7 @@ func writeSessionRows(out io.Writer, rows []sessionRow, total int, here string, 
 		fmt.Fprintln(out, cliText(tr, "cli.sessions.header", map[string]any{"cwd": here}))
 	}
 	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "UPDATED\tID\tMODEL\tSUGA\tTITLE\tDIRECTORY")
+	fmt.Fprintln(tw, "UPDATED\tID\tPIN\tMODEL\tSUGA\tTITLE\tDIRECTORY")
 	for _, r := range rows {
 		model := r.Model
 		if r.Provider != "" {
@@ -253,10 +351,10 @@ func writeSessionRows(out io.Writer, rows []sessionRow, total int, here string, 
 		if r.Parent != "" { // a sub-agent session (--agents) names its parent
 			title = "[agent of " + r.Parent + "] " + title
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.UpdatedAt.Local().Format("01-02 15:04"), r.ID,
-			orDash(model), orDash(r.SugaVersion), orDash(title), orDash(shortDir(r.Cwd)))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.UpdatedAt.Local().Format("01-02 15:04"), r.ID,
+			orDash(r.Pin), orDash(model), orDash(r.SugaVersion), orDash(title), orDash(shortDir(r.Cwd)))
 		if r.Match != "" {
-			fmt.Fprintf(tw, "\t  ↳ %s\t\t\t\t\n", clip(oneLine(r.Match), 100))
+			fmt.Fprintf(tw, "\t  ↳ %s\t\t\t\t\t\n", clip(oneLine(r.Match), 100))
 		}
 	}
 	if err := tw.Flush(); err != nil {

@@ -20,6 +20,7 @@ import (
 // internal/config so other callers use the same safety rules.
 func newConfigCommand(stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
 	config := capp.NewCmd("config", "Read and maintain suga configuration")
+	config.Aliases = []string{"cfg"}
 	config.LongHelp = `Configuration commands do not modify environment variables.
 	Use "suga config path" to see the active home, config, and env paths.`
 	config.SetOutput(stderr)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/inhere/suga/internal/i18n"
 	"github.com/inhere/suga/internal/output/termtext"
+	"github.com/inhere/suga/internal/personal/store"
 	"github.com/inhere/suga/pkg/agentcore"
 	"github.com/inhere/suga/pkg/agentcore/tasks"
 )
@@ -312,6 +313,47 @@ func displayThinking(tr i18n.Translator, level string) string {
 		return tr.T("cmd.model.thinking.default")
 	}
 	return level
+}
+
+// sessionPinArg parses the optional pin form of :session.
+func sessionPinArg(arg string) (string, bool) {
+	fields := strings.Fields(arg)
+	if len(fields) == 2 && fields[0] == "--pin" && strings.TrimSpace(fields[1]) != "" {
+		return strings.TrimSpace(fields[1]), true
+	}
+	if len(fields) == 1 && strings.HasPrefix(fields[0], "--pin=") {
+		pin := strings.TrimSpace(strings.TrimPrefix(fields[0], "--pin="))
+		return pin, pin != ""
+	}
+	return "", strings.TrimSpace(arg) == ""
+}
+
+func sessionCommandArgsValid(arg string) bool {
+	_, ok := sessionPinArg(arg)
+	return ok
+}
+
+func isSessionCommand(line string) bool {
+	return line == ":session" || strings.HasPrefix(line, ":session ")
+}
+
+// runSessionCommand shows the current session or records a human pin label.
+func (s *chatState) runSessionCommand(line string) {
+	_, arg := splitCommand(line)
+	pin, ok := sessionPinArg(arg)
+	if !ok {
+		fmt.Fprintln(s.source, commandUsageText(s.tr(), ":session"))
+		return
+	}
+	if pin == "" {
+		fmt.Fprintln(s.source, sessionLine(s.sessionID, s.sessionName, s.tr()))
+		return
+	}
+	if err := s.runner.SaveSessionMeta(s.ctx, s.sessionID, map[string]any{store.MetaPinned: true, store.MetaPin: pin}); err != nil {
+		fmt.Fprintln(s.source, formatCommandError(s.tr(), "Session", err))
+		return
+	}
+	fmt.Fprintf(s.source, "pinned session %s\n", pin)
 }
 
 // runChatCommand handles commands typed at this terminal. The caller checks injected first.

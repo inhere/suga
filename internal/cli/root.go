@@ -99,12 +99,15 @@ func newInspectCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd 
 // holds subcommands, so `suga session` alone prints its help; the leaves keep
 // their own flags, arguments and output.
 func newSessionCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *capp.Cmd {
-	session := capp.NewCmd("session", "Manage sessions: list / compact / undo")
+	session := capp.NewCmd("session", "Manage sessions: list / compact / undo / pin")
+	session.Aliases = []string{"sess"}
 	session.SetOutput(stderr)
 	session.Add(
 		newSessionListCommand(ctx, stdout, stderr),
 		newCompactCommand(ctx, stdout, stderr),
 		newUndoCommand(ctx, stdin, stdout, stderr),
+		newSessionPinCommand(ctx, stdout, stderr),
+		newSessionUnpinCommand(ctx, stdout, stderr),
 	)
 	return session
 }

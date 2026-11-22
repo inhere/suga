@@ -20,6 +20,7 @@ import (
 // which is not session data (`inspect`/`data`) and not agent runtime state.
 func newMemoryCommand(ctx context.Context, stdout, stderr io.Writer) *capp.Cmd {
 	group := capp.NewCmd("memory", "Maintain long-term memory: summaries (the index description of each entry)")
+	group.Aliases = []string{"mem"}
 	group.SetOutput(stderr)
 	group.Add(newMemorySummariesCommand(ctx, stdout, stderr))
 	group.Add(newMemoryLintCommand(ctx, stdout, stderr))
