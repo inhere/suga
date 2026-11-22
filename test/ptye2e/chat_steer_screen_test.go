@@ -32,11 +32,9 @@ const (
 	// steerStatusReply is the status scenario's answer: several lines, streamed in
 	// small chunks, so the status row can be looked at while it arrives.
 	steerStatusReply = "STEER_OK\n第二行\n第三行"
-	// steerTurnStatus is one frame of the status line (spinner.go): the animation
-	// character, what the turn waits for and the elapsed seconds. The character of
-	// a given frame is not predictable (the animation advances per frame), so any
-	// of them is accepted.
-	steerTurnStatus = `[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] (?:思考中|执行 [a-z_]+)… \d+s`
+	// The status line includes output tokens while a tool runs; the animation character
+	// advances every frame, so only the rest of the frame is matched here.
+	steerTurnStatus = `[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] (?:思考中|执行 [a-z_]+)… \d+s · \d+ tokens`
 )
 
 // steerLongReply is the screen scenario's answer as the fake model builds it, so

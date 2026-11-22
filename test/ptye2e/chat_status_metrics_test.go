@@ -8,14 +8,15 @@ import (
 	"time"
 )
 
-// TestChatStatusMetrics: after a turn that reported usage, a colored terminal
-// shows the metrics line under the status line (cache hit rate, context share,
-// folding headroom); chat.status_metrics: false and NO_COLOR keep it out.
+// TestChatStatusMetrics: after a turn that reported usage, the primary status line
+// shows cache and context metrics. chat.status_metrics only controls the optional
+// background-task line; NO_COLOR keeps the same plain status details.
 func TestChatStatusMetrics(t *testing.T) {
 	binary := buildSuga(t)
 	server := httptest.NewServer(&fakeLLM{Mode: "text", Delay: 200 * time.Millisecond, PromptTokens: 4000, CachedTokens: 3000})
 	defer server.Close()
-	// Window 16000 -> fold threshold 12800: ctx 25%, headroom 68%, cache 75%.
+	// The primary status line carries cache/context metrics; folding headroom and
+	// the optional background-task line are intentionally absent here.
 	const window = "    models:\n      m1:\n        context_window: 16000\n"
 
 	turn := func(t *testing.T, o chatOpts) (metrics bool) {
@@ -33,7 +34,7 @@ func TestChatStatusMetrics(t *testing.T) {
 			expect(t, s, `tokens · `, mark)
 		}
 		time.Sleep(300 * time.Millisecond)
-		metrics = s.Contains(`cache 75% · ctx 25% · 折叠余量 68%`, 0)
+		metrics = s.Contains(`ctx 25% · cache 75%`, 0)
 		ctrlCTwice(t, s)
 		return metrics
 	}
@@ -41,10 +42,10 @@ func TestChatStatusMetrics(t *testing.T) {
 	t.Run("colored terminal shows the line", func(t *testing.T) {
 		check(t, "metrics line", turn(t, chatOpts{Color: true}))
 	})
-	t.Run("switch off keeps it out", func(t *testing.T) {
-		check(t, "no metrics line", !turn(t, chatOpts{Color: true, Extra: "chat:\n  status_metrics: false\n"}))
+	t.Run("status_metrics switch leaves the primary line", func(t *testing.T) {
+		check(t, "primary metrics line", turn(t, chatOpts{Color: true, Extra: "chat:\n  status_metrics: false\n"}))
 	})
-	t.Run("NO_COLOR keeps it out", func(t *testing.T) {
-		check(t, "no metrics line", !turn(t, chatOpts{}))
+	t.Run("NO_COLOR keeps the plain primary line", func(t *testing.T) {
+		check(t, "plain primary metrics line", turn(t, chatOpts{}))
 	})
 }
