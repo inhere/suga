@@ -592,6 +592,13 @@ func (s *chatInputSource) request(prompt string, mode inputMode, ctrlCClears boo
 		return true
 	}
 	s.pending = true
+	if s.terminal != nil {
+		// Set the prompt before handing the request to the reader. A subsequent
+		// Request can take over a request that has been received but whose read has
+		// not started yet; in that case readLine must not restore the superseded
+		// request's prompt over the newer one.
+		s.terminal.SetPrompt(prompt)
+	}
 	s.mu.Unlock()
 	select {
 	case s.requests <- chatInputRequest{prompt: prompt}:
@@ -832,7 +839,9 @@ func (s *chatInputSource) readLine(request chatInputRequest) (string, error) {
 			return "", err
 		}
 		defer s.leaveRaw()
-		s.terminal.SetPrompt(prompt)
+		// request() installs the prompt before the request reaches the reader. Do
+		// not set it again here: a newer request may have repainted a prompt after
+		// this request was received but before its read started.
 		// What the read does with Ctrl-C on a non-empty line: the prompt and the read
 		// of a running turn drop the line (the person's own input line, so a stray key
 		// press does not throw a half-typed message away), the answer of an approval
