@@ -13,6 +13,10 @@ model: bailian/glm-5
 # this setting. Changes take effect after restarting suga.
 language: auto
 
+# Main-agent step limits. Set chat.max_steps and run.max_steps independently;
+# SUGA_CHAT_MAX_STEPS / SUGA_RUN_MAX_STEPS override them, then SUGA_MAX_STEPS
+# remains a shared fallback. Chat defaults to 1000, run defaults to 240.
+
 # Providers. openai / anthropic / deepseek are built in (default base_url and
 # the api_key env OPENAI_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY); an
 # entry with the same id overrides them field by field. Any other id needs type.
@@ -92,6 +96,9 @@ providers:
 #   max_output_bytes: 67108864
 #   wake_on_exit: true      # chat: a task notice (end, watch change) starts a turn while chat waits
 
+# run:
+#   max_steps: 240
+#
 # Job deadline (run.deadline_env): name of the env var carrying this run's
 # deadline as RFC3339. Gofer injects GOFER_JOB_DEADLINE for time-limited jobs -
 # set it to that and every model request ends with a transient time/remaining
@@ -199,6 +206,7 @@ providers:
 #                       # prompt cannot inject an escape sequence. Needs a terminal
 #                       # with colors, like markdown.
 # chat:
+#   max_steps: 1000
 #   markdown: true
 #   agent_progress: summary
 #   spinner: true

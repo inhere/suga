@@ -17,6 +17,14 @@ func configValueSource(key string) (ConfigSource, string) {
 	if raw, ok := lookupRawConfig(key); ok {
 		return sourceForRawValue(raw)
 	}
+	if key == "chat.max_steps" || key == "run.max_steps" {
+		if strings.TrimSpace(os.Getenv("SUGA_MAX_STEPS")) != "" {
+			return SourceEnv, "SUGA_MAX_STEPS"
+		}
+		if raw, ok := lookupRawConfig("max_steps"); ok {
+			return sourceForRawValue(raw)
+		}
+	}
 	if raw, ok := lookupInheritedProviderConfig(key); ok {
 		return sourceForRawValue(raw)
 	}
@@ -97,6 +105,10 @@ func directEnvOverride(key string) string {
 		return "SUGA_MODEL"
 	case "max_steps":
 		return "SUGA_MAX_STEPS"
+	case "chat.max_steps":
+		return "SUGA_CHAT_MAX_STEPS"
+	case "run.max_steps":
+		return "SUGA_RUN_MAX_STEPS"
 	case "budget.tokens":
 		return "SUGA_BUDGET_TOKENS"
 	case "budget.cost_usd":

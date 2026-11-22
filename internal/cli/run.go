@@ -291,7 +291,7 @@ func NewPersonalCommand(ctx context.Context, mode string, stdin io.Reader, stdou
 	if !isChatMode {
 		cmd.StringVar(&opts.Prompt, "prompt", "", "task prompt for run mode;;p")
 		cmd.BoolVar(&opts.Injected, "injected", false, "mark this turn's prompt as not typed by a person")
-		cmd.IntVar(&opts.MaxSteps, "max-steps", 0, "max tool steps in this turn, >= 1 (overrides SUGA_MAX_STEPS and max_steps); sub-agent agents.max_steps is unaffected")
+		cmd.IntVar(&opts.MaxSteps, "max-steps", 0, "max tool steps in this turn, >= 1 (overrides SUGA_RUN_MAX_STEPS, SUGA_MAX_STEPS and run.max_steps); sub-agent agents.max_steps is unaffected")
 		cmd.StringVar(&opts.Verify, "verify", "", "command to run after a finished turn; a failure is handed back to the model to fix (does not go through approval)")
 		cmd.IntVar(&opts.VerifyRounds, "verify-rounds", DefaultVerifyRounds, "how many fix rounds follow a failing --verify command, 1-5")
 		cmd.DurationVar(&opts.VerifyTimeout, "verify-timeout", DefaultVerifyTimeout, "timeout of one --verify command run, e.g. 10m; a timeout is a failure")

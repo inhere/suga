@@ -13,6 +13,28 @@ func TestReadMaxSteps(t *testing.T) {
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, DefaultMaxSteps, n)
 	})
+	t.Run("mode-specific config and defaults", func(t *testing.T) {
+		loadYAML(t, "chat:\n  max_steps: 1001\nrun:\n  max_steps: 17\n")
+		chat, err := ReadMaxStepsFor(0, true)
+		assert.Require(t, assert.NoError(t, err))
+		run, err := ReadMaxStepsFor(0, false)
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, 1001, chat)
+		assert.Eq(t, 17, run)
+
+		loadYAML(t, "")
+		chat, err = ReadMaxStepsFor(0, true)
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, DefaultChatMaxSteps, chat)
+	})
+	t.Run("mode-specific environment wins over shared environment", func(t *testing.T) {
+		loadYAML(t, "chat:\n  max_steps: 7\n")
+		t.Setenv("SUGA_MAX_STEPS", "8")
+		t.Setenv("SUGA_CHAT_MAX_STEPS", "9")
+		n, err := ReadMaxStepsFor(0, true)
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, 9, n)
+	})
 	t.Run("the config value", func(t *testing.T) {
 		loadYAML(t, "max_steps: 7\n")
 		n, err := ReadMaxSteps(0)

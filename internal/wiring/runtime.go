@@ -103,8 +103,8 @@ type Options struct {
 	// (write modes only); nil leaves background tasks off. The host owns it
 	// and closes it (killing its tasks) when the session or process ends.
 	Tasks *tasks.Manager
-	// MaxSteps overrides the config's max_steps for the main agent's turns
-	// (--max-steps, run only); 0 uses SUGA_MAX_STEPS, then max_steps.
+	// MaxSteps overrides the mode-specific config for the main agent's turns
+	// (--max-steps, run only); 0 uses the mode-specific environment/config.
 	MaxSteps int
 	// Budget carries raw run/chat flag overrides. Zero values defer to
 	// SUGA_BUDGET_* and budget.* settings.
@@ -445,8 +445,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Step limit of one main-agent turn: --max-steps > SUGA_MAX_STEPS > max_steps.
-	maxSteps, err := appconfig.ReadMaxSteps(opts.MaxSteps)
+	// Step limit of one main-agent turn: --max-steps > mode-specific env >
+	// SUGA_MAX_STEPS > mode-specific config > legacy max_steps.
+	maxSteps, err := appconfig.ReadMaxStepsFor(opts.MaxSteps, opts.ChatMode)
 	if err != nil {
 		return nil, err
 	}

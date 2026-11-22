@@ -44,6 +44,8 @@ var protectedClassification = map[string]string{
 	"budget.estimate_factor": "cost",
 	"budget.notice_ratio":    "cost",
 	"max_steps":              "cost",
+	"chat.max_steps":         "cost",
+	"run.max_steps":          "cost",
 	"agents.max_steps":       "cost",
 	"agents.max_tokens":      "cost",
 	"agents.timeout":         "cost",

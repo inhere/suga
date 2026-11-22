@@ -112,6 +112,8 @@ var configKeyDescriptors = []ConfigKey{
 	// unset falls back to models.compact, then the main model.
 	{Pattern: "models.judge", Type: ConfigTypeString, Writable: true, Reader: "model", Protected: true},
 	{Pattern: "max_steps", Type: ConfigTypeInt, Writable: true, Reader: "max_steps"},
+	{Pattern: "chat.max_steps", Type: ConfigTypeInt, Writable: true, Reader: "chat_max_steps"},
+	{Pattern: "run.max_steps", Type: ConfigTypeInt, Writable: true, Reader: "run_max_steps"},
 	{Pattern: "budget.tokens", Type: ConfigTypeInt, Writable: true, Reader: "budget"},
 	{Pattern: "budget.cost_usd", Type: ConfigTypeFloat, Writable: true, Reader: "budget"},
 	{Pattern: "budget.scope", Type: ConfigTypeEnum, Writable: true, Reader: "budget"},
@@ -727,6 +729,10 @@ func dispatchConfigReader(reader string) error {
 		_, err = ReadProviders()
 	case "max_steps":
 		_, err = ReadMaxSteps(0)
+	case "chat_max_steps":
+		_, err = ReadMaxStepsFor(0, true)
+	case "run_max_steps":
+		_, err = ReadMaxStepsFor(0, false)
 	case "budget":
 		_, err = ReadBudgetSettings(BudgetFlags{})
 	case "retry":

@@ -184,6 +184,12 @@ func effectiveConfigValue(key string) (any, bool, error) {
 	case "max_steps":
 		value, err := ReadMaxSteps(0)
 		return value, true, err
+	case "chat.max_steps":
+		value, err := ReadMaxStepsFor(0, true)
+		return value, true, err
+	case "run.max_steps":
+		value, err := ReadMaxStepsFor(0, false)
+		return value, true, err
 	case "gc.retention.interactive", "gc.retention.noninteractive":
 		settings, err := ReadGCRetentionSettings()
 		if err != nil {
