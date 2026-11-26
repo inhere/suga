@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+### 修复
+
+- chat：`:tasks -k` 显式终止后台 agent 任务不再被当成失败发通知——任务输出里写一行“已终止”，不唤醒注入回合（此前那条通知会立刻开一个回合，把接着输入的 `:tasks` 当插话，与 chat 里“Kill 会抑制通知”的说明不符）；超时与其他真实失败照旧通知，tasks 包新增 `Reporter.Killed()` 区分 kill 与超时（两者都只取消 ctx）（suga-6gcy）。
+- 配置：`hooks.pre_tool_use.tools` 的空 glob 或非法 glob 报自己的键名，不再报成 `hooks.post_tool_use.tools`（两个键改为分别校验）（suga-6h67）。
+
 ## [0.56.1] - 2026-11-13
 
 本版修复管道输入下 chat 与 Stop hook 的卡死（`hooks.commands` 续跑在非终端 stdin 下因此不生效），并把终端冒烟全部迁到 Go。
