@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga 后台分身（fork） 实施计划
 
-> 状态：Draft 0.3 / 待人工计划批准；issue `suga-hao6`
+> 状态：Draft 0.3 / 已批准实施（2026-11-26）；issue `suga-hao6`
 
 ## 修订记录
 
@@ -288,3 +288,5 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 - 完成条件：T1–T9 完成标准全部满足、合并到本地 main，issue `suga-hao6` 评论附验证结果后关闭；gofer plan 的 todo 全部 done，plan 状态置 done。
 - 进入 `COMPLETE` 时写 ≤8 行完成总结（主旨、状态、自主决策、提交数与区间、耗时、剩余项），并按 plan-closure 做一次 retrospective 判定与提示（仅首次 `COMPLETE` 写入时提示一次）。
 - 剩余：发版与推送待你授权；deferred：分身白名单加 `recall`（设计 BF10）。
+
+批准记录：2026-11-26 用户原话“批准 suga 后台分身计划 0.3，按建议分配模型开始实施”。执行者：核心 T1/T2/T3/T5 用 `openai-codex/gpt-6.1-sol`，T4/T6/T7/T8 用 `opencode-go/deepseek-v4.1-flash`，T9 由监督会话执行。批准授权本地实施与合并到本地 main；push、发版仍需另行授权。

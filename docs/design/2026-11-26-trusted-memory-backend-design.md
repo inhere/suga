@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # 可信记忆后端开关 设计
 
-> 状态：Draft 0.4 / 待人工计划批准
+> 状态：Draft 0.4 / 已批准进入计划（2026-11-26）；issue `suga-7s4v`
 
 - 思考模式：RIGOROUS；核心目标：用户声明可信的记忆后端，取回内容不再触发外部来源防护。
 - scope freeze：`memory.user.trusted`（bool）与 `memory.project.trusted`（仓库根目录（gitRoot）列表）、记忆工具的外部来源判定、注册与分类表、manifest 只读 `trusted`、文档；worktree 沿用主仓库可信等其余 deferred。
@@ -137,3 +137,5 @@ shell_exec(参数含该记忆片段) → originGuard 无命中 → 照常走 too
 相对 0.2 的用户可见差异：`memory.project.trusted` 改为仓库根目录列表（D6）；写成 `true`、相对路径或空项会启动失败；未登记的仓库与 worktree 照旧询问；`suga manifest` 显示 `trusted`（D7）。
 
 批准后才进入实施计划，批准不授权实施。
+
+批准记录：2026-11-26 用户原话“批准 suga 记忆可信开关设计 0.4（接受未复核修订），开始写计划”。授权进入计划，不授权实施。
