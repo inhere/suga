@@ -1,98 +1,72 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 记忆可信开关实施计划 Spec/Executability 评审（第 1 轮）
+# suga 记忆可信开关实施计划 Spec/Executability 评审（第 2 轮）
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `452845ff`；subject `docs/plans/2026-11-26-trusted-memory-backend-plan.md`；document revision Draft 0.1
-- 修订版本: Draft 0.1（依据设计 `docs/design/2026-11-26-trusted-memory-backend-design.md` 0.4，已批准）
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `428f7d2c`；subject `docs/plans/2026-11-26-trusted-memory-backend-plan.md`；document revision Draft 0.2（上一轮 `452845ff` / Draft 0.1）
+- 修订版本: Draft 0.2
 - 评审者: Spec/Executability 轴独立评审子 agent（Claude），未参与计划编写；REPORT_ONLY
 - 日期: 2026-11-26
-- 排除项: Standards/Governance 轴（代码组织、GR107–GR110 结构合规、ledger 与仪式成本）；设计本身的决策；实施代码
+- 排除项: Standards/Governance 轴；设计决策；MF1–MF5 与 T4 安全以外的新范围（confirmation 轮，只做闭合确认）
 
 ## 输入与方法
 
-- 完整读取：review-contract payload（C0TJVugR8Kpr8ZAERo543A）、plan-contract payload（L1pSw4v7EitW46DpcPDbLQ）、`AGENTS.md`、计划（`git show 452845ff:<subject>`）与设计全文。
-- 对照代码：`internal/wiring/memory.go`、`memory_runtime.go`、`main_test.go`、`origin_guard.go`、`origin_guard_test.go`、`admit_ledger_test.go`、`taint_config_test.go`、`manifest.go`、`runtime.go`（623-630、885）；`internal/personal/taint.go`、`observe.go`、`runner.go:465-479`；`internal/config/settings_registry.go`、`settings_protected_test.go`、`protected_snapshot.go`/`_test.go`；`internal/cli/config.go`、`config_test.go`、`config_protected_test.go`、`manifest.go`、`manifest_test.go`；`pkg/agentcore/tools/native/memory.go`/`_test.go`；`pkg/agentcore/memory/types.go`、`execstore/execstore.go`、`extproc/env.go`、`call.go`；`test/ptye2e/fakellm_test.go`、`fakellm_origin_test.go`、`chat_origin_judge_test.go`、`smoke_helpers_test.go`、`chat_smoke_test.go`；`internal/i18n/catalog/zh/host.ini`；`Makefile` smoke-go；主机脚本 `tmp/xhen-p1/wt-repo.ps1`、`host-merge.ps1` 参数。
-- 方法：逐任务核对文件/符号/签名存在性、`-run` 命中、构建标签、R1–R8 可编译与失败路径、链路子用例能否由现有夹具构造、设计“验证要求”到任务的落点。未运行测试。
+- 读取：review-contract payload（C0TJVugR8Kpr8ZAERo543A）中的评审模板与轮次规则；上轮本轴报告 `docs/review/2026-11-26-trusted-memory-backend-plan/spec-review.md`；`git show 428f7d2c:<subject>` 全文与 `git diff 452845ff..428f7d2c`。
+- 对照代码：`internal/wiring/admit_ledger_test.go`（`admitServer`、`openAdmitRuntime`）、`approval_mode_test.go`（`TestTrustThroughAssembly`、`hostStubTool`）、`chat_approver_test.go:57`（`scriptedAsker`）、`runtime.go:242-336,537`（`OpenCLI`）、`origin_guard.go:25-200`、`internal/personal/taint.go`、`observe.go:43-50,369-372`、`runner.go:574,619`、`internal/config/paths.go:51-63`、`internal/wiring/memory.go:222-290`、`approval_policy.go:68-89`、`pkg/agentcore/tools/native/code_exec.go:496-502`、`docs/plans/2026-11-26-background-fork-plan.md` T9。
+- 方法：读代码推演真实回合路径与六个子用例；逐条核对 T4 主机复现在 `suga run` 下的工具注册、审批与凭据流向。未运行测试。
 
 ## 验收标准
 
-- plan-contract：任务含精确文件、动作、验证、完成标准、依赖；验证可执行且唯一。
-- review-contract：CORE_BLOCKING 仅限五类并附 necessity proof；计划评审中验证缺口只在某项核心验收完全没有验证手段时才阻断。
-- 核心验收：计划“完成定义”1–5 与设计“验证要求”。
+- MF1 闭合：真实回合路径能让 taint 置位（含回合级会话 ID），能从 `rt.repo` 读到 `tainted_at`；`origin_judge` 关闭后直接询问；①–⑥可构造。
+- MF2–MF5 修订正确、可执行。
+- T4 主机复现无凭据泄露，`approval` 放开后只执行无害命令，对照组不执行危险命令。
+- CORE_BLOCKING 仅限五类并附 necessity proof。
 
 ## 发现
 
-### MF1 [HIGH] T2 链路测试按所写方式拿不到 `tainted_at`，“不污染”与 D5 例外无法验证
+### MF1 闭合确认（上轮 CORE_BLOCKING）—— 已闭合
 
-- disposition: CORE_BLOCKING `[BUG]`
+- 真实回合路径：`rt.Runner.Run` 在回合内调用 `withObserveScope(ctx, model.ID, turnID)`（`runner.go:574,619`），同时设置 `api.WithSessionID` 与 observe scope 的 `sessionID`（`observe.go:47-50`）。`memory get` 结果带 `external=true` 时，`taintMarker.observe`（`observe.go:369-372` → `taint.go:76-98`）在会话行上写入 `tainted_at`；`originObserver` 用同一个 `SessionIDFrom(ctx)` 记录来源（`origin_guard.go:41-51`），所以下一步照抄调用能被 `Find` 命中。会话行由 Runner 创建，`rt.repo` 可读，与 `admitRows` 用 `rt.repo` 的方式相同。
+- 关掉 `origin_judge`：`judge == nil` 时跳过裁决；在 chat（`g.chat != nil`）中直接走 `confirm` 询问（`origin_guard.go:66-68,123,156-163`）。`OpenCLI(ChatMode)` 下 `chatGate` 非空，`rt.Asker` 是 `BindableAsker`（`runtime.go:278-330`），`Bind(&scriptedAsker{})` 后可按 `len(asker.questions)` 计提问数。`tools.approval: auto` 让 native 默认 Allow（`approval_policy.go:76-80`），所以②③④的唯一提问来自 originGuard。
+- 六个子用例：①⑥无外部标记，不置 taint，也不命中；②③④照旧外部，会置 taint 并提问一次（`scriptedAsker` 空答案按拒绝处理）；⑤ `taint_tools` 只影响 taint（`taint.go:59-61`），不影响 origin 记录（只看 `external`/`External`），所以“有 `tainted_at`、无提问”成立。④的 `.git` 文件目录：`gitRoot` 在该目录停止，根不等于主仓库，可构造。⑥：`selectUserBackend` 支持 exec（`memory.go:230-233`）。R6 在新写法下能让②③④失败。
+- 结论：MF1 闭合。构造细节见 MF6（不阻断）。
+
+### MF2–MF5 闭合确认
+
+- MF2：已闭合。T1 加了 `selectUserBackend` 真/假，T2 加了⑥与 manifest user。注意 exec 分支会在 `memory.go:233` 提前 return，“与后端无关”的赋值必须放在 switch 之前；⑥用 exec 后端，能抓住这个错误。
+- MF3：已闭合。屏幕判断改为 `来源工具：memory`/`执行 shell_exec？`，询问处输入 `n`，trace 取 `denial`。
+- MF4：已闭合。T4 恢复了 gofer 后端真实复现，并加了 JSON 键断言。复现脚本本身的问题见 MF7。
+- MF5：已闭合。管道用例显式替换为 false；R1 写明必败用例；字段 `MemoryID`；工作区写定（Options.Workspace 一说有误，见 MF6）；ptye2e 用 `git rev-parse --show-toplevel` 的结果登记。
+
+### MF6 [LOW] T2 链路的工作区写法里“经 `Options.Workspace`”在 `OpenCLI` 下无效，另有两处细节缺失
+
+- disposition: CORE_CORRECTIVE，user_visible_effect: false
+- 证据: T2 写“工作区为临时目录 … 经 `Options.Workspace` 或 `gkconfig.Set("workspace", …)` 设定”。`OpenCLI` 会用 `appconfig.ResolveWorkspacePath()` 覆盖 `opts.Workspace`（`runtime.go:250,311`），而它只读 `workspace` 配置或 cwd（`paths.go:55-62`）。执行者如果选了 Options.Workspace，工作区会变成测试包目录（suga 仓库），①⑥会失败。失败是显式的，不会空过。另外：⑥只写了 `memory.user.backend: exec`，缺 `memory.user.command`（`newExecStore("user", cfg.UserExec)` 需要它）；`scriptedAsker{answers: n}` 的类型是 `[]string`，提问数应取 `len(asker.questions)`。
+- 影响: 执行者要多花一轮排查；不影响验收是否成立。
+- 建议: 删掉“`Options.Workspace` 或”，只保留 `gkconfig.Set("workspace", <临时仓库>)`；⑥补上 `memory.user.command: os.Args[0]`；提问数写成 `len(asker.questions)`。
+
+### MF7 [MEDIUM] T4 主机复现在 `suga run` 下拿不到 `shell_exec`；放开后的执行边界没有写清
+
+- disposition: CORE_CORRECTIVE，user_visible_effect: false
 - 证据:
-  - 计划 T2 动作末条与验证：`TestTrustedMemoryChain` “经 `OpenCLI` …执行 `memory get` 后执行照抄正文…的 execute 调用（同 `TestExternalOriginGuardThroughAssembly` 的 stub 写法）”，五个子用例断言 `tainted_at` 有/无。
-  - stub 写法是 `rt.tools.ExecuteTool(ctx, …)`（`internal/wiring/origin_guard_test.go:65-69`），`rt.tools` 是 Runner 包装前的 registry（`internal/wiring/runtime.go:885`）。
-  - 置污染只在 Runner 内部加的 observe 层里发生（`internal/personal/runner.go:465-479` → `observe.go:367-372`），且 `taintMarker.observe` 要求 `observeScopeFrom(ctx).sessionID` 非空（`taint.go:80-84`），这个值只由 `withObserveScope` 在回合内设置；`api.WithSessionID` 不够。会话行也要先在 store 中存在，`PatchSessionMetaIfAbsent` 才能写入。
-  - 现有 wiring 测试没有一处经真实路径观察 `tainted_at`（`TestTaintConfigLists` 只测配置解析）；T3 的 ptye2e 也不断言 `tainted_at`。
-- 同类全部出现点: T2 子用例①（“无 `tainted_at`”会空过）、②③④（“有 `tainted_at`”必失败）、⑤（唯一区别断言必失败）；完成定义 1 “会话无 `tainted_at`”；可追溯性表“方案 6”“方案 7、D3、D5”两行。
-- necessity proof:
-  - core_acceptance: 完成定义 1（不污染会话）与 D5 例外（`memory.taint_tools: [memory]` 仍污染）。
-  - necessary_causal_chain: 照计划用 stub 写法实施 → 子用例②③④⑤的 `tainted_at` 断言必然失败，T2 无法达到完成标准；执行者若改为删掉或放宽这些断言，①会空过 → 可信记忆仍把会话标为已污染的实现缺陷（例如 Trusted 只关掉了 ExternalOrigin）测不出来 → 用户读完可信记忆再写记忆时仍被要求确认，D5 的用户可见结果错误却显示全绿。
-  - minimal_owner: T2 的 `internal/wiring/memory_trusted_test.go`（改测试驱动方式，不改产品代码）。
-  - deletion_alternative: FAIL（删掉 `tainted_at` 断言后，D5 及其例外再没有任何验证手段）。
-  - scope_effect: 无新增 Module、Interface、Schema、state、lifecycle、authority 或 external action。
-- 建议: T2 改为经真实回合驱动：照 `admit_ledger_test.go` 的 `admitServer`/`openAdmitRuntime` 起 httptest 假模型（OpenCLI ChatMode 加 `rt.Asker.Bind`，或 Open 加 Approver），脚本依次返回 `memory get` → 照抄正文的 `host_exec` → 结束文本，再用 `rt.Runner.Run(...)`；按 `res.SessionID` 从 `rt.repo` 读会话 meta，断言 `tainted_at`。假模型还要应答 origin judge 请求（或在该测试里关掉 `tools.origin_judge.enabled`，避免请求真实 provider）。同时把“无提问/提问一次”的断言写成按回合计数。
-
-### MF2 [MEDIUM] `memory.user.trusted` 在 wiring 层没有任何验证
-
-- disposition: CORE_CORRECTIVE，user_visible_effect: true
-- 证据: 完成定义 1 写明“`memory.user.trusted: true` 对 user 作用域同理”；T1 只对 `selectProjectBackend` 的四种 `Trusted` 写了用例，没有覆盖 `selectUserBackend` 置 `choice.Trusted = cfg.UserTrusted`；T2 的 `newMemoryRuntime` 回调里 `s.Kind == memory.ScopeUser → setup.User.Trusted` 分支没有用例；链路①–⑤和 `TestLoadManifest` 都只覆盖 project（manifest 只断言“user 未设 false”）。native 用例只验证回调为真时去掉标记，不验证 wiring 的映射。
-- 影响: user 分支映射写错（例如读成 `setup.Project.Trusted`）时测试全绿，用户设了 `memory.user.trusted: true` 却仍弹询问。
-- 建议: T1 在 `memory_test.go` 加 `selectUserBackend` 的 `Trusted` 真/假用例；T2 在链路里加 user 子用例（`memory.user.backend: exec` 加 `memory.user.trusted: true`，`memory get scope=user` → 无提问），或在 `TestLoadManifest` 加 user `trusted=true`。
-
-### MF3 [MEDIUM] T3 屏幕断言用的文本不是 chat 实际显示的询问
-
-- disposition: CORE_CORRECTIVE
-- 证据: chat 的询问来自 `host.origin.source`，显示为“⚠ 参数里有逐字复制自外部来源的文本，来源工具：memory”（`internal/i18n/catalog/zh/host.ini:15`，`origin_guard.go:188-190`）。“参数里有逐字复制自 memory 结果的文本”只是 `reason`，用在 trace 的 danger 字段和拒绝错误里（`origin_guard.go:120-121,204,214`）。
-- 同类全部出现点: T3 子用例①（不出现该文本：恒成立，空过）；②（出现该询问：在询问阶段不会出现）；R8 “子用例①失败（出现询问）”。设计“验证要求·端到端”也是同一写法，属上游文本，按代码修正即可。②还没写在询问处输入什么。
-- 影响: ②照写会失败，①的屏幕检查不起作用。真正有效的检查只剩 `origin_judge` 属性。不阻断：trace 属性仍可作为核心验证手段。
-- 建议: 照 `TestChatOriginJudge`，用 `执行 shell_exec？` 或 `来源工具：memory` 判断是否询问；②在询问处输入 `n`，trace 取 `denial` 事件；①取 `tool` 事件，断言 `origin_judge == nil`。
-
-### MF4 [LOW] 设计的两条验证要求在计划里被降级或漏掉
-
-- disposition: CORE_CORRECTIVE
-- 证据:
-  - 设计“端到端”写明“另在主机 chat 配 gofer 后端复现一次原场景”。T4 改为只看 `suga manifest` 显示 `trusted=true`，“不做真实模型调用”，但没有把这当作对已批准设计的偏离记进人工 Gate。gofer 后端路径也没有其他测试覆盖（所有用例都用 exec 后端）。
-  - 设计“manifest：JSON 与文本输出各断言一次”。T2 只在 `TestLoadManifest` 断言结构体字段，在 `TestManifestCommand` 断言文本 `trusted=`，没有断言 JSON 键 `trusted`。
-- 建议: T4 要么恢复主机 gofer 后端复现（可用真实 chat 加人工一次，或说明为何不可行），要么在“人工 Gate”中列出该偏离，请用户批准。T2 加一次 JSON 断言，例如对 `json.Marshal` 后的 manifest 断言含 `"trusted":true`。
-
-### MF5 [LOW] 验证写法的小歧义（一次列全）
-
-- disposition: CORE_CORRECTIVE
-- 证据与建议:
-  - GR110 “默认管道 stdin”：`setupConfigCLI` 会把 `configStdinIsTerminal` 强制替换为 true（`internal/cli/config_test.go:315-317`），所以管道用例必须像 `config_protected_test.go:99` 那样显式替换为 false，否则会写入成功。应在 T1 验证中写明。
-  - R1 “父目录与子目录用例失败”：`strings.HasPrefix(root, item)` 只会让父目录用例失败，子目录用例仍通过；参数顺序反过来时则相反。应改为“至少父目录用例失败”，或写明参数顺序。
-  - `memorigin` 第 0 步需要 fixture id，但 `fakeLLM` 没有对应字段。T3 写的是“一个分支与 Mode 注释一行”，应补上“新增一个字段”（仍在 `fakellm_test.go` 内）。
-  - 链路测试的工作区：`OpenCLI` 的工作区来自 `workspace` 配置或 cwd（`internal/config/paths.go:51-62`），应写明用 `gkconfig.Set("workspace", <临时仓库>)`。worktree 子用例④写明在主仓库外或内建一个只含 `.git` 文件的目录即可（`gitRoot` 在 `.git` 文件处停止，`memory.go:379-390`）。
+  - T4 配置 `tools.approval: auto` 后跑 `suga.exe run`。`tools.approval` 与 `tools.allow_write` 只在 ChatMode 下读取（`runtime.go:278-320`）；run 只有带 `--allow-write`（或 `--approval trust`）才暴露 shell 与写工具（`runtime.go:322`，`internal/cli/run.go:275`）。按计划原样执行时，没有 `shell_exec` 可调用，登记组“`shell_exec` 无 `origin_judge`、未被拒绝”必然不成立。计划的 `UNVERIFIED_REAL_ENV` 只覆盖“模型未调用 memory”，没有覆盖这种情况，执行者可能误判为产品失败，或者为了通过而改配置。
+  - 加上 `--allow-write` 后，run 的 native 默认是 Allow（`approval_policy.go:84-86`），真实模型发出的任何 `shell_exec` 都会直接执行，不会询问；登记组又跳过了 originGuard。计划写了备忘正文是“一条无害的 `echo` 命令”，但没有写：只能有这一条命令；正文不能含 `$`/`%VAR%`/`$env:` 等展开；trace 要核对实际执行的命令只有这一条；没有限制模型自行发出的其他命令。工作区虽在 `tmp/`，`shell_exec` 本身没有沙箱。
+  - 对照组：在 run 下，`g.chat == nil` 时命中就拒绝（`origin_guard.go:156-159`），照抄的命令不会执行；即使模型改写后未命中，执行的也只是同一条 echo。对照组不会执行危险命令，安全上成立。但改写会造成“未被拒绝”的假阴性，计划没有对应的判定路径。
+  - 凭据：provider 段白名单（丢弃 `headers`，`api_key` 必须是 `${VAR}`）、`.env` 只读不复制、不打印环境、结束删除 home，与 fork 计划 T9 一致，写入 `tmp/` 的文件不含明文凭据。`shell_exec` 子进程环境会经 `dropEnv(..., exportedEnv)` 过滤（`code_exec.go:497`）。未发现凭据问题。
+- 影响: 主机复现（完成定义 5 的一项）按原文无法得到有效结果；放开执行后，边界只靠提示词。核心验收仍有 T2/T3 支撑，所以不阻断。
+- 建议: T4 的 run 命令写明 `--allow-write`（并说明 `tools.approval` 在 run 下不生效，可删去）；写明备忘正文是固定的 `echo <常量文本>`，不含变量展开或管道；加 `--max-steps` 上限；断言 trace 里所有 `shell_exec` 的 `command` 都等于该 echo，否则判失败并停止；对照组若模型改写后未被拒绝，记 `UNVERIFIED_REAL_ENV: 模型改写了命令`。可选：给隔离 home 的 approval 规则文件加一条“只允许 `echo` 前缀、其余 shell deny”。
 
 ## 覆盖缺口与限制
 
-已核对并成立的项：
-- 符号与签名：`loadMemoryConfig`、`MemoryConfig`、`MemoryBackendChoice`、`selectProjectBackend`/`selectUserBackend`/`selectExplicitProjectBackend`、`gitRoot`、`newMemoryRuntime`、`MemoryToolOptions`、`MemoryTool.external`、`ManifestMemory`、`protectedClassification`、`protectedWriteAllowed`、`configStdinIsTerminal`、`ConfigTypeStringList` 都存在。`memory.Scope` 是可比较的 struct，`ScopeUser` 是 Kind 常量，T2 回调写法成立。
-- `-run` 名都能命中现有用例（`TestLoadMemoryConfig`、`TestSelectProjectBackend`、`TestMemoryExecBackend`、`TestProtectedClassification`、`TestProtectedSnapshot`、`TestConfigProtected`、`TestMemoryToolExternalReads`、`TestLoadManifest`、`TestExternalOriginGuardThroughAssembly`、`TestTaintConfigLists`、`TestManifestCommand`、`TestLayering`、`TestChatOriginJudge`、`TestChatMemory`）。新用例名由计划指定。ptye2e 命令带 `-tags ptye2e`，新文件首行带构建标签；`make smoke-go` 跑整个包，新场景自动纳入。
-- 任务顺序 T1→T2→T3→T4 成立（T2 依赖 T1 新增的 `Trusted` 与配置字段）。
-- R2、R3：`TestProtectedClassification` 的 “classification matches the Protected field” 与 “every registry key is classified” 会失败；R2 同时让 GR110 会话内拒绝失败。R4、R5、R7 可编译且对应断言会失败；R6 会让②③④失败（在 MF1 修正后）。R8 会让①的 `origin_judge` 断言失败。
-- 链路子用例构造：第三方仓库（列表只含另一个根）、父目录、worktree（`.git` 文件）都能用临时目录构造。假 exec 后端走 wiring 的 TestMain 分支可行：`memory.project.command: os.Args[0]`，`extproc` 只剔除凭据类环境变量（`extproc/env.go:34-45`），`SUGA_TEST_MEMEXEC` 能传给子进程。
-- ptye2e：`buildSuga` 的 `go build` 模式可以直接复用到 `./test/ptye2e/testdata/fakememexec`（显式路径可构建 testdata 下的包）。`MemoryExtra`、`startChatOpts`、`traceEvents`、`findEvent`、`JudgeReply` 都存在。
-- GR110 替换 `configStdinIsTerminal`：可行（包级变量，已有用例这样替换），细节见 MF5。
-- 启动比较：`TestProtectedSnapshot` 的已有子用例 “a changed key is reported by name” 用的就是列表键（`tools.read_roots`），新子用例照抄即可。
-- SR1301：鉴权（受保护键与会话内拒绝，复用现有机制）已核对；注入防护：不适用（fakememexec 只用于测试）；秘密：不适用；入参校验（`loadMemoryTrust`）已核对；资源归属：不适用。
-
-限制：未运行任何测试或反向验证，结论来自读代码。Windows 下 `t.TempDir` 短路径与 `os.Getwd` 是否一致（影响 ptye2e ①的登记匹配）没有核实，留作实施风险。
+- 未运行任何测试或反向验证，结论来自读代码。
+- 未核实 `exportedEnv` 的具体列表，以及 gofer 后端在隔离 `SUGA_HOME` 下能否找到 gofer CLI 与 tracker（主机运行时会暴露问题，有失败关闭路径）。
+- 本轮没有复核 T3 ptye2e 的细节，只核对了 MF3 的修订。
 
 ## 结论
 
-BLOCKED：MF1 是开放的 `CORE_BLOCKING`（BUG）。T2 链路测试按所写的 stub 方式拿不到 `tainted_at`，“不污染”与 D5 例外的核心验收没有可执行的验证手段。MF2–MF5 为 CORE_CORRECTIVE，其中 MF2 标 `user_visible_effect: true`。
+PASS：上轮唯一的 `CORE_BLOCKING`（MF1）已闭合，修订没有引入新的 `CORE_BLOCKING` 或矛盾。MF2–MF5 已闭合。新增 MF6、MF7，均为 CORE_CORRECTIVE（`user_visible_effect: false`），建议在实施前或执行 T2/T4 时一并改正。
 
 ## 剩余风险与后续
 
-- 修订 T2 的链路测试驱动方式（MF1）后，第 2 轮只需复核 T2，以及可追溯性表中相关的行。
-- MF2–MF5 建议在同一修订中一起改。
-- Windows 路径形式（短名、大小写）在 ptye2e 中的匹配风险，由 T3/T4 的主机 Windows 运行暴露。
+- MF7 不改的话，T4 真实复现大概率得到无效结果；改了之后执行边界才明确。
+- 两条均不标 `user_visible_effect: true`，按轮次规则不触发纠正确认轮。
