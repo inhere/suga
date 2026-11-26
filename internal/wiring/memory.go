@@ -46,6 +46,11 @@ type MemoryConfig struct {
 	UserBackend string
 	// ProjectBackend is memory.project.backend: "" (auto), files, gofer or exec.
 	ProjectBackend string
+	// UserTrusted enables trusted handling for the user memory scope.
+	UserTrusted bool
+	// ProjectTrustedRoots contains the cleaned absolute repository roots that
+	// may use trusted project memory.
+	ProjectTrustedRoots []string
 	// UserExec / ProjectExec are memory.<scope>.command/args/timeout_sec,
 	// used only when that scope's backend is exec.
 	UserExec, ProjectExec MemoryExecConfig
@@ -53,9 +58,14 @@ type MemoryConfig struct {
 	SugaHome string
 }
 
-// loadMemoryConfig reads memory.*.backend from the loaded configuration.
+// loadMemoryConfig reads memory.*.backend and the trusted-memory settings from
+// the loaded configuration.
 func loadMemoryConfig() (MemoryConfig, error) {
 	home, err := axconfig.ResolveSugaHome()
+	if err != nil {
+		return MemoryConfig{}, err
+	}
+	userTrusted, projectTrustedRoots, err := loadMemoryTrust()
 	if err != nil {
 		return MemoryConfig{}, err
 	}
@@ -68,12 +78,58 @@ func loadMemoryConfig() (MemoryConfig, error) {
 		return MemoryConfig{}, err
 	}
 	return MemoryConfig{
-		UserBackend:    normBackend(gkconfig.String("memory.user.backend")),
-		ProjectBackend: normBackend(gkconfig.String("memory.project.backend")),
-		UserExec:       userExec,
-		ProjectExec:    projectExec,
-		SugaHome:       home,
+		UserBackend:         normBackend(gkconfig.String("memory.user.backend")),
+		ProjectBackend:      normBackend(gkconfig.String("memory.project.backend")),
+		UserTrusted:         userTrusted,
+		ProjectTrustedRoots: projectTrustedRoots,
+		UserExec:            userExec,
+		ProjectExec:         projectExec,
+		SugaHome:            home,
 	}, nil
+}
+
+// loadMemoryTrust validates the two protected trust settings. Keeping this
+// validation at startup prevents a malformed value from silently selecting the
+// fail-open path.
+func loadMemoryTrust() (user bool, roots []string, err error) {
+	if raw := gkconfig.Get("memory.user.trusted"); raw != nil {
+		var ok bool
+		user, ok = raw.(bool)
+		if !ok {
+			return false, nil, fmt.Errorf("memory.user.trusted must be true or false")
+		}
+	}
+
+	raw := gkconfig.Get("memory.project.trusted")
+	if raw == nil {
+		return user, nil, nil
+	}
+	var items []any
+	switch value := raw.(type) {
+	case []string:
+		for _, item := range value {
+			items = append(items, item)
+		}
+	case []any:
+		items = value
+	default:
+		return false, nil, fmt.Errorf("memory.project.trusted must be a list of absolute repository root paths")
+	}
+	for i, item := range items {
+		value, ok := item.(string)
+		if !ok {
+			return false, nil, fmt.Errorf("memory.project.trusted must be a list of absolute repository root paths")
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return false, nil, fmt.Errorf("memory.project.trusted item %d is empty", i)
+		}
+		if !filepath.IsAbs(value) {
+			return false, nil, fmt.Errorf("memory.project.trusted item %q must be an absolute path", value)
+		}
+		roots = append(roots, filepath.Clean(value))
+	}
+	return user, roots, nil
 }
 
 // MemoryExecConfig is the external command of an exec memory backend. The
@@ -143,6 +199,7 @@ type MemoryBackendChoice struct {
 	Scope   memory.Scope
 	Backend string // files, gofer or exec
 	Reason  string // MemoryReason*
+	Trusted bool   // whether this scope's memory is exempt from external-origin marking
 	// Location is the files layout root (directory or repository root) or,
 	// for gofer, the working directory gofer runs in; for exec, the command.
 	Location string
@@ -222,7 +279,7 @@ func wrapMemoryIndex(base memory.Store) (memory.Store, *memindex.Store) {
 // selectUserBackend returns the user-scope backend: files under
 // <SUGA_HOME>/memory/user.
 func selectUserBackend(cfg MemoryConfig) (memory.Store, MemoryBackendChoice, error) {
-	choice := MemoryBackendChoice{Scope: memory.UserScope(), Backend: memoryBackendFiles, Reason: MemoryReasonDefault}
+	choice := MemoryBackendChoice{Scope: memory.UserScope(), Backend: memoryBackendFiles, Reason: MemoryReasonDefault, Trusted: cfg.UserTrusted}
 	switch cfg.UserBackend {
 	case "":
 	case memoryBackendFiles:
@@ -269,6 +326,7 @@ func selectProjectBackend(workspaceRoot string, cfg MemoryConfig) (memory.Store,
 		return nil, choice, err
 	}
 	choice.Scope = memory.ProjectScope(projectKey(root))
+	choice.Trusted = rootTrusted(root, cfg.ProjectTrustedRoots, runtime.GOOS == "windows")
 
 	hasIndex, err := isFile(filepath.Join(root, "MEMORY.md"))
 	if err != nil {
@@ -387,6 +445,26 @@ func gitRoot(dir string) (string, error) {
 			return dir, nil
 		}
 	}
+}
+
+// rootTrusted matches repository roots as whole paths. It deliberately does
+// not resolve symlinks or use a prefix match, so a parent registration cannot
+// silently trust a nested repository.
+func rootTrusted(root string, roots []string, fold bool) bool {
+	root = filepath.Clean(root)
+	for _, item := range roots {
+		item = filepath.Clean(item)
+		if fold {
+			if strings.EqualFold(root, item) {
+				return true
+			}
+			continue
+		}
+		if root == item {
+			return true
+		}
+	}
+	return false
 }
 
 // projectKeySlugLen bounds the readable part of a project key.
