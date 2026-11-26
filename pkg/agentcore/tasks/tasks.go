@@ -99,6 +99,10 @@ type Reporter interface {
 	// Label sets a named text reported with the task (Info.Labels), e.g. the
 	// session a sub-agent ran in. Unlike Progress it returns no Wait.
 	Label(name, value string)
+	// Killed reports whether the task is ending because Kill (or Close) ended
+	// it: its ctx is cancelled either way, so this is what tells a kill from
+	// the time limit (Info.Status TimedOut) or a task's own failure.
+	Killed() bool
 }
 
 // RunFunc is a function task: it writes its output to out (line by line,
@@ -553,6 +557,14 @@ func (r reporter) Count(name string, n int) {
 	}
 	r.t.info.Counters[name] = n
 	r.t.mu.Unlock()
+}
+
+// Killed: end records how before it cancels the task's ctx, so a run func that
+// sees ctx.Done reads the right answer.
+func (r reporter) Killed() bool {
+	r.t.mu.Lock()
+	defer r.t.mu.Unlock()
+	return r.t.ending == Killed
 }
 
 // List returns the session's tasks, in start order.

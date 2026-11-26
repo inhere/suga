@@ -137,7 +137,9 @@ func TestNewRejectsMalformedConfig(t *testing.T) {
 		{name: "empty program", key: "hooks.command", value: []string{" ", "x"}, want: "program name is empty"},
 		{name: "stop_args not a list", key: "hooks.stop_args", value: "--wait 5", want: "hooks.stop_args must be a list"},
 		{name: "bad post_tool_use glob", key: "hooks.post_tool_use.tools", value: []string{"[x"}, want: "hooks.post_tool_use.tools glob"},
-		{name: "empty post_tool_use glob", key: "hooks.post_tool_use.tools", value: []string{""}, want: "empty glob"},
+		{name: "empty post_tool_use glob", key: "hooks.post_tool_use.tools", value: []string{""}, want: "hooks.post_tool_use.tools contains an empty glob"},
+		{name: "bad pre_tool_use glob", key: "hooks.pre_tool_use.tools", value: []string{"[x"}, want: "hooks.pre_tool_use.tools glob"},
+		{name: "empty pre_tool_use glob", key: "hooks.pre_tool_use.tools", value: []string{""}, want: "hooks.pre_tool_use.tools contains an empty glob"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gkconfig.Reset()

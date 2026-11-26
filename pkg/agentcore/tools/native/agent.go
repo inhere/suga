@@ -192,6 +192,13 @@ func (t *AgentTool) startBackground(ctx context.Context, call api.ToolCall, req 
 			r.Label("cost_usd", strconv.FormatFloat(rep.Usage.CostUSD, 'f', -1, 64))
 			footer := agentFooter(rep)
 			if err != nil {
+				if r.Killed() {
+					// The task was ended on purpose (:tasks -k, chat exit): the report is
+					// cancelled with it, and a failure notice would wake a turn nobody
+					// asked for (its notice used to interrupt the line being typed).
+					fmt.Fprintf(out, "已终止\n%s\n", footer)
+					return 1, nil
+				}
 				fmt.Fprintf(out, "sub-agent failed: %v\n%s\n", err, footer)
 				r.Notify(fmt.Sprintf("agent %q failed: %v (%s)", req.Description, err, footer))
 				return 1, nil

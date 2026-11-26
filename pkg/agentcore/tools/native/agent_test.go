@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,16 +17,34 @@ import (
 )
 
 // fakeAgents answers every run with rep (and err); it keeps the requests.
+// block makes a run wait for its ctx to end (a task that is killed or runs into
+// its limit), answering with the signal the cancelled ctx laid down.
 type fakeAgents struct {
-	rep  AgentReport
-	err  error
-	reqs []AgentRequest
+	rep   AgentReport
+	err   error
+	block bool
+	mu    sync.Mutex
+	reqs  []AgentRequest
 }
 
 func (f *fakeAgents) Scope(context.Context) (string, string) { return "s1", "turn_1" }
-func (f *fakeAgents) RunAgent(_ context.Context, req AgentRequest) (AgentReport, error) {
+func (f *fakeAgents) RunAgent(ctx context.Context, req AgentRequest) (AgentReport, error) {
+	f.mu.Lock()
 	f.reqs = append(f.reqs, req)
+	f.mu.Unlock()
+	if f.block {
+		<-ctx.Done()
+		return AgentReport{SessionID: "sess_blocked", Stop: "cancelled"}, ctx.Err()
+	}
 	return f.rep, f.err
+}
+
+// requests returns the runs so far (the requests of a background run arrive
+// from another goroutine).
+func (f *fakeAgents) requests() []AgentRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]AgentRequest(nil), f.reqs...)
 }
 
 func TestAgentTool(t *testing.T) {
@@ -122,4 +141,72 @@ func TestAgentTool(t *testing.T) {
 		assert.Require(t, assert.Len(t, notes, 1))
 		assert.StrContains(t, notes[0].Notice, `agent "second" finished`)
 	})
+
+	// A killed task is not a failure: its notice would wake a turn nobody asked
+	// for and cut into the line being typed (issue suga-6gcy).
+	t.Run("background: a killed agent leaves no failure notice", func(t *testing.T) {
+		m := newAgentTaskManager(t, tasks.Limits{})
+		agents := &fakeAgents{block: true}
+		tool := NewAgentTool(agents)
+		tool.SetTasks(m)
+		res, err := run(tool, map[string]any{"description": "slow survey", "prompt": "survey", "background": true})
+		assert.Require(t, assert.NoErr(t, err))
+		taskID, _ := res.Metadata["task_id"].(string)
+		assert.Require(t, assert.Eq(t, "t1", taskID))
+		waitAgentRunning(t, agents, m)
+		info, err := m.Kill("s1", taskID)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, tasks.Killed, info.Status)
+		assert.Empty(t, m.TakeNotices("s1"))
+		lines, _, _, err := tasks.ReadLines(info.Path, 1, 100)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, strings.Join(lines, "\n"), "已终止")
+		assert.NotContains(t, strings.Join(lines, "\n"), "sub-agent failed")
+	})
+
+	// The time limit is not a kill, so it keeps the failure and its notice.
+	t.Run("background: a timed-out agent still reports its failure", func(t *testing.T) {
+		m := newAgentTaskManager(t, tasks.Limits{MaxDuration: 50 * time.Millisecond})
+		agents := &fakeAgents{block: true}
+		tool := NewAgentTool(agents)
+		tool.SetTasks(m)
+		_, err := run(tool, map[string]any{"description": "slow survey", "prompt": "survey", "background": true})
+		assert.Require(t, assert.NoErr(t, err))
+		var notes []tasks.Info
+		for deadline := time.Now().Add(5 * time.Second); len(notes) == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			notes = m.TakeNotices("s1")
+		}
+		assert.Require(t, assert.Len(t, notes, 1))
+		assert.StrContains(t, notes[0].Notice, `agent "slow survey" failed: context canceled`)
+		settled, err := m.Get("s1", "t1")
+		assert.Require(t, assert.NoErr(t, err))
+		assert.Eq(t, tasks.TimedOut, settled.Status)
+		lines, _, _, err := tasks.ReadLines(settled.Path, 1, 100)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, strings.Join(lines, "\n"), "sub-agent failed: context canceled")
+	})
+}
+
+// newAgentTaskManager is a manager of one temp dir's task outputs.
+func newAgentTaskManager(t *testing.T, limits tasks.Limits) *tasks.Manager {
+	t.Helper()
+	dir := t.TempDir()
+	m := tasks.NewManager(tasks.Config{Limits: limits, Output: func(sid, id string) (string, string, error) {
+		return filepath.Join(dir, id+".txt"), "out:" + sid + ":" + id, nil
+	}})
+	t.Cleanup(m.Close)
+	return m
+}
+
+// waitAgentRunning waits until the task's run func reached the sub-agent: the
+// kill then ends a task that is really running, not a queued one.
+func waitAgentRunning(t *testing.T, agents *fakeAgents, m *tasks.Manager) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		info, err := m.Get("s1", "t1")
+		if err == nil && info.Status == tasks.Running && len(agents.requests()) == 1 {
+			return
+		}
+	}
+	t.Fatal("the agent task did not start in time")
 }
