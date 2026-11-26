@@ -1,134 +1,100 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 后台分身（fork）实施计划 Spec/Executability 评审（第 1 轮）
+# suga 后台分身（fork）实施计划 Spec/Executability 评审（第 2 轮，闭合确认）
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `00c890f724f8983b531eaa120c8708e11c7c2238`；subject `docs/plans/2026-11-26-background-fork-plan.md`；document revision Draft 0.1
-- 修订版本: Draft 0.1（实施已批准设计 `docs/design/2026-11-26-background-fork-design.md` Draft 0.4）
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `806af9b2`（Draft 0.2）；上轮 `00c890f7`（Draft 0.1）；subject `docs/plans/2026-11-26-background-fork-plan.md`
+- 修订版本: Draft 0.2
 - 评审者: 独立评审子 agent（Spec/Executability 轴），未参与计划编写
 - 日期: 2026-11-26
-- 排除项: Standards/Governance 轴（另一评审者负责）；设计本身的决策；REPORT_ONLY，不修改仓库
+- 排除项: Standards/Governance 轴；设计关键流程 3（kill 不通知，用户 Q3 选 A）；REPORT_ONLY，不改仓库、不提交
 
 ## 输入与方法
 
-- 全文读取：review/plan 规范 payload（`tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`、`tmp/idev-std/d/L1pSw4v7EitW46DpcPDbLQ/payload.md`）、`AGENTS.md`、计划全文、设计全文。
-- 对照 candidate 的代码核对：`pkg/agentcore/runtime.go`（executeToolCalls / executeSingleTool / persistToolTranscript / AfterModel 时点）、`pkg/agentcore/tool_validation.go`、`pkg/agentcore/call_expander.go`、`pkg/agentcore/runtime_tools_test.go`、`pkg/agentcore/tools/native/agent.go`、`internal/wiring/subagent.go`、`internal/wiring/runtime.go`、`internal/personal/{runner.go,prefix.go,subagent.go,segment_handoff_reuse.go,compact.go}`、`internal/chat/{chat.go,steering.go}`、`internal/cli/chat.go`、`Makefile`，以及各 `-run` 正则对应的现有测试名。
-- 方法：逐任务核对文件/符号/签名是否存在与可落地；依赖顺序与共用文件；`-run` 是否命中；反向验证能否编译且会失败；设计“验证要求”到任务的覆盖。
+- 读取：review/plan 规范 payload、上轮本轴报告（PF1–PF9）、`git diff 00c890f7..806af9b2 -- docs/plans`、计划 0.2 全文。
+- 对照代码（`00c890f7..806af9b2` 只改 docs，工作区代码即基线）：`pkg/agentcore/runtime.go:221,375-431,497-657`、`tool_validation.go`、`api/provider.go:149-152`、`api/hooks.go:126-133`、`llm/observe.go`、`tools/native/agent.go:25-58,118-140,177-221`、`tasks/tasks.go:245,261-284,778`、`internal/personal/{runner.go:572-760,781-835,prefix.go:340-372,observe.go:120-200,subagent.go:20-135,segment_handoff_reuse.go:85-125,compact.go:400-415,825-845}`、`internal/wiring/runtime.go:159-200,318-326,545-560,725-811`、`internal/cli/{acp.go:68-90,chat.go:138,run.go:175-217}`、`internal/acpserver/server.go:74-83`、`internal/i18n/{i18n_test.go:134-165,catalog/zh/model.ini,catalog/zh/cmd.ini}`。
+- 实跑基线回放：`git archive 00c890f7 | tar -x -C tmp/review/suga-fork-plan/base`，写入按 T1 描述的 characterization 用例，`go test ./pkg/agentcore -run TestRuntime_Run_ToolTranscriptLeadOnFirstCall -count=1`。用例存档 `tmp/review/suga-fork-plan/r2-characterization_test.go.txt`（基线目录已删）。
 
 ## 验收标准
 
-- plan-contract：任务精确文件、动作、验证、完成标准；跨任务调用的签名；“验收声称行为等价时须含基线回放”；可追溯性。
-- review-contract：五类 CORE_BLOCKING + necessity proof；同类穷尽。
-- 用户要求：治理要轻，只报影响核心验收或安全的问题。
+- 上轮 CORE_BLOCKING（PF1、PF3、PF4、PF5）是否闭合；PF2、PF6–PF9 修订是否正确可执行；修订是否引入新的 CORE_BLOCKING 或矛盾。
+- review-contract：五类 CORE_BLOCKING + necessity proof；只报影响核心验收或安全的问题。
 
 ## 发现
 
-### PF1 [HIGH] `ExpandToolCalls(res)` 无法复现落库记录，"persistToolTranscript 改为取用它、行为不变"实现不唯一
+### 上轮发现闭合情况
+
+| 发现 | 结论 | 依据 |
+|---|---|---|
+| PF1 | 闭合 | T1 合同写定 `ExpandToolCalls` 只分配 Content/Reasoning/Metadata/批次 meta，`persistToolTranscript` 的 ToolCall 仍取 finalCall（`runtime.go:602-624`）。附注：`prepareToolCalls` 原位改 `res.ToolCalls`（`runtime.go:498`、`tool_validation.go:36-46`），tracker 若直接存 AfterModel 的指针，分身尾部拿到的是强转后的参数，不影响验收。`ValidateGenerateResult` 拒绝空 CallID（`api/provider.go:149-152`），`step-%d` 回退不影响 `ExpandToolCalls(res)` 的签名 |
+| PF2 | 闭合（有一处执行陷阱，见 PF14） | 用例名能被 `-run 'TestExpandToolCalls\|TestRuntime'` 命中；实跑：按描述写的用例在基线上通过（`--- PASS`）；反向验证①会因第二条的 `tool_call` 代理名失败 |
+| PF3 | 闭合 | `agentTool` 是 `wiring/runtime.go:551` 的局部变量，同函数可捕获后组装 `Runtime.StartFork`；`cli/chat.go:138` 组装 Options，可传入；nil → `cmd.bg.disabled` 已写 |
+| PF4 | 闭合 | killed 分支 `agent.go:200-206` 写“已终止”、不 `Notify`；`Spec.NoEndNotice: true`（`agent.go:180`）；kill 取消 ctx → `RunChild` 走 `ctx.Err()` 分支 `Stop=cancelled`（`subagent.go:106-108`）→ label `stop=cancelled`。T4 单测、T7 ③ 与完成定义 1 一致 |
+| PF5 | 部分闭合 | `fork_base`：T3 给 `ChildRequest` 加 `Meta` 并合入 `NewSessionWithMeta`（`subagent.go:79-83`），可执行，已闭合。`fork_reuse`：写入机制在代码中不存在，见 PF10 |
+| PF6 | 闭合 | 三处文案都指定了键与任务；native 文案沿用英文硬编码 |
+| PF7 | 闭合 | 可选接口 `ForkSeeder`、`SubAgents` 不变，`wiring/subagent.go:66` 的断言不受影响，T4 可单独编译 |
+| PF8 | 闭合（附注） | tracker 加 turnID/Completed，数据源明确；`turnHooks` 已有 `result.TurnID`（`runner.go:781-790`）。附注：`observeTurnEnd` 只能放在 `runner.go` 里 `runtime.Run` 返回后、`r.finish` 之前（`runner.go:748-758`），T1 文件栏只写了“turnHooks 一项”；`completed` 的判定（如 `runErr == nil && coreResult.Status == RunCompleted`）没写，不影响核心验收 |
+| PF9 | 闭合 | `TestChatCommands` 命中 `TestChatCommandsText`（`chat_commands_test.go:22`）；`TestRunningTurnPutsRewindAndForkBack`、`TestRunTurnRefusesLocalCommand`、`TestCatalogParity`、`TestLayering`、`TestSubAgent*`、`TestHandoffReuse*`、`TestAgentTool` 都存在；新名 `TestForkHeadHook`、`TestForkContextMode`、`TestForkRunner`、`TestForkSeed*`、`TestForkBg` 与现有 `TestFork*`（`:fork N`）不冲突 |
+| i18n | 一致 | `[model]` 段已有命名占位符先例（`model.ini:32-34` 的 `{type}{size}{ref}`）；`TestCatalogParity` 逐键比对中英占位符（`i18n_test.go:160-163`），`{task}`、`{name}`、`{id}`、`{desc}`、`{reason}`、`{running}`、`{limit}` 只要两份一致就能通过 |
+
+### PF10 [HIGH] `fork_reuse` 写进 `ModelEvent.Metadata`，到不了 trace；负责的文件不在 T2 清单内
 
 - disposition: CORE_BLOCKING [BUG]
-- 证据: 计划 T1 动作第 1 条（plan:97）。代码：AfterModel 拿到的 `GenerateResult` 是 `PrepareToolCalls` 强转参数/置 `ArgumentsError` 之前的克隆（`runtime.go:426-430` 先 AfterModel，`runtime.go:498` 才 prepare）；落库的 `ToolCall` 是 `finalCall`，经过 `tool_call` 代理展开为真实调用（`runtime.go:560-566`）和 BeforeTool/AfterTool hook 改写（`runtime.go:577-579,603-615`）；`persistToolTranscript` 是逐调用调用的（`runtime.go:630`），而计划签名是整步 `res` 输入。
-- 影响: 照计划，"`persistToolTranscript` 取用 `ExpandToolCalls(res)` 的输出"有两种读法：①只取 Content/Reasoning/Metadata，`ToolCall` 仍用 finalCall（行为不变）；②直接落库展开结果（存的是未展开的 `tool_call` 代理、未强转的参数、丢失 hook 改写）。②会改变主会话历史和此后每次主循环请求的内容。T1 的验证 `-run 'TestExpandToolCalls|TestRuntime'` 里没有一个现有用例断言"落库的 ToolCall 是展开/改写后的调用"，②能通过 T1 验收。
+- 证据: 计划 T2 动作（plan:145）写“首次调用时在 `event.Metadata` 写 `fork_reuse`……（observe 把 model 事件 metadata 中这两个键拷进 trace attrs）”。代码：`callModel` 的 `ModelEvent.Metadata` 只是 `state.Metadata` 的克隆，BeforeModel 之后只把 `event.Request` 发给 provider，Metadata 被丢弃（`runtime.go:375-402`）；trace 里的 model 事件只由 `recorder.attemptObserver` 用 `ctx` 与 `llm.Attempt` 生成（`observe.go:122-200`），`llm.Attempt` 也不带请求或 hook 元数据（`llm/observe.go:12-120`）；personal 里没有任何地方读 `ModelEvent.Metadata` 写 trace（`grep event.Metadata internal/personal` 无结果）。hook 也不能改变 provider 调用所用的 ctx。T2 文件清单没有 `observe.go`。
+- 影响: 照 T2 字面实现，trace 中没有 `fork_reuse` / `fork_reuse_note`；T2 自己的断言“trace 中只有首个 model 事件带 `fork_reuse`”必失败，任务书要求 fail-closed 和“只改本任务列出的文件”，执行者只能停下或越界改 `observe.go`，改法各不相同（recorder 读 `Config.ForkSeed`、ctx 值、prefix tracker 附带字段等）。
 - necessity proof:
-  - core_acceptance: 计划 T1 完成标准"persistToolTranscript 行为不变"；完成定义 5（现有测试全绿、无回归）。
-  - necessary_causal_chain: 执行者按签名 `ExpandToolCalls(res)` 在 `executeToolCalls` 里展开后直接落库 → 走 `tool_call` 代理的延迟工具调用以代理名和原始参数存进历史，hook 改写的参数丢失 → 下一回合起主会话请求里的历史与实际执行不一致，模型看到的是没执行过的调用形态（用户可见的会话结果变化），T1 focused 测试仍通过。
-  - minimal_owner: 计划 T1 动作第 1 条。
-  - deletion_alternative: FAIL（分身尾部需要按同一规则展开，删除抽出就是 CAP-03 所说的复制漂移）。
-  - scope_effect: 不新增 Module/Interface/Schema/state。
-- 建议: 合同写成"`ExpandToolCalls` 只负责 lead 文字、`Reasoning`、元数据只在第一条、批次 meta 每条都有的分配规则；返回消息里的 `ToolCall` 是模型回复中的原调用；`persistToolTranscript` 取第 i 条的 Content/Reasoning/Metadata，`ToolCall` 保持 finalCall"，或改为逐调用的 helper（如 `ExpandToolCall(lead, call, i, batch) Message`）。同时写明分身尾部用的是模型原调用（与主会话落库形态的差异可接受，或写明要在 AfterTool 里拿到 finalCall 覆盖）。
+  - core_acceptance: 完成定义 2（分身首个 model 事件带 `fork_reuse`）；T7 ptye2e 断言 `fork_reuse=prefix`。
+  - necessary_causal_chain: T2 执行者按计划在 `forkHeadHook.BeforeModel` 写 `event.Metadata["fork_reuse"]` → 运行时丢弃该 map → `attemptObserver` 生成的 model 事件没有该 attr → T2 的 trace 断言失败并 fail-closed 停止；即使越界补救，T7 `inspect trace --json` 的 `fork_reuse=prefix` 能否通过取决于临场方案 → 完成定义 2 不满足或不唯一。
+  - minimal_owner: 计划 T2 的文件与动作。
+  - deletion_alternative: FAIL（完成定义 2 要求）。
+  - scope_effect: 不新增 Module/Interface/Schema；只把 `internal/personal/observe.go` 列入 T2 文件。
+- 建议: T2 文件加 `internal/personal/observe.go`，动作改为：分身 Runner 的 recorder 在 `personal.New` 时从 `Config.ForkSeed` 取 `Reuse/ReuseNote`，`attemptObserver` 在该会话第一个无 `purpose` 的 model 事件上写 `fork_reuse`（及非空的 `fork_reuse_note`），之后不再写；删掉“写 `event.Metadata`”的说法。T2 单测断言不变。
 
-### PF2 [HIGH] T1 声称行为等价，但没有基线 characterization 与回放
-
-- disposition: CORE_CORRECTIVE（`user_visible_effect: false`）
-- 证据: plan:101 只以"现有 runtime 用例不改即过"作为等价证据。现有 `pkg/agentcore` 测试里只有 `TestRuntime_Run_PrefetchesMultiCallReplies`（`runtime_tools_test.go:527-539`）断言批次 meta；没有用例断言"lead 文字、Reasoning、provider 元数据只在第一条 assistant 工具调用消息上"，也没有用例断言落库 ToolCall 是代理展开、参数强转后的调用（`grep ExpandCall --include=*_test.go` 只在 wiring 与 tools 的可见性测试中出现，且不检查落库消息）。plan-contract 要求等价声明须有只经基线已有入口调用、在基线 commit 上回放通过的 characterization 用例。
-- 影响: PF1 的回归和"元数据重复到每条"这类回归都检测不到；签名 thinking 元数据重复到每条会让 Claude 类 provider 的后续请求出错。
-- 建议: T1 加一个只经 `New(Config{...}).Run(...)` 入口的 characterization 用例（如 `TestRuntime_Run_ToolTranscriptLeadOnFirstCall`）：三调用并行回复带 Content/Reasoning/Metadata，第二个调用走 `CallExpander` 代理、第三个参数需强转；断言落库 assistant 消息的 lead 只在第一条、批次 meta 每条都有、ToolCall 是展开/强转后的调用。先在基线上回放（`git archive 00c890f7 | tar -x -C tmp/<dir>` → 拷入用例 → `go test ./pkg/agentcore -run <名> -count=1` 通过），再在改动后通过；验证命令与回放结果写进 T1 的提交说明。
-
-### PF3 [HIGH] T6 `:bg` 拿不到 `AgentTool.StartFork`，列出的文件里没有可行的接线路径
+### PF11 [HIGH] T1 让模型触发的分身在配置 host hook 时拒绝，ACP 每个回合都带 gate hook，ACP 中模型触发的分身永远启动失败
 
 - disposition: CORE_BLOCKING [BUG]
-- 证据: plan:155 要求 `runForkBg` 调 `native.AgentTool.StartFork`。`AgentTool` 只是 `internal/wiring/runtime.go:551` 里的局部变量，注册进 registry 后没有导出；`chat.Run(ctx, runner *personal.Runner, opts Options, ...)`（`chat.go:220`）与 `chat.Options`（`chat.go:135-195`）都没有对应字段；`internal/cli/chat.go:105-151` 组装 Options。T6 的文件只有 `chat_fork_bg.go`、`chat.go`（分发一行，完成标准"净增不超过 3 行"）、`steering.go`、`chat_usage.go` 与 i18n；任务书又要求"只改本任务列出的文件"，并且 fail-closed。
-- 影响: 执行者要么停下，要么自行加 Options 字段、wiring Runtime 导出与 cli 传参（越出文件清单，且加字段加注释超过"净增 3 行"），要么在 chat 里按名字从 registry 找工具再类型断言。`agents.enabled=false` 时 `AgentTool` 不存在，`:bg` 该提示什么也没有写。
+- 证据: 0.2 的 T1（plan:135）新增“`ForkSeedForCall` ……配置了 host hook → `host_hook`”（0.1 的 T1 没有这条，只在 T5 有）。设计 F7（design:188）写“模型触发总用当步请求（`prefix`）”，只有 `:bg` 重建时 host hook 才拒绝；设计关键流程 1 标题“模型触发（chat / run / ACP 相同）”、D1“`run` 与 ACP 只经模型触发”。代码：host hook 的判定就是 `len(r.cfg.Hooks) > 0`（`segment_handoff_reuse.go:101-103` 的先例）；chat/run 经 `wiring/runtime.go:325` 把 `opts.Hooks` 置 nil，生产里只有 ACP 会设置它——ACP 每个回合的 `TurnGate` 本身是一个 `agentcore.Hook`（`acpserver/server.go:74-83`），`cli/acp.go:76-85` 在回合中把 `[]agentcore.Hook{gate}` 传给 `wiring.Open`（`runtime.go:811` → `personal.Config.Hooks`）。PF8 的处理行写“配置了 host hook 时无论 prefix 还是重建都拒绝（你的决定）”，针对的是 `:bg`（T5 表格）。
+- 影响: 照 T1 实施后，ACP（gofer 驱动 suga 的方式）里模型每次调用 `agent{type: fork}` 都得到 `agent: fork unavailable: host_hook`；而 chat/run 永远不会触发 host_hook，所以计划里所有 host_hook 用例都只是人为注入 `NopHook` 的单测，没有任何验证会暴露 ACP 中的这个结果。`prefixHook` 排在 `cfg.Hooks` 之前（`runner.go:806-812`），`lastRequest` 是 host hook 改写前的请求，模型触发路径不依赖重建，本来不需要这条拒绝。
 - necessity proof:
-  - core_acceptance: 完成定义 1（chat 输入 `:bg <任务>` 时分身作为后台任务启动）；D1。
-  - necessary_causal_chain: 照计划执行 T6 → 在允许的文件内无法拿到 `StartFork` → 执行者按 fail-closed 停止，或越界自行接线 → `:bg` 不可用，或接线方式各异（例如另建一个不挂 tasks 的 AgentTool，导致满额/kill 不共用上限）→ 完成定义 1 的 `:bg` 验收失败。
-  - minimal_owner: 计划 T6 的文件与动作。
-  - deletion_alternative: FAIL（D1 已批准 `:bg`）。
-  - scope_effect: 新增一个包内部的 Options 字段与 wiring 访问器（内部接口，不改外部 Interface）。
-- 建议: T6 文件加 `internal/chat/chat.go`（`Options` 加一个字段，如 `StartFork func(ctx context.Context, req native.AgentRequest) (tasks.Info, error)`，nil 时 `:bg` 打印"分身不可用：agents 未启用或无后台任务"）、`internal/wiring/runtime.go`（Runtime 暴露该函数）、`internal/cli/chat.go`（传参）；把"净增不超过 3 行"改为"命令实现不放进 chat.go"。
+  - core_acceptance: 完成定义 1（模型调用 `agent{type: fork}` 时分身作为后台任务启动）与设计 D1/关键流程 1 的“ACP 相同”。
+  - necessary_causal_chain: 照 T1 在 `ForkSeedForCall` 开头判 `len(r.cfg.Hooks) > 0` → ACP 回合中 `cfg.Hooks = [gate]` → 每次模型派分身都返回 `fork unavailable: host_hook` 工具错误 → ACP 用户（gofer 会话）完全用不了分身，而 T1–T9 的测试全部通过。
+  - minimal_owner: 计划 T1 动作第 4 条（与 T5 表格第 1 行的适用范围）。
+  - deletion_alternative: PASS（删除 T1 中这一条，模型触发按设计 F7 总用当步请求；T5 的 `:bg` 表格不变；T1 验证中的“host hook 时 `host_hook`”改为“配置 hook 时仍为 `prefix`”）。
+  - scope_effect: 无新增，删除一条判定。
+- 建议: 按删除方案处理。如果“你的决定”确实也要覆盖模型触发路径，就需要在计划里明确写“ACP 中模型触发的分身一律拒绝”，同步修改完成定义 1、可追溯性 D1 行和设计流程 1 的“ACP 相同”，并请用户在知道 ACP gate 也算 host hook 的前提下确认。
 
-### PF4 [HIGH] kill 后的"分身被终止"通知没有任务负责，且与现有代码有意不发通知相反
-
-- disposition: CORE_BLOCKING [BUG]
-- 证据: 设计"kill 与失败"写 task output 写最后一段回答、通知写"分身被终止"；计划 T7 ③（plan:166）断言"`:tasks -k t1` 后通知含'分身被终止'"。现有 `startBackground` 的 killed 分支（`agent.go:200-206`）只写"已终止"和 footer，**有意不调 `Notify`**（注释说明：kill 后的通知会唤醒没人要的回合、打断正在输入的行）。T4 的动作只改通知的完成分支，没有提 killed 分支；T7 的文件里没有 `agent.go`。
-- 影响: T7 ③ 照写必失败；执行者要么在 T7 越界改 `agent.go` 给 fork 加 kill 通知（重新引入被删除的"kill 后唤醒回合"行为），要么改断言。两种做法的用户可见结果不同（kill 后 chat 空闲时是否被唤醒、是否注入回合）。
-- necessity proof:
-  - core_acceptance: 完成定义 1（可 kill）；可追溯性行"kill 与通知 → T7 ③"。
-  - necessary_causal_chain: 照计划实施 T4（不动 killed 分支）→ T7 ③ 断言通知含"分身被终止"→ 实际没有任何通知 → ptye2e 失败、fail-closed 停止；或执行者自行加 Notify → kill 分身后 chat 被唤醒并注入一个回合（用户可见的行为倒退）。
-  - minimal_owner: 计划 T4 动作 + T7 ③ 断言（kill 时的通知语义要先定下来；与设计有冲突，SR1413 需在计划里写明）。
-  - deletion_alternative: PASS（把 T7 ③ 改为断言 task output 为"已终止"、无通知、`stop=cancelled`，沿用现有行为，即可关闭；设计中的"通知写分身被终止"需要在计划里写明是按现有代码修正的偏离并在 Gate 披露）。
-  - scope_effect: 无新增。
-- 建议: 二选一写进计划：①沿用现有行为（推荐，删除优先）：T7 ③ 断言无通知、task output 含"已终止"、子会话 `stop=cancelled`，并在计划中注明对设计"通知写分身被终止"的偏离及依据 `agent.go:200-206`；②给 fork 加 kill 通知：T4 负责 killed 分支，写明文案、是否唤醒，并由用户确认。
-
-### PF5 [HIGH] `fork_reuse` 与 `fork_base` 没有任务负责写入
-
-- disposition: CORE_BLOCKING [MISSING_FUNCTION]
-- 证据: 完成定义 2"`fork_reuse` 记在分身首个 model 事件"（plan:25）；设计"观测"要求会话 meta `fork_base`（turn、尾部来源）。T1 只在 `ForkSeed` 上定义 `BaseTurn/Source/Reuse/ReuseNote` 字段；T2 的 `forkHeadHook` 动作只改 System/Tools/Model/Messages/ToolChoice 与收尾；T3 只装配；没有任何任务写 model 事件 attr `fork_reuse`（含 `ReuseNote` 原因）或会话 meta `fork_base`。只有 T7 在 ptye2e 里断言 `fork_reuse=prefix`。
-- 影响: 照 T1–T6 实施后，T7 的 trace 断言必失败；`fork_base` 没有实现也没有测试。
-- necessity proof:
-  - core_acceptance: 完成定义 2。
-  - necessary_causal_chain: T2/T3 执行者按列出的动作实现 → 分身首个 model 事件没有 `fork_reuse` attr → T7 `inspect trace --json` 断言失败 → 完成定义 2 不满足。
-  - minimal_owner: T2（`forkHeadHook` 在首个 `BeforeModel`/`AfterModel` 写 attr，或 personal 在分身模式下写入）与 T3/RunChild（建子会话时写 meta `fork_base`）。
-  - deletion_alternative: FAIL（完成定义要求）。
-  - scope_effect: 只新增 meta 键与 attr（设计已批准）。
-- 建议: T2 动作写明谁、在哪一步写 `fork_reuse`（及原因 attr 名），T2 单测断言；T3（或 T2 的 RunChild 改动）写明 `fork_base` 的键名与值格式（`<turn>|call/bg`），加一条单测断言。
-
-### PF6 [MEDIUM] 设计规定的若干用户可见文案/指令没有落到任务（同类全列）
+### PF12 [MEDIUM] `ForkUnavailableError.Hint()` 返回键名还是译文没写清，native 无法翻译
 
 - disposition: CORE_CORRECTIVE（`user_visible_effect: true`）
-- 证据与各出现点:
-  1. 种子超阈值不启动时"提示改用 `agent explore`"（设计 F6 与"用户可见差异"第 2 条）：T1 只返回 `fork unavailable: context`，T4 透传为 `agent: fork unavailable: <reason>`，T6 打印原因，均未写该提示。
-  2. 分身指令要求"报告不超过 4000 字符"（设计总体方案 5）和"列出依据的文件:行号"（设计安全第 4 条）：T1 的 `directive` 由谁拼、i18n 键、包含哪些要求都没写；分身沿用主会话 System，`subagent.go:278-284` 的子 agent 提示词对分身不生效。
-  3. 模型触发的返回文本 `[background fork task t2 started: <description>]`（设计流程 1 第 2 步）：T4 没有改现有 `[background agent task %s started` 文案（`agent.go:221`），T7 只说"屏幕启动行"。
-- 影响: 用户看到的拒绝提示、报告长度与依据格式、启动行与设计不一致，且实现不唯一。
-- 建议: 在 T1/T4/T6 写明三处文案的 i18n 键与原文，并在对应单测中断言。
+- 证据: T1“`Hint()` 对 `context` 返回 `model.fork.too_large`”；T4“错误实现 `Hint() string` 时追加提示”（native 不依赖 i18n，plan:101）；T6“`context` 时加 `Hint()`”。`ForkUnavailableError struct{ Reason string }` 不带 translator。
+- 影响: 有的实现返回键名，模型就会在工具结果里看到字面量 `model.fork.too_large`；有的会在 Runner 里译好再放进错误。模型和 `:bg` 看到的提示因实现而异。
+- 建议: 写明 `ForkUnavailableError` 带一个 `hint string` 字段，由 Runner 用 `r.cfg.Translator.T("model.fork.too_large")` 填好，`Hint()` 返回译文；T1 单测断言 `Hint()` 等于译文。
 
-### PF7 [MEDIUM] T4 给 `SubAgents` 接口加方法，T3 之前 `internal/wiring` 编译不过
-
-- disposition: CORE_CORRECTIVE（`user_visible_effect: false`）
-- 证据: `internal/wiring/subagent.go:66` 有 `var _ native.SubAgents = (*subAgents)(nil)`；T4 只改 `native` 包，T4 的验证只跑 native 与 `TestLayering`，看不到 wiring 的编译失败；计划"回滚与恢复"把各任务提交作为恢复点。
-- 影响: T4 的提交是一个 `go build ./...` 不通过的恢复点；T4 执行者也可能为了让构建通过越界改 wiring。
-- 建议: T4 文件加 `internal/wiring/subagent.go`，只加一个返回 `fork unavailable: no_request` 的 `ForkSeed` 桩（T3 再替换），T4 验证加 `go build ./...`；或改用可选接口（`native` 中 `type ForkSeeder interface{ ForkSeed(...) }`，类型断言不到时报 `agent: fork needs ...`）。
-
-### PF8 [MEDIUM] T5 的基准判定缺数据来源，host hook 情形有歧义
+### PF13 [MEDIUM] 满额拒绝：`tasks.Manager.Start` 的错误不带类型，`:bg` 的 `cmd.bg.full`（`{running}/{limit}`）与 native 的满额文案都没写数据来源
 
 - disposition: CORE_CORRECTIVE（`user_visible_effect: true`）
-- 证据: T5（plan:145）的 `prefix` 条件"上一回合正常完成、模型未变且 `lastRequest` 属于该回合"：`prefixTracker` 按会话只存最后一次请求（`prefix.go:343-372`），没有 turn id，也不知道回合是否正常结束（设计已确认取消/失败的回合不清 `lastRequest`）。T5 文件不含 `prefix.go`/`runner.go`（`prefix.go` 归 T1），也没说用 T1 的 `lastStep`（如 FinishReason==final）判定。另：T5 写"配置了 host hook → `host_hook`"，但没说是只在重建分支拒绝，还是在 `prefix` 情形也拒绝；设计 F7 读起来是前者，设计"用户可见差异"第 1 条读起来是后者。T5/T6 的 host_hook 用例没写前置状态（正常回合后还是重建场景）。
-- 影响: "取消回合 → rebuilt"的实现方式不唯一（可能需要改 T1 的文件）；配置了 host hook 的用户在正常回合后输入 `:bg`，有的实现会启动、有的会拒绝。
-- 建议: T5 写明判定数据（例如 T1 的 `observeStep` 同时记 turn id，`lastStep` 的结果 FinishReason 为 final 且 turn id 等于最后完成的回合时才算 `prefix`）并把需要改的 `prefix.go` 归属写清（T1 预留字段或 T5 共享）；host hook 写成一张"情形 → 结果"表，用例写明前置状态。
+- 证据: `Manager.Start` 满额返回的是不带类型的 `fmt.Errorf("%d background tasks are already running (the limit)…")`（`tasks.go:281-284`）；T4 要求 `StartFork` 返回另一段带 `limit %d` 的文案；T6 要求 chat 识别满额并填 `{running}`、`{limit}`，但 `Options.StartFork` 只返回 `error`。`Manager.Running(sid)`（`tasks.go:778`）与 `Limits()`（`tasks.go:245`）可以用来预检。
+- 影响: chat 只能解析英文字符串，或者退回到 `cmd.bg.unavailable` 显示英文原文；`TestForkBg` 的“满额文案”断言能否通过、显示什么都由执行者临场决定。满额时都会拒绝（D5 不受影响）。
+- 建议: T4 定义 `native.ForkLimitError{Running, Limit int}`（或在 `StartFork` 里用 `Running`/`Limits` 预检后返回它），`Error()` 为上文的英文文案；T6 用 `errors.As` 取数填 `cmd.bg.full`。
 
-### PF9 [LOW] 验证命令与反向验证的小缺口（同类全列）
+### PF14 [LOW] characterization 用例直接用 `newRuntimeTestStorage` 会在基线上失败（Reasoning 被测试替身丢掉）
 
 - disposition: CORE_CORRECTIVE（`user_visible_effect: false`）
-- 证据与各出现点:
-  1. T6 `-run '...|TestSteering'`：`internal/chat` 中没有 `TestSteering*`（steering 测试名为 `TestRunTurn*`、`TestSteerReturns` 等）；现有"回合中放回"用例是 `TestRunningTurnPutsRewindAndForkBack`（`chat_rewind_test.go:153`），没被纳入。
-  2. T3 反向验证②"去掉白名单（注册全部工具）"：若测试的父策略对 `file_write` 是 ask，失败关闭得到的 `ErrDenied` 会被 `forkDenyTools` 转成同一段 F9 文案，文件也不会创建，反向验证不会失败。用例须写明父策略放行 `file_write`，使白名单成为唯一屏障。
-  3. T5 动作写"超阈值同 T1"，但 `TestForkSeedBetweenTurns` 没有超阈值子用例（设计"阈值：种子超阈值时不启动"对 `:bg` 路径无验证）。
-  4. 设计"回交：kill 后 `stop=cancelled`"没有单测（只在 T7 ③，见 PF4）。
-- 已核对无问题: ptye2e 命令均带 `-tags ptye2e`，新文件首行 `//go:build ptye2e`，`make smoke-go` 跑整个 `./test/ptye2e/`，新场景会自动纳入；`TestRuntime`、`TestSubAgent`、`TestHandoffReuse`（含 `...BetweenTurnsRefusesChangedPrefix`）、`TestAgentTool`、`TestLayering`、`TestChatCommandsText` 均能命中现有用例；新用例名与现有 `TestFork*`（`:fork N`）不冲突；T1/T2/T3①/T5/T7 的反向验证可编译且会使对应断言失败。
-- 建议: 修正上述 4 处命令/用例。
+- 证据: 实跑：第一版用例经 `newRuntimeTestStorage` 读落库消息，基线失败，`Reasoning:""`。原因是替身的 `cloneMessages` 不复制 `Reasoning`（`runtime_doubles_test.go:453-469`），运行时本身是正确的（`runtime.go:635`）。改用包一层只追加原始消息的 storage 后，基线 `--- PASS`（用例见 `tmp/review/suga-fork-plan/r2-characterization_test.go.txt`）。另外，回放命令 `tar -x -C ../../tmp/suga-hao6/base` 需要目录先存在；它解析到 `inhere-tools/suga/tmp/`（已在 `.gitignore`），与 T9 的 WP 级 `tmp/suga-hao6/` 不是同一处；执行者在 Windows 上，PowerShell 5 的管道会损坏二进制 tar 流。
+- 影响: 执行者会先遇到一次“基线回放不通过”。计划写了“修用例”的回退，但如果把替身的 `cloneMessages` 改成复制 Reasoning，就改动了共享替身，范围比预期大。
+- 建议: T1 写明 characterization 用例自带一个保留原始消息的 storage 包装（或断言 `RunResult`/state 中的消息），不改 `runtime_doubles_test.go`；回放命令写成先 `mkdir`，并说明用 `cmd /c` 或 Git Bash 执行管道。
 
 ## 覆盖缺口与限制
 
-- 只读核对，未运行任何测试或基线回放；判断基于 candidate `00c890f7` 的源码。
-- 未核对 i18n 目录结构、`chat_usage.go` 内容与 T8 文档文件定位（不影响核心验收）。
-- 安全核对（SR1301）：鉴权/授权——分身白名单 + `forkDenyTools` + 父策略快照已核对，`tool_call` 代理在分身 registry 中不展开而被按名拒绝，未发现越权路径（PF9-2 只影响反向验证有效性）；注入防护——不适用（无 SQL/命令拼接新增）；秘密——T9 真实 provider 脚本对 `api_key` 做 `${VAR}` 形态校验、不复制 `.env`、不打印环境，已核对；入参校验——`:bg` 空参与 `type` 枚举已覆盖；资源归属——不适用（单用户本地会话）。
+- 只实跑了 T1 characterization 的基线回放，其他判断都来自基线源码的静态核对。
+- 没有核对 `requestBaseBetweenTurns` 为 `ForkSeedBetweenTurns` 构造 contextBuilder 的细节（`compact.go:825-840` 的现有构造可以复用），也没有核对 T8 文档。
+- 安全（SR1301）：只读白名单与 `forkDenyTools` 合同相比 0.1 没有变化，没有发现新的越权路径；T9 真实 provider 脚本对秘密的处理没有变化。
 
 ## 结论
 
-BLOCKED。开放 CORE_BLOCKING：PF1（展开函数签名与落库不等价、实现不唯一）、PF3（`:bg` 无接线路径）、PF4（kill 通知无负责任务且与现有行为相反）、PF5（`fork_reuse`/`fork_base` 无实现任务）。
+BLOCKED。仍开放的 CORE_BLOCKING：PF10（`fork_reuse` 的写入机制在代码中不存在，T2 不可执行）、PF11（T1 新增的 host_hook 拒绝让 ACP 中模型触发的分身全部失败，与设计 F7/流程 1 矛盾）。PF1、PF3、PF4 闭合，PF5 的 `fork_base` 部分闭合（`fork_reuse` 转入 PF10）。
 
 ## 剩余风险与后续
 
-- 修订后请在下一轮只复核 PF1、PF3、PF4、PF5 的改动及其依赖章节（T1、T2、T3、T4、T6、T7）。
-- PF2 属 plan-contract 必含项（基线回放），建议随 PF1 一并补齐；PF6、PF8 标 `user_visible_effect: true`。
-- PF4 涉及设计文字与现有代码冲突，若选方案②（给 fork 加 kill 通知）需用户确认。
+- PF10、PF11 都是局部修订（T2 加 `observe.go` 并改写机制；T1 删一条判定）。下一轮只复核 T1、T2 两处及对应的完成定义/可追溯性行。
+- PF12、PF13 标 `user_visible_effect: true`，建议随这次修订一并写清；PF14 是执行提示。
