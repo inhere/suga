@@ -756,6 +756,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	if transcript != nil {
 		appendTurnOutput(context.WithoutCancel(ctx), transcript, storage, model.ID, result.RunID, coreResult)
 	}
+	r.observeForkTurnEnd(model.ID, result.TurnID, coreResult, runErr)
 	return r.finish(ctx, model, result, turnStart, usage, coreResult, runErr, req.Emit)
 }
 
@@ -804,7 +805,7 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 		hooks = append(hooks, budget)
 	}
 	hooks = append(hooks, denialLimitHook{denials: denials, usage: usage},
-		prefixHook{tracker: r.rec.prefix})
+		forkStepHook{tracker: r.rec.prefix}, prefixHook{tracker: r.rec.prefix})
 	// The deadline hint goes after the prefix tracker so its transient message
 	// stays out of the recorded request fingerprint; see deadline.go for the
 	// message, its frozen per-turn text and its stable position.

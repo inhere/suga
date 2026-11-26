@@ -218,7 +218,8 @@ func (r *DefaultRuntime) Run(ctx context.Context, input RunInput) (*RunResult, e
 
 		switch res.FinishReason {
 		case FinishToolCalls:
-			if result, err, handled := r.executeToolCalls(ctx, state, tools, res.ToolCalls, leadOutput{text: res.Content, reasoning: res.Reasoning, meta: res.Metadata}); handled {
+			expanded := ExpandToolCalls(res)
+			if result, err, handled := r.executeToolCalls(ctx, state, tools, res.ToolCalls, expanded); handled {
 				return r.finishRun(ctx, input, state, result, err)
 			}
 			continue
@@ -494,7 +495,7 @@ type leadOutput struct {
 	meta                   map[string]any
 }
 
-func (r *DefaultRuntime) executeToolCalls(ctx context.Context, state *RunState, schemas []ToolSchema, calls []ToolCall, lead leadOutput) (*RunResult, error, bool) {
+func (r *DefaultRuntime) executeToolCalls(ctx context.Context, state *RunState, schemas []ToolSchema, calls []ToolCall, expanded []Message) (*RunResult, error, bool) {
 	prepareToolCalls(schemas, calls)
 	if err := r.toolPolicy.ValidateToolCalls(ctx, state, cloneToolCallsValue(calls)); err != nil {
 		return r.handleErrorResult(ctx, state, "max_tool_calls", err, NewControl())
@@ -510,17 +511,27 @@ func (r *DefaultRuntime) executeToolCalls(ctx context.Context, state *RunState, 
 	}
 
 	if len(calls) > 1 {
-		lead.batch = calls[0].CallID
-		if lead.batch == "" {
-			lead.batch = fmt.Sprintf("step-%d", state.Step)
+		batch := calls[0].CallID
+		if batch == "" {
+			batch = fmt.Sprintf("step-%d", state.Step)
+		}
+		for i := range expanded {
+			if expanded[i].Metadata == nil {
+				expanded[i].Metadata = make(map[string]any, 1)
+			}
+			expanded[i].Metadata[ToolBatchMetaKey] = batch
 		}
 	}
 	for i, call := range calls {
-		// The model's text and reasoning accompanying the tool calls are kept on
-		// the first assistant tool-call message only; parallel calls carry no duplicate.
-		callLead := leadOutput{batch: lead.batch}
-		if i == 0 {
-			callLead = lead
+		// ExpandToolCalls owns the transcript allocation. The runtime deliberately
+		// keeps the final tool call separate: hooks may rewrite it before storage.
+		callLead := leadOutput{}
+		if i < len(expanded) {
+			callLead = leadOutput{
+				text:      expanded[i].Content,
+				reasoning: expanded[i].Reasoning,
+				meta:      expanded[i].Metadata,
+			}
 		}
 		// Every call runs with its own invocation id, set before the hooks: the
 		// hooks, the tool and a host's side-effect ledger read the same value

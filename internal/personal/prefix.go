@@ -162,11 +162,14 @@ type prefixTracker struct {
 	// handoff-package call of a segment break continues it when it may
 	// (segment_handoff_reuse.go).
 	requests map[string]*agentcore.GenerateRequest
+	// steps keeps the current turn's last model reply and executed tool results
+	// for a fork seed. It is process-local by design; clearRequest drops it too.
+	steps map[string]forkStep
 }
 
 func newPrefixTracker() *prefixTracker {
 	return &prefixTracker{last: map[string]*requestPrint{}, reports: map[string]prefixReport{},
-		resumed: map[string]*requestPrint{}, requests: map[string]*agentcore.GenerateRequest{}}
+		resumed: map[string]*requestPrint{}, requests: map[string]*agentcore.GenerateRequest{}, steps: map[string]forkStep{}}
 }
 
 // seed gives the tracker the request fingerprint a previous process persisted,
@@ -341,12 +344,13 @@ func prefixPrintFromMeta(meta map[string]any) *printRecord {
 // is the runtime's own copy of what it is about to send (never mutated later),
 // so the reuse request of a segment break can reproduce it byte for byte.
 func (t *prefixTracker) observeRequest(sessionID string, req *agentcore.GenerateRequest) {
-	if t == nil || sessionID == "" || req == nil || len(req.Messages) == 0 {
+	if t == nil || sessionID == "" || req == nil {
 		return
 	}
+	clone := cloneForkRequest(req)
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.requests[sessionID] = req
+	t.requests[sessionID] = clone
 }
 
 // lastRequest returns the session's last main-loop request (nil when the session
@@ -357,7 +361,7 @@ func (t *prefixTracker) lastRequest(sessionID string) *agentcore.GenerateRequest
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.requests[sessionID]
+	return cloneForkRequest(t.requests[sessionID])
 }
 
 // clearRequest forgets the session's last main-loop request: after a segment
@@ -370,6 +374,7 @@ func (t *prefixTracker) clearRequest(sessionID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.requests, sessionID)
+	delete(t.steps, sessionID)
 }
 
 // savePrefixPrint persists the session's last request fingerprint (see
