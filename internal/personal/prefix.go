@@ -344,13 +344,15 @@ func prefixPrintFromMeta(meta map[string]any) *printRecord {
 // is the runtime's own copy of what it is about to send (never mutated later),
 // so the reuse request of a segment break can reproduce it byte for byte.
 func (t *prefixTracker) observeRequest(sessionID string, req *agentcore.GenerateRequest) {
-	if t == nil || sessionID == "" || req == nil {
+	if t == nil || sessionID == "" || req == nil || len(req.Messages) == 0 {
 		return
 	}
-	clone := cloneForkRequest(req)
+	// req is the runtime's own copy of the request it is about to send and is
+	// never modified afterward. Keep that pointer here; clone only when the
+	// request is read by lastRequest so every model call avoids copying history.
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.requests[sessionID] = clone
+	t.requests[sessionID] = req
 }
 
 // lastRequest returns the session's last main-loop request (nil when the session

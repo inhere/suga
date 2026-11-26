@@ -240,7 +240,8 @@ func (r *Runner) ForkSeedForCall(ctx context.Context, sessionID, callID, task st
 	if forkRequestTokens(request) > r.forkThreshold() {
 		return ForkSeed{}, &ForkUnavailableError{Reason: "context", hint: forkTranslate(r.cfg.Translator, "model.fork.too_large")}
 	}
-	return ForkSeed{Request: request, Model: r.cfg.Model, ProviderName: r.cfg.ProviderName,
+	provider, model, _, _ := r.ModelSettings()
+	return ForkSeed{Request: request, Model: model, ProviderName: provider,
 		BaseTurn: step.TurnID, Source: "call", Reuse: "prefix"}, nil
 }
 
