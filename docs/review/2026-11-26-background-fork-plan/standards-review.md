@@ -1,77 +1,71 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 后台分身（fork）实施计划 评审（第 2 轮 Standards/Governance 闭合确认）
+# suga 后台分身（fork）实施计划 评审（第 3 轮 Standards/Governance 闭合确认）
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `806af9b2`；subject `docs/plans/2026-11-26-background-fork-plan.md`；上轮 candidate `00c890f7`；连带核对设计 `docs/design/2026-11-26-background-fork-design.md` 在批准后的一行修正
-- 修订版本: Draft 0.2
-- 评审者: Standards/Governance 轴独立评审者（Claude 子 agent），计划评审第 2 轮（闭合确认），REPORT_ONLY
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `1a8331ed`；subject `docs/plans/2026-11-26-background-fork-plan.md`（连带设计 `docs/design/2026-11-26-background-fork-design.md`）；上轮 candidate `806af9b2`
+- 修订版本: 计划 Draft 0.3；设计 Draft 0.5
+- 评审者: Standards/Governance 轴独立评审者（Claude 子 agent），计划评审第 3 轮（闭合确认，用户“hao6 Q6 选 A”授权），REPORT_ONLY
 - 日期: 2026-11-26
-- 排除项: Spec/Executability 轴的逐任务技术正确性；未变章节沿用第 1 轮结论；不改仓库、不提交
+- 排除项: Spec/Executability 轴的逐任务技术正确性（PF10–PF14 的实现细节、并发与 TOCTOU 等）；未变章节沿用前两轮结论；不改仓库、不提交
 
 ## 输入与方法
 
-- 规范：`tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`、`tmp/idev-std/d/L1pSw4v7EitW46DpcPDbLQ/payload.md`（SR1103、SR1406、SR1408、SR1409、GR104、GR108、review-contract、planning-core-rigorous、plan-contract 含修订判定表与 Gate、review 模板）。
-- 上轮本轴报告 `docs/review/2026-11-26-background-fork-plan/standards-review.md`（PS1–PS5）。
-- `git diff 00c890f7..806af9b2 -- <plan> <design>`；`git show 806af9b2:<plan>` 全文（277 行）。
-- 代码事实（均在 `806af9b2` 上）：`internal/chat/chat.go:21,23` 已 import `pkg/agentcore/tasks` 与 `tools/native`；`pkg/agentcore/layering_test.go:84` `TestLayering` 存在；`internal/personal/compact.go:838` 为 `requestBaseBetweenTurns` 唯一调用方；`internal/i18n/catalog/zh/{model,cmd}.ini` 分别只有 `[model]`、`[cmd]` 段，占位符为 `{name}` 形式；`native/agent.go:195-199` killed 分支写“已终止”且不通知；`internal/wiring/runtime.go` 964 行。
-- 设计全文 grep：除关键流程 3 外不再有“分身被终止”等旧 kill 文案；验证要求第 215 行“kill 后 `stop=cancelled`”与新行为一致。
-- 行数核对：设计评审报告 75 + 98 行；计划第 1 轮报告 123 + 134 行；计划 0.1 为 231 行、0.2 为 277 行；设计 227 → 229 行。
-- `idevstd script validate_document --kind plan`（对 `806af9b2` 版本）：`ok: true`，`errors: []`，输出 `tmp/review/suga-fork-plan/r2-validate-plan.out`。`--companion` 对设计 ledger 未输出 `ceremony` 字段，仪式成本只能按文件行数人工核对。
+- 规范：`tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`（SR1103、SR1406、SR1408、SR1409、GR104、GR108、planning-core-rigorous 轮次规则、review 模板 1.2.0）。
+- 上轮本轴报告 `docs/review/2026-11-26-background-fork-plan/standards-review.md`（PS6）。
+- `git diff 806af9b2..1a8331ed -- docs/design docs/plans`；`git show 1a8331ed:` 计划全文（290 行）与设计全文（230 行）。
+- 代码事实（工作区，静态核对）：`internal/personal/observe.go:76` `recorder`、`:122` `attemptObserver`、`:169` purpose attr；`internal/personal/runner.go:211` `Config.Translator`、`:467` `New` 中建 recorder；`pkg/agentcore/tasks/tasks.go:245` `Limits()`、`:778` `Running(sessionID)`；`internal/wiring/runtime.go` 964 行、`subagent.go` 303 行。
+- `idevstd script validate_document --kind plan`（对 `1a8331ed` 版本）：`ok: true`，`errors: []`，输出 `tmp/review/suga-fork-plan/r3-validate-plan.out`。
+- `ls docs/review/2026-11-26-background-fork-plan/`：只有 `spec-review.md`、`standards-review.md`，无 `review-ledger.json`。
+- `git grep Q6`：本特性文档内只有计划修订表与 Gate 的“hao6 Q6 选 A”，无 Q6 题面。
 
 ## 验收标准
 
-PS1–PS5 闭合核对：
+1. PS6 闭合：
 
-| ID | 上轮 disposition | 本轮处理证据 | 结论 |
-|---|---|---|---|
-| PS1 `fork_reuse` | CORE_BLOCKING | T2 动作（第 145 行）首个 model 事件写 `fork_reuse` / `fork_reuse_note`，验证（第 147 行）断言“只有首个 model 事件带”；可追溯性第 262 行 | 关闭 |
-| PS1 kill | CORE_BLOCKING | 用户“hao6 Q3 选 A”，不改 killed 分支（第 158 行）；T4 单测断言无通知、“已终止”、`stop=cancelled`（第 160 行）；T7 ③ 同断言（第 211 行）；完成定义 1、排除项“kill 通知”、可追溯性第 265 行、设计流程 3 同步改。现有代码 `agent.go:195-199` 即此行为，断言可达 | 关闭（取舍由用户定，符合 SR1401） |
-| PS2 | CORE_CORRECTIVE（user_visible） | `model.fork.too_large` + `Hint()`（T1，第 134 行）并在 T4 工具错误与 T6 `:bg` 追加；`model.fork.directive` 含 4000 字符与文件:行号（第 94 行，T1 验证“指令文本”）；`fork_base` 由 T3 写入子会话 meta 并断言 | 关闭 |
-| PS3 | CORE_CORRECTIVE | T5 文件含 `compact.go:838`；T4 改为可选接口，`SubAgents` 不变，完成标准“`internal/wiring` 未改仍能编译”；T6 文件补 `wiring/runtime.go`、`cli/chat.go`，删去“净增 ≤3 行”；i18n catalog 进 T1/T2/T3/T6 文件清单，段与 `{name}` 占位写明，`TestCatalogParity` 进验证；每任务验证首项 `go build ./...` | 关闭 |
-| PS4 | CORE_CORRECTIVE | 新增“与设计代码组织的差异”三条（第 85–88 行）；T8 CHANGELOG 列出五项公开 API（第 219 行）并有 grep 验证 | 关闭（理由评估见下） |
-| PS5 | CORE_CORRECTIVE | 人工 Gate 1 列出仪式成本（第 246 行），数字与文件行数一致 | 关闭 |
+| 要求 | 证据（`1a8331ed`） | 结论 |
+|---|---|---|
+| 设计升 0.5 | 设计第 4 行状态 `Draft 0.5 / 已批准进入计划（0.4 批准；0.5 仅含 Q3 修正）`；修订表 0.5 行写明 kill 改动、PF4/PS1/PS6 来源、“用户直接决定，未另行评审” | 关闭；语义变化随版本递增，符合 SR1103 |
+| Q3 原文 | 修订表下方一行写出 Q3 题面与 A/B 含义及用户原话 | 关闭 |
+| 批准记录 | 批准记录保留 0.4 原话，追加“0.4 批准；0.5 仅含 Q3 修正（用户直接决定）”，版本号与批准内容不再错位 | 关闭 |
+| 计划引用 | 计划核心目标、scope freeze、“输入与批准证据”均改为设计 0.5，并注明 0.4 批准提交 `a8a2bc83` | 关闭 |
 
-“与设计代码组织的差异”三条理由：
+2. 修订是否超出设计或破坏分层：
 
-- `ExpandToolCalls` 导出到 `pkg/agentcore`：成立。分配规则的唯一 owner 是 `persistToolTranscript` 所在的 `pkg/agentcore`，导出后 runtime 与分身共用一份（CAP-03），依赖方向为 `internal/personal → pkg/agentcore`，不违反“`pkg/agentcore` 不依赖 internal”；T1 有基线回放的 characterization 与反向验证兜住落库行为不变；公开 API 新增已进 CHANGELOG。
-- 可选接口 `native.ForkSeeder`：成立。`SubAgents` 不变，外部实现方不受影响；种子以 `any` 穿过 `native`，`pkg/agentcore` 不需要知道 `personal.ForkSeed`，分层守卫 `TestLayering` 进了 T4 验证。实现落在 `internal/wiring` 的 `subAgents`，经晚绑定的 `forkHost` 调 `Runner.ForkSeedForCall`，种子计算本体在 personal，wiring 只连线，符合 GR108。
-- `:bg` 经 `Options.StartFork`：成立。chat 只依赖注入的函数字段与 `tasks.Info`、`personal.ForkUnavailableError`，依赖方向仍是 chat → personal / pkg；满额、Kind、通知走同一份 `AgentTool.StartFork`，避免第二份后台启动逻辑（SR1403）。`wiring.Runtime.StartFork` 只把 `ForkSeedBetweenTurns` 与 `AgentTool.StartFork` 串起来，属于连线，符合 GR108；chat 侧命令实现限定在 `chat_fork_bg.go`。
+- observe.go 的 recorder 写 `fork_reuse`：设计关键流程 6 与 F4 要求“分身首个 model 事件带 attr `fork_reuse`”，没有规定写入位置。recorder 是 trace attrs 的唯一 owner（`observe.go:169` 已按同样方式写 `purpose`），每个分身 Runner 有自己的 recorder（`runner.go:467`），“该会话第一个无 purpose 的 model 事件”与设计“首个 model 事件”一致（compact 调用不计）。改动留在 personal 包内，不经 `ModelEvent.Metadata` 透传，也没有新增跨层通道。不超出设计，分层不变。
+- `native.ForkLimitError{Running, Limit}`：设计 D5 与关键流程 2/3 规定满额直接拒绝，模型与 `:bg` 各给一种提示。这个类型只是把已有的满额判定结构化，方便 `:bg` 用 `errors.As` 取数字填 `cmd.bg.full`。定义在 native（`StartFork` 的 owner），chat 本就依赖 native，依赖方向不变；`Running`/`Limits` 是现有 API。属于设计行为的实现，不是新机制。
+- `ForkUnavailableError.hint`：由 Runner 用现有 `Config.Translator` 填译文，做法与 deadline/budget 的提示相同（`runner.go:496`），chat 只取 `Hint()`，不碰键名。不超出设计，没有第二份文案逻辑。
+- `subagent_fork.go`：设计“代码组织”第 137 行原文就是“接近 GR104 上限时拆到 `subagent_fork.go`”；计划 T3/T6 把 fork 连线放进 `wiring/subagent_fork.go`，`runtime.go` 只留绑定一行和赋值一行。处理了上轮“剩余风险”里 964 行的问题，符合 GR104/GR108。
+- PF11 撤回 `ForkSeedForCall` 的 host hook 拒绝：设计 F7 原文“模型触发总用当步请求（`prefix`）”，host hook 拒绝只针对 `:bg` 的重建路径。0.3 回到了设计，不算扩围。
+- 代码位置小差异（非 finding）：设计第 136 行把 tracker 与 `ForkSeed` 放在 `personal/subagent_fork.go`，计划拆到 `subagent_fork_seed.go`，`fork_reuse` 写在 `observe.go`。两者同包，不涉及依赖方向，“与设计代码组织的差异”一节可以不列。
 
-设计批准后改一行（第 3 项）见 PS6。
+3. Gate 完整性：
 
-计划 Gate（第 4 项）：
-
-- 仪式成本：有轮数、报告行数、被评文档行数，数字已核对。批准请求发出时需补上本轮（第 2 轮）报告行数，属请求消息内容，不记 finding。
-- 执行者由用户指定：Gate 1 写明“同时指定 T1–T8 执行者模型”，前置检查第 108 行写明“模型由你在计划 Gate 指定”，T4/T6/T7/T8 的模型只是建议。符合。
-- 核心任务标注：T1、T2、T3、T5 标题带【核心】，与前置检查第 108 行、Gate 1 一致。符合。
-- 最小 Gate 集合：计划批准、当前执行请求、外部动作 Gate（push/tag/发版/安装逐项）齐全；T9 的真实 provider 调用与 `staticcheck` 下载已在 `host_or_non_offline_action=REQUIRED` 中列出并由执行请求覆盖。符合 plan-contract Gate 一节。
+- 仪式成本：Gate 1 列出设计评审 2 轮（173 行，设计 227 行）、计划第 1 轮（257 行，0.1 为 231 行）、第 2 轮（77 + 100 = 177 行，0.2 为 277 行）以及第 3 轮授权原话。已逐个核对文件行数，数字一致。还缺计划 0.3 的行数（290 行）和本轮报告行数，这两项属于批准请求消息的内容，不记 finding。
+- 执行者由用户指定：Gate 1 写“同时指定 T1–T8 执行者模型”，前置检查第 121 行写“模型由你在计划 Gate 指定”，其余模型只是建议。符合。
+- 核心任务：T1、T2、T3、T5 标题带【核心】，与第 121 行、Gate 1 一致。符合。
+- 第 3 轮授权：第 2 轮 Spec 轴有开放的 `CORE_BLOCKING`（PF10、PF11），按 planning-core-rigorous 规则开第 3 轮需要用户批准。批准原话已写进计划修订表 0.3 行和 Gate 1。ledger 的记录见 PS7。
 
 ## 发现
 
-### PS6 [LOW] 设计批准后的语义修正沿用 0.4，且 Q3 的选项原文未入库
+### PS7 [LOW] 计划评审仍无 review-ledger，第 3 轮授权没有记进 `continuation_approvals`
 
 - disposition: `CORE_CORRECTIVE`；`user_visible_effect: false`
-- 证据:
-  - 设计第 15 行修订说明：“0.4 批准后按用户 Q3 选 A 修正……不改版本号”；第 157 行把 kill 从“通知写‘分身被终止’、output 写最后一段回答”改为“不发通知、output 写‘已终止’”。这是用户可见行为（流程）的变化。SR1103 规定只有语义变化才新增版本，纯 identity/provenance 纠正才沿用原版本；plan-contract 修订判定表同理。此处方向反了：语义变了，版本没变。
-  - 结果是同一个“Draft 0.4”对应两份内容：批准记录 `a8a2bc83` 指向旧 kill 行为，`806af9b2` 是新行为。计划第 57 行与 scope freeze 第 35 行引用“设计 0.4 + 批准后修正”，靠文字补救才能读清。
-  - 授权依据“hao6 Q3 选 A”只有选项字母。Q3 的题面与 A/B 各自含义在仓库、计划评审报告与 issue `suga-hao6` 中都查不到（已 grep），“A = 沿用 6gcy 行为”目前只有作者转述。
-- 影响: 不影响核心验收：kill 行为在计划完成定义、T4、T7、可追溯性与设计中已一致，且与现有代码相同；用户确实就这一项作了决定，不构成越权。影响的是追溯：日后按版本号对照批准记录会得到错误的 kill 行为，且无法从仓库核对用户选的到底是什么。
-- 建议: 二选一，不需要再开评审轮（SR1406：已获用户直接决定的单项修正）。①设计升为 0.5，修订表加一行“按用户 Q3 选 A 修正关键流程 3 kill 行为（不通知、‘已终止’、`stop=cancelled`）；用户直接决定，未另行评审”，计划第 57 行改引 0.5（plan 的 identity 纠正，不升 plan 版本）；②保留 0.4 时，至少把 Q3 题面与 A 选项原文写进设计第 15 行或 `suga-hao6` 评论，并在计划批准请求里说明“0.4 内容在批准后改过一行”，请用户一并确认。两种做法都要补 Q3 原文。
+- 证据: 计划第 50 行自定 review budget 为“SR1409 Full 档两轴评审”，SR1409 规定 Full 档要有 ledger。planning-core-rigorous 规定第 k 轮（k≥3）的批准原话要写进 ledger 的 `continuation_approvals: [{round, evidence}]`，缺了会报 `REVIEW_CONTINUATION_APPROVAL_MISSING`。`docs/review/2026-11-26-background-fork-plan/` 下至今没有 `review-ledger.json`，上轮“剩余风险与后续”已经提过。另外，“hao6 Q6 选 A”和 PS6 之前的 Q3 一样只有选项字母，仓库里查不到 Q6 的题面。
+- 影响: 不影响核心验收和安全。授权确实存在，原话已写在计划修订表和 Gate 里，这一轮没有越权。影响的是机器核验：计划评审得不到可校验的 PASS 记录，第 3 轮按规则会缺授权。
+- 建议: 本轮收口时补建计划评审 ledger，覆盖两轴三轮的 verdict 与 candidate（`00c890f7`、`806af9b2`、`1a8331ed`）。写入 `continuation_approvals: [{round: 3, evidence: "hao6 Q6 选 A"（附 Q6 题面：第 2 轮仍有 PF10/PF11，A = 再评一轮）}]`，再用 `validate_document --companion` 校验。这是元数据补录，不升计划版本，也不需要再开一轮（SR1406）。
 
 ## 覆盖缺口与限制
 
-- 只读 `00c890f7..806af9b2` 的计划与设计 diff 及其依赖章节；未变章节（SR1301 核对、GR104/GR107/GR109/GR110/SR2002）沿用第 1 轮结论。
-- 代码事实只做静态核对，未编译、未跑测试。
-- `validate_document --companion` 未输出 `ceremony`，仪式成本按文件行数人工核对；设计评审“2 轮”的第 1 轮报告已被第 2 轮覆盖，173 行只计最后一轮报告，轮数以 ledger 为准（ledger schema 2.1.0，status `PASS`）。
-- Q3 选项含义无法在仓库内核实，见 PS6。
+- 只核对了 `806af9b2..1a8331ed` 的计划与设计 diff 及相关代码位置。PF10–PF14 的技术正确性归 Spec 轴，比如 `attemptObserver` 的“首个”标记是否需要并发保护、`StartFork` 预检与 tasks 管理器自身满额判定之间的竞态。
+- 代码事实只做了静态核对，没有编译，也没有跑测试。
+- 没有 ledger，轮次与授权只能按计划文本人工核对，见 PS7。
 
 ## 结论
 
-PASS：PS1（CORE_BLOCKING）已关闭，PS2–PS5 已关闭，本轮没有开放的 `CORE_BLOCKING`。新增 PS6 为 `CORE_CORRECTIVE`（`user_visible_effect: false`），按 2.2.0 规则不触发纠正确认轮，可在计划批准前直接修订并在 Gate 披露。
+PASS：PS6 已关闭；本次修订（recorder 写 `fork_reuse`、`ForkLimitError`、`ForkUnavailableError.hint`、`wiring/subagent_fork.go`、撤回模型触发的 host hook 拒绝）都在设计 0.5 范围内，没有引入新机制，也没有分层问题。Gate 写明了仪式成本、第 3 轮授权、由用户指定执行者，并标出了核心任务 T1/T2/T3/T5。本轴没有开放的 `CORE_BLOCKING`。新增 PS7 为 `CORE_CORRECTIVE`（`user_visible_effect: false`），补录 ledger 即可，不触发纠正确认轮。
 
 ## 剩余风险与后续
 
-- `internal/wiring/runtime.go` 现为 964 行，T3 绑定与 T6 `Runtime.StartFork` 都落在此文件，接近 GR104 上限；实施审查时核对行数，超 1000 行就把 fork 连线移到 `wiring/subagent_fork.go`。
-- 计划评审目录下还没有 `review-ledger.json`；Full 档按 SR1409 需要 ledger，作者在本轮收口时补建，并把两轴第 2 轮报告行数补进批准请求的仪式成本。
-- `wiring.Runtime.StartFork` 只做串联；`:bg` 的 description 由谁生成，计划没写，归 Spec 轴确认，不要在 wiring 里加文案或截断逻辑。
+- 批准请求要补上计划 0.3 的行数（290 行）和第 3 轮两轴报告的行数。
+- 实施审查时核对 `runtime.go` 是否只增了两行，fork 连线和文案是否都在 `wiring/subagent_fork.go` 和 `chat_fork_bg.go` 里。
