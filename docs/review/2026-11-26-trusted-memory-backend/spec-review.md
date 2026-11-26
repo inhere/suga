@@ -1,112 +1,100 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# 可信记忆后端开关 设计评审（Spec/Executability 轴，第 1 轮）
+# 可信记忆后端开关 设计评审（Spec/Executability 轴，第 2 轮闭合确认）
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `d5dc67ce`；subject `docs/design/2026-11-26-trusted-memory-backend-design.md`；document revision Draft 0.2（工作树与 d5dc67ce 无差异）
-- 修订版本: Draft 0.2
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `8639724b`；subject `docs/design/2026-11-26-trusted-memory-backend-design.md`；document revision Draft 0.3（上轮 candidate `d5dc67ce` / Draft 0.2）
+- 修订版本: Draft 0.3
 - 评审者: 独立 reviewer（Spec/Executability 轴），未参与该设计的编写与修订
 - 日期: 2026-11-26
-- 排除项: 用户已选定的方案 A 本身（每作用域一个 bool）不评；Standards/Governance 轴（代码组织、GR107–GR110 结构条目合规）由另一轴负责；REPORT_ONLY，不改仓库、不提交
+- 排除项: 用户已选定的“7s4v Q2 选 A”（project 按工作区根目录列表登记）本身不评；方案 A、D5 的取舍不评；Standards/Governance 轴不在本报告；REPORT_ONLY，不改仓库、不提交
 
 ## 输入与方法
 
-- 规范：`tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md` 全文（含 review-contract、review-candidate-loop、planning-core-rigorous、SR1301）。
-- 项目：`AGENTS.md`；设计全文（102 行）。
+- 规范：`tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`（review-contract、review 模板 1.2.0、CORE_BLOCKING 五类与 necessity proof）。
+- 上轮报告：`docs/review/2026-11-26-trusted-memory-backend/spec-review.md`（TF1–TF5）。
+- 差异：`git diff d5dc67ce..8639724b -- docs/design/2026-11-26-trusted-memory-backend-design.md`；未变章节沿用上轮结论。
 - 代码（实际读取）：
-  - `pkg/agentcore/tools/native/memory.go`（全文至 360 行）、`pkg/agentcore/tools/native/agent.go:150-160`
-  - `internal/wiring/memory_runtime.go` 全文、`internal/wiring/memory.go:1-80,180-360`
-  - `internal/wiring/origin_guard.go:1-120`、`internal/personal/taint.go` 全文、`internal/personal/observe.go:351-358`
-  - `internal/wiring/subagent.go:25-125`、`internal/wiring/manifest.go:613,695-720`、`internal/wiring/runtime.go:570-571`
-  - `internal/config/settings_registry.go:1-80,255-300`、`internal/config/settings_protected_test.go:118-360`、`internal/config/load.go:79-90`、`internal/config/approval_rules.go:55-128`、`internal/cli/config.go:184-197`
-  - `internal/adapters/gofermem/gofermem.go` 包注释、`pkg/agentcore/memory/store.go:106-113`、`pkg/agentcore/tools/origin.go:63-90`
-  - `pkg/sugasdk/memory.go`、`pkg/sugasdk/*.go` 中 external/taint 引用
-  - `test/ptye2e/` 目录、`chat_origin_judge_test.go:1-60`、`chat_protected_config_test.go:1-30`、`chat_memory_test.go`（grep）、`pkg/agentcore/memory/execstore/execstore_test.go`（helper 结构）
-- 方法：逐条对照设计“已确认事实”“总体方案”“关键流程”“验证要求”与代码路径；枚举所有设置 `Metadata["external"]`、`tools.Meta.External`、taint、ExternalOrigin.Record 的位置，检查去掉记忆结果标记后是否还有路径触发。
+  - `internal/config/settings_registry.go:29,104-272,440-530,670-720`（`ConfigTypeStringList`、`ParseConfigValue`、`validateConfigValue`/`isStringList`）
+  - `internal/config/protected_snapshot.go:55-200`（`DigestProtected`、`protectedFileMode`、`protectedKeyDigests`、`protectedValueDigest`）
+  - `internal/config/approval_rules.go:114-130`、`internal/wiring/rules.go:350-375`（`project_trust` 先例）
+  - `internal/wiring/memory.go:1-120,140-150,180-440`（`MemoryConfig`、`loadMemoryConfig`、`MemoryBackendChoice`、`buildMemoryWithProjectKey`、`selectProjectBackend`、`gitRoot`、`projectPath`）
+  - `internal/wiring/memory_runtime.go:150-170`、`internal/wiring/manifest.go:155-180,445-460,700-725`、`internal/wiring/embed.go:15-45`
+  - `internal/wiring/origin_guard.go:55-120`、`internal/personal/observe.go:340-360`、`internal/config/origin_judge.go`（grep）
+  - `pkg/agentcore/tools/native/memory.go:328-333`
+  - `test/ptye2e/chat_origin_judge_test.go`（grep）、`test/ptye2e/fakellm_test.go:438-520`
+  - gofer：`inhere-tools/gofer/internal/config/project_worktree.go:16`（`DefaultWorktreeDir = ".worktrees/{name}"`）
+- 工作区实况：`ls` 确认 WP 根、`inhere-tools/gofer`、`inhere-tools/suga`、`inhere-tools/xhen` 各自带 `.gofer/tracker`，且后三者是嵌套在 WP 根 git 仓库里的独立仓库（各有 `.git`）。
+- 方法：逐条核对 TF1 的四个具体点与 TF2–TF5 的修订；对新增 D6 与方案 3/4/6 检查可实现性、与代码的一致性、对核心验收与安全边界的影响；最后按用户真实工作区布局推演登记行为。
 
 ## 验收标准
 
-- 设计的核心验收：trusted 作用域的 get/search 结果不进 ExternalOrigin、不污染会话；默认 false 行为不变；会话内 `config set` 拒绝；文件改动启动提示。
-- 合同：review-contract 五类 CORE_BLOCKING + necessity proof；同类穷尽；SR1301 安全核对清单。
-- 已核对的问题面：
-  1. 去掉 external 后的残留路径 —— search 结果：与 get 同一 `result(..., t.external(scope))`（memory.go:164,170），去掉即两者都不记；spill：`taint_on_spill` 默认仅 `shell_exec`（manifest.go:709），memory 不在其中；`memory.taint_tools` 默认空（manifest.go:706）；子 agent：不注册 memory 工具（subagent.go:30-34，runtime.go:571 只在主 runtime 注册），`agent` 报告的 external 只随子会话自身 taint（agent.go:156-158）；xhen SDK：`pkg/sugasdk/memory.go` 是宿主 API，结果不进会话上下文、不带 external，SDK 会话走同一 runtime.go:570 路径，规则自然相同。结论：默认配置下无残留路径；显式配置见 TF3。
-  2. `Trusted func(memory.Scope) bool` 签名与注入点：可实现；`memory.Scope.Kind` 可区分 user/project（memory.go:339 已在用）；注入点 `newMemoryRuntime`（memory_runtime.go:158）有两处调用方（runtime.go:570、manifest.go:613），后者不执行工具，无影响。见 TF5。
-  3. user 作用域只能 files/exec：files 本来不标 external，`memory.user.trusted` 实际只对 exec 生效，含义为“信任 `memory.user.command` 的输出”；命令来自受保护键，语义清楚，无发现。
-  4. 注册与分类表：`relax` 组存在且已含 `tools.ask_on_external_origin`、`memory.taint_tools`（settings_protected_test.go:210,219）；`TestProtectedClassification` 四个子测试会分别捕获“未分类”“Protected 与组不符”，反向验证可行。
-  5. 启动比较：受保护键 digest 只收配置里出现的键（protected_snapshot.go:142-150），新增键不会在升级时误报；配置只从 `SUGA_HOME/config.yaml` 读（load.go:79-90），仓库内无法自设该键。
-  6. 验证要求：见 TF4。
-- SR1301 安全核对：
-  - 鉴权（认证与授权）：已核对 —— 受保护键阻止会话内开启；但信任授予的作用对象不清，见 TF1。
-  - 注入防护：已核对 —— 本设计就是有意放宽外部来源防护；放宽范围超出设计所述，见 TF1。
-  - 秘密不进日志/输出/仓库：不适用（不新增秘密处理）。
-  - 入参校验：已核对 —— `ConfigTypeBool` 注册；`gkconfig.Bool` 非法值读作 false，失败关闭。
-  - 资源归属校验：已核对 —— project 作用域的内容随仓库变化，见 TF1。
+- 核心验收：已登记仓库（或 user 作用域 true）的 get/search 结果不进 ExternalOrigin、不污染会话；未登记仓库（含 clone 的第三方仓库自带 `.gofer/tracker`）照旧按外部；默认行为不变；会话内 `config set` 拒绝；文件改动启动提示报出键名；非法值启动失败。
+- 合同：CORE_BLOCKING 限 BUG/SECURITY/DATA/MISSING_FUNCTION/AUTHORITY 且须 necessity proof；同类穷尽。
+- 本轮核对结果：
+  1. **TF1 闭合（已关闭）**：
+     - `ConfigTypeStringList` 存在（`settings_registry.go:29`），且已有多个 Protected 列表键（`tools.read_roots`、`memory.taint_tools` 等，258-272 行），注册方式可直接沿用。`config set` 的字符串列表解析支持逗号分隔与 `[a, b]` 流式写法（504-520 行）。
+     - 整根相等匹配：`selectProjectBackend` 先 `filepath.Abs(workspaceRoot)` 再 `gitRoot(ws)`（`memory.go:263-270`），`gitRoot` 按“当前目录或上层第一个含 `.git`（目录或 worktree 文件）”返回。列表项 `filepath.Clean` 后与之比较，尾部分隔符、Windows 下 `/` 与 `\` 混写都会被 Clean 统一。第三方 clone（在任何目录，自带 `.git`）的 gitRoot 是它自己，和已登记的根不相等，所以不被信任。嵌在已登记 WP 根里的 clone 也因自带 `.git` 而有独立的 gitRoot，所以不被信任。WP 根下无 `.git` 的子目录（如 `tmp/codeql-src-*` 自带 `.gofer/tracker` 的源码快照）落到 WP 根，但 gofer 后端 `Dir` 取的是 WP 根（`memory.go:293-296`），读的是 WP 根自己的 tracker，不会读快照目录里的条目。结论：TF1 的因果链被切断。
+     - Windows 大小写：`strings.EqualFold` 只在 Windows 使用，与 `projectPath` 在 Windows 下小写化（`memory.go:417-423`）的既有约定一致。盘符大小写不同、cwd 大小写不同都能匹配。8.3 短名、`subst`、junction 或符号链接、`\\?\` 前缀这些写法都不相等，都会失败关闭（照旧按外部），不构成安全问题。非 Windows 平台区分大小写，在大小写不敏感的挂载（如容器里的 `/d`）上，大小写写错也只会失败关闭。
+     - 受保护快照：`protectedKeyDigests` 只对配置中出现的、模式不含 `<` 的键做 `lookupMap`，值经 `protectedValueDigest` 规范 JSON 后哈希，注释写明“list order kept”。列表的增删改与改顺序都会变更 digest 并报出键名，`memory.taint_tools` 已是同类先例。设计“普通 YAML 写法”的限定与 `protectedFileMode`（顶层带点键、锚点、别名、多文档时降为文件级）一致。
+     - 非法值启动失败：`loadMemoryConfig` 的错误经 `loadRuntimeSettings`（`manifest.go:712-714`）直接返回，chat/run 启动失败。`OpenMemoryStore`（memory 维护命令）与 `OpenEmbeddedMemory`（`embed.go:26`）同样失败，是一致的失败关闭。`filepath.IsAbs` 在 Windows 下拒绝 `/d/...`、`\work`、`C:foo`，在 Linux 下拒绝 `D:\...`。user 键写成字符串 `"true"` 会按“不是布尔”报错，行为唯一。
+  2. **TF2 已关闭**：方案 6 与“安全”第 2 条都改为“子 agent 不注册 memory 工具，不受影响”，与 `subagent.go:30-34` 一致。同类再查：全文已无其它子 agent 表述。
+  3. **TF3 已关闭**：D5 补了 `taint_tools`/`taint_on_spill` 例外（ExternalOrigin 仍不记），与 `taint.go:58-70`、`origin_guard.go:47-48` 一致；链路验证加了对应用例。
+  4. **TF4 已关闭（附 TF8 小修）**：GR110 写明替换 `configStdinIsTerminal`，与 `internal/cli/config.go:184-197` 一致。假 exec 后端改为 Go helper 并在测试开始时 `go build`，可在 Linux 与 ConPTY 下同跑。观测点改为审批事件的 `origin_judge` 属性，字段存在（`observe.go:350-358`）。询问文本与 judge 回复还有两处细节，见 TF8。
+  5. **TF5 已关闭**：两键在 `loadMemoryConfig` 读取并放进 `MemoryConfig`。`selectProjectBackend` 局部已有 `root`，可直接算出匹配结果写进 `MemoryBackendChoice`。`newMemoryRuntime` 已持有 `setup`（`memory_runtime.go:158-168`），可据 `setup.User/Project` 构造 `Trusted` 回调，不读全局 gkconfig。host-key 路径（`selectExplicitProjectBackend`）不做匹配，即不可信，符合“不适用”。可实现。
+  6. **新增 CORE_BLOCKING / 矛盾**：未发现。D6 只收窄 Draft 0.2 的信任范围，所有不匹配路径都失败关闭。注册、分类、快照、`config set` 拒绝都复用既有机制，没有新增 Module、Interface 或 state。表述层面的小矛盾归入 TF7。
+- SR1301：鉴权与资源归属（信任对象现按仓库根绑定）已核对，无发现；入参校验（绝对路径、列表类型、空项）已核对，无发现；注入防护的放宽范围已与设计所述一致；秘密处理不适用。
 
 ## 发现
 
-### TF1 [HIGH] `memory.project.trusted` 是全局开关，却作用于每个仓库自动选中的 gofer 后端，含第三方仓库自带的 `.gofer/tracker`
+### TF6 [MEDIUM] 登记粒度是“会话所在的 git 根”，设计没告诉用户嵌套仓库和 worktree 要逐个登记、worktree 中的 job 不生效
 
-- disposition: CORE_BLOCKING
-- 类别: [SECURITY]
+- disposition: CORE_CORRECTIVE；user_visible_effect: true
 - 证据:
-  - `internal/wiring/memory.go`（selectProjectBackend，约 240-300 行）：未配置 `memory.project.backend` 时，仓库根有 `.gofer/tracker` 即自动选 gofer（reason `gofer_tracker`）；显式 `backend: gofer` 时同样用当前仓库根 `gofermem.Config{Dir: root}`。
-  - `internal/adapters/gofermem/gofermem.go` 包注释：“gofer finds the tracker from its working directory … the tracker is the project”；tracker jsonl 随仓库提交（本工作区即如此），clone 下来的仓库可自带带 `suga` 标签、键为 `suga-<kind>-<id>` 的条目。
-  - `internal/config/load.go:79-90`：配置只来自 `SUGA_HOME`，所以该键对本机所有仓库同时生效。
-  - 设计“取舍”只写“被别的 agent（或经 gofer 的任何写入方）写入”，“非目标”写“不按条目或按写入者区分”；均未说明 project 作用域对应的是“当前所在仓库的 tracker”，信任会随 cwd 落到任何仓库。对照现有先例：项目级 `allow` 审批规则要按工作区 `project_trust`（路径→hash）单独信任（`internal/config/approval_rules.go:81-128`，README.md:134），即代码库已把“仓库自带内容”视为默认不可信。
-- 影响 / necessity proof:
-  - core_acceptance：设计“用户可见结果”与“安全”一节承诺的风险边界——只有用户自己写入的后端才被信任（“只有自己写入的后端才设 true”）。
-  - necessary_causal_chain：用户为本工作区设 `memory.project.trusted: true` → 之后在 clone 的第三方仓库（自带 `.gofer/tracker`，含作者写入的 suga 记忆条目）里跑 chat 或 `gofer job -a suga` → `memory get` 返回仓库作者写的“运维步骤” → 结果不带 external，不进 ExternalOrigin、不污染 → 模型照抄到 `shell_exec`，originGuard 无命中，`approval: auto` 下直接执行。照文档实施后，用户以为只信任了自己的记忆，实际信任了任意仓库作者的内容；核心安全验收失败。
-  - minimal_owner：设计“安全、数据、运维与回滚”与“决策”两节（不需要新模块）。
-  - deletion_alternative：FAIL（开关本身就是功能，删不掉；问题在作用对象的定义）。
-  - scope_effect：方案(a) 无新增；方案(b) 会给 Trusted 的判定加一个条件，不新增 Schema/接口，但改变用户结果，按 SR1401 需用户确认。
-- 建议（二选一，交用户定）：
-  - (a) 维持全局语义：在“取舍”里明确写出“project 作用域的可信对所有仓库生效，包括 clone 下来、自带 `.gofer/tracker` 的仓库”，README/usage 同步警示，并由用户在修订记录里点名接受。
-  - (b) 收窄：project 的 trusted 只在可核实属于用户的仓库生效，例如复用已有的 `tools.approval_rules.project_trust` 工作区登记，或仅当后端为 exec（命令由用户配置）时生效；gofer 自动选择（reason `gofer_tracker`）不适用。
-- 同类穷尽：user 作用域（files/exec，命令与位置都来自受保护配置）与 project exec（命令来自受保护配置）不受此问题影响；host-key 路径固定为 files（memory.go:327-337），不受影响。本类只此一处。
+  - `internal/wiring/memory.go:371-385` `gitRoot`：取最近的 `.git`（目录或 worktree 文件）。所以在 WP 根下的嵌套仓库里运行时，gitRoot 是嵌套仓库，不是 WP 根。
+  - 本工作区实况：WP 根、`inhere-tools/gofer`、`inhere-tools/suga`、`inhere-tools/xhen` 各有 `.gofer/tracker`，后三者是嵌套独立仓库。只登记 WP 根时，在 suga 仓库里跑的 chat 或 `gofer job --cwd inhere-tools/suga -a suga` 会选 suga 仓库自己的 tracker，且不可信。
+  - gofer `--worktree` job 在 `<repo>/.worktrees/<name>` 中运行（`inhere-tools/gofer/internal/config/project_worktree.go:16`）。该目录含 `.git` 文件，所以 gitRoot 是这个 worktree 目录，和已登记的仓库根不相等，可信不生效。worktree 是临时目录，用户也没法预先登记。
+  - 设计第 35 行只写“列出自己的仓库根目录”。方案 3 提到嵌套仓库，只是用来说明为什么不用前缀匹配，没有面向用户说明“要逐个登记”。第 92 行运维说明仍写“才设 true”。全文没有 worktree 的表述。
+  - `config set memory.project.trusted <root>` 会整体替换列表（`settings_registry.go:504-520` 解析出整个新列表），想追加第二个仓库时会丢掉第一个。
+- 影响: 行为由代码唯一决定且失败关闭，不是安全问题，所以不阻断。但用户按设计只登记 WP 根后，在嵌套仓库或 worktree job 里照抄记忆仍会弹询问，看起来像“功能没生效”。用户原始场景是 chat 读 gofer 托管记忆，记忆在哪个 tracker 取决于会话所在的仓库，所以这个后果直接影响用户能否达成核心目标。
+- 建议:
+  - Gate 处向用户披露：(1) 每个会在里面跑 suga、并想信任其 tracker 的仓库都要单独登记，父仓库不覆盖嵌套仓库；按本工作区布局，至少要登记 WP 根，再按需加 gofer、suga、xhen 等仓库。(2) gofer `--worktree` job 与其它 git worktree 中不生效，照旧询问。是否让 worktree 沿用主仓库的信任（按 `git-common-dir` 归属）属于扩范围，默认不做，记为 deferred，由用户决定。
+  - 设计“用户可见结果”与第 92 行改写成上述两点，README/usage 同步，并写明列表用逗号或 `[a, b]` 一次写全，`config set` 会覆盖原列表。
+- 同类穷尽: submodule（`.git` 文件）与 worktree 同类，也是独立 gitRoot。没有 `.git` 的目录会落到上层仓库根，这种情况不会多信任（后端 `Dir` 也是该根）。本类只此一处。
 
-### TF2 [MEDIUM] 设计对子 agent 的描述与代码不符
+### TF7 [MEDIUM] “按 `suga manifest` 显示的记忆位置登记”只对 gofer 与仓库 MEMORY.md 成立
 
-- disposition: CORE_CORRECTIVE；user_visible_effect: false
-- 证据: 设计“总体方案”第 4 条“子 agent 同路径构建，规则相同”，“安全”第 2 条“子 agent 的 `Tainted` 也不会因此置位，父会话收不到污染信号”。代码：`internal/wiring/subagent.go:30-34` 注释“Sub-agents get no memory tools”；memory 工具只在 `internal/wiring/runtime.go:571` 注册到主 runtime。
-- 影响: 子 agent 根本读不到记忆工具结果，两句话描述了不存在的路径；实施者可能为“规则相同”去给子 agent 接 Trusted，或为它补测试。
-- 建议: 改为“子 agent 不注册 memory 工具，不受影响”；删去“安全”第 2 条里关于子 agent 的半句。同类穷尽：设计中仅这两处。
+- disposition: CORE_CORRECTIVE；user_visible_effect: true
+- 证据:
+  - 方案 3 写“按 `suga manifest` 显示的记忆位置登记”。`MemoryBackendChoice.Location`（`memory.go:146-148`）只在 gofer 和仓库 `MEMORY.md` 两种后端下才是仓库根（`memory.go:293-303`）。exec 后端下它是命令（`memory.go:288-290`），默认 files 下它是 `<SUGA_HOME>/projects/<key>/memory`（`memory.go:305-310`）。manifest 原样输出 `Location`（`manifest.go:448-453`）。
+  - 非目标写了“manifest 不显示”是否可信，只能用 `suga config get` 查看。`config get` 只能看到列表本身，看不到当前仓库是否匹配。
+- 影响: 使用 exec 项目后端的用户（设计链路与端到端验证用的正是 exec）照这句话会登记命令路径或 SUGA_HOME 路径。这样的值是绝对路径，能通过校验，但永远不匹配，可信静默不生效，用户也没有办法核对。失败关闭，不是安全问题。
+- 建议: 改为“登记会话所在仓库的 `git rev-parse --show-toplevel` 结果（与 suga 的 gitRoot 一致，worktree 下为 worktree 目录；gofer 后端时即 manifest 的 location）”，README/usage 同步。若要让用户能核对，最小做法是在 manifest 的 memory 项增加一个只读 `trusted` 布尔。这会推翻“manifest 不显示”的非目标，需用户决定；不做时只在文档写清登记依据即可。
 
-### TF3 [MEDIUM] D5“不污染”未写明显式 `memory.taint_tools` / `memory.taint_on_spill` 的优先级
+### TF8 [LOW] 端到端观测点：询问文本与 judge 回复需固定
 
 - disposition: CORE_CORRECTIVE；user_visible_effect: false
-- 证据: `internal/personal/taint.go:58-70`：`taints()` 在检查 metadata 前后分别检查 `m.always[name]`（taint_tools）与 `m.onSpill[name]`（taint_on_spill + 输出已外置）；设计第 5 条“`taint.go` 不改”。所以用户若在这两个键里列了 `memory`，可信作用域的读取仍会污染会话（但 `origin_guard.go:47-48` 不看这两个键，ExternalOrigin 仍不记）。设计 D5 写成“既不记入外部来源，也不把会话标为已污染”，没有这个例外。
-- 影响: 行为由代码唯一决定，但文档承诺与实际不一致；用户读 README 会以为可信时写记忆一定不再确认。
-- 建议: D5 后补一句“显式把 `memory` 列入 `memory.taint_tools` 或 `memory.taint_on_spill` 时仍按该键污染（不改 taint.go）”，README/usage 同步。同类穷尽：其余污染来源（工具 `External` 元信息、`agent` 报告）不涉及 memory 工具。
-
-### TF4 [MEDIUM] 验证要求有三处观测点写得不具体，照写无法唯一落地
-
-- disposition: CORE_CORRECTIVE；user_visible_effect: false
-- 证据与建议（同类一次列全）:
-  1. “trace 无外部来源记录 / `suga inspect trace --json` 无外部来源事件”：`ExternalOrigin.Record` 不写 trace（`pkg/agentcore/tools/origin.go:63-90`）；trace 里能观测的是 originGuard 命中后审批事件上的 `origin_judge`/`origin_judge_reason` 等属性（`internal/personal/observe.go:351-358`，`test/ptye2e/chat_origin_judge_test.go` 即按此断言）。不指明字段，“无事件”断言恒真，trusted=true 一侧做不了反向验证。建议写成：trusted=true 时该 `shell_exec` 的审批事件无 `origin_judge` 属性且未出现“逐字复制自 memory”询问；trusted=false 时有。
-  2. “假 exec 后端”：`test/ptye2e` 现有夹具里没有 exec 记忆后端；唯一的假 exec 后端是 `pkg/agentcore/memory/execstore/execstore_test.go` 的 TestMain helper（`os.Args[0]` + 环境变量），且 ptye2e 要在 Linux 与 Windows ConPTY 同跑（AGENTS.md 验证节）。建议写明夹具做法（例如 ptye2e 测试二进制自身按环境变量充当 exec 后端，或预编译一个 Go helper），不要依赖 shell 脚本。
-  3. GR110 的“终端无会话时成功”：`internal/cli/config.go:184-197` 除 `SUGA_SESSION_ID` 外还要求 stdin 是终端，`app.Run` 测试的 stdin 不是终端，需替换 `configStdinIsTerminal`。建议写明“替换 `configStdinIsTerminal` 为 true 时成功；默认（管道 stdin）与带 `SUGA_SESSION_ID` 时退出码 2 且文件不变”。
-- 影响: 不补齐时实施者可能写出恒真断言，反向验证会“通过”，但证明不了核心验收。各项均有其他测试覆盖（单元、链路测试可直接查 ExternalOrigin 与 `tainted_at`），所以不算核心验收完全无验证手段。
-
-### TF5 [LOW] 配置读取位置与旧注释
-
-- disposition: CORE_CORRECTIVE；user_visible_effect: false
-- 证据: 设计第 4 条“wiring 在 `newMemoryRuntime` 读 `gkconfig.Bool(...)`”。`newMemoryRuntime` 的参数里没有配置，现有 `memory.<scope>.*` 都在 `loadMemoryConfig`（`internal/wiring/memory.go:56-77`）里读成 `MemoryConfig`；`MemoryToolOptions.Backend` 注释（`pkg/agentcore/tools/native/memory.go:40-43`）写的是“非 files 一律外部”。
-- 影响: 在 `newMemoryRuntime` 里读全局 gkconfig 也能跑，但链路测试得改全局配置状态；旧注释会和新判定矛盾。
-- 建议: 把两个 bool 放进 `MemoryConfig`（或 `MemoryBackendChoice`），经 `MemorySetup` 传给 `newMemoryRuntime`；同时更新 `Backend` 字段注释与 `external()` 注释。
+- 证据:
+  - 设计验证节写“屏幕不出现‘逐字复制自外部来源’询问”。实际文本是 `参数里有逐字复制自 %s 结果的文本`（`origin_guard.go:120`），即“逐字复制自 memory 结果的文本”，代码里没有“逐字复制自外部来源”这串字。照写的话，已登记一侧的否定断言恒真。
+  - judge 默认开启（`origin_judge.go`，`tools.origin_judge.enabled` 默认 true）。flag 命中后：judge 判 `allow` 时不询问但有 `origin_judge` 属性；判 `deny` 时拒绝且不询问；judge 关闭时会询问但没有 `origin_judge` 属性（`chat_origin_judge_test.go` 的 allow/deny/disabled 分支）。设计要求未登记对照组“两者都有”，这只在 judge 回复为 `ask` 时成立。
+  - `fakellm_test.go` 现有的 `memory` 模式是 shell_exec 加 memory add（438-447 行），没有“先 memory get 再照抄到 shell_exec”的调用序列。
+- 影响: 未登记对照组要求“两者都有”，会迫使实施者发现前两点，所以不会出现反向验证假通过，不阻断。不写清的话会多一轮试错。
+- 建议: 询问断言改为匹配 `逐字复制自 memory`；对照组固定 fake judge 回复为 `ask`（沿用 `JudgeReply`）；写明 fakeLLM 要新增“memory get 后照抄到 shell_exec”的模式。
 
 ## 覆盖缺口与限制
 
-- 未运行任何测试或命令验证行为，结论来自静态阅读。
-- `protected_snapshot.go` 只读了键收集部分；启动提示的文本与 file 模式（配置用了特殊写法时只报“文件变化”，不报键名）没有细看。设计验收“启动提示报出键名”需要测试用普通 YAML 写法，否则可能只报文件级变化。
-- 未读 gofer 侧 tracker 的实现，TF1 中“clone 仓库自带的 tracker 条目会被 gofermem 读出”依据 gofermem 包注释（按 cwd 找 tracker、按标签和键过滤）推断，未实跑。
-- 本报告只覆盖 Spec/Executability 轴。
+- 静态阅读，未运行任何测试或命令验证行为。
+- Windows 上大小写敏感目录（per-directory case sensitivity）里可能存在仅大小写不同的兄弟目录，`EqualFold` 会把它们视为同一仓库。触发需要用户自己启用该特性并在其中放置仓库，判断为可忽略，未列为发现。
+- 未读 gofer 侧 tracker 的查找实现。“gofermem 以 `Dir` 为 cwd、读该目录的 tracker”依据 gofermem 包注释与 `memory.go:293-296`。
+- 只覆盖 Spec/Executability 轴，以及 diff 涉及的章节与它所依赖的代码；未变章节沿用第 1 轮结论。
 
 ## 结论
 
-BLOCKED —— TF1（CORE_BLOCKING / SECURITY）未关闭：project 作用域的可信会落到任意仓库自带的 gofer tracker，设计没有写明也没有限制。按 TF1 的 (a) 或 (b) 修订并由用户确认后，可做闭合确认。TF2–TF5 为 CORE_CORRECTIVE，均不改变用户可见结果，在计划前随修订一起改即可。
+PASS：TF1 在代码层面已关闭。整根相等加上 gitRoot 的定义，排除了第三方 clone 与嵌套 clone，所有不匹配都失败关闭。`ConfigTypeStringList` 存在，受保护快照能按键名报出列表变化，非法值会导致启动失败。TF2–TF5 的修订正确，可以实施。本轮没有新的 CORE_BLOCKING。TF6、TF7 是 `user_visible_effect: true` 的 CORE_CORRECTIVE，建议计划批准前修订文字，并在 Gate 向用户披露；TF8 随计划一起修即可。
 
 ## 剩余风险与后续
 
-- 方案 A 本身的取舍（可信后端被写入恶意指令后无外部来源防护、可经记忆自我扩散）设计已写明，属于用户接受的风险，本轮不再列。
-- TF1 选 (b) 时会改变“写一个键即生效”的用户步骤，按 SR1401 需用户确认后再改设计。
-- 实施时注意 `memory.go` 已有 438 行，改动很小，不涉及 GR104。
+- Gate 需向用户说明（TF6）：嵌套仓库要逐个登记；worktree 及 gofer `--worktree` job 中不生效；`config set` 会覆盖整个列表。
+- `config set memory.project.trusted relative/path` 在 set 阶段只做通用列表校验，写入后下次启动才失败（报错含键名）。属于用户自己的操作，可恢复，未列为发现；实施时可顺带在 set 阶段校验绝对路径。
+- 若 `SUGA_HOME` 的 config.yaml 被 Windows 主机与 Linux 容器共用，一方的绝对路径在另一方会被判为相对路径，导致启动失败。本机容器未共用 `SUGA_HOME`，未列为发现。
+- 方案 A、D5、D6 已由用户接受（可信后端被写入恶意指令时无外部来源防护，可经记忆自我扩散），本轮不再列。
