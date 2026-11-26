@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga 记忆可信开关 实施计划
 
-> 状态：Draft 0.4 / 待人工计划批准；issue `suga-7s4v`
+> 状态：Draft 0.4 / 已批准实施（2026-11-26）；issue `suga-7s4v`
 
 ## 修订记录
 
@@ -209,3 +209,5 @@ characterization：本设计改变行为，不声称等价，不做基线回放�
 - 完成条件：T1–T4 完成标准全部满足、合并到本地 main，issue `suga-7s4v` 评论附验证结果后关闭；gofer plan 的 todo 全部 done，plan 状态置 done。
 - 进入 `COMPLETE` 时写 ≤8 行完成总结（主旨、状态、自主决策、提交数与区间、耗时、剩余项），并按 plan-closure 做一次 retrospective 判定与提示（仅首次 `COMPLETE` 写入时提示一次）。
 - 剩余：发版与推送待你授权；deferred：worktree 按 `git-common-dir` 沿用主仓库可信（设计 Q4）。
+
+批准记录：2026-11-26 用户原话“批准 suga 记忆可信开关计划 0.4，按建议分配模型开始实施”。执行者：T1/T2 `openai-codex/gpt-6.1-sol`，T3 `opencode-go/deepseek-v4.1-flash`，T4 由监督会话执行。授权本地实施与合并到本地 main；push、发版另行授权。
