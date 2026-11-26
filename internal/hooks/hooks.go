@@ -304,13 +304,13 @@ func newCompatClient(argv []string, timeout time.Duration, opts []Option) (*comm
 	if err != nil {
 		return nil, err
 	}
-	for _, pattern := range append(append([]string(nil), tools...), preTools...) {
-		if strings.TrimSpace(pattern) == "" {
-			return nil, fmt.Errorf("hooks.post_tool_use.tools contains an empty glob")
-		}
-		if _, err := path.Match(pattern, "sample"); err != nil {
-			return nil, fmt.Errorf("hooks.post_tool_use.tools glob %q: %w", pattern, err)
-		}
+	// The two keys are checked apart: a bad glob in one must name that key,
+	// not the other one.
+	if err := checkToolGlobs("hooks.post_tool_use.tools", tools); err != nil {
+		return nil, err
+	}
+	if err := checkToolGlobs("hooks.pre_tool_use.tools", preTools); err != nil {
+		return nil, err
 	}
 	stopTimeout := timeout
 	// The extra 2s lets a command that waits stop_wait_sec answer before it is killed.
@@ -332,6 +332,20 @@ func newCompatClient(argv []string, timeout time.Duration, opts []Option) (*comm
 		opt(client)
 	}
 	return client, nil
+}
+
+// checkToolGlobs rejects an empty or unparsable tool name glob of key, naming
+// the key it came from (the key decides which events send a tool name).
+func checkToolGlobs(key string, patterns []string) error {
+	for _, pattern := range patterns {
+		if strings.TrimSpace(pattern) == "" {
+			return fmt.Errorf("%s contains an empty glob", key)
+		}
+		if _, err := path.Match(pattern, "sample"); err != nil {
+			return fmt.Errorf("%s glob %q: %w", key, pattern, err)
+		}
+	}
+	return nil
 }
 
 // stringList reads an optional list of strings from the config.
