@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/inhere/suga/internal/personal/store"
@@ -90,6 +91,31 @@ type recorder struct {
 	// reads pictures itself and explains one to a model without vision (design
 	// 2026-10-23 section 8), so a :model switch no longer changes the tools.
 	vision *tools.VisionGate
+	// forkReuse is written once on the first ordinary model event of a fork
+	// session; it is deliberately an event attr, not ModelEvent.Metadata.
+	forkReuse        string
+	forkReuseNote    string
+	forkReuseMu      sync.Mutex
+	forkReuseWritten map[string]bool
+}
+
+// forkReuseFor returns and consumes the fork reuse annotation for one session.
+// Only ordinary model events call it, so compaction and other purpose-tagged
+// calls cannot claim the annotation.
+func (r *recorder) forkReuseFor(sessionID string) (string, string, bool) {
+	if r == nil || r.forkReuse == "" || sessionID == "" {
+		return "", "", false
+	}
+	r.forkReuseMu.Lock()
+	defer r.forkReuseMu.Unlock()
+	if r.forkReuseWritten == nil {
+		r.forkReuseWritten = make(map[string]bool)
+	}
+	if r.forkReuseWritten[sessionID] {
+		return "", "", false
+	}
+	r.forkReuseWritten[sessionID] = true
+	return r.forkReuse, r.forkReuseNote, true
 }
 
 func (r *recorder) record(ctx context.Context, e store.Event) {
@@ -185,6 +211,14 @@ func (r *recorder) attemptObserver(defName, defModel string) llm.AttemptObserver
 				e.Attrs["prefix_resume"] = rep.Resume
 				if rep.Resume != resumeSame {
 					e.Attrs["prefix_resume_reason"] = rep.Reason
+				}
+			}
+		}
+		if p := purposeFrom(ctx); p == "" {
+			if reuse, note, ok := r.forkReuseFor(observeScopeFrom(ctx).sessionID); ok {
+				e.Attrs["fork_reuse"] = reuse
+				if note != "" {
+					e.Attrs["fork_reuse_note"] = note
 				}
 			}
 		}

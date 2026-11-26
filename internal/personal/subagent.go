@@ -25,6 +25,7 @@ const (
 	StopMaxSteps  = "max_steps"
 	StopMaxTokens = "max_tokens"
 	StopTimeout   = "timeout"
+	StopContext   = "context"
 )
 
 // Meta keys of a sub-agent session besides store.MetaKind and

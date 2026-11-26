@@ -224,6 +224,9 @@ type Config struct {
 	// Mode is the run mode recorded in turn_context events: "read_only" or
 	// "allow_write" (empty = unknown).
 	Mode string
+	// ForkSeed selects the fixed request prefix and disables main-session context
+	// projection for a read-only background fork.
+	ForkSeed *ForkSeed
 	// MemoryIndex returns the rendered memory indexes of every registered
 	// scope (memory.Index.Render, concatenated). The runner freezes them in
 	// the segment snapshot (re-read at every segment break) and renders them
@@ -466,7 +469,20 @@ func New(cfg Config) (*Runner, error) {
 	}
 	rec := &recorder{sink: cfg.Repository, price: cfg.Price,
 		taint:  newTaintMarker(cfg.Repository, cfg.TaintTools, cfg.TaintOnSpill),
-		prefix: newPrefixTracker(), workspace: cfg.Workspace, vision: cfg.Vision}
+		prefix: newPrefixTracker(), workspace: cfg.Workspace, vision: cfg.Vision,
+		forkReuse: func() string {
+			if cfg.ForkSeed != nil {
+				return cfg.ForkSeed.Reuse
+			}
+			return ""
+		}(),
+		forkReuseNote: func() string {
+			if cfg.ForkSeed != nil {
+				return cfg.ForkSeed.ReuseNote
+			}
+			return ""
+		}(),
+		forkReuseWritten: make(map[string]bool)}
 	cfg.Provider = rec.observeProvider(cfg.Provider, cfg.ProviderName, cfg.Model)
 	if cfg.Tools != nil {
 		// Stack: observe -> output -> (visibility -> approval -> base). The
@@ -730,7 +746,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	notices := &turnNotices{}
 	contextBuilder.notices = notices
 	ctx = withTurnNotices(ctx, notices)
-	runtimeHooks := r.turnHooks(usage, meter, denials, req.Emit, result)
+	runtimeHooks := r.turnHooks(usage, meter, denials, req.Emit, result, req.Prompt)
 	runtime := agentcore.New(agentcore.Config{
 		Provider:        r.cfg.Provider,
 		Storage:         storage,
@@ -779,8 +795,12 @@ func appendTurnInput(transcript *Transcript, sessionID string, req RunRequest) {
 // so a later hook short-circuiting the chain cannot hide a model call from the
 // usage total. The denial limit hook ends the turn before the next model call
 // once DenialLimit refusals accumulated.
-func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials *turnDenials, sink EmitFunc, result RunResult) []agentcore.Hook {
-	hooks := []agentcore.Hook{usage}
+func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials *turnDenials, sink EmitFunc, result RunResult, prompt string) []agentcore.Hook {
+	var hooks []agentcore.Hook
+	if r.cfg.ForkSeed != nil {
+		hooks = append(hooks, forkHeadHook{seed: r.cfg.ForkSeed, prompt: prompt, maxInput: r.forkThreshold(), instruction: forkTranslate(r.cfg.Translator, "model.fork.wrapup_context")})
+	}
+	hooks = append(hooks, usage)
 	if r.cfg.Budget.enabled() {
 		settings := r.cfg.Budget.normalized()
 		var priceAvailable bool
