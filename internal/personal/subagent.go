@@ -99,9 +99,14 @@ func RunChild(ctx context.Context, child *Runner, req ChildRequest) (ChildResult
 	out.Tainted = child.sessionTainted(context.WithoutCancel(ctx), sess.ID)
 	switch {
 	case runErr == nil:
-		out.Report, out.Stop = res.Output, StopFinal
-		if res.WrapUp != "" {
-			out.Stop = res.WrapUp
+		out.Report = res.Output
+		if res.WrapUp == StopContext {
+			out.Stop = StopContext
+		} else {
+			out.Stop = StopFinal
+			if res.WrapUp != "" {
+				out.Stop = res.WrapUp
+			}
 		}
 		return out, nil
 	case ctx.Err() != nil: // the parent turn was cancelled
