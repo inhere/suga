@@ -12,6 +12,8 @@
 | 0.3 | 2026-11-26 | Claude | 处理两轴第 1 轮评审（`docs/review/2026-11-26-background-fork/`），见下表 |
 | 0.4 | 2026-11-26 | Claude | 未复核修订（第 2 轮之后）：第 2 轮两轴 PASS，处理剩余纠正项 BF11–BF14、BS3–BS5，见第 2 轮处理表 |
 
+> 0.4 批准后按用户 Q3 选 A 修正（2026-11-26：“hao6 Q3 选 A”，计划评审 PF4/PS1）：关键流程 3 的 kill 改为沿用 6gcy 行为（不通知、output 写“已终止”、`stop=cancelled`）；不改版本号。
+
 第 1 轮处理：
 
 | 发现 | 处理 |
@@ -152,7 +154,7 @@ flowchart LR
 
 ### 3. kill 与失败
 
-- `:tasks -k t2` 或 `task kill t2`：取消分身 ctx，`stop=cancelled`，task output 写最后一段回答，通知写“分身被终止”。
+- `:tasks -k t2` 或 `task kill t2`：取消分身 ctx，`stop=cancelled`，task output 写“已终止”，不发通知（沿用 6gcy 的现有 kill 行为，避免唤醒没人要的回合）。
 - 主回合 Ctrl-C 不影响后台分身；chat 退出、ACP 连接关闭、`run` 结束时随任务管理器终止。
 - `agents.max_steps` / `max_tokens` / `timeout` 与上下文阈值（`stop=context`）都走收尾，报告首行写明原因。
 
