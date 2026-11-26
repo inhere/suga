@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga 记忆可信开关 实施计划
 
-> 状态：Draft 0.3 / 待人工计划批准；issue `suga-7s4v`
+> 状态：Draft 0.4 / 待人工计划批准；issue `suga-7s4v`
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-11-26 | Claude | 初稿：按已批准设计 0.4 拆为 T1–T4 |
 | 0.2 | 2026-11-26 | Claude | 处理第 1 轮两轴计划评审（`docs/review/2026-11-26-trusted-memory-backend-plan/`），见下表；T1、T2 建议执行者改为 `openai-codex/gpt-6.1-sol` |
 | 0.3 | 2026-11-26 | Claude | 处理第 2 轮两轴计划评审，见第 2 轮处理表；T4 真实复现改为受限执行（PreToolUse hook 只放行一条 echo） |
+| 0.4 | 2026-11-26 | Claude | 第 3 轮后的未复核修订，用户 Q8 选 A 接受风险（“7s4v Q8 选 A”）：T4 真实复现改为只读记忆、不执行 shell，见第 3 轮处理表 |
 
 第 1 轮处理：
 
@@ -32,6 +33,12 @@
 | MS7 | 凭据照 `acp_probe.py`：脚本进程内读 `.env`，只注入 provider 引用的变量 |
 | MF6 | 工作区只用 `gkconfig.Set("workspace", …)`；⑥补 `memory.user.command`；提问数 `len(asker.questions)`；`selectUserBackend` 赋值放 switch 前 |
 
+第 3 轮处理（未复核，用户 Q8 选 A）：
+
+| 发现 | 处理 |
+|---|---|
+| MS8、MF8（阻断：`suga run` 不装配 hook） | 删去 hook、`allow-echo.ps1`、hook 事件断言与 echo 照抄执行；两组 `run --max-steps 4` 不带 `--allow-write`，只做 `memory get`；以第二回合 `turn_context.tainted` 断言登记组不污染、对照组污染；`host_or_non_offline_action`、Gate 第 4 条、完成定义 5、可追溯性同步 |
+
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
 **思考与范围声明**
@@ -48,14 +55,14 @@
 2. 非法值（project 写成 `true`、标量、空项、相对路径；user 非布尔）启动失败并带键名。
 3. 两键 Protected、归 `relax` 组：会话内与管道 stdin 的 `config set` 退出码 2、文件不变；改动启动提示报出键名。
 4. `suga manifest`（JSON 与文本）的记忆项显示 `trusted`。
-5. 设计“验证要求”全部落到测试并通过（单测、GR110、链路、ptye2e Linux 与 Windows ConPTY、反向验证、主机 gofer 后端真实复现）；文档写明登记方式与风险。
+5. 设计“验证要求”全部落到测试并通过（单测、GR110、链路、ptye2e Linux 与 Windows ConPTY、反向验证、主机 gofer 后端真实复现：可信读取不污染，照抄不询问由 T2/T3 覆盖）；文档写明登记方式与风险。
 
 ## 范围、排除项与授权
 
 - 范围：suga 仓库 `internal/config/settings_registry.go`、`internal/config/settings_protected_test.go`、`internal/config/protected_snapshot_test.go`；`internal/wiring/memory.go`、`memory_runtime.go`、`manifest.go`、`main_test.go`（helper 分支）及测试；`internal/cli/manifest.go`、`internal/cli/config_protected_test.go`、`internal/cli/manifest_test.go`；`pkg/agentcore/tools/native/memory.go` 及测试；`test/ptye2e` 新场景、`fakellm_test.go` 一个模式、新 helper `test/ptye2e/testdata/fakememexec/main.go`；`config/config.yaml` 注释；README、`docs/usage/gofer-personal-agent.md`、`skills/suga-guide/references/config.md`、CHANGELOG「未发布」。
 - 排除：worktree 沿用主仓库可信；按条目/写入者区分可信；改 ExternalOrigin 窗口与裁决；改 `taint.go`；gofer 侧改动；发版、推送、安装。
 - 授权：本计划批准只授权进入实施请求；实施需你另行指示。当前执行请求将覆盖：建 worktree 分支 `feat/trusted-memory`、在其上本地提交、rebase 到本地 main、合并到本地 main；不含 push、tag、发版、安装。
-- `host_or_non_offline_action=REQUIRED`：主机建 worktree `.worktrees/trusted-mem`（`tmp/xhen-p1/wt-repo.ps1`）、rebase 与合并到本地 main（`tmp/xhen-p1/host-merge.ps1`）；执行者 `gofer job -a suga` 在主机运行并调用模型 provider（联网、产生费用）；主机 Windows 测试；T4 主机真实复现调用真实 provider，并以 `--allow-write` 让真实模型在 `tmp/suga-7s4v/ws` 内无人确认执行一条固定 `echo`（其余 shell 被 PreToolUse hook 拒绝）；`staticcheck@2026.2.1` 联网下载模块。均不推送、不发布。
+- `host_or_non_offline_action=REQUIRED`：主机建 worktree `.worktrees/trusted-mem`（`tmp/xhen-p1/wt-repo.ps1`）、rebase 与合并到本地 main（`tmp/xhen-p1/host-merge.ps1`）；执行者 `gofer job -a suga` 在主机运行并调用模型 provider（联网、产生费用）；主机 Windows 测试；T4 主机真实复现调用真实 provider，真实模型只读记忆，不执行 shell、不写文件；`staticcheck@2026.2.1` 联网下载模块。均不推送、不发布。
 
 ## 输入与批准证据
 
@@ -155,10 +162,10 @@ characterization：本设计改变行为，不声称等价，不做基线回放�
   - rebase：main 相对 worktree 基点有新提交即由主机 job 执行 `git -C inhere-tools/suga/.worktrees/trusted-mem rebase main`，冲突按“风险”一节处理；rebase 后再跑下列全量命令。fork 未合入时，合并后通知 fork 会话 rebase。
   - 容器内 worktree 根：`go test -race ./...`、`go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...`、`make smoke-go`（含 Linux 上的 `TestChatTrustedMemory`）。
   - 主机 Windows（gofer exec job，只写 `tmp/`）：worktree 根 `go test ./...` 与 `go test -tags ptye2e ./test/ptye2e -run 'TestChatTrustedMemory|TestChatOriginJudge' -count=1 -v`（`fakellm_test.go` 发生过冲突时 `-run` 加 `TestChatFork`）。
-  - 主机真实复现（gofer exec job，脚本 `tmp/suga-7s4v/realenv.ps1`）：`go build -o <WP>/tmp/suga-7s4v/suga.exe ./cmd/suga`；隔离 `SUGA_HOME=<WP>/tmp/suga-7s4v/home`，最小 `config.yaml` 只含 provider 段（沿用 fork 计划 T9 的过滤：丢弃 `headers`，只留 `type`、`base_url`、`models`、`api_key`，`api_key` 去引号后须匹配 `^\$\{[A-Za-z0-9_]+\}$`，逐值通过才继续）、`tools.origin_judge.enabled: false`（对照组结果确定；`tools.approval` 只在 chat 生效，不写）、`hooks.command: [pwsh, -File, <WP>/tmp/suga-7s4v/allow-echo.ps1]` 与 `hooks.pre_tool_use.tools: [shell_exec]`（脚本对 PreToolUse 只在 `tool_input.command` 逐字等于该 echo 时放行，否则非零退出即拒绝；其他事件退出 0。审批规则文件做不到“只放行一条”：deny 恒为最强、文件无默认项、run 的 native 默认恒为 allow）、`memory.project.backend: gofer` 与 `memory.project.trusted`；仓库为 `<WP>/tmp/suga-7s4v/ws`（`git init`、`gofer` tracker 初始化后写一条带 `suga` 标签的备忘，正文固定为 `echo suga-7s4v-trusted-memory-check-ok-0123456789`，不含变量展开、管道或重定向）。凭据照 `scripts/acpprobe/acp_probe.py`：脚本进程内逐行读真实 `SUGA_HOME/.env`，只把 provider 段引用的变量名设进子进程环境，不落盘、不经命令行参数、不回显；子进程环境删去 `SUGA_HOOKS`，trace 须有 PreToolUse 的 `hook` 事件，否则判失败（hook 未生效即失败关闭）。`suga.exe manifest` 显示 `trusted=true` 后两组都跑 `suga.exe run --allow-write --max-steps 6`，提示要求先 `memory get` 该条再照抄执行。登记组：trace 须有 `shell_exec` 的 `tool` 事件（前置断言），所有 `shell_exec` 的 `command` 逐字等于该 echo（否则判失败并停止），且无 `origin_judge`、未被拒绝。对照组（同一仓库从列表移除）：须有 `denial`，原因含“逐字复制自 memory 结果”（拒绝来自 originGuard）。模型未调用 memory 时写 `UNVERIFIED_REAL_ENV: 真实模型未触发 memory get`；对照组模型改写命令、未被拒绝时写 `UNVERIFIED_REAL_ENV: 模型改写了命令`（复现：同一脚本重跑）。脚本不打印环境与 `.env`；结束删除 `home`、`ws`、`allow-echo.ps1` 与 `suga.exe`。
+  - 主机真实复现（gofer exec job，脚本 `tmp/suga-7s4v/realenv.ps1`；只读记忆，不执行 shell）：`go build -o <WP>/tmp/suga-7s4v/suga.exe ./cmd/suga`；隔离 `SUGA_HOME=<WP>/tmp/suga-7s4v/home`，最小 `config.yaml` 只含 provider 段（沿用 fork 计划 T9 的过滤：丢弃 `headers`，只留 `type`、`base_url`、`models`、`api_key`，`api_key` 去引号后须匹配 `^\$\{[A-Za-z0-9_]+\}$`，逐值通过才继续）、`memory.project.backend: gofer` 与 `memory.project.trusted`；仓库为 `<WP>/tmp/suga-7s4v/ws`（`git init`、gofer tracker 初始化后写一条带 `suga` 标签的无害备忘）。凭据照 `scripts/acpprobe/acp_probe.py`：脚本进程内逐行读真实 `SUGA_HOME/.env`，只把 provider 段引用的变量设进 suga 子进程环境，不落盘、不经命令行参数、不回显（run 不带 `--allow-write` 时没有 shell 工具，不会再有 shell 子进程继承环境）。`suga.exe manifest` 显示 `trusted=true` 后，两组各跑 `suga.exe run --max-steps 4 "用 memory get 读取 <id> 并复述"`（不带 `--allow-write`），以 `suga.exe session list --json --limit 1 --origin run`（cwd 为 ws）取会话 id，再 `suga.exe run --resume <id> --max-steps 1 "结束"` 开第二回合。观测：`suga.exe inspect trace <id> --json`；trace 不逐条记录结果的 `external` 标记，可观测项是第二回合 `turn_context` 事件的 `tainted` 属性（由会话 meta 是否有 `tainted_at` 得出，`turncontext.go`），`external` 与污染由同一标记驱动（设计 D5）。前置断言：第一回合有 `memory` 的 `tool` 事件，否则写 `UNVERIFIED_REAL_ENV: 真实模型未触发 memory get（复现：同一脚本重跑）`。登记组：`tainted=false`；对照组（同一仓库从列表移除）：`tainted=true`。“照抄进命令不询问”由 T2 链路与 T3 ptye2e 覆盖，真实复现不覆盖。脚本不打印环境与 `.env`；结束删除 `home`、`ws` 与 `suga.exe`。
   - 合并前核对（fail-closed）：主机 job `git -C inhere-tools/suga branch --show-current` 须为 `main`、`status --short` 为空（他人改动未清时按 Ownership Conflict 停止并询问）；记录合并前 `rev-parse HEAD` 作恢复点。
   - 合并：主机 `tmp/xhen-p1/host-merge.ps1 -Repo inhere-tools/suga -Branch feat/trusted-memory -MsgFile …`，再以主机 job `git -C inhere-tools/suga merge-base --is-ancestor feat/trusted-memory main` 确认退出码 0；CHANGELOG 已发布小节逐字未变。
-- 验证: 以上命令全部通过；Windows 输出含 `--- PASS: TestChatTrustedMemory`；真实复现登记组未拒绝、对照组被拒绝，或 `UNVERIFIED_REAL_ENV` 行写在 issue 评论。
+- 验证: 以上命令全部通过；Windows 输出含 `--- PASS: TestChatTrustedMemory`；真实复现登记组 `tainted=false`、对照组 `tainted=true`，或 `UNVERIFIED_REAL_ENV` 行写在 issue 评论。
 - 完成标准: 全绿并合并到本地 main；issue `suga-7s4v` 评论附验证结果。
 - 依赖: T3。
 
@@ -173,10 +180,10 @@ characterization：本设计改变行为，不声称等价，不做基线回放�
 
 ## 人工 Gate
 
-1. 计划批准（评审后），同时指定 T1–T3 执行者模型（建议 T1、T2 `openai-codex/gpt-6.1-sol`，T3 `opencode-go/deepseek-v4.1-flash`）。仪式成本：设计评审 2 轮两轴（报告 91 + 100 = 191 行，ledger 444 行，设计 141 行）；计划评审第 1 轮两轴（报告 102 + 98 = 200 行，计划 0.1 为 179 行）、第 2 轮两轴（报告 69 + 72 = 141 行，计划 0.2 为 193 行）、第 3 轮获用户同意（“7s4v Q7 选 A”）。
+1. 计划批准（评审后），同时指定 T1–T3 执行者模型（建议 T1、T2 `openai-codex/gpt-6.1-sol`，T3 `opencode-go/deepseek-v4.1-flash`）。仪式成本：设计评审 2 轮两轴（报告 91 + 100 = 191 行，ledger 444 行，设计 141 行）；计划评审第 1 轮两轴（报告 102 + 98 = 200 行，计划 0.1 为 179 行）、第 2 轮两轴（报告 69 + 72 = 141 行，计划 0.2 为 193 行）、第 3 轮两轴（报告 89 + 72 = 161 行，计划 0.3 为 204 行，均 BLOCKED 于 MS8/MF8）；用户 Q8 原话“7s4v Q8 选 A”：按 0.4 修 T4、不开第 4 轮、接受风险（未复核修订）。
 2. 当前执行请求：你指示开始实施；覆盖建 worktree 分支 `feat/trusted-memory`、rebase 与合并到本地 main，不含 push。
 3. 外部动作 Gate：push、tag、发版、安装均需你另行逐项批准。
-4. 随计划批准披露：T4 登记组让真实模型在主机 `tmp/suga-7s4v/ws` 内无人确认执行一条固定 `echo`，其余 shell 被 hook 拒绝、步数上限 6。
+4. 随计划批准披露：T4 主机真实模型只读记忆（`memory get`），不执行 shell、不写文件，步数上限 4。
 
 ## 可追溯性
 
@@ -192,7 +199,7 @@ characterization：本设计改变行为，不声称等价，不做基线回放�
 | 方案 8、D7（manifest `trusted`） | T2、T4 | `TestLoadManifest`（含 JSON 键）、`TestManifestCommand` + R7；主机 manifest |
 | Q4（worktree 不生效） | T2 | `TestTrustedMemoryChain` ④ |
 | 端到端（审批事件 `origin_judge`、询问文本、judge 固定 ask） | T3、T4 | `TestChatTrustedMemory` ①② + R8，Windows 与 Linux |
-| 主机 gofer 后端复现原场景 | T4 | `realenv.ps1` 登记组与对照组 |
+| 主机 gofer 后端复现（可信读取不污染，对照组污染） | T4 | `realenv.ps1` 第二回合 `turn_context.tainted` |
 | 运维文档 | T3 | grep |
 | 验证要求（`-race`、Linux ptye2e、Windows、staticcheck） | T4 | 全量命令与主机 job |
 | 合并到本地 main | T4 | `merge-base --is-ancestor` 退出码 0 |
