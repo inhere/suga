@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # suga 后台分身（fork）设计
 
-> 状态：Draft 0.3 / 待人工计划批准
+> 状态：Draft 0.4 / 待人工计划批准
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-11-26 | Claude | 初稿：依据 suga-hao6 与只读调研，定分身的触发面、上下文快照（沿用主循环请求前缀）、只读执行、回交与观测，列出待确认 Q1–Q5 |
 | 0.2 | 2026-11-26 | Claude | 用户 2026-11-26：“hao6 Q1–Q5 按推荐”。Q1–Q5 转为决策 D1–D5（模型与 `:bg` 双入口、`agent` 的 `type: fork`、只读白名单、≤4000 字符带全文、共用现有上限）；删去未选方案的内容与赘述 |
 | 0.3 | 2026-11-26 | Claude | 处理两轴第 1 轮评审（`docs/review/2026-11-26-background-fork/`），见下表 |
+| 0.4 | 2026-11-26 | Claude | 未复核修订（第 2 轮之后）：第 2 轮两轴 PASS，处理剩余纠正项 BF11–BF14、BS3–BS5，见第 2 轮处理表 |
 
 第 1 轮处理：
 
@@ -23,8 +24,19 @@
 | BF4 | 请求头 hook 规格写定（F2） |
 | BF5 | “可用基准”与各情形的处理写成表；重建不了就拒绝启动，不再有第三种请求头（F7） |
 | BF6 | 晚绑定父 Runner，模型取父 Runner 当前值（F3） |
-| BF9 | 前缀断言改用 `fakeLLM.Requests()`；`fork_reuse` 只记首个 model 事件；每项补用例；真实模型改为记录命中率供对比 |
+| BF9 | 前缀断言改用 `fakeLLM.Requests()`；`fork_reuse` 只记首个 model 事件；每项补用例；真实模型改为记录命中率供对比；0.3 误删了“去掉执行白名单”的反向验证，0.4 恢复（BS5） |
 | BF10 | 记为 deferred |
+
+第 2 轮处理（未复核）：
+
+| 发现 | 处理 |
+|---|---|
+| BF11、BS3 | `:compact`、`:rewind`、段断点、段清理之后照常用重建结果启动，跳过 `prefix_changed` 判定，记 `rebuilt`；只有 host hook 与 `prompt_state` 拒绝；验收每种情形写唯一期望（F7） |
+| BF12 | 按身份去掉 RunChild 的 Prompt；分身模式不渲染子会话的段上下文、hookContext、ephemeral（F2） |
+| BF13 | “不发 `ToolChoice`”只适用于常规步，收尾重试保留运行时设定（F2） |
+| BF14 | 分身中的一切拒绝（含 ask 规则在无终端时失败关闭）都返回普通错误结果（F9），补 ask 规则用例 |
+| BS5 | 恢复白名单反向验证；“连续 3 次写调用”断言 F9 提示与目标文件未被创建或修改 |
+| BS4 | Gate 一节附用户选择之外的用户可见差异 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -166,14 +178,14 @@ flowchart LR
 | D4 | 仅 `type: fork`：报告正文 ≤4000 rune（不含 footer）时通知带全文，超过时前 12 行并注明截断；普通后台 agent 不变 | 同上（Q4 推荐 B）；BS2、BF8 |
 | D5 | 与 shell、agent 共用 `tasks.max_running`（默认 4）与 `agents.max_steps` / `max_tokens` / `timeout`；满额直接拒绝、不排队 | 同上（Q5 推荐 A）；BF8 |
 | F1 | 种子用进程内基准请求加尾部，不复制 transcript、不改投影与 `loadHistory` | 改投影要过 rewind 设计列出的全部读者（SR1410） |
-| F2 | `forkHeadHook` 挂在分身 Runner hook 链首位（prefixHook 之前，所以前缀统计与 handoffRequestHook 看到的都是改写后的请求）。输出：System、Tools、Model 取种子；Messages 为新分配的切片 = 基准 Messages + 尾部 + 分身自己的消息去掉首条（RunChild 的 Prompt，指令已在尾部）；运行时追加的 wrap-up 与其后 deadlineHook 的提示按原顺序留在末尾；不发 `ToolChoice`，不在共享切片上 append | BF4；H5 |
+| F2 | `forkHeadHook` 挂在分身 Runner hook 链首位（prefixHook 之前，所以前缀统计与 handoffRequestHook 看到的都是改写后的请求）。输出：System、Tools、Model 取种子；Messages 为新分配的切片 = 基准 Messages + 尾部 + 分身自己的消息（按身份去掉 RunChild 的 Prompt，指令已在尾部；分身模式不渲染子会话的段上下文、hookContext、ephemeral，基准里已有主会话的段上下文）；运行时追加的 wrap-up 与其后 deadlineHook 的提示按原顺序留在末尾；常规步不发 `ToolChoice`，收尾重试保留运行时设定的值（只有这一次不命中缓存）；不在共享切片上 append | BF4、BF12、BF13；H5 |
 | F3 | `subAgents` 经 `forkHost` 在 `personal.New` 之后晚绑定父 Runner（同 `memoryHost`）；分身的模型与 provider 名取种子（父 Runner 当前值，`:model` 切换后即新模型），自建 provider 实例；wiring 不直接碰 tracker | BF6；共享 Pool 会被替换观察者 |
 | F4 | 执行、上限、收尾、取消、用量、污染传递、子会话过滤复用 `RunChild` 与后台 agent 路径；任务 `Kind:"agent"`、摘要 `agent: ` 前缀，只用 `agent_type=fork` 与 `fork_reuse` 区分；`fork_base` 只存 turn 与尾部来源 | SR1403；BS1、BF7 |
 | F5 | 分身总是后台运行，不提供同步分身 | 同步等待与普通子 agent 无差别 |
 | F6 | 分身模式下 `contextBuilder` 不折叠、不段断点、不 shrink 截断；计量用上次调用 provider 上报的输入 token（即改写后的请求），达到主会话同一阈值（`window - reserve`）时 `RequestWrapUp(context)`；种子估算已超阈值时不启动，提示改用 `agent explore`。`ChildResult.Stop` / `AgentReport.Stop` 新增 `context` | BF3 |
-| F7 | 可用基准与处理：模型触发总用当步请求（`prefix`）。`:bg` 时，上一回合正常完成、模型未变且 tracker 中请求属于该回合才直接用（`prefix`）；`--resume` 后未发请求、`:compact`、段断点、`:rewind`、段清理（已被清除）以及上一回合取消或失败（请求不属已完成回合）一律按 `requestBaseBetweenTurns` 重建（`rebuilt`，请求头为主会话的 System/Tools）；`:model` 切换后同样重建（按新模型）；配置了 host hook、`prompt_state` 或 `prefix_changed` 时重建不可信，分身不启动，提示原因（沿用 `handoffFallback*` 命名）。没有第三种请求头 | BF5；上下文完整优先于缓存 |
+| F7 | 可用基准与处理：模型触发总用当步请求（`prefix`）。`:bg` 时，上一回合正常完成、模型未变且 tracker 中请求属于该回合才直接用（`prefix`）；`--resume` 后未发请求、`:compact`、段断点、`:rewind`、段清理（已被清除）、上一回合取消或失败（请求不属已完成回合）、`:model` 切换后（按新模型）一律按 `requestBaseBetweenTurns` 重建并启动（`rebuilt`，请求头为主会话的 System/Tools），跳过与上回合指纹的 `prefix_changed` 比对（对分身它只意味着缓存不命中，原因附在 attr 上）；只有配置了 host hook 或 `prompt_state` 时重建内容不可信，分身不启动并提示原因（沿用 `handoffFallback*` 命名）。没有第三种请求头 | BF5、BF11；上下文完整优先于缓存 |
 | F8 | 与 `:fork N` 不共享实现 | 前者复制历史供人续聊，分身是一次性后台执行 |
-| F9 | 分身执行层对基准 Tools 中每个不在白名单的名字（Catalog 内外、`agent`、`task`、`tool_search`、`tool_call` 代理、MCP、memory）统一返回普通错误结果（不是 `ErrDenied`，不计入每回合拒绝上限）：“分身只读：<名字> 在分身中不可用，不要重试；需要改动或命令时写进报告由主会话执行”；不用“告诉用户开启方法”。反复尝试由 `agents.max_steps` 收尾兜住 | BF1 |
+| F9 | 分身中的一切拒绝都返回普通错误结果（不是 `ErrDenied`，不计入每回合拒绝上限），包括 ask 规则在无终端时的失败关闭（在 Approval 外层转换）。基准 Tools 中每个不在白名单的名字（Catalog 内外、`agent`、`task`、`tool_search`、`tool_call` 代理、MCP、memory）统一提示：“分身只读：<名字> 在分身中不可用，不要重试；需要改动或命令时写进报告由主会话执行”；不用“告诉用户开启方法”。反复尝试由 `agents.max_steps` 收尾兜住 | BF1、BF14 |
 | F10 | 尾部来源：personal 在主会话 turnHooks 中用 AfterModel 记下当步 `GenerateResult`、用 AfterTool 记下本批已执行的结果（下一步 AfterModel 时清空）。按 `persistToolTranscript` 的规则展开为逐调用 assistant 消息（lead 文字、reasoning、签名 thinking 元数据、批次 meta 原样）；排在分身调用之前的调用填真实结果，分身调用填任务指令，之后的调用填“主会话在派出分身后才执行此调用，分身中未执行” | BF2 |
 
 ## 待确认事项
@@ -195,14 +207,19 @@ flowchart LR
 - **单测**（录请求的假 provider）：
   - 前缀：分身首个请求的 System/Tools/Model 与基准相同，Messages 以基准 Messages 为前缀，基准切片未被修改（F1、F2）；
   - 尾部：带 reasoning 与签名元数据的回复、并行批次中排在分身前后的调用各自的结果（F10）；
-  - 拒绝：连续 3 次写调用后作答，报告是作答内容、`stop=final`；`agent`、`tool_call`、MCP 名字的提示文案一致（F9）；
+  - 拒绝：连续 3 次写调用后作答，每次写调用返回 F9 提示、目标文件未被创建或修改、报告是作答内容、`stop=final`；ask 规则下连续 3 次读调用同样 `stop=final`；`agent`、`tool_call`、MCP 名字的提示文案一致（F9）；
   - 阈值：分身上下文达到阈值时 `stop=context` 且有报告，种子超阈值时不启动（F6）；
-  - 基准：取消回合后、`--resume` 后、`:compact` 后、`:model` 切换后、配置 host hook 时的 `fork_reuse` 或拒绝原因（F3、F7）；
+  - 基准：正常回合后 `prefix`；`--resume` 后、取消回合后、`:compact` 后、`:rewind` 后、`:model` 切换后均为 `rebuilt` 并启动；配置 host hook 时拒绝并提示 `host_hook`（F3、F7）；
   - 回交：分身报告 ≤4000 rune 全文、超过截断；普通后台 agent 通知不变（D4）；满额拒绝（D5）；kill 后 `stop=cancelled`。
 - **GR110**：经 `app.Run([]string{"run", ...})`，假模型触发分身并 `task wait`，断言输出与 `inspect trace --json` 中的分身子会话。
 - **ptye2e**（`test/ptye2e`，`-tags ptye2e`，加入 `make smoke-go`）：假模型派分身 → 启动行与状态行计数 → `:tasks` 显示 → 空闲时通知唤醒注入回合；`:bg` 触发、空参提示、回合中放回输入行；`:tasks -k` 终止。前缀用 `fakeLLM.Requests()` 逐字节断言；结束后 `suga inspect trace --json` 只断言分身子会话 `agent_type=fork`、首个 model 事件 `fork_reuse=prefix`、任务行显示步数、主会话有 `task_notice`。
-- **反向验证**：临时让分身按普通子 agent 方式组装请求，确认前缀断言失败；临时把分身拒绝改回 `ErrDenied`，确认“连续 3 次写调用”用例失败；确认失败来自断言而非编译失败。
+- **反向验证**：临时让分身按普通子 agent 方式组装请求，确认前缀断言失败；临时把分身拒绝改回 `ErrDenied`，确认“连续 3 次写调用”用例失败；临时去掉执行白名单，确认“写调用返回 F9 提示、文件未改”断言失败；确认失败来自断言而非编译失败。
 - **Windows**：经 gofer exec job 在主机跑 `go test ./...` 与 ptye2e（ConPTY）。
 - **真实模型**：一个真实 provider 跑一轮带分身的多步对话，记录分身首个请求的 `cache_read / prompt` 与同会话主循环 steady 桶命中率，并列供对比，不设门槛。
 
-人工计划 Gate：按 Full 做第 2 轮两轴确认（只看本轮改动与 BF1 闭合），无开放 `CORE_BLOCKING` 后交用户批准进入计划。设计批准只授权写计划，不授权实施。
+与用户选择之外的用户可见差异（评审中新增，不需另做决策）：
+- `:bg` 在配置了 host hook 或 `prompt_state` 时拒绝启动并提示原因；
+- 种子估算超过上下文阈值时拒绝启动，提示改用 `agent explore`；
+- 真实模型的缓存命中只记录供对比，不设验收门槛。
+
+人工计划 Gate：两轴第 2 轮 PASS；0.4 为第 2 轮之后的未复核修订（BF11–BF14、BS3–BS5）。请用户批准 0.4 进入计划，或点名只按 0.3 批准。设计批准只授权写计划，不授权实施。
