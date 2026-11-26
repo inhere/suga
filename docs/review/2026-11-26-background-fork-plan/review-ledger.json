@@ -1,0 +1,704 @@
+{
+ "artifact_type": "review_ledger",
+ "schema_version": "2.2.0",
+ "candidate_progression": "DOCUMENT_REVISION",
+ "candidate": {
+  "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+  "commit": "1a8331edc3b19d89654cfae45d7516caea79fc9c",
+  "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+  "document_revision": "0.3"
+ },
+ "author_id": "author-main",
+ "required_rounds": [
+  1,
+  2,
+  3
+ ],
+ "required_sections": [
+  "修订记录",
+  "背景与目标",
+  "名词",
+  "范围与非目标",
+  "已确认事实与规范",
+  "总体方案",
+  "架构",
+  "关键流程",
+  "安全、数据、运维与回滚",
+  "决策",
+  "待确认事项",
+  "结论与人工计划 Gate"
+ ],
+ "required_axes": [
+  "Standards/Governance",
+  "Spec/Executability"
+ ],
+ "receipts": [
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "00c890f724f8983b531eaa120c8708e11c7c2238",
+    "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+    "document_revision": "0.1"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r1",
+   "session_id": "reviewer-standards-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-26-background-fork-plan.md",
+    "docs/review/2026-11-26-background-fork-plan/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-background-fork-plan/standards-review.md",
+    "source_report_commit_oid": "35e58e1184cc9c105cf6024b757ecc447a3e4df4",
+    "source_report_blob_oid": "28ed134fc56d03338e19d395aea1d07dcab87893",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-26-background-fork-plan.md",
+     "docs/review/2026-11-26-background-fork-plan/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "分身只读，不改主会话文件",
+    "分身结论回到主会话",
+    "落库记录与请求前缀行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "PS1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "fork_reuse 与 kill 无任务承载",
+     "impact": "[MISSING_FUNCTION] fork_reuse 与 kill 无任务承载",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "分身结论回到主会话",
+     "necessary_causal_chain": [
+      "验收断言 fork_reuse/kill",
+      "无任务实现",
+      "T7 必败"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PS2",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "三处设计项无任务",
+     "impact": "三处设计项无任务",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PS3",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "文件清单漏列",
+     "impact": "文件清单漏列",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PS4",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "结构差异无理由",
+     "impact": "结构差异无理由",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PS5",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "仪式成本",
+     "impact": "仪式成本",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "00c890f724f8983b531eaa120c8708e11c7c2238",
+    "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+    "document_revision": "0.1"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r1",
+   "session_id": "reviewer-spec-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-26-background-fork-plan.md",
+    "docs/review/2026-11-26-background-fork-plan/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-background-fork-plan/spec-review.md",
+    "source_report_commit_oid": "35e58e1184cc9c105cf6024b757ecc447a3e4df4",
+    "source_report_blob_oid": "e1f6f6cea00684c3995e6c5f9207f0e3802d3ea1",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-26-background-fork-plan.md",
+     "docs/review/2026-11-26-background-fork-plan/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "分身只读，不改主会话文件",
+    "分身结论回到主会话",
+    "落库记录与请求前缀行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "PF1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "ExpandToolCalls 与落库不一致",
+     "impact": "[BUG] ExpandToolCalls 与落库不一致",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "落库记录与请求前缀行为不变",
+     "necessary_causal_chain": [
+      "res 早于强转",
+      "finalCall 被代理展开",
+      "直接落库存错"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PF3",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": ":bg 拿不到 StartFork",
+     "impact": "[BUG] :bg 拿不到 StartFork",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "分身结论回到主会话",
+     "necessary_causal_chain": [
+      "AgentTool 为局部变量",
+      "Options 无入口",
+      "文件清单限制"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PF4",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "kill 通知无承载且与现有行为冲突",
+     "impact": "[BUG] kill 通知无承载且与现有行为冲突",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "分身结论回到主会话",
+     "necessary_causal_chain": [
+      "T7 断言通知",
+      "killed 分支不发",
+      "无任务改"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PF5",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "fork_reuse/fork_base 无写入",
+     "impact": "[MISSING_FUNCTION] fork_reuse/fork_base 无写入",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "分身结论回到主会话",
+     "necessary_causal_chain": [
+      "完成定义要求",
+      "无任务写",
+      "T7 必败"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PF2",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "characterization",
+     "impact": "characterization",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PF6",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "文案无任务",
+     "impact": "文案无任务",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PF7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "T4 不能单独编译",
+     "impact": "T4 不能单独编译",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PF8",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "判定数据来源",
+     "impact": "判定数据来源",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PF9",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "用例名与反向验证",
+     "impact": "用例名与反向验证",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "806af9b2891c58615ef8ef6b2089d5e2b04cf571",
+    "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r2",
+   "session_id": "reviewer-standards-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-26-background-fork-plan.md",
+    "docs/review/2026-11-26-background-fork-plan/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-background-fork-plan/standards-review.md",
+    "source_report_commit_oid": "0aa06a641e6fb0e604f578a592c7c0049c4790e7",
+    "source_report_blob_oid": "84196e38eb030a1fab2d6bc05390849799d60fd7",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-26-background-fork-plan.md",
+     "docs/review/2026-11-26-background-fork-plan/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "分身只读，不改主会话文件",
+    "分身结论回到主会话",
+    "落库记录与请求前缀行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "PS6",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "设计批准后改动未升版本",
+     "impact": "设计批准后改动未升版本",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "806af9b2891c58615ef8ef6b2089d5e2b04cf571",
+    "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r2",
+   "session_id": "reviewer-spec-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-26-background-fork-plan.md",
+    "docs/review/2026-11-26-background-fork-plan/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-background-fork-plan/spec-review.md",
+    "source_report_commit_oid": "0aa06a641e6fb0e604f578a592c7c0049c4790e7",
+    "source_report_blob_oid": "52e60eed09ac061a8d6d90b2d365382a54ccdcb1",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-26-background-fork-plan.md",
+     "docs/review/2026-11-26-background-fork-plan/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "分身只读，不改主会话文件",
+    "分身结论回到主会话",
+    "落库记录与请求前缀行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "PF10",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "fork_reuse 写不进 trace",
+     "impact": "[BUG] fork_reuse 写不进 trace",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "分身结论回到主会话",
+     "necessary_causal_chain": [
+      "Metadata 在 BeforeModel 后丢弃",
+      "trace 由 attemptObserver 生成",
+      "断言必败"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PF11",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "ACP 模型派分身全部失败",
+     "impact": "[BUG] ACP 模型派分身全部失败",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "分身结论回到主会话",
+     "necessary_causal_chain": [
+      "ACP TurnGate 是 host hook",
+      "模型路径判 host hook",
+      "每次拒绝"
+     ],
+     "minimal_owner": [
+      "任务承载"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "PF12",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Hint 返回键名",
+     "impact": "Hint 返回键名",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PF13",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "满额错误无类型",
+     "impact": "满额错误无类型",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "PF14",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "用例存储与回放命令",
+     "impact": "用例存储与回放命令",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "1a8331edc3b19d89654cfae45d7516caea79fc9c",
+    "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+    "document_revision": "0.3"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r3",
+   "session_id": "reviewer-standards-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-26-background-fork-plan.md",
+    "docs/review/2026-11-26-background-fork-plan/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-background-fork-plan/standards-review.md",
+    "source_report_commit_oid": "3cd0aea200a19916a1ebd6d50f09898cdf8ba950",
+    "source_report_blob_oid": "cdcda6f96e732b6a9c4f067487458cc7692d614e",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-26-background-fork-plan.md",
+     "docs/review/2026-11-26-background-fork-plan/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "分身只读，不改主会话文件",
+    "分身结论回到主会话",
+    "落库记录与请求前缀行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "PS7",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "缺计划 ledger",
+     "impact": "缺计划 ledger",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "1a8331edc3b19d89654cfae45d7516caea79fc9c",
+    "subject_path": "docs/plans/2026-11-26-background-fork-plan.md",
+    "document_revision": "0.3"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r3",
+   "session_id": "reviewer-spec-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/plans/2026-11-26-background-fork-plan.md",
+    "docs/review/2026-11-26-background-fork-plan/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-background-fork-plan/spec-review.md",
+    "source_report_commit_oid": "3cd0aea200a19916a1ebd6d50f09898cdf8ba950",
+    "source_report_blob_oid": "1aee4ad701ea52439c85e10d67b25059d43ccd13",
+    "direct_repo_paths": [
+     "docs/plans/2026-11-26-background-fork-plan.md",
+     "docs/review/2026-11-26-background-fork-plan/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "分身只读，不改主会话文件",
+    "分身结论回到主会话",
+    "落库记录与请求前缀行为不变"
+   ],
+   "findings": [],
+   "verdict": "PASS"
+  }
+ ],
+ "dependency_edges": [
+  {
+   "from": "已确认事实与规范",
+   "to": "总体方案"
+  },
+  {
+   "from": "总体方案",
+   "to": "关键流程"
+  },
+  {
+   "from": "总体方案",
+   "to": "安全、数据、运维与回滚"
+  }
+ ],
+ "global_invariants": [
+  "分身只读，不改主会话文件",
+  "分身结论回到主会话",
+  "落库记录与请求前缀行为不变"
+ ],
+ "continuation_approvals": [
+  {
+   "round": 3,
+   "evidence": "用户 2026-11-26：“hao6 Q6 选 A”。Q6 题面：第 2 轮仍有 PF10、PF11 两个阻断，A（推荐）开第 3 轮只确认这两项闭合；B 接受风险直接交计划批准。"
+  }
+ ],
+ "open_core_blockers": [],
+ "status": "PASS"
+}
