@@ -1,64 +1,75 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# suga 后台分身（fork）设计 Standards/Governance 轴第 1 轮评审
+# suga 后台分身（fork）设计 Standards/Governance 轴第 2 轮评审
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `dd7b5fd84fdba50322368088c176ec92ed9d563d`；subject path `docs/design/2026-11-26-background-fork-design.md`
-- 修订版本: Draft 0.2
-- 评审者: 独立 Standards/Governance 轴评审者（Claude 子 agent，未参与该设计的撰写和修订）；REPORT_ONLY
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`；candidate commit `58dbf9df`；subject path `docs/design/2026-11-26-background-fork-design.md`
+- 修订版本: Draft 0.3（上一轮为 `dd7b5fd8` / Draft 0.2，本轴结论 PASS，BS1、BS2 为 `CORE_CORRECTIVE`）
+- 评审者: 独立 Standards/Governance 轴评审者（Claude 子 agent，未参与撰写与修订）；REPORT_ONLY
 - 日期: 2026-11-26
-- 排除项: 用户已选定的 hao6 Q1–Q5（D1–D5）本身不评；Spec/Executability 轴（实现细节能否执行、流程边角）归另一轴；不评审实现代码
+- 排除项: 不做全量评审。只看三件事：BS1/BS2 是否关闭；0.3 新增或调整的机制（`stop=context`、`Runner.ForkSeed`、forkHeadHook、回退收紧）能否追溯、有无多余机制；修订记录与处理表是否完整。Spec/Executability 细节（BF1–BF10 的闭合）归另一轴；用户已选定的 D1–D5 本身不评。
 
 ## 输入与方法
 
-- 规范: IDEV-STD 1.4.1 payload `tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`（全文：SR1103、SR1403/1403.1、SR1405/1405.1、SR1409 本机工具档、SR1410、SR1301、GR101–GR110、SR2001–SR2004、review-contract、planning-core-rigorous、review-candidate-loop、review 模板）；design-contract 与 design 模板（`tmp/idev-std/d/LysoVXM1D86b1PtHtpG8jg/payload.md`）。
-- 项目: `AGENTS.md`（分层、验证、三项目分工）。
-- 设计全文: `git show dd7b5fd8:docs/design/2026-11-26-background-fork-design.md`（182 行，第 1 轮全量读）。
-- 事实核对（只读）: `git merge-base --is-ancestor bc0e9ca5 dd7b5fd8`（设计引用的事实 HEAD 是 candidate 的祖先）；`internal/personal/prefix.go:341-372`、`segment_handoff_reuse.go:90-131`、`pkg/agentcore/runtime.go:376-402`、`pkg/agentcore/tools/native/agent.go`、`internal/wiring/subagent.go:72`（explore 白名单）、`git remote -v`、`.github/workflows/release.yml`、`git tag`、`README.md:38-40`；按 `Kind == "agent"` 与 `taskKindAgent` grep 了 `internal/`、`pkg/`。
+- 规范: IDEV-STD 1.4.1 payload `tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`（review-contract 五类与 necessity proof、SR1405 删除优先、SR1411 Gate 提示、SR1103、review 模板）。
+- 上轮报告: `docs/review/2026-11-26-background-fork/standards-review.md`（BS1、BS2）、`spec-review.md`（BF3、BF4、BF5、BF6、BF9，用于追溯）。
+- 差异: `git diff dd7b5fd8..58dbf9df -- docs/design/2026-11-26-background-fork-design.md`；0.3 全文 `git show 58dbf9df:<subject>`（208 行）。
+- 事实核对（只读，`58dbf9df`）: `internal/personal/segment_handoff_reuse.go:41-50,82-113,206-227,269-295`（`requestBaseBetweenTurns`、`rebuildDiff`）；`internal/personal/prefix.go:42,375-391` 与 `runner_finish.go:176`（`cache_prefix_print` 只在回合结束写入）；`compact.go:413`、`rewind.go:248-254`（只清 `lastRequest`，不动 `cache_prefix_print`）；`pkg/agentcore/api/hooks.go:54`（`RequestWrapUp(reason, …)` 已存在）；`internal/output/wrapup.go:21-41`（未知 stop 原因走 `default` 通用文案）；`pkg/agentcore/tools/native/agent.go:40-42`；按 `func (r *Runner) …Seed|Base|Request` grep 确认无现成同类导出方法。
 
 ## 验收标准
 
-- design-contract 必需内容逐项核对: 设计工作声明（模式、核心目标、scope freeze、budget、停止条件）、修订记录、背景与用户可见目标、名词、范围/非目标/受影响项目、事实与规则 ID、总体方案与架构、关键流程、安全/数据/运维/回滚、决策与未决、结论与 Gate、模板要求的“代码组织”。结论：全部齐全。
-- SR1103: 修订记录含 0.1/0.2，版本/日期/作者/摘要齐全；0.2 因 Q→D 决策这一语义变化递增，符合规定。
-- SR1409 暴露度：设计判为 Full。依据可核实：`origin` 为 `github.com/inhere/suga`；`release.yml` 由 `v*` tag 触发；tag 已到 v0.56.x（事实 HEAD `bc0e9ca5` 时最新为 v0.56.2，v0.56.3 在其后、candidate 之前）；README 第 38–40 行列出三种公开安装方式。公开 release 进本机工具档须附“没有已知外部用户”的事实记录，设计说明了缺这项依据，按不明处理，所以判 Full 成立。第二条理由“新增无人值守执行路径属于权限面变化”有些夸大：分身的执行白名单与现有后台 explore 子 agent 相同。这条不影响结论，不单列 finding。
-- SR1403/SR1405/SR1410: 对每个新增机制逐个检查 scope necessity。基准请求加尾部、固定请求头 hook、不发 ToolChoice、回退原因、`fork_reuse` attr 都能追溯到核心目标（带全部上下文、命中缓存，并可在 trace 中观测）或用户决策 D1–D5。F1 不改投影、F4 复用 RunChild、F8 不与 `:fork N` 共享实现，都符合最小充分原则。唯一没有证明必要性的是新任务 Kind 及与已有标识重叠的 meta（BS1）。
-- GR107–GR110 / SR2004: 不改入口，也不新增 CLI 子命令，GR107 与 SR2004 不适用（SR2004 只针对新 CLI）。GR108：wiring 只负责装配分支，逻辑放在 personal，依赖方向 chat → personal、`pkg/agentcore` 不依赖 internal，与 AGENTS.md 分层一致。GR104：已写明接近上限时拆分。GR109：列在适用规范中，设计层没有具体写入点；属于计划/实施的必查项，不构成设计缺陷。GR110：验收中写有 `app.Run([]string{"run", ...})` 分发测试。
-- 分层与复用: 与现有子 agent（RunChild、子 Runner 工厂、父策略快照、tasks/Notify）复用合理。与会话 fork（`Runner.Fork`）明确不共享，理由成立。不改上下文投影与 `loadHistory`，前缀沿用复用了交接包的做法（H5 教训也已吸收）。
-- SR1301 安全核对：鉴权——已核对（执行层只注册 explore 白名单，模型可见的全部工具定义不可执行；父策略快照、询问失败关闭、外部来源守卫均沿用）；注入——不适用（无 SQL 或命令拼接，分身禁用 shell）；秘密——已核对（新 meta 只含 id 与来源，provider 凭据沿用主会话已有配置，不新增出机器目的地）；入参校验——已核对（沿用 `agent` 工具参数解析，新增的只是一个 type 值）；资源归属——已核对（基准请求按本进程 sessionID 取，污染标记双向传递）。
+- **BS1 已关闭**。总体方案第 6 条、F4、架构图统一为任务 `Kind:"agent"`、摘要 `agent: ` 前缀，只用 `agent_type=fork` 与 `fork_reuse` 区分；`fork_base` 只存 turn 与尾部来源（去掉了与 `parent_session_id` 重复的主会话 id）；“已确认事实”第 82 行列出 5 处按 `Kind=="agent"` 工作的消费方并声明自动覆盖；验收的 ptye2e 加了“状态行计数”“任务行显示步数”。
+- **BS2 已关闭**。D4 与总体方案第 5 条写明“仅 `type: fork`……普通后台 agent 不变”，实现点定在 `startBackground` 的分支；单测验收有“普通后台 agent 通知不变”。（第 100 行“rune”与 Q4 原文“字符”用词不同，语义由 D4 定为 rune，不构成问题。）
+- **`stop=context`**：可追溯到 BF3 的建议第 3 点（“把 `stop=context` 加进 `ChildResult.Stop` 与 `AgentReport.Stop`”），0.2 的 F6 已有该值，0.3 只是落到取值说明。复用现有 `RequestWrapUp(reason)`，`WrapUpNotice` 对未知原因走通用文案，不新增机制。通过。
+- **`Runner.ForkSeed`**：可追溯到 BF6 建议（“让 personal 暴露取分身基准的方法，wiring 不直接碰 tracker”）与 GR108 分层；无现成同类导出方法可复用；放在 personal，chat 与 wiring 都只调它。通过。
+- **forkHeadHook**：可追溯到 0.2 的 F2 与 BF4（位置、首条消息、瞬时消息）。运行时原样发送 `event.Request`，固定请求头只能在 hook 里做，删除替代不成立；0.3 只补规格，没有新增状态。通过。
+- **回退收紧**：0.2 的 F7 是“重建不了按持久化历史组装，`fallback:<reason>`”；0.3 改为“重建不可信就不启动”，删掉了第三种请求头。这是删除优先方向（SR1405），追溯到 BF5（BF5 指出第三种请求头有歧义）。机制层面没有多余，但它改变了 `:bg` 的用户可见结果，且实际触发面比设计描述的大，见 BS3；Gate 告知问题见 BS4。
+- **修订记录与处理表**：0.3 行已加，处理表覆盖 BF1–BF10 与 BS1、BS2，语义变化递增版本，符合 SR1103。未列入表的改动有两处：Review budget 删去“不展开相邻架构”，属措辞，不影响结论；删除“去掉执行白名单”这条反向验证，影响安全边界的验证，见 BS5。`ForkSeed` 没在表里单独出现，但 BF6 行和总体方案第 2 条可以对上，不单列 finding。
 
 ## 发现
 
-### BS1 [MEDIUM] 新任务 Kind `fork` 未证明必要，且绕开了现有按 `Kind == "agent"` 工作的消费方
+### BS3 [MEDIUM] F7 把 `:compact`、`:rewind`、段断点、段清理列为“重建（rebuilt）”，但按现有 `requestBaseBetweenTurns` 这些情形基本都会因 `prefix_changed` 被拒，`:bg` 在这些操作之后不可用
 
 - disposition: CORE_CORRECTIVE；user_visible_effect: true
-- 证据: 设计第 85 行“任务 `Kind=fork`”与 F4（第 153 行）“复用 RunChild 与后台 agent 路径；会话 `kind=agent`、`agent_type=fork`”自相矛盾。现有代码中以 `"agent"` 识别后台子 agent 任务的位置（同类全部出现点）：
-  - `internal/chat/render_agents.go:62`（状态行的运行中 agent 计数）
-  - `internal/chat/render_agents.go:226`（agent 任务摘要行，还要求 Summary 以 `agent: ` 开头）
-  - `internal/personal/trace.go:435`（`agentEvent`：trace 把任务事件归为子 agent 调用）
-  - `internal/personal/trace.go:467`（`taskTraceParts`：渲染 steps/calls/exit）
-  - `internal/personal/analyze.go:244`（`agentSpent`、AgentMs、BackgroundMs 汇总）
-  同一类重叠标识还有：`fork_base` 中的“主会话 id”与已有 meta `parent_session_id`（`internal/personal/subagent.go:82` 写入）重复，`agent_type=fork` 已足以区分分身。
-- 影响: 照文档实施时，分身不出现在 chat 状态行的运行中计数和摘要里；`inspect trace` 把它按普通任务渲染，不显示 steps/calls；analyze 的子 agent 用量与后台时长漏算分身。这些都是用户可见的输出差异。核心验收（`:tasks` 列出、通知、缓存命中、`fork_reuse`）不受直接影响，所以不判阻断。新 Kind 不能追溯到核心目标（SR1405 无证据不抽象）。
-- 建议: 删除优先。任务沿用 `Kind:"agent"`，Summary 沿用 `agent: <description>` 前缀，分身只用已有的 `agent_type=fork` 与新增的 `fork_reuse` 区分；`fork_base` 只保留不能从现有 meta 得到的字段（基准请求所在 turn、尾部来源）。如果坚持新 Kind，设计须列出上述 5 处消费方及各自的处理方式。
+- 证据:
+  - 设计 F7（第 174 行）：“`--resume` 后未发请求、`:compact`、段断点、`:rewind`、段清理……一律按 `requestBaseBetweenTurns` 重建（`rebuilt`）……配置了 host hook、`prompt_state` 或 `prefix_changed` 时重建不可信，分身不启动”。依据栏写的是“上下文完整优先于缓存”。
+  - `requestBaseBetweenTurns`（`segment_handoff_reuse.go:206-227`）用上一回合持久化的 `cache_prefix_print` 做 `rebuildDiff`：System、Tools 必须一致，且持久化的消息窗口必须是重建视图的前缀，否则返回 `length` 或 `msg:<n>`，也就是 `prefix_changed`（`:269-295`）。
+  - `cache_prefix_print` 只在回合结束写入（`prefix.go:375-391`、`runner_finish.go:176`）；`compact.go:413` 与 `rewind.go:248-254` 只清 `lastRequest`，不更新这个指纹。所以 `:compact` 之后视图变成摘要，`:rewind` 之后视图变短，与上一回合的指纹对不上，重建会返回 `prefix_changed`。按 F7，`:bg` 拒绝启动。只有 `--resume`（视图未变）大概率能走到 `rebuilt`。
+- 影响: 按文档实施时，用户在 `:compact` 或 `:rewind` 后、发出下一条消息前输入 `:bg`，会收到拒绝，不会得到 `rebuilt` 分身。设计正文说这些情形是重建，与依据栏“上下文完整优先于缓存”相反：这些情形下上下文其实完整，只是缓存对不上。验收第 200 行写的是“……`:compact` 后……的 `fork_reuse` 或拒绝原因”，两种结果都能通过，挡不住这一偏差。核心验收（模型触发、正常回合后的 `prefix`）不受影响，所以不判阻断。
+- 建议: 在两种写法中选定一种，并写进 F7 与对应用例：
+  1. 分身不需要和上一回合的指纹一致（缓存本来就对不上），这些情形调用重建时跳过 `prefix_changed` 判定，只保留 `host_hook`、`prompt_state`，结果记 `rebuilt`。这和依据栏一致，也不新增请求头来源。
+  2. 保留拒绝，把 `:compact`、`:rewind`、段断点、段清理从“重建”移到“不启动”，写明提示“先发一条消息再 :bg”，并在 Gate 告知（见 BS4）。
+  无论选哪种，验收中对每种情形写定唯一的期望值，不用“或”。
 
-### BS2 [MEDIUM] D4 的回交截断规则没有限定只作用于分身，可能改变现有后台 agent 的通知
+### BS4 [LOW] 0.3 新增的几处拒绝与验收放宽没有在 Gate 上告知用户
 
-- disposition: CORE_CORRECTIVE；user_visible_effect: true
-- 证据: 设计第 84 行“沿用后台 agent 的 `Notify` 路径；报告不超过 4000 字符时通知带全文”，D4（第 148 行）同样没有限定对象。现有后台 agent 的通知固定取前 12 行（`pkg/agentcore/tools/native/agent.go:61` 的 `agentNoticeLines = 12` 与 `:213`）。scope freeze（第 19 行）只覆盖分身。
-- 影响: 两种实现都符合字面：改共享路径会让所有后台子 agent 的通知变长（多占主会话上下文，ptye2e 与已有通知断言也会变），只改分身则不影响。用户可见结果不同，而前者超出了 scope freeze。
-- 建议: 在 D4 与总体方案第 5 条写明“仅 `type: fork`；普通后台 agent 保持前 12 行”，并在单测验收中加一条“普通后台 agent 的通知不变”。
+- disposition: CORE_CORRECTIVE；user_visible_effect: false（属于 Gate 披露，不改变产品行为）
+- 证据: 用户只做过一次决定（“hao6 Q1–Q5 按推荐”）。0.3 在用户决定之外新增或改变了这些用户可见结果：
+  - F7：`:bg` 在重建不可信时不启动，取代了 0.2 的“按持久化历史组装”；
+  - F6：种子估算超过阈值时不启动，提示改用 `agent explore`；
+  - 真实模型验收从“目标不低于段内复用水平”改为“只记录，不设门槛”（BF9 的原建议是给出基线）。
+  第 208 行的 Gate 只写“第 2 轮两轴确认……交用户批准”，没有这几项差异。SR1411 要求“候选变化时先给简短差异”。
+- 影响: 用户批准计划时，可能不知道 `:bg` 有拒绝场景，也不知道缓存命中已不是验收门槛。这些都在设计范围内，不越权，所以不判 AUTHORITY。
+- 建议: 交 Gate 时附 2–3 行差异：`:bg` 的拒绝场景（按 BS3 的定稿）；长会话下种子超阈值时拒绝；缓存命中只记录、不设门槛。不需要用户另做决策，除非 BS3 选第 2 种写法。
+
+### BS5 [LOW] 删去了只读白名单的反向验证，处理表没有记录，安全边界 D3 的验证变弱
+
+- disposition: CORE_CORRECTIVE；user_visible_effect: false
+- 证据: 0.2 的反向验证有“临时去掉执行白名单，确认‘写工具被拒’断言失败”；0.3（第 204 行）换成了“把分身拒绝改回 `ErrDenied`”，白名单那一条没有了。处理表 BF9 行（第 26 行）没有提到这次删除。0.3 的单测“连续 3 次写调用后作答……`stop=final`”断言的是报告和停止原因。去掉白名单后，写调用可能按父策略快照执行，或者失败关闭，单测未必会失败。只有 `agent`、`tool_call`、MCP 名字有提示文案断言，写工具没有。
+- 影响: D3（只读、不写、不跑 shell）是本设计唯一的权限边界（安全第 1、2 条），现在没有一条能证明它生效的反向验证。这条不判阻断：执行层白名单复用现有 explore 子 agent 的机制，那部分已有覆盖。
+- 建议: 恢复白名单的反向验证，与 `ErrDenied` 那条并存。在“拒绝”单测中加一项断言：写调用返回 F9 文案，目标文件没有被创建或修改。处理表 BF9 行补上这次调整。
 
 ## 覆盖缺口与限制
 
-- 仓库是否公开、有无外部用户：容器内 `gh` 未登录，未独立核实，只核对了 remote、release 流水线、tag 与 README；按 SR1409，不明即按 Full，所以不影响结论。
-- 没有评审尾部 assistant 消息如何从 native 工具传到 personal 层、host hook（`cfg.Hooks`）下分身后续请求是否经过 hook 链、回退路径的具体组装方式等可执行性细节，这些归 Spec/Executability 轴。
-- Full 档按 review-candidate-loop 需要 `docs/review/<subject>/review-ledger.json` 与固定轴报告；这是评审流程产物，不属于设计内容，本轮未检查。
+- BS3 的结论来自读代码（指纹只在回合结束写，compact/rewind 不更新），没有实际运行。如果 `:compact` 流程里另有路径刷新 `cache_prefix_print`，`:compact` 那一项会不成立，但 `:rewind` 视图变短仍会返回 `length`。
+- 没有复核 BF1–BF10 的闭合，也没有复核 forkHeadHook 与 `cfg.Hooks`（host hook）在分身 Runner 中的先后和交互、F10 尾部展开的可执行性，这些归 Spec/Executability 轴。
+- ledger 与 review-candidate-loop 的流程产物不在本轮范围内。
 
 ## 结论
 
-PASS。没有 `CORE_BLOCKING`；design-contract 必需内容齐全，暴露度 Full 判定成立且依据可核实，分层与复用合理。BS1、BS2 为 `CORE_CORRECTIVE`（均为 `user_visible_effect: true`），应在计划批准前修正；修正后可按 ledger 2.2.0 规则做一次纠正确认轮。
+PASS。BS1、BS2 已关闭，没有新的 `CORE_BLOCKING`。`stop=context`、`Runner.ForkSeed`、forkHeadHook 都能追溯到第 1 轮发现，没有多余机制；回退收紧符合删除优先。BS3（`user_visible_effect: true`）、BS4、BS5 是 `CORE_CORRECTIVE`，应在交 Gate 前修正或披露。
 
 ## 剩余风险与后续
 
-- 修订 BS1 时，按“任务 Kind / 会话 meta 标识”这一类，自查计划中所有按 Kind 或 `agent_type` 分支的读者。
-- GR109（fork_base 写 meta、task output 写入不吞错）与 GR104 拆分留给计划和实施阶段的必查项。
+- BS3 定稿后，相关用例要逐一给出唯一期望值：`--resume`、`:compact`、`:rewind`、段断点、取消回合、`:model` 切换。
+- 计划阶段仍需检查 GR109（`fork_base` 写 meta、task output 写入不吞错）和 GR104 拆分。
