@@ -1,0 +1,445 @@
+{
+ "artifact_type": "review_ledger",
+ "schema_version": "2.1.0",
+ "candidate_progression": "DOCUMENT_REVISION",
+ "candidate": {
+  "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+  "commit": "8639724b30877db1d725b7f4d3a49a5a4f914fa7",
+  "subject_path": "docs/design/2026-11-26-trusted-memory-backend-design.md",
+  "document_revision": "0.3"
+ },
+ "author_id": "author-main",
+ "required_rounds": [
+  1,
+  2
+ ],
+ "required_sections": [
+  "修订记录",
+  "背景与目标",
+  "名词",
+  "范围与非目标",
+  "已确认事实与规范",
+  "总体方案",
+  "架构",
+  "关键流程",
+  "安全、数据、运维与回滚",
+  "决策",
+  "待确认事项",
+  "结论与人工计划 Gate"
+ ],
+ "required_axes": [
+  "Standards/Governance",
+  "Spec/Executability"
+ ],
+ "receipts": [
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "d5dc67cefcd596f360d4ebfefef2948fe5f1e096",
+    "subject_path": "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r1",
+   "session_id": "reviewer-standards-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "docs/review/2026-11-26-trusted-memory-backend/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-trusted-memory-backend/standards-review.md",
+    "source_report_commit_oid": "35e58e1184cc9c105cf6024b757ecc447a3e4df4",
+    "source_report_blob_oid": "4ff4f81bfb91d17d646c09ede8df10be7770989f",
+    "direct_repo_paths": [
+     "docs/design/2026-11-26-trusted-memory-backend-design.md",
+     "docs/review/2026-11-26-trusted-memory-backend/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "默认不可信",
+    "未登记仓库的记忆仍按外部来源",
+    "开关受保护，会话内不可改"
+   ],
+   "findings": [
+    {
+     "finding_id": "TS1",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "缺评审目录与受影响项目",
+     "impact": "缺评审目录与受影响项目",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TS2",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "子 agent 与污染例外表述",
+     "impact": "子 agent 与污染例外表述",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TS3",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "配置读取位置",
+     "impact": "配置读取位置",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "d5dc67cefcd596f360d4ebfefef2948fe5f1e096",
+    "subject_path": "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r1",
+   "session_id": "reviewer-spec-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "docs/review/2026-11-26-trusted-memory-backend/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-trusted-memory-backend/spec-review.md",
+    "source_report_commit_oid": "35e58e1184cc9c105cf6024b757ecc447a3e4df4",
+    "source_report_blob_oid": "cecbed8034e941c14a3806420aef28081b7dc591",
+    "direct_repo_paths": [
+     "docs/design/2026-11-26-trusted-memory-backend-design.md",
+     "docs/review/2026-11-26-trusted-memory-backend/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "默认不可信",
+    "未登记仓库的记忆仍按外部来源",
+    "开关受保护，会话内不可改"
+   ],
+   "findings": [
+    {
+     "finding_id": "TF1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "全局开关信任第三方仓库 tracker",
+     "impact": "[SECURITY] 全局开关信任第三方仓库 tracker",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "未登记仓库的记忆仍按外部来源",
+     "necessary_causal_chain": [
+      "开关全局",
+      "project 记忆来自当前仓库 tracker",
+      "第三方仓库自带 tracker",
+      "命令不再被拦"
+     ],
+     "minimal_owner": [
+      "作用域与匹配"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "TF2",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "子 agent 表述",
+     "impact": "子 agent 表述",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TF3",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "污染例外",
+     "impact": "污染例外",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TF4",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "验证观测点",
+     "impact": "验证观测点",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TF5",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "配置传入路径",
+     "impact": "配置传入路径",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "8639724b30877db1d725b7f4d3a49a5a4f914fa7",
+    "subject_path": "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "document_revision": "0.3"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r2",
+   "session_id": "reviewer-standards-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "docs/review/2026-11-26-trusted-memory-backend/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-trusted-memory-backend/standards-review.md",
+    "source_report_commit_oid": "57e918e1a4bd551e1bb1d69689a421050be94837",
+    "source_report_blob_oid": "10feee72cdc1bbdfdee86f8f2f6086891ae02589",
+    "direct_repo_paths": [
+     "docs/design/2026-11-26-trusted-memory-backend-design.md",
+     "docs/review/2026-11-26-trusted-memory-backend/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "默认不可信",
+    "未登记仓库的记忆仍按外部来源",
+    "开关受保护，会话内不可改"
+   ],
+   "findings": [
+    {
+     "finding_id": "TS4",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "Gate 未列 0.3 差异",
+     "impact": "Gate 未列 0.3 差异",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TS5",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "回滚写法仍按 bool",
+     "impact": "回滚写法仍按 bool",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TS6",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "工作区与仓库根混用",
+     "impact": "工作区与仓库根混用",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "8639724b30877db1d725b7f4d3a49a5a4f914fa7",
+    "subject_path": "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "document_revision": "0.3"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r2",
+   "session_id": "reviewer-spec-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-26-trusted-memory-backend-design.md",
+    "docs/review/2026-11-26-trusted-memory-backend/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-26-trusted-memory-backend/spec-review.md",
+    "source_report_commit_oid": "57e918e1a4bd551e1bb1d69689a421050be94837",
+    "source_report_blob_oid": "41b93e54090fbaf4170c9a6ac3c46511b12e3857",
+    "direct_repo_paths": [
+     "docs/design/2026-11-26-trusted-memory-backend-design.md",
+     "docs/review/2026-11-26-trusted-memory-backend/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "默认不可信",
+    "未登记仓库的记忆仍按外部来源",
+    "开关受保护，会话内不可改"
+   ],
+   "findings": [
+    {
+     "finding_id": "TF6",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "逐仓库登记与 worktree 未披露",
+     "impact": "逐仓库登记与 worktree 未披露",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TF7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "按 manifest 位置登记不成立",
+     "impact": "按 manifest 位置登记不成立",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "TF8",
+     "severity": "LOW",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "端到端断言细节",
+     "impact": "端到端断言细节",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "dependency_edges": [
+  {
+   "from": "已确认事实与规范",
+   "to": "总体方案"
+  },
+  {
+   "from": "总体方案",
+   "to": "关键流程"
+  },
+  {
+   "from": "总体方案",
+   "to": "安全、数据、运维与回滚"
+  }
+ ],
+ "global_invariants": [
+  "默认不可信",
+  "未登记仓库的记忆仍按外部来源",
+  "开关受保护，会话内不可改"
+ ],
+ "open_core_blockers": [],
+ "status": "PASS"
+}
