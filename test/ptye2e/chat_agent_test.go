@@ -89,7 +89,7 @@ const (
 //	kill-status: task started / turn ends              until(background agent task t1 started) / until(tokens ·)
 //	kill-status: task listed as running                until(t1 · running)
 //	kill-status: killed / task listed as killed        until(已终止任务 t1：) / until(t1 · killed)
-//	kill-status: the kill's notice wakes a turn, then ends  until([background task notice]) / until(tokens ·)
+//	kill-status: the kill leaves no notice turn       !Contains([background task notice]) after the listing
 //	kill-status: killing it again says it ended        until(任务 t1 已结束（killed），无需终止)
 //	kill-status: no stale sub-agent count / turn ends  !Contains(子 agent：) / until(tokens ·)
 func TestChatAgent(t *testing.T) {
@@ -315,17 +315,15 @@ func agentKillStatusScenario(t *testing.T, s *ptytest.Session) {
 	until(t, s, "kill-status: turn ends", `tokens · `, m)
 	m = agentStep(t, s, m, ":tasks", "kill-status: task listed as running", `t1 · running`)
 	m = agentStep(t, s, m, ":tasks -k t1", "kill-status: killed", `已终止任务 t1：`)
-	// The kill cancels the sub-agent, whose run reports the failure as a task
-	// notice (agent.go's startBackground Notify): that notice wakes a turn of its
-	// own right after the kill. On Linux it arrives before the next line can be
-	// typed, which then counts as a steer and never runs as a local command, so
-	// wait for the notice's turn to end before asking for the listing again.
-	until(t, s, "kill-status: the killed agent's notice wakes a turn", `\[background task notice\]`, m)
-	until(t, s, "kill-status: notice turn ends", `tokens · `, m)
+	// A killed agent leaves no failure notice (agent.go skips it when the task was
+	// ended on purpose, issue suga-6gcy): no notice turn wakes after the kill, so
+	// the next line is a local command and the listing answers it.
+	killMark := m
 	// The listing itself is read off the screen: chat's write of the row can be
 	// split by a repaint, which the terminal applies while the byte stream, ANSI
 	// stripped, no longer spells the row out.
 	m = agentRowStep(t, s, m, ":tasks", "kill-status: task listed as killed", `t1 · killed`)
+	check(t, "kill-status: the kill leaves no notice turn", !s.Contains(`\[background task notice\]`, killMark))
 	m = agentStep(t, s, m, ":tasks -k t1", "kill-status: killing it again says it ended",
 		`任务 t1 已结束（killed），无需终止`)
 	m = agentStep(t, s, m, agentPlain, "kill-status: turn ends", `tokens · `)
