@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # suga 后台分身（fork） 实施计划
 
-> 状态：Draft 0.2 / 待人工计划批准；issue `suga-hao6`
+> 状态：Draft 0.3 / 待人工计划批准；issue `suga-hao6`
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-11-26 | Claude | 初稿：按已批准设计 0.4 拆为 T1–T9 |
 | 0.2 | 2026-11-26 | Claude | 处理第 1 轮两轴计划评审（`docs/review/2026-11-26-background-fork-plan/`），见下表；kill 按用户 Q3 选 A 沿用 6gcy 行为 |
+| 0.3 | 2026-11-26 | Claude | 处理第 2 轮计划评审（PF10–PF14、PS6，用户同意第 3 轮：“hao6 Q6 选 A”），见第 2 轮处理表；设计引用改为 0.5 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -24,15 +25,27 @@
 | PF6、PS2 | 三处文案指定任务与 i18n 键（见“i18n 键”） |
 | PS3 | T5 补 `compact.go:838`；i18n catalog 文件进清单，模型可见文案放现有 `[model]` 段、占位符 `{name}`，`TestCatalogParity` 进验证 |
 | PF7 | 改为可选接口 `native.ForkSeeder`，T4 不动 wiring 也能编译；每个任务验证加 `go build ./...` |
-| PF8 | T1 的 tracker 记 turn id 与结束方式；配置了 host hook 时无论 prefix 还是重建都拒绝（你的决定） |
+| PF8 | T1 的 tracker 记 turn id 与结束方式；`:bg` 配置了 host hook 时无论 prefix 还是重建都拒绝（你的决定；0.2 曾误扩到模型触发，见第 2 轮 PF11） |
 | PF9 | 用例名改为实际存在的并纳入 `TestRunningTurnPutsRewindAndForkBack`；T3 反向验证②父策略放行 `file_write`；T5 补超阈值；kill 补单测 |
 | PS4 | 新增“与设计代码组织的差异”；T8 CHANGELOG 覆盖 `pkg/agentcore` 公开 API 变化 |
 | PS5 | 人工 Gate 列出仪式成本数字 |
 
+第 2 轮处理：
+
+| 发现 | 处理 |
+|---|---|
+| PF11（阻断） | 删去 T1 `ForkSeedForCall` 的 host hook 拒绝：模型触发一律用当步请求，ACP 的 TurnGate 照常启动；T5 `:bg` 表不变。0.2 中该条为监督者决定，有误，按 PF11 撤回 |
+| PF10（阻断） | T2 加 `observe.go`：recorder 从 `Config.ForkSeed` 取值，只在该会话第一个无 purpose 的 model 事件写 `fork_reuse`/`fork_reuse_note`；不走 `ModelEvent.Metadata` |
+| PF12 | `ForkUnavailableError` 带 `hint`，由 Runner 填译文，`Hint()` 返回译文 |
+| PF13 | T4 定义 `native.ForkLimitError{Running, Limit}`，`StartFork` 用 `Running()`/`Limits()` 预检后返回；native 与 `cmd.bg.full` 都取它 |
+| PF14 | characterization 用保留原始消息的 storage 包装，不用 `newRuntimeTestStorage` 读落库消息；回放命令先 `mkdir -p`、放 WP 级 `tmp/`、在容器或主机 pwsh 7 解包 |
+| PF5 附注 | `observeTurnEnd` 在 `runner.go` 的 `runtime.Run` 返回之后、`r.finish` 之前调用；`completed = runErr == nil && coreResult.Status == RunCompleted` |
+| PS6 | 设计升 0.5（kill 不通知，沿用 6gcy；附 Q3 原文）；本计划改引 0.5 |
+
 **思考与范围声明**
 - 思考模式：`RIGOROUS`。
-- 核心目标：落实设计 0.4——模型（`agent` 的 `type: fork`）或 `:bg` 派出只读分身，分身以主会话基准请求为前缀起步、在后台运行、只回交结论。
-- scope freeze：设计 0.4 的总体方案、D1–D5、F1–F10 与“验证要求”，以及批准后按 Q3 选 A 修正的 kill 行为。不含设计非目标与 deferred（`recall` 进白名单）。
+- 核心目标：落实设计 0.5——模型（`agent` 的 `type: fork`）或 `:bg` 派出只读分身，分身以主会话基准请求为前缀起步、在后台运行、只回交结论。
+- scope freeze：设计 0.5 的总体方案、D1–D5、F1–F10 与“验证要求”。不含设计非目标与 deferred（`recall` 进白名单）。
 - 扩围策略：`DEFER_OR_REQUEST`；review budget：按 SR1409 Full 档两轴评审，轮次按 `planning-core-rigorous`；停止条件：无开放 `CORE_BLOCKING`。
 - 暴露度：Full（依据见设计“安全、数据、运维与回滚”第 1 条）。
 
@@ -54,7 +67,7 @@
 
 ## 输入与批准证据
 
-- 设计：`docs/design/2026-11-26-background-fork-design.md` Draft 0.4；批准记录提交 `a8a2bc83`；批准后按 Q3 选 A 修正 kill 一行（随本计划 0.2 提交，不改版本号）。
+- 设计：`docs/design/2026-11-26-background-fork-design.md` Draft 0.5（0.4 批准，提交 `a8a2bc83`；0.5 仅含 Q3 修正）。
 - 批准原话（2026-11-26）：“批准 suga 后台分身设计 0.4（接受未复核修订），开始写计划”；Q3：“hao6 Q3 选 A”。
 - 设计评审：`docs/review/2026-11-26-background-fork/`（两轮两轴 PASS，ledger `f1201c30`）。计划评审：`docs/review/2026-11-26-background-fork-plan/`（第 1 轮）。
 
@@ -126,25 +139,25 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 
 ### T1 展开合同、当步记录与模型触发的种子（F1、F3、F6、F10、PF1、PF2、PF8）【核心】
 
-- 文件: `pkg/agentcore/runtime.go`、新 `pkg/agentcore/expand.go`；`internal/personal/prefix.go`；新 `internal/personal/subagent_fork_seed.go`；`internal/personal/runner.go`（turnHooks 一项）；`internal/i18n/catalog/{zh,en}/model.ini`（`model.fork.directive`、`not_run`、`too_large`）；测试 `pkg/agentcore/expand_test.go`、`pkg/agentcore/runtime_transcript_test.go`、`internal/personal/subagent_fork_seed_test.go`。
+- 文件: `pkg/agentcore/runtime.go`、新 `pkg/agentcore/expand.go`；`internal/personal/prefix.go`；新 `internal/personal/subagent_fork_seed.go`；`internal/personal/runner.go`（turnHooks 一项、`runtime.Run` 返回后一处）；`internal/i18n/catalog/{zh,en}/model.ini`（`model.fork.directive`、`not_run`、`too_large`）；测试 `pkg/agentcore/expand_test.go`、`pkg/agentcore/runtime_transcript_test.go`、`internal/personal/subagent_fork_seed_test.go`。
 - 动作（签名为合同）:
   - `func ExpandToolCalls(res *GenerateResult) []Message`：每个调用一条 assistant 消息，只分配 lead 文字、`Reasoning`、provider 元数据（只在第一条）与 `ToolBatchMetaKey`（多调用时每条都有）；`ToolCall` 是模型回复中的原调用。`persistToolTranscript` 取第 i 条的 Content/Reasoning/Metadata，`ToolCall` 仍取 finalCall（代理展开、强转、hook 改写之后）；分身尾部用原调用（与落库形态的差异可接受：分身不重放主会话历史）。
-  - characterization（PF2）：`TestRuntime_Run_ToolTranscriptLeadOnFirstCall`，只经 `New(Config{...}).Run(...)`；三调用并行回复带 Content/Reasoning/Metadata，第二个走 `CallExpander` 代理、第三个参数需强转；断言落库 assistant 消息 lead 只在第一条、批次 meta 每条都有、ToolCall 是展开与强转后的调用。先回放：`git archive 00c890f7 | tar -x -C ../../tmp/suga-hao6/base`，拷入该用例，在该目录 `go test ./pkg/agentcore -run TestRuntime_Run_ToolTranscriptLeadOnFirstCall -count=1` 通过，再改代码。
-  - tracker：`observeStep(sessionID, turnID string, res *agentcore.GenerateResult)`（AfterModel，清空已执行结果）、`observeToolResult(sessionID, callID string, res agentcore.ToolResult)`（AfterTool）、`observeTurnEnd(sessionID, turnID string, completed bool)`（回合结束时，`completed` 为正常结束）；`lastStep(sessionID) (step forkStep, ok bool)`，`forkStep{Result; Done map[string]agentcore.ToolResult; TurnID string; Completed bool}`；`clearRequest` 一并清掉。由 `forkStepHook` 挂进 `turnHooks`，回合结束处调用 `observeTurnEnd`。
-  - `type ForkSeed struct { Request *agentcore.GenerateRequest; Model, ProviderName, BaseTurn, Source, Reuse, ReuseNote string }`（`Source` 为 `call|bg`，`Reuse` 为 `prefix|rebuilt`）；`type ForkUnavailableError struct{ Reason string }`，`Error()` 为 `fork unavailable: <reason>`，原因 `host_hook`、`prompt_state`、`no_request`、`context`；`Hint()` 对 `context` 返回 `model.fork.too_large`。
-  - `func (r *Runner) ForkSeedForCall(ctx context.Context, sessionID, callID, task string) (ForkSeed, error)`：不取会话 gate；配置了 host hook → `host_hook`；基准 = `lastRequest`；尾部 = `ExpandToolCalls(当步回复)` 逐条接结果：排在 `callID` 前的填真实结果，`callID` 填 `model.fork.directive`（`{task}`），之后的填 `model.fork.not_run`；新切片；Model/ProviderName 取 Runner 当前值；估算超过 `thresholdOf(window, reserve)` → `context`。
-- 验证: worktree 根 `go build ./...`；`go test ./pkg/agentcore -run 'TestExpandToolCalls|TestRuntime' -count=1`；`go test ./internal/personal -run 'TestForkSeedForCall' -count=1`（带 reasoning 与签名元数据只在第一条、三调用批次中分身居中前真后占位、基准切片前后不变、超阈值 `context` 且 `Hint()` 非空、host hook 时 `host_hook`、`observeTurnEnd` 记录取消回合为 `Completed=false`）；`go test ./internal/i18n -run TestCatalogParity -count=1`。反向验证：①临时让 `persistToolTranscript` 落库 `ExpandToolCalls` 的 ToolCall，确认 characterization 用例失败；②临时让前面的调用也填占位，确认“真实结果”断言失败。
+  - characterization（PF2）：`TestRuntime_Run_ToolTranscriptLeadOnFirstCall`，只经 `New(Config{...}).Run(...)`；三调用并行回复带 Content/Reasoning/Metadata，第二个走 `CallExpander` 代理、第三个参数需强转；断言落库 assistant 消息 lead 只在第一条、批次 meta 每条都有、ToolCall 是展开与强转后的调用。用例自带只追加原始消息的 storage 包装读落库消息（`newRuntimeTestStorage` 的 `cloneMessages` 会丢 Reasoning，不改 `runtime_doubles_test.go`；参考 `<WP>/tmp/review/suga-fork-plan/r2-characterization_test.go.txt`）。先回放（容器内或主机 pwsh 7，不用 PowerShell 5 管道）：WP 根 `mkdir -p tmp/suga-hao6/base && git -C inhere-tools/suga archive 00c890f7 | tar -x -C tmp/suga-hao6/base`，拷入该用例，在 `tmp/suga-hao6/base` 运行 `go test ./pkg/agentcore -run TestRuntime_Run_ToolTranscriptLeadOnFirstCall -count=1` 通过，再改代码。
+  - tracker：`observeStep(sessionID, turnID string, res *agentcore.GenerateResult)`（AfterModel，清空已执行结果）、`observeToolResult(sessionID, callID string, res agentcore.ToolResult)`（AfterTool）、`observeTurnEnd(sessionID, turnID string, completed bool)`（回合结束时，`completed` 为正常结束）；`lastStep(sessionID) (step forkStep, ok bool)`，`forkStep{Result; Done map[string]agentcore.ToolResult; TurnID string; Completed bool}`；`clearRequest` 一并清掉。由 `forkStepHook` 挂进 `turnHooks`；`observeTurnEnd` 在 `runner.go` 的 `runtime.Run` 返回之后、`r.finish` 之前调用，`completed = runErr == nil && coreResult.Status == agentcore.RunCompleted`。
+  - `type ForkSeed struct { Request *agentcore.GenerateRequest; Model, ProviderName, BaseTurn, Source, Reuse, ReuseNote string }`（`Source` 为 `call|bg`，`Reuse` 为 `prefix|rebuilt`）；`type ForkUnavailableError struct{ Reason, hint string }`，`Error()` 为 `fork unavailable: <reason>`，原因 `host_hook`、`prompt_state`、`no_request`、`context`；`context` 时由 Runner 用 `r.cfg.Translator` 把 `model.fork.too_large` 译好填入 `hint`，`Hint()` 返回译文（不暴露键名）。
+  - `func (r *Runner) ForkSeedForCall(ctx context.Context, sessionID, callID, task string) (ForkSeed, error)`：不取会话 gate；不判 host hook（模型触发一律用当步请求，ACP 的 TurnGate 照常启动）；基准 = `lastRequest`；尾部 = `ExpandToolCalls(当步回复)` 逐条接结果：排在 `callID` 前的填真实结果，`callID` 填 `model.fork.directive`（`{task}`），之后的填 `model.fork.not_run`；新切片；Model/ProviderName 取 Runner 当前值；估算超过 `thresholdOf(window, reserve)` → `context`。
+- 验证: worktree 根 `go build ./...`；`go test ./pkg/agentcore -run 'TestExpandToolCalls|TestRuntime' -count=1`；`go test ./internal/personal -run 'TestForkSeedForCall' -count=1`（带 reasoning 与签名元数据只在第一条、三调用批次中分身居中前真后占位、基准切片前后不变、超阈值 `context` 且 `Hint()` 等于译文、配置 host hook（或 ACP TurnGate）时仍启动且 `Reuse=prefix`、`observeTurnEnd` 记录取消回合为 `Completed=false`）；`go test ./internal/i18n -run TestCatalogParity -count=1`。反向验证：①临时让 `persistToolTranscript` 落库 `ExpandToolCalls` 的 ToolCall，确认 characterization 用例失败；②临时让前面的调用也填占位，确认“真实结果”断言失败。
 - 完成标准: 基线回放与改动后均通过；两项反向验证与回放命令写进提交说明。
 - 依赖: 无。
 
 ### T2 forkHeadHook、分身上下文模式与 `fork_reuse`（F2、F6、BF12、BF13、PF5）【核心】
 
-- 文件: 新 `internal/personal/subagent_fork.go`；`internal/personal/context.go`；`internal/personal/subagent.go`（`StopContext = "context"`）；`internal/personal/runner.go`（`Config.ForkSeed *ForkSeed`）；`internal/i18n/catalog/{zh,en}/model.ini`（`model.fork.wrapup_context`）；新 `internal/personal/subagent_fork_test.go`。
+- 文件: 新 `internal/personal/subagent_fork.go`；`internal/personal/context.go`；`internal/personal/observe.go`；`internal/personal/subagent.go`（`StopContext = "context"`）；`internal/personal/runner.go`（`Config.ForkSeed *ForkSeed`）；`internal/i18n/catalog/{zh,en}/model.ini`（`model.fork.wrapup_context`）；新 `internal/personal/subagent_fork_test.go`。
 - 动作:
   - `Config.ForkSeed` 非 nil 即分身模式：`contextBuilder` 不渲染段上下文消息、hookContext、ephemeral，不折叠、不段断点、不 shrink。
-  - `type forkHeadHook struct{ agentcore.NopHook; seed *ForkSeed; prompt string; maxInput int; first bool }`，挂在分身 Runner hook 链首位（prefixHook 之前）。`BeforeModel`：System、Tools、Model 取种子；Messages = 新切片（种子 Messages + 本次请求去掉内容等于 `prompt` 的首条 user 消息后的其余消息）；`ToolChoice` 为空保持为空，非空（收尾重试）原样保留；首次调用时在 `event.Metadata` 写 `fork_reuse=<Seed.Reuse>`，`ReuseNote` 非空时写 `fork_reuse_note`（observe 把 model 事件 metadata 中这两个键拷进 trace attrs）。`AfterModel`：上次调用上报的输入 token ≥ `maxInput` 时 `ctrl.RequestWrapUp(StopContext, model.fork.wrapup_context)`。
+  - `type forkHeadHook struct{ agentcore.NopHook; seed *ForkSeed; prompt string; maxInput int; first bool }`，挂在分身 Runner hook 链首位（prefixHook 之前）。`BeforeModel`：System、Tools、Model 取种子；Messages = 新切片（种子 Messages + 本次请求去掉内容等于 `prompt` 的首条 user 消息后的其余消息）；`ToolChoice` 为空保持为空，非空（收尾重试）原样保留。`fork_reuse`：recorder 在 `personal.New` 时从 `Config.ForkSeed` 取 `Reuse/ReuseNote`，`attemptObserver` 只在该会话第一个无 purpose 的 model 事件写 `fork_reuse`（及非空的 `fork_reuse_note`），之后不再写。`AfterModel`：上次调用上报的输入 token ≥ `maxInput` 时 `ctrl.RequestWrapUp(StopContext, model.fork.wrapup_context)`。
   - `RunChild` 识别 `res.WrapUp == StopContext`，`Stop=context`。
-- 验证: worktree 根 `go build ./...`；`go test ./internal/personal -run 'TestForkHeadHook|TestForkContextMode' -count=1`（录请求的假 provider）：首个请求 System/Tools/Model 等于种子、Messages 以种子 Messages 为前缀且不含 Prompt 与子会话段上下文；第二步只在末尾追加；收尾重试保留 `ToolChoiceNone`；上报输入达阈值时 `Stop=context` 且有报告；trace 中只有首个 model 事件带 `fork_reuse`，`rebuilt` 时带 `fork_reuse_note`；前缀统计 attr 记改写后的请求；`go test ./internal/i18n -run TestCatalogParity -count=1`。反向验证：临时把 hook 挂到 prefixHook 之后，确认“前缀统计”断言失败。
+- 验证: worktree 根 `go build ./...`；`go test ./internal/personal -run 'TestForkHeadHook|TestForkContextMode' -count=1`（录请求的假 provider）：首个请求 System/Tools/Model 等于种子、Messages 以种子 Messages 为前缀且不含 Prompt 与子会话段上下文；第二步只在末尾追加；收尾重试保留 `ToolChoiceNone`；上报输入达阈值时 `Stop=context` 且有报告；`inspect` 读到的 trace 中只有首个无 purpose 的 model 事件带 `fork_reuse`，`rebuilt` 时带 `fork_reuse_note`，非分身会话无该 attr；前缀统计 attr 记改写后的请求；`go test ./internal/i18n -run TestCatalogParity -count=1`。反向验证：临时把 hook 挂到 prefixHook 之后，确认“前缀统计”断言失败。
 - 完成标准: 用例通过。
 - 依赖: T1。
 
@@ -154,7 +167,7 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 - 动作:
   - 常量 `AgentFork = "fork"`；schema `type` enum 加 `fork`，描述补一句“fork 带着本对话全部上下文，在后台运行，只读”；`fork` 时忽略 `background`，总走后台；未挂 tasks 时报错 `agent: fork needs background tasks`。
   - 可选接口 `type ForkSeeder interface{ ForkSeed(ctx context.Context, req AgentRequest) (any, error) }`；`SubAgents` 不变；`agents` 未实现 `ForkSeeder` 时报 `agent: fork is not available`。`AgentRequest` 增 `Seed any`；种子错误作为工具错误结果返回 `agent: <err>`，错误实现 `Hint() string` 时追加提示。
-  - `func (t *AgentTool) StartFork(ctx context.Context, req AgentRequest) (tasks.Info, error)`：fork 的后台启动（`Execute` 与 `:bg` 共用）；满额时返回上文的满额文案。返回给模型的启动行 `[background fork task %s started: %s]`。
+  - `func (t *AgentTool) StartFork(ctx context.Context, req AgentRequest) (tasks.Info, error)`：fork 的后台启动（`Execute` 与 `:bg` 共用）；先用 `tasks.Running(sid)`/`Limits()` 预检，满额返回 `*ForkLimitError{Running, Limit int}`（`Error()` 为上文英文满额文案）。返回给模型的启动行 `[background fork task %s started: %s]`。
   - 完成分支（仅 fork）：`utf8.RuneCountInString(strings.TrimSpace(report)) <= 4000`（不含 footer）时通知 = 全文 + footer，否则前 12 行 + `[report cut; task output reads it all]` + footer；task label `agent_type=fork`；`Kind:"agent"`、Summary `agent: <description>` 不变。普通 agent 分支与 killed 分支（`r.Killed()`：output 写“已终止”、不通知）均不改。
   - `Stop` 注释加 `context`。
 - 验证: worktree 根 `go build ./...`；`go test ./pkg/agentcore/tools/native -run 'TestAgentTool' -count=1`（假 `SubAgents`+`ForkSeeder`）：3999/4000/4001 rune（含多字节字符）的通知分界；普通后台 agent 12 行通知不变；启动行与满额文案；`Kind`/Summary/label；kill 后无通知、output 为“已终止”、label `stop=cancelled`；未实现 `ForkSeeder` 时的错误；`go test ./pkg/agentcore -run TestLayering -count=1`。
@@ -163,7 +176,7 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 
 ### T3 wiring：晚绑定、分身装配、拒绝转换与 `fork_base`（F3、F9、BF14、PF5）【核心】
 
-- 文件: `internal/wiring/subagent.go`；新 `internal/wiring/subagent_fork.go`；`internal/wiring/runtime.go`（`personal.New` 之后绑定一处）；`internal/personal/subagent.go`（`ChildRequest.Meta` 合入子会话 meta）；`internal/i18n/catalog/{zh,en}/model.ini`（`model.fork.denied`）；新 `internal/wiring/subagent_fork_test.go`。
+- 文件: `internal/wiring/subagent.go`；新 `internal/wiring/subagent_fork.go`；`internal/wiring/runtime.go`（`personal.New` 之后绑定一行；该文件已 964 行，fork 连线放 `subagent_fork.go`）；`internal/personal/subagent.go`（`ChildRequest.Meta` 合入子会话 meta）；`internal/i18n/catalog/{zh,en}/model.ini`（`model.fork.denied`）；新 `internal/wiring/subagent_fork_test.go`。
 - 动作:
   - `type forkHost struct{ mu sync.Mutex; runner *personal.Runner }`，`bind(r *personal.Runner)`，同 `memoryHost` 在 `personal.New` 之后绑定；`subAgents` 增字段 `fork *forkHost` 并实现 `native.ForkSeeder`（经 `Runner.ForkSeedForCall`）。
   - `RunAgent` 在 `req.Type == native.AgentFork` 时：以种子的 Model 调 `loadRuntimeSettings`，注册 explore 白名单，`personal.Config.ForkSeed` 设为种子；`ChildRequest.Meta = {"fork_base": "<BaseTurn>|<Source>"}`。
@@ -196,8 +209,8 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 
 - 文件: 新 `internal/chat/chat_fork_bg.go`、`internal/chat/chat_fork_bg_test.go`；`internal/chat/chat.go`（`Options` 一字段、分发一行）；`internal/chat/steering.go`（放回名单一项）；`internal/chat/chat_usage.go`；`internal/wiring/runtime.go`（`Runtime.StartFork`）；`internal/cli/chat.go`（传参）；`internal/i18n/catalog/{zh,en}/cmd.ini`（`cmd.bg.*`）。
 - 动作:
-  - `chat.Options.StartFork func(ctx context.Context, task string) (tasks.Info, error)`；`wiring.Runtime.StartFork` 由 runtime 组装：`Runner.ForkSeedBetweenTurns` → `AgentTool.StartFork`（agents 未启用或无 tasks 时字段为 nil）；`internal/cli/chat.go` 传入。
-  - `func (s *chatState) runForkBg(task string)`：空参数 `cmd.bg.usage`；`StartFork` 为 nil → `cmd.bg.disabled`；以 `api.WithSessionID(s.ctx, s.sessionID)` 调用；成功 `cmd.bg.started`；`ForkUnavailableError` → `cmd.bg.unavailable`（`context` 时加 `Hint()`）；满额 → `cmd.bg.full`。命令实现只在 `chat_fork_bg.go`。
+  - `chat.Options.StartFork func(ctx context.Context, task string) (tasks.Info, error)`；`wiring.Runtime.StartFork` 由 runtime 组装（`runtime.go` 已 964 行，fork 连线放 `subagent_fork.go`，`runtime.go` 只留一行赋值）：`Runner.ForkSeedBetweenTurns` → `AgentTool.StartFork`（agents 未启用或无 tasks 时字段为 nil）；`internal/cli/chat.go` 传入。
+  - `func (s *chatState) runForkBg(task string)`：空参数 `cmd.bg.usage`；`StartFork` 为 nil → `cmd.bg.disabled`；以 `api.WithSessionID(s.ctx, s.sessionID)` 调用；成功 `cmd.bg.started`；`ForkUnavailableError` → `cmd.bg.unavailable`（`context` 时加 `Hint()` 的译文）；`errors.As(err, *native.ForkLimitError)` → `cmd.bg.full`（`{running}`、`{limit}` 取其字段）。任务文本即分身 prompt，description 由 `runForkBg` 取任务文本前 6 个词（同 `firstWords` 的规则，在 chat 内实现），wiring 不加文案。命令实现只在 `chat_fork_bg.go`。
   - `chat.go` 分发 `:bg`；`steering.go` 回合中输入 `:bg` 放回输入行；`chat_usage.go` 加用法。
 - 验证: worktree 根 `go build ./...`；`go test ./internal/chat -run 'TestForkBg|TestChatCommands|TestRunningTurnPutsRewindAndForkBack|TestRunTurnRefusesLocalCommand' -count=1`：空参、disabled、启动行、host_hook 文案、满额文案、回合中放回；`go test ./internal/i18n -run TestCatalogParity -count=1`。
 - 完成标准: 用例通过。
@@ -243,7 +256,7 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 
 ## 人工 Gate
 
-1. 计划批准（评审后），同时指定 T1–T8 执行者模型（核心 T1、T2、T3、T5）。仪式成本：设计评审 2 轮两轴（报告 75 + 98 = 173 行，设计 227 行）；计划评审第 1 轮两轴（报告 123 + 134 = 257 行，计划 0.1 为 231 行、0.2 为 277 行）。
+1. 计划批准（评审后），同时指定 T1–T8 执行者模型（核心 T1、T2、T3、T5）。仪式成本：设计评审 2 轮两轴（报告 75 + 98 = 173 行，设计 227 行）；计划评审第 1 轮两轴（报告 257 行，计划 0.1 为 231 行）、第 2 轮两轴（报告 77 + 100 = 177 行，计划 0.2 为 277 行）、第 3 轮获用户同意（“hao6 Q6 选 A”）。
 2. 当前执行请求：你指示开始实施；覆盖建 worktree 分支 `feat/background-fork` 与合并到本地 main，不含 push。
 3. 外部动作 Gate：push、tag、发版、安装均需你另行逐项批准。
 
@@ -261,7 +274,7 @@ i18n 键（模型可见文案放现有 `[model]` 段，chat 文案放 `[cmd]` �
 | F3（晚绑定、模型） | T1、T3 | `TestForkRunner` `:model` 用例 |
 | F4（复用 Kind 与观测）、`fork_reuse`、`fork_base` | T2、T3、T4、T7 | `TestForkContextMode` attr、`TestForkRunner` meta、`TestAgentTool` Kind/label、ptye2e trace |
 | F6（`stop=context`、超阈值不启动与提示） | T1、T2、T5、T6 | `TestForkSeedForCall`、`TestForkContextMode`、`TestForkSeedBetweenTurns` 超阈值、`TestForkBg` |
-| F7、BF11、host hook 一律拒绝 | T1、T5、T6 | `TestForkSeedForCall` host_hook、`TestForkSeedBetweenTurns` 表 + 反向验证、`TestForkBg` |
+| F7、BF11（模型触发不判 host hook；`:bg` 遇 host hook 拒绝） | T1、T5、T6 | `TestForkSeedForCall` host hook 仍 `prefix`、`TestForkSeedBetweenTurns` 表 + 反向验证、`TestForkBg` |
 | kill（Q3 选 A：不通知、“已终止”、`stop=cancelled`） | T4、T7 | `TestAgentTool` kill、`TestChatFork` ③ |
 | 分身指令（≤4000 字符、文件:行号） | T1 | `TestForkSeedForCall` 指令文本 |
 | GR110 | T7 | `TestRunWithFork` |
