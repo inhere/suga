@@ -202,20 +202,27 @@ func TestFunctionTasks(t *testing.T) {
 	})
 	t.Run("kill and the time limit cancel its context", func(t *testing.T) {
 		m, ctx := newTestManager(t, Limits{MaxDuration: 300 * time.Millisecond}, nil)
-		block := func(ctx context.Context, _ io.Writer, _ Reporter) (int, error) {
-			<-ctx.Done()
-			return -1, nil
+		// Both only cancel the ctx, so Killed is what tells them apart.
+		block := func(said chan<- bool) RunFunc {
+			return func(ctx context.Context, _ io.Writer, r Reporter) (int, error) {
+				<-ctx.Done()
+				said <- r.Killed()
+				return -1, nil
+			}
 		}
-		killed, err := m.Start(ctx, Spec{Run: block})
+		killedSaid, timedSaid := make(chan bool, 1), make(chan bool, 1)
+		killed, err := m.Start(ctx, Spec{Run: block(killedSaid)})
 		assert.Require(t, assert.NoErr(t, err))
-		timed, err := m.Start(ctx, Spec{Run: block})
+		timed, err := m.Start(ctx, Spec{Run: block(timedSaid)})
 		assert.Require(t, assert.NoErr(t, err))
 		info, err := m.Kill("s1", killed.ID)
 		assert.Require(t, assert.NoErr(t, err))
 		assert.Eq(t, Killed, info.Status)
+		assert.True(t, <-killedSaid)
 		info, done, _ := m.Wait(ctx, "s1", timed.ID, 5*time.Second)
 		assert.Eq(t, WaitEnded, done)
 		assert.Eq(t, TimedOut, info.Status)
+		assert.False(t, <-timedSaid)
 	})
 	t.Run("running notices: the newest replaces a pending one, the end notice stays apart", func(t *testing.T) {
 		var notified atomic.Int32
