@@ -267,6 +267,10 @@ type contextBuilder struct {
 	// SessionStart additional context, a Stop-wait reply). It is sent as a user
 	// message for this turn only (never role=system), right before the turn.
 	hookContext string
+	// fork disables projection-only context additions. The seed already contains
+	// the main session's complete request prefix; only the child runtime messages
+	// are allowed to flow through to forkHeadHook.
+	fork bool
 
 	// ephemeral is the per-request context (EphemeralContext): the output contract
 	// of this call. It is rendered right after the hook context - after the kept
@@ -345,7 +349,8 @@ func (r *Runner) newContextBuilder(sessionID, turnID string, hist historyView, p
 	window, reserve := r.compactLimits()
 	return &contextBuilder{
 		r: r, sessionID: sessionID, turnID: turnID, prompt: prompt, usage: usage, hookContext: hookContext,
-		summary: hist.summary, fromHandoff: hist.fromHandoff, prev: hist.items, seg: hist.segment, eff: hist.eff,
+		summary: hist.summary, fromHandoff: hist.fromHandoff, prev: hist.items,
+		seg: hist.segment, eff: hist.eff, fork: r.cfg.ForkSeed != nil,
 		window: window, reserve: reserve, foldAt: r.cfg.FoldAt,
 	}
 }
@@ -359,6 +364,14 @@ func (b *contextBuilder) threshold() int {
 func (b *contextBuilder) BuildMessages(ctx context.Context, state *agentcore.RunState) ([]agentcore.Message, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if b.fork {
+		var view []agentcore.Message
+		if state != nil {
+			view = append([]agentcore.Message(nil), state.Messages...)
+		}
+		b.lastViewTokens, b.haveView = tokensOfMessages(view), true
+		return view, nil
 	}
 	b.takeTaskNotices(ctx, state)
 	b.takeSteers(ctx, state)
@@ -422,6 +435,12 @@ func (b *contextBuilder) BuildMessages(ctx context.Context, state *agentcore.Run
 // context message and the hook context are rendered here only: items() (and
 // so segmentCut/validCut) never sees them.
 func (b *contextBuilder) compose(state *agentcore.RunState) []agentcore.Message {
+	if b.fork {
+		if state == nil {
+			return nil
+		}
+		return append([]agentcore.Message(nil), state.Messages...)
+	}
 	var turn []agentcore.Message
 	if state != nil && b.turnStart < len(state.Messages) {
 		turn = state.Messages[b.turnStart:]

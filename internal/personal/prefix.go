@@ -162,11 +162,14 @@ type prefixTracker struct {
 	// handoff-package call of a segment break continues it when it may
 	// (segment_handoff_reuse.go).
 	requests map[string]*agentcore.GenerateRequest
+	// steps keeps the current turn's last model reply and executed tool results
+	// for a fork seed. It is process-local by design; clearRequest drops it too.
+	steps map[string]forkStep
 }
 
 func newPrefixTracker() *prefixTracker {
 	return &prefixTracker{last: map[string]*requestPrint{}, reports: map[string]prefixReport{},
-		resumed: map[string]*requestPrint{}, requests: map[string]*agentcore.GenerateRequest{}}
+		resumed: map[string]*requestPrint{}, requests: map[string]*agentcore.GenerateRequest{}, steps: map[string]forkStep{}}
 }
 
 // seed gives the tracker the request fingerprint a previous process persisted,
@@ -344,6 +347,9 @@ func (t *prefixTracker) observeRequest(sessionID string, req *agentcore.Generate
 	if t == nil || sessionID == "" || req == nil || len(req.Messages) == 0 {
 		return
 	}
+	// req is the runtime's own copy of the request it is about to send and is
+	// never modified afterward. Keep that pointer here; clone only when the
+	// request is read by lastRequest so every model call avoids copying history.
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.requests[sessionID] = req
@@ -357,7 +363,7 @@ func (t *prefixTracker) lastRequest(sessionID string) *agentcore.GenerateRequest
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.requests[sessionID]
+	return cloneForkRequest(t.requests[sessionID])
 }
 
 // clearRequest forgets the session's last main-loop request: after a segment
@@ -370,6 +376,7 @@ func (t *prefixTracker) clearRequest(sessionID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.requests, sessionID)
+	delete(t.steps, sessionID)
 }
 
 // savePrefixPrint persists the session's last request fingerprint (see

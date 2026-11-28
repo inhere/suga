@@ -202,8 +202,10 @@ func (b *contextBuilder) requestBase(ctx context.Context, state *agentcore.RunSt
 // proves byte identity of System and Tools and of every message it covers, so a
 // view this process cannot reproduce - an un-stored hook context, an ephemeral
 // output contract, a truncated tool result - keeps the old path instead of
-// sending a request the provider cache cannot serve.
-func (b *contextBuilder) requestBaseBetweenTurns(ctx context.Context, view []agentcore.Message, rec *printRecord) (*agentcore.GenerateRequest, string) {
+// sending a request the provider cache cannot serve. skipPrint skips that
+// check: a fork seed (:bg) is a fresh request that needs no byte identity with
+// the last turn's, so it does not refuse on prefix_changed.
+func (b *contextBuilder) requestBaseBetweenTurns(ctx context.Context, view []agentcore.Message, rec *printRecord, skipPrint bool) (*agentcore.GenerateRequest, string) {
 	if len(view) == 0 {
 		return nil, handoffFallbackNoRequest
 	}
@@ -217,6 +219,9 @@ func (b *contextBuilder) requestBaseBetweenTurns(ctx context.Context, view []age
 	req := b.requestBase(ctx, &agentcore.RunState{}, view)
 	if req == nil {
 		return nil, handoffFallbackNoRequest
+	}
+	if skipPrint {
+		return req, ""
 	}
 	if where := rebuildDiff(printOf(rec), req); where != "" {
 		// The attr names the part that differs (H4): which side of the request

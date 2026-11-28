@@ -152,6 +152,9 @@ func runChat(ctx context.Context, runtime *wiring.Runtime, opts personalOptions,
 		// The PreToolUse hook (hooks.pre_tool_use.tools) gates every tool call
 		// through the approval layer, which decides on the arguments it rewrote.
 		SetCallRewriter: runtime.SetCallRewriter,
+		// :bg starts a read-only fork of this conversation in the background; nil
+		// (agents disabled) leaves the command saying so.
+		StartFork: runtime.StartFork,
 	}, stdin, stdout, stderr, hooks)
 }
 

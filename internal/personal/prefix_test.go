@@ -75,6 +75,16 @@ func TestPrefixTracker(t *testing.T) {
 		other.Content = "something else"
 		assert.Eq(t, prefixRewrite, step(req("sys", user, call), req("sys", other, call)).Reason)
 	})
+	t.Run("empty request does not replace the previous request", func(t *testing.T) {
+		tr := newPrefixTracker()
+		previous := req("sys", user)
+		tr.observeRequest("s1", previous)
+		tr.observeRequest("s1", &agentcore.GenerateRequest{System: "new"})
+		assert.Same(t, previous, tr.requests["s1"])
+		copy := tr.lastRequest("s1")
+		assert.NotNil(t, copy)
+		assert.NotSame(t, previous, copy)
+	})
 	t.Run("sessions are tracked apart", func(t *testing.T) {
 		tr := newPrefixTracker()
 		tr.observe("s1", req("sys", user))

@@ -44,6 +44,8 @@ import (
 //	        carries as Preferred.
 //	memorigin memory get of MemoryID, then shell_exec of Command (the entry
 //	        body): the trusted-memory scenario (chat_trusted_memory_test.go).
+//	fork    the agent tool with type: fork, then (for a message saying 看输出) the
+//	        task tool's output of TaskID (fakellm_fork_test.go, chat_fork_test.go).
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
 //
@@ -117,6 +119,8 @@ type fakeLLM struct {
 
 	// MemoryID is the entry memorigin mode reads (default "note").
 	MemoryID string
+	// TaskID is the task fork mode's "看输出" step reads (default t1).
+	TaskID string
 
 	// PreferredTool is the MCP tool preferred mode calls (default preferred_lookup).
 	PreferredTool string
@@ -323,10 +327,12 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	f.countArrival()
 
-	// A sub-agent's request names itself in its system prompt; its model call
-	// fails for good with ChildFail (a 400 is not retried), so the agent tool
-	// answers with an error result and no report.
-	sub := f.isSubAgent(body.Messages)
+	// A sub-agent's request names itself in its system prompt; a fork's request
+	// carries the fork directive in its tail (its system prompt is the parent's).
+	// Both run the sub-agent script, and a fork's model call fails for good with
+	// ChildFail (a 400 is not retried), so the agent tool answers with an error
+	// result and no report.
+	sub := f.isSubAgent(body.Messages) || isForkRequest(body.Messages)
 	if sub && f.ChildFail {
 		http.Error(w, `{"error":{"message":"child model is broken"}}`, http.StatusBadRequest)
 		return
@@ -518,6 +524,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		call = f.originCall(step)
 	case "memorigin":
 		call = f.memoriginCall(step)
+	case "fork":
+		call = f.forkCall(user, toolDone)
 	case "tool":
 		// The step of THIS turn decides, not whether any tool result is the last
 		// message: an interrupted turn leaves its own tool result in the

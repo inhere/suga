@@ -169,6 +169,13 @@ var chatCommandSpecs = []chatCommandSpec{
 		Options:    []string{"-a", "-k", "-h"},
 	},
 	{
+		Names:      []string{":bg"},
+		SummaryKey: "cmd.summary.bg",
+		UsageKey:   "cmd.usage.bg",
+		TakesArgs:  true,
+		Options:    []string{"-h"},
+	},
+	{
 		Names:      []string{":quit", ":exit"},
 		SummaryKey: "cmd.summary.quit",
 		UsageKey:   "cmd.usage.quit",

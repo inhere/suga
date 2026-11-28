@@ -262,10 +262,26 @@ suga session undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [-
 
 `agent` 工具把一件独立的任务交给子 agent：它是一个在自己的会话里运行的模型，只有只读工具，最终回答就是带回给主 agent 的报告。要大量阅读的任务——追调用链、比对多个实现、查清一个依赖的用法——因此只花掉父上下文一份报告，而不是每个读过的文件。
 
-- **两种类型**：`explore`（默认）拿到工作区只读工具（`file_read`、`file_list`、`file_grep`、`file_find`）；`research` 再加 `web_fetch` 与 `web_search`。子 agent 不能写文件、不能执行命令、不能询问用户，也不能再派子 agent，并且看不到本会话的任何内容。调用里的 `description` 就是它在 chat、ACP 与 trace 里的名字。
+- **三种类型**：`explore`（默认）拿到工作区只读工具（`file_read`、`file_list`、`file_grep`、`file_find`）；`research` 再加 `web_fetch` 与 `web_search`；`fork` 是下面说的分身。`explore` 与 `research` 从零开始，看不到本会话的任何内容；分身相反，从本对话的全部上下文起步。子 agent 不能写文件、不能执行命令、不能询问用户，也不能再派子 agent。调用里的 `description` 就是它在 chat、ACP 与 trace 里的名字。
 - **后台**：传 `background: true` 时它作为任务（种类 `agent`）运行：调用立刻返回任务 id，`task wait` 等它结束，报告就是该任务的输出（结束时还有一条带报告开头的通知）。可以一次派几个并行探索（与 shell 任务共用 `tasks.max_running` 槽位）。只读会话也有 `task` 工具，因为它只用到 `list`/`output`/`wait`/`kill`（`shell_exec` 仍只在写模式后台运行）。
 - **上限**：`agents.max_steps`（30）、`agents.max_tokens`（400000，按未命中缓存的输入加输出累计，长上下文命中缓存不会很快耗尽它）、`agents.timeout`（10m，软截止，之后 60 秒宽限）。到任一个上限时子 agent 被要求收尾，基于已有信息给出报告。
 - **报告尾行**：`[sub-agent <会话> · N steps · in … / out … · <耗时> · stop=<原因>]`，原因有 `final`、`max_steps`、`max_tokens`、`timeout`、`cancelled`、`failed`。
 - **模型与开关**：`agents.model` 可让子 agent 跑在更便宜的模型上；`agents.enabled: false` 则不注册该工具。
 - **用量与污染**：子 agent 的模型调用计入调用它的会话当前进行中的 run（stream-json 与 ACP 的 `usage_update` 都含它，ACP 在 prompt 进行中上报），也计入会话累计——会话累计 = 父会话加它的全部子会话（`suga inspect stats --session`）。子 agent 读过的外部内容会和其它外部读取一样把父会话标记为已污染：`research` 类型的子 agent（或读到了引用网页内容的文件）会让之后的写记忆需要确认。
 - **子会话**：每次调用都在一个自己的会话里运行——`kind: agent`，带 `parent_session_id`、`agent_type` 以及发起它的回合与工具调用，标题就是 description。`suga session list` 与 `session_search` 默认不列出子会话；`suga session list --agents` 会列出并标明各自的父会话。`suga inspect trace <会话>` 可以照常查看某一个子会话，`suga data gc` 随父会话一起删除它。
+
+### 分身（`type: fork` 与 `:bg`）
+
+分身（后台分身设计 `docs/design/2026-11-26-background-fork-design.md`）是同一个 `agent` 工具的第三种类型：把子任务交给一个**带着本对话全部上下文**的只读子 agent，在后台跑，只把结论交回来。
+
+- **两种触发**：模型在 `agent` 调用里写 `type: fork`（chat、`suga run`、ACP 都一样，都是模型触发的工具调用）；chat 里也可以自己敲 `:bg <任务>`（`run` 与 ACP 没有这条命令）。两种入口最后都走 `AgentTool.StartFork`，满额、只读、通知的形状完全一致。
+- **从哪起步**：不是从零探索，而是以本会话最近一次主循环请求为起点——系统提示、工具表、之前的消息逐字节不变，只在末尾追加“产生这次调用的那一步”与各调用结果（模型触发）或上一轮回复加一条分身指令（`:bg`）。因此它已经知道你读过什么，首个请求还能命中主循环的同一份缓存。`fork` 总在后台运行，没有同步形式。
+- **只读白名单**：与 `explore` 完全相同（`file_read`、`file_list`、`file_grep`、`file_find`、`file_symbols`、`file_refs`）；不能写文件、执行命令、上网，也拿不到主会话的 `recall` ref（需要时重读文件）。工具表仍向模型声明主会话的全部工具（为了前缀一致），但任何白名单外的调用都在执行前被转换成**普通错误结果**：“分身只读：<名字> 在分身中不可用，不要重试；需要改动或命令时写进报告由主会话执行”。它不是 `ErrDenied`，因此不累计每回合的拒绝次数、不会把回合短路，反复尝试由 `agents.max_steps` 收尾兜住（ask 规则在无终端时失败关闭的那类拒绝也一样返回）。
+- **回交**：分身结束时的通知就是它的报告。正文不超过 4000 字符时全文进会话；超过时只带前 12 行并附 `[report cut; task output reads it all]`，`task output` 读全文。分身的指令要求它以此长度为限、结论附文件:行号。
+- **上限与并发**：与普通后台 agent、`shell_exec` 任务共用 `tasks.max_running`（每会话 4）；`agents.max_steps`、`agents.max_tokens`、`agents.timeout` 与报告的 `[sub-agent … stop=…]` 尾巴照旧；满额时**直接拒绝、不排队**（模型拿到错误结果，`:bg` 打印“后台任务已满（N/N）…”）。分身自己的上下文也计量：达到主会话的段阈值时让它收尾，`stop=context`。
+- **终止**：`:tasks -k <ID>` 或 `task kill` 取消分身，任务输出写“已终止”，`stop=cancelled`，**不发通知**（与普通后台 agent 的 kill 行为一致，避免唤醒没人要的回合）。
+- **`:bg` 拒绝启动的情形**（`run` 与 ACP 不受影响，因为它们只经模型触发）：配置了 host hook（hook 会改写请求头，`rebuilt` 出来的基准不可信）；系统提示读运行状态（`prompt_state`）；种子超过上下文阈值（提示改用 `agent` 的 `explore` 并把背景写进 prompt）；会话里还没有任何完成的回合（无基准可用）。模型自己调的 `type: fork` 只用刚发出的那次请求，因此**不判 host hook**。`agents.enabled: false` 时 `:bg` 直接提示分身不可用，回合中输入会退回输入行。
+- **观测**：子会话 meta 带 `fork_base=<基准请求所在回合>|<call 或 bg>`，`agent_type=fork`；分身首个（无 purpose 的）model 事件带 `fork_reuse=prefix|rebuilt`，重建时另有 `fork_reuse_note`（`no_tracked_request`、`last_turn_not_completed`、`model_switched` 等）说明为什么没能沿用主会话前缀。任务行仍是 `kind=agent`、摘要 `agent: <description>`，所以状态行、`:tasks`、`--analyze` 自动覆盖分身。
+- **缓存与费用**：首个请求是主会话整段上下文，命中按缓存价、未命中按全价；用量计入主会话累计，gofer 的预算照常生效。
+- **与 `:fork N` 的区别**：`:fork N` 把历史复制到一个新会话里供人接着聊（`suga chat --resume <新会话ID>`），分身只是一次性只读执行、最后变成一篇报告。
+- **deferred**：分身的白名单暂不包含 `recall`（读不到主会话上下文里的 spill ref），实测有需要再评估加入。

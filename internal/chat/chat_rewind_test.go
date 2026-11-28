@@ -150,8 +150,12 @@ func TestChatPromptRewindAppliesAndForks(t *testing.T) {
 	assert.StrContains(t, stderr.String(), "找不到这个用户轮")
 }
 
+// TestRunningTurnPutsRewindAndForkBack: a line that reads or replaces the
+// session's history is never inserted into the running turn: it goes back to the
+// input line (:bg starts a fork from this conversation, so it needs the same
+// treatment as :rewind and :fork).
 func TestRunningTurnPutsRewindAndForkBack(t *testing.T) {
-	for _, line := range []string{":rewind 1", ":fork 1"} {
+	for _, line := range []string{":rewind 1", ":fork 1", ":bg 查一下 X"} {
 		t.Run(line, func(t *testing.T) {
 			h := newSteerHarness(t, newGateProv())
 			done := h.startTurn()

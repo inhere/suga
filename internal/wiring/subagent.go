@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -57,6 +58,8 @@ type subAgents struct {
 	// model-facing wording in the same language as the parent's (i18n phase
 	// 1b); nil is the Chinese compatibility fallback.
 	translator i18n.Translator
+	// fork is the late-bound parent Runner that forks take their seed from.
+	fork *forkHost
 	// extraTools are registered in every child next to the whitelisted catalog
 	// tools. Production leaves it empty (children only read); it is the seam
 	// that lets tests give a child a write tool to prove the origin guard.
@@ -76,7 +79,14 @@ var subAgentTools = map[string][]string{
 func (s *subAgents) Scope(ctx context.Context) (string, string) { return personal.CurrentTurn(ctx) }
 
 func (s *subAgents) RunAgent(ctx context.Context, req native.AgentRequest) (native.AgentReport, error) {
-	child, closeChild, err := s.build(req.Type)
+	var seed *personal.ForkSeed
+	if req.Type == native.AgentFork {
+		var err error
+		if seed, err = forkSeedOf(req.Seed); err != nil {
+			return native.AgentReport{Stop: "failed"}, err
+		}
+	}
+	child, closeChild, err := s.assemble(req.Type, seed)
 	if err != nil {
 		return native.AgentReport{Stop: "failed"}, err
 	}
@@ -88,7 +98,7 @@ func (s *subAgents) RunAgent(ctx context.Context, req native.AgentRequest) (nati
 	res, runErr := personal.RunChild(ctx, child, personal.ChildRequest{
 		ParentSession: req.ParentSession, ParentTurn: req.ParentTurn, ParentCall: req.CallID,
 		Type: req.Type, Description: req.Description, Prompt: req.Prompt, Background: req.Background,
-		Timeout: s.settings.Timeout, Emit: progress,
+		Timeout: s.settings.Timeout, Emit: progress, Meta: forkMeta(seed),
 	})
 	rep := native.AgentReport{SessionID: res.SessionID, Report: res.Report, Stop: res.Stop, Steps: res.Steps,
 		ToolCalls: res.ToolCalls, Usage: res.Usage, Duration: res.Duration, Tainted: res.Tainted}
@@ -145,9 +155,20 @@ func (s *subAgents) childPolicy() approvalPolicy {
 
 // build assembles the Runner of one sub-agent run; the func closes it.
 func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
+	return s.assemble(kind, nil)
+}
+
+// assemble is build with the optional fork seed. A fork runs on the seed's
+// model (the parent's current one), registers the explore whitelist, takes the
+// seed as Config.ForkSeed and wraps its tools in forkDenyTools (design F3, F9).
+func (s *subAgents) assemble(kind string, seed *personal.ForkSeed) (*personal.Runner, func(), error) {
 	model := s.settings.Model
 	if model == "" {
 		model = s.mainModel // the parent's model, --model included
+	}
+	if seed != nil {
+		model = forkModel(seed)
+		kind = native.AgentExplore
 	}
 	rs, err := loadRuntimeSettings(s.workspace, model, "", s.projectMemoryKey)
 	if err != nil {
@@ -186,8 +207,14 @@ func (s *subAgents) build(kind string) (*personal.Runner, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	observer := &originObserver{inner: approval, origin: origin}
+	var childTools agentcore.ToolRegistry = observer
+	if seed != nil {
+		childTools = &forkDenyTools{inner: observer, allow: forkAllow(), translator: s.translator}
+	}
 	runner, err := personal.New(personal.Config{
-		Repository: repo, Provider: provider, Tools: &originObserver{inner: approval, origin: origin},
+		ForkSeed:   seed,
+		Repository: repo, Provider: provider, Tools: childTools,
 		Model: rs.models.Main.Model, ProviderName: rs.models.Main.Provider.ID,
 		ContextWindow: appconfig.ContextWindowFor(rs.models.Main),
 		Price:         priceLookup(rs.models),
@@ -269,6 +296,63 @@ func subAgentDisabledHints(registry *tools.Registry) map[string]string {
 		}
 	}
 	return hints
+}
+
+// forkDenyTools is the fork's read-only whitelist and its refusal conversion
+// (design F9). It wraps the whole tool stack (Approval included) so that:
+//   - a name outside the whitelist never reaches the stack at all, whatever the
+//     parent policy would have allowed: the whitelist is the one barrier;
+//   - a refusal from inside the stack (tools.ErrDenied: a deny rule, an ask
+//     rule that fails closed without a terminal, a disabled tool) becomes an
+//     ordinary error result. The turn's denial counter only counts ErrDenied
+//     errors, so a fork that keeps trying ends by its own answer or by the
+//     agents.* limits instead of being cut short by the denial limit.
+//
+// A turn-ending abort (cancelled context) is passed through untouched.
+type forkDenyTools struct {
+	inner interface {
+		agentcore.ToolRegistry
+		tools.Lookup
+	}
+	allow      map[string]bool
+	translator i18n.Translator
+}
+
+func (f *forkDenyTools) ListTools(ctx context.Context) ([]agentcore.ToolSchema, error) {
+	return f.inner.ListTools(ctx)
+}
+
+func (f *forkDenyTools) Get(name string) (agentcore.Tool, error) { return f.inner.Get(name) }
+
+func (f *forkDenyTools) ExecuteTool(ctx context.Context, call agentcore.ToolCall) (*agentcore.ToolResult, error) {
+	if !f.allow[call.Name] {
+		return f.denied(call), nil
+	}
+	res, err := f.inner.ExecuteTool(ctx, call)
+	if err != nil && errors.Is(err, tools.ErrDenied) {
+		return f.denied(call), nil
+	}
+	return res, err
+}
+
+// denied is the one refusal text of a fork, the same for every name (Catalog
+// tools, agent, task, tool_search, the tool_call proxy, MCP, memory).
+func (f *forkDenyTools) denied(call agentcore.ToolCall) *agentcore.ToolResult {
+	tr := f.translator
+	if tr == nil {
+		tr = i18n.Fallback()
+	}
+	return &agentcore.ToolResult{CallID: call.CallID, Name: call.Name, IsError: true,
+		Content: tr.T("model.fork.denied", map[string]any{"name": call.Name})}
+}
+
+// forkAllow is the explore whitelist as a set.
+func forkAllow() map[string]bool {
+	allow := map[string]bool{}
+	for _, name := range subAgentTools[native.AgentExplore] {
+		allow[name] = true
+	}
+	return allow
 }
 
 // subAgentPrompt is the system prompt of every sub-agent (one per process,
