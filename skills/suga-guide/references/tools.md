@@ -60,6 +60,7 @@ suga config set tools.preferred '[{name: rg, kind: command, when: "精确搜索�
 
 - **默认只读**：写工具只在 `run --allow-write`、chat 设置 `tools.allow_write: true`、或 ACP 会话处于 `default` 模式时才有；`--read-only` 永远优先。模型调用了未开启的工具时，会被告知开启方法，并计入拒绝次数。
 - **chat 先询问**：`tools.approval: ask` 时，每次写文件或执行命令前都会询问，并显示完整命令、路径或改动前后的文本。审批规则会先决定是否放行或拒绝；需要询问时可答 `y`（一次）、`a`/`always`（按范围创建本会话 allow）、`d`/`deny`（按范围创建本会话 deny），其它任何回答都是拒绝。启用追问后，`a`/`d` 可再用 `u` 或 `p` 写回规则。一轮里被拒 3 次就结束这一轮。
+- **外部来源询问（`tools.ask_on_external_origin`）**：写类/执行类调用的参数里含本会话网页或 MCP 结果的 40 字节以上原文时，chat 在审批之前另问一次（即使 `tools.approval: auto`），问句显示来源工具与整段复制文本（最多 200 字节）并提供 `[a]本会话允许该片段`：`y` 只放行这一次；`a` 额外把问句里看到的片段记进本会话内存，之后只带这段已允许片段（且来源工具相同）的调用不再问这一问，但规则 `deny`、裁决 `deny` 与普通审批 ask 照常生效。所示片段之外的字节、同一调用里的其他复制段、换来源工具的同样文字照常询问；重开 chat 即清空，run / ACP / 子 agent 行为不变（不询问、直接拒绝）。`suga inspect trace <会话> --json` 的审批事件 attr `origin_remembered` 为 `added`（这次答 `a` 记入）或 `hit`（已允许而跳过问句）。残余风险：来源只认工具名（同一个工具抓到的其他含该片段的页面不会重问）、`tools.approval: auto` 下无人再确认、问句里被打码的原文仍随窗口记入。
 
 ## 审批规则（`tools.approval_rules`）
 

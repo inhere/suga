@@ -16,6 +16,21 @@ func (f *fakeLLM) originCall(step int) *toolCall {
 	return nil
 }
 
+// originRepeatCall is the originrepeat script: fetch the page, then run two
+// different commands that both carry the same snippet copied from it (suga-ilko
+// T3: the second call is the same copied piece in another command).
+func (f *fakeLLM) originRepeatCall(step int) *toolCall {
+	switch step {
+	case 0:
+		return &toolCall{"web_fetch", map[string]any{"url": f.PageURL}}
+	case 1:
+		return &toolCall{"shell_exec", map[string]any{"command": f.command()}}
+	case 2:
+		return &toolCall{"shell_exec", map[string]any{"command": f.command2()}}
+	}
+	return nil
+}
+
 // isJudgeRequest reports a request made by the external-origin judge: its
 // system prompt names the reviewer role.
 func isJudgeRequest(messages []fakeMessage) bool {

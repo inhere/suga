@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gookit/goutil/x/assert"
 )
@@ -93,5 +94,212 @@ func TestExternalOrigin(t *testing.T) {
 		none.Record("s", "t", "some text here that is long enough to be a copied piece")
 		_, ok := none.Find("s", args("some text here that is long enough to be a copied piece"))
 		assert.False(t, ok)
+	})
+}
+
+// originSeq returns n bytes of text that never repeats (numbered words), so no
+// two windows of it, or of a differently tagged one, are equal.
+func originSeq(tag string, n int) string {
+	var b strings.Builder
+	for i := 0; b.Len() < n; i++ {
+		fmt.Fprintf(&b, "%s%04d-", tag, i)
+	}
+	return b.String()[:n]
+}
+
+// TestExternalOriginRemember covers Allow and the per-window judgement
+// (suga-ilko). Every assertion that a piece is not Remembered also asserts ok,
+// so a Find that found nothing cannot pass for it.
+func TestExternalOriginRemember(t *testing.T) {
+	args := func(v any) map[string]any { return map[string]any{"command": v} }
+
+	t.Run("an allowed segment is remembered whatever follows it", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p := originSeq("P", 60)
+		o.Record("s", "web_fetch", p)
+		hit, ok := o.Find("s", args("echo "+p+" tail one"))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+		o.Allow("s", hit)
+		hit, ok = o.Find("s", args("ls && "+p+" another tail"))
+		assert.True(t, ok)
+		assert.True(t, hit.Remembered)
+	})
+	t.Run("a 40 byte substring of the allowed piece is remembered", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p := originSeq("P", 60)
+		o.Record("s", "web_fetch", p)
+		hit, ok := o.Find("s", args(p))
+		assert.True(t, ok)
+		o.Allow("s", hit)
+		hit, ok = o.Find("s", args("x "+p[10:55]+" y"))
+		assert.True(t, ok)
+		assert.True(t, hit.Remembered)
+	})
+	t.Run("another session, tool or segment is not remembered", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p, y := originSeq("P", 60), originSeq("Y", 60)
+		o.Record("s", "web_fetch", p)
+		o.Record("s", "web_fetch", y)
+		o.Record("s2", "web_fetch", p)
+		hit, ok := o.Find("s", args(p))
+		assert.True(t, ok)
+		o.Allow("s", hit)
+
+		hit, ok = o.Find("s2", args(p))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+
+		hit, ok = o.Find("s", args(y))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+
+		// The same text, now held by another tool, is another key.
+		o.Record("s", "mcp_x", p)
+		hit, ok = o.Find("s", args(p))
+		assert.True(t, ok)
+		assert.Eq(t, "mcp_x", hit.Tool)
+		assert.False(t, hit.Remembered)
+	})
+	t.Run("allowing the first of two sources leaves the second asked", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p, x := originSeq("P", 60), originSeq("X", 60)
+		o.Record("s", "web_fetch", p)
+		o.Record("s", "mcp_x", x)
+		both := map[string]any{"a": p, "b": x}
+		hit, ok := o.Find("s", both)
+		assert.True(t, ok)
+		assert.Eq(t, "web_fetch", hit.Tool)
+		o.Allow("s", hit)
+		hit, ok = o.Find("s", map[string]any{"b": x})
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+		hit, ok = o.Find("s", both)
+		assert.True(t, ok)
+		assert.Eq(t, "mcp_x", hit.Tool)
+		assert.False(t, hit.Remembered)
+	})
+	t.Run("adjacent P+X with P allowed shows X and remembers only what was shown", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p, x := originSeq("P", 60), originSeq("X", 260)
+		o.Record("s", "web_fetch", p+x)
+		hit, ok := o.Find("s", args(p))
+		assert.True(t, ok)
+		o.Allow("s", hit)
+
+		hit, ok = o.Find("s", args(p+x))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+		// The first window not allowed is the one that crosses into X: the
+		// snippet carries the last 39 bytes of P, then 161 bytes of X.
+		assert.False(t, strings.HasPrefix(hit.Snippet, p))
+		assert.True(t, strings.HasPrefix(hit.Snippet, p[len(p)-39:]+x[:20]))
+		assert.StrContains(t, hit.Snippet, x[:161])
+		o.Allow("s", hit)
+
+		hit, ok = o.Find("s", args("a "+x[:161]+" b"))
+		assert.True(t, ok)
+		assert.True(t, hit.Remembered)
+		// What is left of X after the shown part is still asked about.
+		hit, ok = o.Find("s", args("a "+x[161:201]+" b"))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+	})
+	t.Run("a long segment is remembered only as far as it was shown", func(t *testing.T) {
+		o := NewExternalOrigin()
+		page := originSeq("L", 320)
+		o.Record("s", "web_fetch", page)
+		hit, ok := o.Find("s", args(page))
+		assert.True(t, ok)
+		assert.Eq(t, page[:originPromptSnippetBytes]+"…", hit.Snippet)
+		o.Allow("s", hit)
+		// i is where the shown snippet starts in the segment; cut is its length.
+		i, cut := 0, originPromptSnippetBytes
+		hit, ok = o.Find("s", args(page[i+cut-40:i+cut]))
+		assert.True(t, ok)
+		assert.True(t, hit.Remembered)
+		hit, ok = o.Find("s", args(page[i+cut-39:i+cut+1]))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+	})
+	t.Run("a cut inside a multi-byte rune moves back to a boundary", func(t *testing.T) {
+		o := NewExternalOrigin()
+		page := strings.Repeat("é", 1) + originSeq("U", 40) + strings.Repeat("日本", 100)
+		page = originSeq("V", 3) + page
+		o.Record("s", "web_fetch", page)
+		hit, ok := o.Find("s", args(page))
+		assert.True(t, ok)
+		assert.True(t, utf8.ValidString(hit.Snippet))
+		assert.True(t, strings.HasSuffix(hit.Snippet, "…"))
+		// Byte 200 is inside a rune, so the cut falls back to 198.
+		assert.Eq(t, 198+len("…"), len(hit.Snippet))
+	})
+	t.Run("a new segment apart from an allowed one is returned", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p, x := originSeq("P", 60), originSeq("X", 80)
+		o.Record("s", "web_fetch", p)
+		o.Record("s", "web_fetch", x)
+		hit, ok := o.Find("s", map[string]any{"a": p})
+		assert.True(t, ok)
+		o.Allow("s", hit)
+		// "a" sorts before "b", so P is visited first and is skipped.
+		both := map[string]any{"a": p, "b": "run " + x}
+		hit, ok = o.Find("s", both)
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+		assert.Eq(t, x, hit.Snippet)
+		all := o.findAll("s", both, false)
+		assert.Len(t, all, 2)
+		assert.True(t, all[0].Remembered)
+		assert.False(t, all[1].Remembered)
+	})
+	t.Run("an evicted source does not match, a re-recorded one by the same tool does", func(t *testing.T) {
+		o := NewExternalOrigin()
+		p := originSeq("P", 60)
+		o.Record("s", "web_fetch", p)
+		hit, ok := o.Find("s", args(p))
+		assert.True(t, ok)
+		o.Allow("s", hit)
+		for i := 0; i < 5; i++ {
+			var b strings.Builder
+			for n := 0; n < 12000; n++ {
+				fmt.Fprintf(&b, "r%dn%d ", i, n)
+			}
+			o.Record("s", "bulk", b.String())
+		}
+		_, ok = o.Find("s", args(p))
+		assert.False(t, ok)
+
+		o.Record("s", "mcp_x", p)
+		hit, ok = o.Find("s", args(p))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+
+		o.Record("s", "web_fetch", p)
+		hit, ok = o.Find("s", args(p))
+		assert.True(t, ok)
+		assert.True(t, hit.Remembered)
+	})
+	t.Run("without Allow the snippet is the copied piece on one line", func(t *testing.T) {
+		o := NewExternalOrigin()
+		a, b := originSeq("A", 50), originSeq("B", 50)
+		o.Record("s", "web_fetch", a+"\n\t"+b)
+		hit, ok := o.Find("s", args("echo;"+a+"\n  "+b+";NOT_COPIED_TAIL"))
+		assert.True(t, ok)
+		assert.False(t, hit.Remembered)
+		assert.Eq(t, a+" "+b, hit.Snippet)
+
+		long := originSeq("L", 300)
+		o.Record("s", "web_fetch", long)
+		hit, ok = o.Find("s", args("echo "+long))
+		assert.True(t, ok)
+		assert.True(t, strings.HasSuffix(hit.Snippet, "…"))
+		assert.True(t, strings.HasPrefix(hit.Snippet, long[:50]))
+	})
+	t.Run("Allow on a nil tracker or a hit without windows does nothing", func(t *testing.T) {
+		var none *ExternalOrigin
+		none.Allow("s", OriginHit{})
+		o := NewExternalOrigin()
+		o.Allow("s", OriginHit{Tool: "web_fetch"})
 	})
 }

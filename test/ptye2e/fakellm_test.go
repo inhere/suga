@@ -48,6 +48,8 @@ import (
 //	        task tool's output of TaskID (fakellm_fork_test.go, chat_fork_test.go).
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
+//	originrepeat the origin script, then a second shell_exec of Command2: the two
+//	        calls copy the same snippet (chat_origin_remember_test.go).
 //
 // The agent and session modes (with the sub-agent paths) live in
 // fakellm_agent_test.go.
@@ -116,6 +118,9 @@ type fakeLLM struct {
 	// with JudgeReply whatever the mode.
 	PageURL, PageText string
 	JudgeReply        string
+	// Command2 is the second shell_exec of originrepeat mode: a different command
+	// carrying the same copied snippet as Command.
+	Command2 string
 
 	// MemoryID is the entry memorigin mode reads (default "note").
 	MemoryID string
@@ -286,6 +291,17 @@ func (f *fakeLLM) command() string {
 		return "echo SMOKE_OK"
 	}
 	return f.Command
+}
+
+// command2 is the second command of originrepeat mode (default: the first one
+// with a different tail).
+func (f *fakeLLM) command2() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Command2 == "" {
+		return f.Command + " two"
+	}
+	return f.Command2
 }
 
 // preferredTool is the MCP tool preferred mode calls (fakellm.py --preferred-tool).
@@ -522,6 +538,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "origin":
 		call = f.originCall(step)
+	case "originrepeat":
+		call = f.originRepeatCall(step)
 	case "memorigin":
 		call = f.memoriginCall(step)
 	case "fork":
