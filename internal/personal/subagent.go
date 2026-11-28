@@ -51,6 +51,9 @@ type ChildRequest struct {
 	// Background children keep running under their own limits and do not use the
 	// parent's budget to request a wrap-up.
 	Background bool
+	// Meta is merged into the child session's meta (a fork records fork_base
+	// here); it never overrides the keys RunChild itself sets.
+	Meta map[string]any
 	// Emit receives the sub-agent's progress ("agent_progress" events: its
 	// tool calls); nil drops them.
 	Emit EmitFunc
@@ -77,11 +80,18 @@ type ChildResult struct {
 // answering gives its last answer text as the report.
 func RunChild(ctx context.Context, child *Runner, req ChildRequest) (ChildResult, error) {
 	start := time.Now()
-	sess, err := child.NewSessionWithMeta(ctx, "", req.Description, map[string]any{
+	meta := map[string]any{}
+	for key, value := range req.Meta {
+		meta[key] = value
+	}
+	for key, value := range map[string]any{
 		store.MetaKind: store.KindAgent, store.MetaParentSession: req.ParentSession,
 		store.MetaOrigin: store.OriginAgent,
 		metaAgentType:    req.Type, metaParentTurn: req.ParentTurn, metaParentCall: req.ParentCall,
-	})
+	} {
+		meta[key] = value
+	}
+	sess, err := child.NewSessionWithMeta(ctx, "", req.Description, meta)
 	if err != nil {
 		return ChildResult{}, fmt.Errorf("sub-agent session: %w", err)
 	}

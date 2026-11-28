@@ -547,8 +547,9 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		_ = capabilities.Close()
 		return nil, err
 	}
+	forkBind := &forkHost{}
 	if agentSettings.Enabled {
-		agentTool := native.NewAgentTool(&subAgents{workspace: workspace, ruleCWD: ruleCWD, mainModel: opts.Model, projectMemoryKey: opts.ProjectMemoryKey,
+		agentTool := native.NewAgentTool(&subAgents{fork: forkBind, workspace: workspace, ruleCWD: ruleCWD, mainModel: opts.Model, projectMemoryKey: opts.ProjectMemoryKey,
 			noProjectRules: opts.NoProjectRules, ruleFile: ruleFile, settings: agentSettings, addDirs: dirs, readDeny: readDeny,
 			budget: personal.BudgetSettings{Tokens: budget.Tokens, CostUSD: budget.CostUSD, Scope: budget.Scope,
 				Estimate: budget.Estimate, EstimateFactor: budget.EstimateFactor, NoticeRatio: budget.NoticeRatio},
@@ -843,6 +844,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 	approvalLayer.SetOnApproved(personal.AdmitApprovedCall)
 	memSetup.Bind(repo)
 	memHost.bind(runner, repo)
+	forkBind.bind(runner)
 	sessionEnv.Bind(runner)
 	// run and ACP have no chat terminal: their resident context warnings go to
 	// the log once per process, so stdout and the ACP stream stay unchanged.
