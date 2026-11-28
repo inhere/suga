@@ -52,6 +52,16 @@ type originSession struct {
 	// index maps a window hash to the newest source holding it.
 	index map[uint64]uint64
 	names map[uint64]string
+	// allowed holds the windows the user let through for this session, keyed by
+	// the tool whose result held them. It outlives the sources it came from.
+	allowed map[string]map[uint64]struct{}
+}
+
+// originWindow is one 40-byte window of a copied piece and the tool whose
+// result held it.
+type originWindow struct {
+	hash uint64
+	tool string
 }
 
 // NewExternalOrigin returns an empty tracker.
@@ -108,8 +118,15 @@ func (o *ExternalOrigin) Record(session, tool, text string) {
 type OriginHit struct {
 	// Tool is the tool whose result held the text.
 	Tool string
-	// Snippet is the start of the copied piece, as found in the arguments.
+	// Snippet is the part of the copied piece a prompt shows: it starts at the
+	// first window not yet allowed and runs over the not-yet-allowed text that
+	// follows, at most originPromptSnippetBytes.
 	Snippet string
+	// Remembered reports that every window of the copied piece was allowed
+	// earlier in this session (see Allow).
+	Remembered bool
+	// windows are the windows the Snippet covers; Allow records exactly these.
+	windows []originWindow
 }
 
 // Find looks for a piece of at least OriginWindow bytes of a remembered result
@@ -127,54 +144,134 @@ func (o *ExternalOrigin) FindIgnoringURLs(session string, args map[string]any) (
 	return o.find(session, args, true)
 }
 
+// find returns the first hit segment that is not yet allowed. When every
+// segment is allowed it returns the first one with Remembered set.
 func (o *ExternalOrigin) find(session string, args map[string]any, ignoreURLs bool) (OriginHit, bool) {
+	hits := o.findAll(session, args, ignoreURLs)
+	for _, h := range hits {
+		if !h.Remembered {
+			return h, true
+		}
+	}
+	if len(hits) > 0 {
+		return hits[0], true
+	}
+	return OriginHit{}, false
+}
+
+// findAll returns every hit segment of args in order: a run of adjacent windows
+// that all match and come from the same tool is one segment. A window with hash 0
+// ends a segment.
+func (o *ExternalOrigin) findAll(session string, args map[string]any, ignoreURLs bool) []OriginHit {
 	if o == nil || len(args) == 0 {
-		return OriginHit{}, false
+		return nil
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	s := o.sessions[session]
 	if s == nil || len(s.index) == 0 {
-		return OriginHit{}, false
+		return nil
 	}
-	var hit OriginHit
-	var found bool
+	var hits []OriginHit
 	visitStrings(args, func(v string) bool {
 		if ignoreURLs {
 			v = originURL.ReplaceAllString(v, " ")
 		}
 		norm := normalizeOrigin(v)
-		for i, h := range originWindowHashes(norm) {
-			if h == 0 {
+		hashes := originWindowHashes(norm)
+		for i := 0; i < len(hashes); {
+			id, ok := s.index[hashes[i]]
+			if hashes[i] == 0 || !ok {
+				i++
 				continue
 			}
-			if id, ok := s.index[h]; ok {
-				hit, found = OriginHit{Tool: s.names[id], Snippet: originSnippet(norm[i:])}, true
-				return false
+			tool := s.names[id]
+			j := i + 1
+			for j < len(hashes) && hashes[j] != 0 {
+				id2, ok2 := s.index[hashes[j]]
+				if !ok2 || s.names[id2] != tool {
+					break
+				}
+				j++
 			}
+			hits = append(hits, originSegmentHit(s.allowed[tool], norm, hashes, i, j, tool))
+			i = j
 		}
 		return true
 	})
-	return hit, found
+	return hits
+}
+
+// originSegmentHit builds the hit for the segment of windows [from, to) of norm.
+// The shown snippet starts at the first window not in allowed and ends with the
+// last of the not-allowed windows that follow it without a gap; when every
+// window is allowed it spans the whole segment. It is cut to
+// originPromptSnippetBytes on a UTF-8 boundary, and the windows it covers are
+// counted on that cut (the "…" is not part of it).
+func originSegmentHit(allowed map[uint64]struct{}, norm string, hashes []uint64, from, to int, tool string) OriginHit {
+	isAllowed := func(k int) bool { _, ok := allowed[hashes[k]]; return ok }
+	start, end, remembered := from, to-1+OriginWindow, true
+	for k := from; k < to; k++ {
+		if isAllowed(k) {
+			continue
+		}
+		remembered = false
+		g := k
+		for g+1 < to && !isAllowed(g+1) {
+			g++
+		}
+		start, end = k, g+OriginWindow
+		break
+	}
+	cut, truncated := end-start, false
+	if cut > originPromptSnippetBytes {
+		cut, truncated = originPromptSnippetBytes, true
+		for cut > 0 && !isRuneStart(norm[start+cut]) {
+			cut--
+		}
+	}
+	hit := OriginHit{Tool: tool, Snippet: norm[start : start+cut], Remembered: remembered}
+	if truncated {
+		hit.Snippet += "…"
+	}
+	// A window covered by the cut starts at or before start+cut-OriginWindow.
+	for k := start; k < to && k+OriginWindow <= start+cut; k++ {
+		hit.windows = append(hit.windows, originWindow{hash: hashes[k], tool: tool})
+	}
+	return hit
+}
+
+// Allow records the windows hit covers as allowed for session, under the tool
+// whose result held them, so a later Find reports a piece made only of such
+// windows as Remembered. Windows outside the shown snippet are not recorded.
+func (o *ExternalOrigin) Allow(session string, hit OriginHit) {
+	if o == nil || len(hit.windows) == 0 {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	s := o.sessions[session]
+	if s == nil {
+		return
+	}
+	if s.allowed == nil {
+		s.allowed = map[string]map[uint64]struct{}{}
+	}
+	for _, w := range hit.windows {
+		set := s.allowed[w.tool]
+		if set == nil {
+			set = map[uint64]struct{}{}
+			s.allowed[w.tool] = set
+		}
+		set[w.hash] = struct{}{}
+	}
 }
 
 // originURL matches an http(s) URL up to whitespace, a quote or a bracket.
 var originURL = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>()\[\]{}]+`)
 
-// originSnippetBytes is how much of a copied piece a prompt shows.
-const originSnippetBytes = 48
-
-// originSnippet cuts s to a short, valid UTF-8 string.
-func originSnippet(s string) string {
-	if len(s) <= originSnippetBytes {
-		return s
-	}
-	cut := originSnippetBytes
-	for cut > 0 && !isRuneStart(s[cut]) {
-		cut--
-	}
-	return s[:cut] + "…"
-}
+// originPromptSnippetBytes is the most of a copied piece a prompt shows.
+const originPromptSnippetBytes = 200
 
 func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
