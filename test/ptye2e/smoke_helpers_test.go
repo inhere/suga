@@ -82,7 +82,7 @@ providers:
 func chatEnv(t *testing.T, o chatOpts) []string {
 	t.Helper()
 	var env []string
-	for _, entry := range testEnv(o.Home) {
+	for _, entry := range testEnv(t, o.Home) {
 		key, _, _ := strings.Cut(entry, "=")
 		if o.Color && key == "NO_COLOR" || containsString(o.DropEnv, key) {
 			continue

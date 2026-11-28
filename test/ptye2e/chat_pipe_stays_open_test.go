@@ -61,7 +61,7 @@ hooks:
 	if err := os.WriteFile(filepath.Join(home, ".env"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := append(testEnv(home),
+	env := append(testEnv(t, home),
 		"SUGA_HOOKS=on", multiHookProcessEnv+"=1", multiHookLogEnv+"="+logPath)
 
 	// Both ends of the pipe are files, so exec passes the handle to the process: a

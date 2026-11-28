@@ -207,7 +207,7 @@ func startHistoryChatSize(t *testing.T, binary, baseURL, home, work, scope strin
 		Command: binary,
 		Args:    []string{"chat"},
 		Dir:     work,
-		Env:     testEnv(home),
+		Env:     testEnv(t, home),
 		Cols:    cols,
 		Rows:    rows,
 	}
