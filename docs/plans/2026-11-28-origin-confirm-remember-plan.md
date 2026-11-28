@@ -1,13 +1,26 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # 外部来源确认：本会话允许该片段 实施计划
 
-> 状态：Draft 0.1 / 待人工计划批准；issue `suga-ilko`
+> 状态：Draft 0.2 / 待人工计划批准；issue `suga-ilko`
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-11-28 | Claude | 初稿：按已批准设计 0.4 拆为 T1–T4 |
+| 0.2 | 2026-11-28 | Claude | 第 1 轮后的未复核修订（两轴 PASS 后处理纠正项，见下表）：T2 补 R10；T1 用例构造前提；全部已允许时片段终点；attr 位置；ptye2e 执行证据；合并命令与理由 |
+
+第 1 轮处理（未复核）：
+
+| 发现 | 处理 |
+|---|---|
+| IS1、IF1 | T2 加 R10（答 a 记入同调用全部段，guard ⑦ 失败）；T1④ 的 hit 取自同时含 P、X 的参数；反向验证计 10 项 |
+| IS1 合并 | T4 写明不用 `host-merge.ps1` 的理由，命令补 identity 与 `-F` 消息文件 |
+| IF2 | T1 写明 ⑤ 的 X 下限、否定断言同时断言 `ok`、⑦ 键序、⑥ 非周期文本与 `i` 定义 |
+| IF3 | ptye2e 执行证据改为结果行 `⎿ ok:` 加输出；“无问句”在 `exitAfterTurn` 之后检查 |
+| IF4 | `origin_remembered` 写在 `OriginJudge` 块外；observe 加只调 `ReportOriginRemembered` 的用例 |
+| IF5 | 全部已允许时片段取段首至段尾，同一 200 字节与 UTF-8 规则 |
+| IF6 | 写明 `memoryScriptServer` 路径、`rt.Asker.Bind`、guard ①③ `inner = chat` |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -24,7 +37,7 @@
 1. chat 里外部来源问句显示 `[a]本会话允许该片段` 与整段复制文本（至多 200 字节）；答 a 后同一会话里只带已允许片段的不同调用不再出现该问句并照常执行。
 2. 未允许的部分（同调用其他段、所示片段之外、换来源工具）照常询问；裁决 deny、内层 deny、内层普通 ask 不被跳过；run、ACP、子 agent 仍拒绝。
 3. 审批事件 attr `origin_remembered` 为 `added`/`hit`。
-4. 设计“验证要求”全部落到测试并通过：单元、guard、真实回合链路、ptye2e（Linux 与 Windows ConPTY）、9 项反向验证；文档与 CHANGELOG 写明用法与残余风险。
+4. 设计“验证要求”全部落到测试并通过：单元、guard、真实回合链路、ptye2e（Linux 与 Windows ConPTY）、10 项反向验证（R1–R10）；文档与 CHANGELOG 写明用法与残余风险。
 
 ## 范围、排除项与授权
 
@@ -94,10 +107,10 @@ characterization：本设计改变行为（问句文案、片段长度），不�
 - 动作（签名为合同）:
   - `type originWindow struct{ hash uint64; tool string }`；`OriginHit` 增 `Remembered bool` 与不导出 `windows []originWindow`（只含所示片段覆盖的窗口）。`originSession` 增 `allowed map[string]map[uint64]struct{}`（键为来源工具），不随来源淘汰清除。
   - `func (o *ExternalOrigin) findAll(session string, args map[string]any, ignoreURLs bool) []OriginHit`：按 `visitStrings` 顺序遍历全部字符串，相邻偏移都命中且来源工具（`s.names[s.index[h]]`）相同的窗口为一段，每段一个 `OriginHit`；哈希为 0 的窗口断开。
-  - 所示片段：起点为段内首个未允许窗口的偏移（全部已允许时取段首），终点为其后连续未允许窗口中最后一个的末尾，长度至多 `const originPromptSnippetBytes = 200`，按 UTF-8 边界回退得 `cut`，`Snippet = norm[start:start+cut]`，截断时再加 `…`；`windows` 为起点落在 `[start, start+cut-40]` 的该段窗口（不含 `…` 的字节）。取代 `originSnippetBytes`。
+  - 所示片段：起点为段内首个未允许窗口的偏移，终点为其后连续未允许窗口中最后一个的末尾（全部已允许时取段首至段尾），长度至多 `const originPromptSnippetBytes = 200`，按 UTF-8 边界回退得 `cut`，`Snippet = norm[start:start+cut]`，截断时再加 `…`；`windows` 为起点落在 `[start, start+cut-40]` 的该段窗口（不含 `…` 的字节）。取代 `originSnippetBytes`。
   - `find` 返回 `findAll` 结果中首个有未允许窗口的段（`Remembered=false`）；全部已允许时返回首段并置 `Remembered=true`；`Find`/`FindIgnoringURLs` 签名不变。
   - `func (o *ExternalOrigin) Allow(session string, hit OriginHit)`：加锁，把 `hit.windows` 逐个记入 `allowed[w.tool]`；nil 接收者与空 `windows` 无操作。
-- 验证: worktree 根 `go build ./...`；`TMPDIR=/tmp/gofer-gotmp go test -race ./pkg/agentcore/tools -run 'TestExternalOrigin' -count=1`，新子用例（P、X 各为 ≥40 字节 ASCII 片段）：①`Allow` 后同会话同来源、同一段配不同尾部为 `Remembered`；②P 的 ≥40 字节子串为 `Remembered`；③另一会话、另一来源工具、另一段均非 `Remembered`；④P、X 来自两个来源，对 P 段 `Allow` 后只带 X 仍非 `Remembered`；⑤同页相邻 P+X、P 已允许：`Snippet` 不以 P 开头且含 X 的开头，`Allow` 后只带 X 中所示片段之外剩余部分（≥40 字节）仍非 `Remembered`；⑥长于 200 字节的一段只记所示部分：起点 `i+cut-40` 的 40 字节为 `Remembered`、起点 `i+cut-39` 的 40 字节非 `Remembered`；⑦P 已允许、另一字符串参数带不相邻的新段 X：返回 X 段；⑧来源被淘汰后 `Find` 为 false；同一工具重新 `Record` 后为 `Remembered`，换工具 `Record` 则非；⑨从未 `Allow` 时 `Snippet` 从段首起、不含复制段后的非复制字节，多行原文显示为一行，截断以 `…` 结尾。`go test ./pkg/agentcore -run TestLayering -count=1`。反向验证：R1 `Allow` 记入整段全部窗口（改回整段记入），⑤⑥失败；R2 `find` 只看首个段，⑦失败；R3 `allowed` 键去掉来源工具，③的换工具与⑧失败；R4 改用 `Snippet` 文本作键，②失败；R5 覆盖范围多算 1 个窗口（上界 `start+cut-39`），⑥失败。
+- 验证: worktree 根 `go build ./...`；`TMPDIR=/tmp/gofer-gotmp go test -race ./pkg/agentcore/tools -run 'TestExternalOrigin' -count=1`，新子用例（P、X 为 ASCII 片段，P ≥40 字节；所有“非 `Remembered`”断言同时断言 `ok==true`，防止无命中空过）：①`Allow` 后同会话同来源、同一段配不同尾部为 `Remembered`；②P 的 ≥40 字节子串为 `Remembered`；③另一会话、另一来源工具、另一段均非 `Remembered`；④P、X 来自两个来源，hit 取自同时含 P 与 X 的参数（返回 P 段），`Allow` 后只带 X 仍非 `Remembered`；⑤同页相邻 P+X、P 已允许（X ≥201 字节：所示片段从 P 末 39 字节起、200 字节，覆盖 X 前 161 字节，剩余部分取 X[161:201]）：`Snippet` 不以 P 开头且含 X 的开头，`Allow` 后只带 X 中所示片段之外剩余部分（≥40 字节）仍非 `Remembered`；⑥长于 200 字节的一段（非周期文本，如递增序号拼接，≥300 字节）只记所示部分：`i` 为该段起点（即 start），起点 `i+cut-40` 的 40 字节为 `Remembered`、起点 `i+cut-39` 的 40 字节非 `Remembered`；⑦P 已允许、另一字符串参数带不相邻的新段 X（P 的键字典序在前，如 `a`/`b`，因 `visitStrings` 按键排序）：返回 X 段；⑧来源被淘汰后 `Find` 为 false；同一工具重新 `Record` 后为 `Remembered`，换工具 `Record` 则非；⑨从未 `Allow` 时 `Snippet` 从段首起、不含复制段后的非复制字节，多行原文显示为一行，截断以 `…` 结尾。`go test ./pkg/agentcore -run TestLayering -count=1`。反向验证：R1 `Allow` 记入整段全部窗口（改回整段记入），⑤⑥失败；R2 `find` 只看首个段，⑦失败；R3 `allowed` 键去掉来源工具，③的换工具与⑧失败；R4 改用 `Snippet` 文本作键，②失败；R5 覆盖范围多算 1 个窗口（上界 `start+cut-39`），⑥失败。
 - 完成标准: 用例通过；现有 `TestExternalOrigin` 判定不变；R1–R5 记录在提交说明。
 - 依赖: 无。
 - 推荐执行者: sonnet 子 agent（容器）。
@@ -106,11 +119,11 @@ characterization：本设计改变行为（问句文案、片段长度），不�
 
 - 文件: `internal/wiring/origin_guard.go`；新 `internal/wiring/origin_remember_test.go`；`pkg/agentcore/tools/approval.go`；`internal/personal/observe.go`、`internal/personal/observe_origin_judge_test.go`；`internal/i18n/catalog/zh/host.ini`、`en/host.ini`。
 - 动作:
-  - `approval.go`：`ApprovalReport` 增 `OriginRemembered string`（注释：`added` 答 a 记入，`hit` 已允许跳过询问）；`func ReportOriginRemembered(ctx context.Context, value string)`，写法同 `ReportOriginJudge`。`observe.go` 在 `origin_judge` 旁写 `e.Attrs["origin_remembered"]`（非空时）。
+  - `approval.go`：`ApprovalReport` 增 `OriginRemembered string`（注释：`added` 答 a 记入，`hit` 已允许跳过询问）；`func ReportOriginRemembered(ctx context.Context, value string)`，写法同 `ReportOriginJudge`。`observe.go` 在 `if approval.OriginJudge != ""` 块之外独立写 `e.Attrs["origin_remembered"]`（非空时），裁决关闭时也记录。
   - `origin_guard.go` `Decide`：保留 `ReportDanger` 与裁决；裁决 allow/deny 分支不变；在 `g.chat == nil` 拒绝之后、`confirm` 之前：`hit.Remembered` 时 `ReportOriginRemembered(ctx, "hit")` 并 `return g.inner.Decide(ctx, call, tool)`（不带 `originConfirmedKey`）。`confirm` 增参数 `hit tools.OriginHit`：`ReplyAllow` 照旧；`ReplyAllowAlways` 时 `g.origin.Allow(api.SessionIDFrom(ctx), hit)`、`ReportOriginRemembered(ctx, "added")`、`ReportApproval(ctx, tools.ApprovedByUser, wait)` 后返回 nil；其余拒绝。不重跑 `Find`。
   - i18n：zh `origin.prompt = 执行 {tool}？[y]是 [N]否 [a]本会话允许该片段：`；en `origin.prompt = Run {tool}? [y]es [N]o [a]llow this snippet for the session:`。
-- 验证: worktree 根 `go build ./...`；`go test ./internal/wiring -run 'TestOriginRemember|TestOriginGuardJudge|TestExternalOriginGuard|TestSubAgentExternalOriginGuard' -count=1`。`TestOriginRememberGuard`（harness 照 `newJudgeHarness`：真实 `ExternalOrigin` 记录一页，`testChatApprover` 作 chat，假裁决可选）：①内层为 auto 的 chat approver，答 a 后第二条不同命令不 Ask、放行、report `OriginRemembered=="hit"`，第一条为 `added`；②假裁决固定 ask 且全部已允许时不 Ask；③内层为 ask 的 chat approver（`auto=false`）时第二条只出现一次普通审批问句（问句不含 `host.origin.source` 文案）；④内层返回 `tools.Denied` 时已允许也拒绝；⑤假裁决 deny 时已允许也拒绝；⑥chat 为 nil 时已允许也拒绝；⑦P+X（两个来源）答 a 后只带 X 仍 Ask；⑧答 d、空串为拒绝且之后同一调用仍 Ask。`TestOriginRememberTurn`（真实回合，不直接调 `rt.tools.ExecuteTool`）：照 `memoryScriptServer` 写脚本服务器，依次返回 `host_page` → `host_exec`（页面 ≥40 字节片段 + " one"）→ `host_exec`（同片段 + " two"）→ 结束；`OpenCLI(ChatMode)`、`tools.approval: auto`、`tools.origin_judge.enabled: false`、`ExtraTools: hostPageTool{}, stub`；`rt.Runner.Run` 后：answers `["a"]` 时 stub 运行 2 次、`len(asker.questions)==1`；answers `["y","y"]` 时运行 2 次、提问 2 次。`go test ./internal/personal -run TestObserveWritesOriginJudgeAttrs -count=1`（新增 `origin_remembered` attr 断言）；`go test ./internal/i18n -count=1`。反向验证：R6 已允许分支挪到裁决之前（跳过裁决），⑤失败；R7 已允许分支挪到 `g.chat == nil` 判断之前，⑥失败；R8 去掉已允许分支，①②与 `TestOriginRememberTurn` 失败。
-- 完成标准: 用例通过；现有用例判定不变；R6–R8 记录在提交说明。
+- 验证: worktree 根 `go build ./...`；`go test ./internal/wiring -run 'TestOriginRemember|TestOriginGuardJudge|TestExternalOriginGuard|TestSubAgentExternalOriginGuard' -count=1`。`TestOriginRememberGuard`（harness 照 `internal/wiring/origin_judge_test.go` 的 `newJudgeHarness`：真实 `ExternalOrigin` 记录一页，`testChatApprover` 作 chat，假裁决可选）：①`originGuard{inner: chat, chat: chat}`，chat 为 auto，答 a 后第二条不同命令不 Ask、放行、report `OriginRemembered=="hit"`，第一条为 `added`；②假裁决固定 ask 且全部已允许时不 Ask；③`inner = chat` 且 chat `auto=false` 时第二条只出现一次普通审批问句（问句不含 `host.origin.source` 文案）；④内层为返回 `tools.Denied` 的 `ApproverFunc` 时已允许也拒绝；⑤假裁决 deny 时已允许也拒绝；⑥chat 为 nil 时已允许也拒绝；⑦P+X（两个来源）答 a 后只带 X 仍 Ask；⑧答 d、空串为拒绝且之后同一调用仍 Ask。`TestOriginRememberTurn`（真实回合，不直接调 `rt.tools.ExecuteTool`）：照 `internal/wiring/memory_trusted_test.go` 的 `memoryScriptServer` 写脚本服务器，依次返回 `host_page` → `host_exec`（页面 ≥40 字节片段 + " one"）→ `host_exec`（同片段 + " two"）→ 结束；`OpenCLI(ChatMode)`、`tools.approval: auto`、`tools.origin_judge.enabled: false`、`ExtraTools: hostPageTool{}, stub`、`rt.Asker.Bind(&scriptedAsker{answers: …})`；`rt.Runner.Run` 后：answers `["a"]` 时 stub 运行 2 次、`len(asker.questions)==1`；answers `["y","y"]` 时运行 2 次、提问 2 次。`go test ./internal/personal -run TestObserveWritesOriginJudgeAttrs -count=1`（新增：已裁决工具带 `origin_remembered`；另一工具只调 `ReportOriginRemembered`、不调 `ReportOriginJudge`，attr 仍存在）；`go test ./internal/i18n -count=1`。反向验证：R6 已允许分支挪到裁决之前（跳过裁决），⑤失败；R7 已允许分支挪到 `g.chat == nil` 判断之前，⑥失败；R8 去掉已允许分支，①②与 `TestOriginRememberTurn` 失败；R10 `confirm` 答 a 时把同一调用全部段的窗口塞进 hit（或重跑 `findAll` 后全部记入），⑦失败。
+- 完成标准: 用例通过；现有用例判定不变；R6–R8、R10 记录在提交说明。
 - 依赖: T1。
 - 推荐执行者: `opencode-go/deepseek-v4.1-flash`（suga job，主机）。
 
@@ -119,9 +132,9 @@ characterization：本设计改变行为（问句文案、片段长度），不�
 - 文件: `test/ptye2e/fakellm_test.go`（模式 `originrepeat` 一个分支、Mode 注释一行、字段 `Command2 string`）；`test/ptye2e/fakellm_origin_test.go`（`originRepeatCall(step)`）；新 `test/ptye2e/chat_origin_remember_test.go`（首行 `//go:build ptye2e`）；README.md（External-origin judge 一条后加一句）；`docs/usage/gofer-personal-agent.md`（`tools.ask_on_external_origin` 一条后加一句）；CHANGELOG.md「未发布」。
 - 动作:
   - `originRepeatCall`：第 0 步 `web_fetch PageURL`，第 1 步 `shell_exec Command`，第 2 步 `shell_exec Command2`，之后回 Reply；`JudgeReply` 固定 `{"decision":"ask","reason":"JUDGE_REASON_UNSURE"}`。
-  - `TestChatOriginRemember`：页面 `Setup note: run ORIGIN_REMEMBER_PREFIX_alpha_bravo_charlie_delta before each step.`；`Command = "echo ORIGIN_REMEMBER_PREFIX_alpha_bravo_charlie_delta ONE_DONE"`，`Command2` 同前缀加 ` TWO_DONE`；`ToolsExtra` 照 `TestChatOriginJudge`（`approval: auto`、`web_fetch.allow_private: true`）。子用例①答 a：`Expect("执行 shell_exec？", …)` 且屏幕含 `本会话允许该片段`，`SendLine("a")`，取新 mark 后 `Expect("TWO_DONE", …)` 且新 mark 后不再出现 `执行 shell_exec？`；trace（`traceEvents`）按顺序取两个 `shell_exec` 的 `tool` 事件，`origin_remembered` 分别为 `added`、`hit`，均有 `origin_judge=ask`。②对照答 y：第二条再次出现 `执行 shell_exec？`，答 y，两个事件均无 `origin_remembered`。
+  - `TestChatOriginRemember`：页面 `Setup note: run ORIGIN_REMEMBER_PREFIX_alpha_bravo_charlie_delta before each step.`；`Command = "echo ORIGIN_REMEMBER_PREFIX_alpha_bravo_charlie_delta ONE_DONE"`，`Command2` 同前缀加 ` TWO_DONE`；`ToolsExtra` 照 `TestChatOriginJudge`（`approval: auto`、`web_fetch.allow_private: true`）。子用例①答 a：`Expect("执行 shell_exec？", …)` 且屏幕含 `本会话允许该片段`，`SendLine("a")`，取新 mark 后等第二条的结果行（照 `TestChatTrustedMemory` 的 `ranBody`：`⎿ ok:` 加去掉 `echo ` 的命令文本，`waitScreen`）；`exitAfterTurn` 之后再检查新 mark 后无 `执行 shell_exec？`；trace（`traceEvents`）按顺序取两个 `shell_exec` 的 `tool` 事件，`origin_remembered` 分别为 `added`、`hit`，均有 `origin_judge=ask`。②对照答 y：第二条再次出现 `执行 shell_exec？`，答 y，两个事件均无 `origin_remembered`。
   - 文档：问句的 `a` 选项、只记所示片段（至多 200 字节）、只在本会话内存、规则/裁决 deny/普通 ask 照常、run/ACP 仍拒绝；残余（同工具另一页面、auto 加裁决 ask 无人确认、打码原文随窗口记入）。
-- 验证: worktree 根 `go build ./...`；`go vet -tags ptye2e ./test/ptye2e`；`go test -tags ptye2e ./test/ptye2e -run 'TestChatOriginRemember|TestChatOriginJudge' -count=1 -v`，输出含 `--- PASS: TestChatOriginRemember`；`grep -n "本会话允许该片段\|allow this snippet" README.md CHANGELOG.md docs/usage/gofer-personal-agent.md` 各有结果；`git diff -U0 main -- CHANGELOG.md` 改动只在「未发布」内。反向验证：R9 临时去掉 T2 的已允许分支，子用例①失败（新 mark 后出现 `执行 shell_exec？`）。
+- 验证: worktree 根 `go build ./...`；`go vet -tags ptye2e ./test/ptye2e`；`go test -tags ptye2e ./test/ptye2e -run 'TestChatOriginRemember|TestChatOriginJudge' -count=1 -v`，输出含 `--- PASS: TestChatOriginRemember`；`grep -n "本会话允许该片段\|allow this snippet" README.md CHANGELOG.md docs/usage/gofer-personal-agent.md` 各有结果；`git diff -U0 main -- CHANGELOG.md` 改动只在「未发布」内。反向验证：R9 临时去掉 T2 的已允许分支，子用例①失败（新 mark 后出现 `执行 shell_exec？` 或无结果行）。
 - 完成标准: 用例在 Windows ConPTY 下通过；R9 记录在提交说明（Linux 由 T4 跑）。
 - 依赖: T2。
 - 推荐执行者: `command-code/deepseek-v4.1-flash`（suga job，主机）。
@@ -133,9 +146,9 @@ characterization：本设计改变行为（问句文案、片段长度），不�
   - rebase：main 相对 worktree 基点有新提交即由主机 job 执行 `git -C inhere-tools/suga/.worktrees/ilko rebase main`，之后再跑全量。
   - 容器内 worktree 根：`TMPDIR=/tmp/gofer-gotmp go test -race ./...`、`go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...`、`make smoke-go`（含 Linux 上的 `TestChatOriginRemember`）。
   - 主机 Windows（gofer exec job，只写 `tmp/`）：worktree 根 `go test ./...` 与 `go test -tags ptye2e ./test/ptye2e -run 'TestChatOriginRemember|TestChatOriginJudge' -count=1 -v`。
-  - 复核 R1–R9 各一次（抽查提交说明里的失败输出，任选 2 项亲自重跑）。
+  - 复核 R1–R10 各一次（抽查提交说明里的失败输出，任选 2 项亲自重跑）。
   - 真实复现：设计未要求；用户可见行为由 T2 真实回合与 T3 ptye2e 覆盖，无真实复现。
-  - 合并前核对（fail-closed）：主机 job `git -C inhere-tools/suga branch --show-current` 为 `main`、`status --short` 为空，记录合并前 `rev-parse HEAD`；主机 job 直接 `git -C inhere-tools/suga merge --no-ff feat/origin-remember -m …` 并保留完整输出，再 `merge-base --is-ancestor feat/origin-remember main` 确认退出码 0。
+  - 合并前核对（fail-closed）：主机 job `git -C inhere-tools/suga branch --show-current` 为 `main`、`status --short` 为空，记录合并前 `rev-parse HEAD`；不用 `tmp/xhen-p1/host-merge.ps1`（它只打印最后几行，会吞掉 git 报错，见 memory `host-merge-script-silent-fail`），主机 job 直接 `git -C inhere-tools/suga -c user.name=inhere -c user.email=in.798@qq.com merge --no-ff -F tmp/suga-ilko/merge-msg.txt feat/origin-remember` 并保留完整输出，再 `merge-base --is-ancestor feat/origin-remember main` 确认退出码 0。
 - 验证: 以上命令全部通过；Windows 输出含 `--- PASS: TestChatOriginRemember`。
 - 完成标准: 全绿并合并到本地 main；issue `suga-ilko` 评论附验证结果。
 - 依赖: T3。
@@ -151,7 +164,7 @@ characterization：本设计改变行为（问句文案、片段长度），不�
 
 ## 人工 Gate
 
-1. 计划批准（评审后），同时指定执行者：建议 T1（核心）sonnet 子 agent（容器），T2 `opencode-go/deepseek-v4.1-flash`，T3 `command-code/deepseek-v4.1-flash`，T4 由我执行。仪式成本：设计评审 3 轮两轴（报告第 1 轮 119 + 93 = 212 行，第 2 轮 104 + 60 = 164 行，第 3 轮 69 + 81 = 150 行，ledger 620 行，设计 161 行（含批准记录，0.4 正文 159 行））；计划 0.1 为 181 行。
+1. 计划批准（评审后），同时指定执行者：建议 T1（核心）sonnet 子 agent（容器），T2 `opencode-go/deepseek-v4.1-flash`，T3 `command-code/deepseek-v4.1-flash`，T4 由我执行。仪式成本：设计评审 3 轮两轴（报告第 1 轮 119 + 93 = 212 行，第 2 轮 104 + 60 = 164 行，第 3 轮 69 + 81 = 150 行，ledger 620 行，设计 161 行（含批准记录，0.4 正文 159 行））；计划 0.1 为 181 行；计划评审第 1 轮两轴 PASS（报告 101 + 95 = 196 行），0.2 为第 1 轮后的未复核修订，194 行。
 2. 当前执行请求：你指示开始实施；覆盖建 worktree 分支 `feat/origin-remember`、rebase 与合并到本地 main，不含 push。
 3. 外部动作 Gate：push、tag、发版、安装均需你另行逐项批准。
 
@@ -160,7 +173,7 @@ characterization：本设计改变行为（问句文案、片段长度），不�
 | 设计条目 | 任务 | 验证 |
 |---|---|---|
 | 方案 2、D3（全部段、逐窗口、首个未允许段） | T1 | ④⑦ + R2 |
-| 方案 3、D7（只记所示片段覆盖的窗口） | T1、T2 | ⑤⑥、guard ⑦ + R1、R5 |
+| 方案 3、D7（只记所示片段覆盖的窗口） | T1、T2 | ④⑤⑥、guard ⑦ + R1、R5、R10 |
 | D2（窗口哈希作键） | T1 | ①② + R4 |
 | D8（来源工具入键） | T1 | ③⑧ + R3 |
 | D10（200 字节、单行、`…`、段首起点） | T1 | ⑥⑨ |
