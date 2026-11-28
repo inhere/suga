@@ -102,6 +102,11 @@ func TestChatWin32Input(t *testing.T) {
 	s.Send(win32Enter)
 	expect(t, s, `▣ 完成`, turnMark)
 	check(t, "the model got the two lines after the local command", waitUserRequest(fake, "上\n下", 10*time.Second))
+	// Ctrl+D typed ahead of the line editor is lost (suga-uxmu): wait for the
+	// prompt of the finished turn, as the turns above do, or the exit is missed
+	// on a slow runner while the turn is still printing its tokens line.
+	expect(t, s, `tokens · `, turnMark)
+	promptReady(t, s, turnMark)
 
 	// Leaving chat restores the terminal: the mode is switched off again.
 	exitMark := s.Mark()
