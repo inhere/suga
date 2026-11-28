@@ -163,6 +163,9 @@ type ManifestMemory struct {
 	// Replaceable is true for every scope: any backend can be swapped for an
 	// exec backend through memory.<scope>.backend.
 	Replaceable bool `json:"replaceable"`
+	// Trusted is true when the scope's memory is exempt from external-origin
+	// marking (memory.*.trusted).
+	Trusted bool `json:"trusted"`
 }
 
 // ManifestOutput reports the tool output governance limits.
@@ -448,7 +451,7 @@ func BuildManifest(in ManifestInput) Manifest {
 	if in.Memory != nil {
 		for _, c := range []MemoryBackendChoice{in.Memory.User, in.Memory.Project} {
 			m.Memory = append(m.Memory, ManifestMemory{
-				Scope: c.Scope.String(), Backend: c.Backend, Reason: c.Reason, Location: c.Location, Replaceable: true,
+				Scope: c.Scope.String(), Backend: c.Backend, Reason: c.Reason, Location: c.Location, Replaceable: true, Trusted: c.Trusted,
 			})
 		}
 	}

@@ -165,6 +165,16 @@ func newMemoryRuntime(setup *MemorySetup, policy memoryWritePolicy, readOnly boo
 			}
 			return memory.BackendName(b)
 		},
+		// 信任只来自启动时已定的选择结果，这里不读配置；其余作用域按不可信。
+		Trusted: func(s memory.Scope) bool {
+			switch {
+			case s.Kind == memory.ScopeUser:
+				return setup.User.Trusted
+			case s == setup.Project.Scope:
+				return setup.Project.Trusted
+			}
+			return false
+		},
 		ProvenanceFrom: personal.MemoryProvenance,
 		Texts:          texts,
 	})

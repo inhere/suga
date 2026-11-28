@@ -46,6 +46,7 @@ func TestManifestCommand(t *testing.T) {
 		assert.Len(t, m.Memory, 2)
 		assert.Eq(t, "files", m.Memory[1].Backend)
 		assert.True(t, m.Output.InlineBytes > 0)
+		assert.False(t, m.Memory[1].Trusted)
 	})
 	t.Run("text has every section", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
@@ -54,6 +55,7 @@ func TestManifestCommand(t *testing.T) {
 		for _, section := range []string{"Models", "Tools", "MCP servers", "Skills", "Memory", "Output", "Taint", "suga_manifest", "write_tainted="} {
 			assert.StrContains(t, stdout.String(), section)
 		}
+		assert.StrContains(t, stdout.String(), "trusted=false")
 	})
 	t.Run("rejects positional arguments", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer

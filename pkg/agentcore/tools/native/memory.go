@@ -39,9 +39,13 @@ type MemoryToolOptions struct {
 	ProjectKey string
 	// Backend names the backend serving a scope ("files", "gofer", "exec").
 	// Results read from any backend other than files are marked external so
-	// the host flags the session as tainted. nil or an unknown name counts as
-	// external (fail closed).
+	// the host flags the session as tainted, unless Trusted exempts the scope.
+	// nil or an unknown name counts as external (fail closed).
 	Backend func(memory.Scope) string
+	// Trusted reports whether the scope's backend is trusted by the person
+	// (registered through memory.*.trusted). Results from a trusted scope are
+	// not marked external. nil means no scope is trusted (fail closed).
+	Trusted func(memory.Scope) bool
 	// ProvenanceFrom returns the session/turn of the call from ctx (set by
 	// the host); nil leaves the provenance empty apart from Source.
 	ProvenanceFrom func(ctx context.Context) memory.Provenance
@@ -324,8 +328,12 @@ func parseAppliesWhen(value any) ([]string, error) {
 	return out, nil
 }
 
-// external reports whether reads from s come from outside suga's own files.
+// external reports whether reads from s come from outside suga's own files
+// and were not exempted by the person as a trusted scope.
 func (t *MemoryTool) external(s memory.Scope) bool {
+	if t.opts.Trusted != nil && t.opts.Trusted(s) {
+		return false
+	}
 	if t.opts.Backend == nil {
 		return true
 	}
