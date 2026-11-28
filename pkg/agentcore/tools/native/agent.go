@@ -112,12 +112,19 @@ func (t *AgentTool) Name() string { return "agent" }
 // names both values and what each gets (docs/research/
 // 2026-10-23-fixed-prefix-tools-report.md 三 #21).
 func (t *AgentTool) Description() string {
+	// What the sub-agent starts from differs by type, so the sentence says both;
+	// fork is offered only together with tasks, so an explore/research-only tool
+	// does not mention it.
+	starts := "it sees nothing of this conversation"
+	if t.tasks != nil {
+		starts = "explore and research start empty, seeing nothing of this conversation, while fork carries all of it"
+	}
 	desc := "Hand a self-contained exploration or research task to a sub-agent: it works in a context of its own with " +
 		"read-only tools and returns only its report, so reading many files does not fill this conversation. " +
 		"Use it when the task means reading or searching widely (tracing callers across a codebase, comparing " +
 		"implementations, surveying a dependency) and you only need the conclusion; for one or two files, read them " +
 		"yourself. Give it a full prompt: what to find, where, and what the report should hold (findings with " +
-		"file:line). The sub-agent cannot write files, run commands or ask the user; it sees nothing of this conversation. " +
+		"file:line). The sub-agent cannot write files, run commands or ask the user; " + starts + ". " +
 		"Its report is the result: do not repeat its searches to check it; read only what you then need to change."
 	if t.tasks != nil {
 		desc += " With background: true it runs as a background task and returns a task id at once; you are told " +

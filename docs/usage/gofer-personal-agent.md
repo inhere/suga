@@ -158,12 +158,13 @@ ACP 没有内置 undo 命令，但它的文件写操作照常创建快照；可�
 
 ### 子 agent（`agent` 工具）
 
-`agent` 工具把一件独立任务交给只读子 agent：`type` 为 `explore`（缺省，工作区只读工具）或 `research`（再加 `web_fetch`、`web_search`），它只把最终报告带回来，`description` 就是它的名字。完整说明（两种类型、后台运行、上限与 `agents.*` 配置、用量与污染口径、子会话的列表/搜索/gc）见 [README 的“子 agent”一节](../../README.zh-CN.md#子-agent)。这里只列接入方会看到的部分：
+`agent` 工具把一件独立任务交给只读子 agent：`type` 为 `explore`（缺省，工作区只读工具）、`research`（再加 `web_fetch`、`web_search`）或 `fork`（带着本对话全部上下文，总是后台运行），它只把最终报告带回来，`description` 就是它的名字。完整说明（三种类型、后台运行、上限与 `agents.*` 配置、用量与污染口径、子会话的列表/搜索/gc）见 [README 的“子 agent”一节](../../README.zh-CN.md#子-agent)。这里只列接入方会看到的部分：
 
 - **只读会话也可用**：子 agent 自己只读（不能写文件、执行命令、询问用户，也不能再派子 agent），所以 `agent` 工具在 `read_only` mode、chat 默认模式与 `run` 缺省模式都注册，且不触发审批。只读模式下注册的是 `task`（`list`/`output`/`wait`/`kill`），用于 `background: true` 的子 agent；`shell_exec` 的 `background` 仍只在写模式出现。
 - **ACP 标题**：每次子 agent 调用是一条普通 `tool_call`，标题为 `agent: <description>`（`toolCallId` 与状态序列与其它工具一致），并按只读工具放行；子 agent 内部的工具调用不发给客户端（第一期），只在 trace 里可见。
 - **用量**：子 agent 的模型调用计入调用它的那次 run——prompt 进行中发出的 `usage_update`（顶层扁平键与 `_meta.run`）已包含子 agent 的 token 与成本；`_meta.session` 与顶层 `cost.amount` 是会话累计，等于父会话加它的全部子会话。后台子 agent 结束时会话若没有进行中的 run，用量暂存到下一个 run 一起上报（不在已结束的 run 之后补发）。
 - **观测**：父会话里有一条 `agent` 工具事件（attrs 含 `child_session_id`、`agent_type`、`steps`、`tool_calls`、`input_tokens`、`cache_read_tokens`、`output_tokens`、`cost_usd`、`stop`），后台子 agent 结束时是一条 `kind=agent` 的 task 事件；子会话自己的事件用 `suga inspect trace <子会话 id>` 查看，`suga session list --agents` 会列出子会话。
+- **分身（`type: fork`）**：ACP 与 `suga run` 只能由模型调 `agent` 的 `type: fork` 触发（`:bg` 是 chat 的命令），对 Gofer 来说它就是一项普通的 `kind=agent` 后台任务——`run` 结束前“还有任务在跑就先 `task wait`/`task kill`”的收尾提醒照常生效，连接关闭时随任务管理器终止。它不排队：满额时工具结果直接报错；拒绝在分身中不可用的工具时返回普通错误结果（不计入每回合拒绝上限）。回交只对 fork 变：报告不超过 4000 字符时通知带全文，超过只带前 12 行，`task output` 读全文。子会话 meta 带 `agent_type=fork` 与 `fork_base=<基准回合>|<call 或 bg>`，首个 model 事件带 `fork_reuse=prefix|rebuilt`。
 
 ### 输出治理
 

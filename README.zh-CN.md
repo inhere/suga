@@ -88,7 +88,7 @@ providers:
 
 详细说明：[references/chat.md](skills/suga-guide/references/chat.md)
 
-- **本地命令**：`:session`、`:compact`、`:quit`/`:exit`、`:diff [N]`、`:model [p/m]`、`:add-dir`/`:dirs`/`:rm-dir`、`:help`、`:usage`、`:tasks [-a|-k <ID>]`（运行中+最近结束；`-a` 全部，`-k` 终止）；只认本地键盘输入。
+- **本地命令**：`:session`、`:compact`、`:quit`/`:exit`、`:diff [N]`、`:model [p/m]`、`:add-dir`/`:dirs`/`:rm-dir`、`:help`、`:usage`、`:tasks [-a|-k <ID>]`（运行中+最近结束；`-a` 全部，`-k` 终止）、`:bg <任务>`（派一个只读分身，见下“子 agent”）；只认本地键盘输入。
 - **输入**：Up/Down 历史（默认只翻当前项目的输入，`chat.history_scope: all` 恢复跨项目翻动）、Ctrl+R 反查、`:` 命令与目录 Tab 补全；多行输入用 `Ctrl+Enter`/`Ctrl+J`（Windows）或 `Alt+Enter`。
 - **插话（steering）**：模型干活时提示符变成 `↳ `，回车把这句插进当前回合；`Tab` 把这句排到本轮结束后（下一条用户消息，`:queue` 列出、`:queue clear` 清空）；`Esc` 只中止本轮，3 秒内两次 `Ctrl-C` 才退出。
 - **`!` 本地命令**：`!cmd` 直接在本地 shell 执行、不叫模型；`!!cmd` 把结果附在下一条消息里给模型。
@@ -143,10 +143,18 @@ providers:
 详细说明：[references/tools.md#子agent](skills/suga-guide/references/tools.md#子agent)
 
 - `agent` 工具把独立任务交给只读子 agent，只把最终报告带回父上下文。
-- `explore`（默认，工作区只读工具）与 `research`（再加 `web_fetch`、`web_search`）两种类型。
+- `explore`（默认，工作区只读工具）、`research`（再加 `web_fetch`、`web_search`）与 `fork` 三种类型。
 - `background: true` 作为后台任务运行，用 `task wait` 取报告，可并行派多个。
 - 上限 `agents.max_steps`（30）、`agents.max_tokens`（400000）、`agents.timeout`（10m）；`agents.model` 可换便宜模型。
 - 每次调用是一个子会话：`suga session list --agents` 列出，用量计入父会话。
+- **分身（`type: fork`，或 chat 里的 `:bg <任务>`）**：不是从零探索，而是以本对话最近一次请求为起点——系统提示、工具表与之前的消息逐字节相同（只在末尾追加），因此已经知道你读过什么、能命中同一份缓存；总是后台运行（chat、`run`、ACP 都一样，没有同步分身），只把报告带回来。
+- 分身只读，执行白名单与 `explore` 相同（`file_read`、`file_list`、`file_grep`、`file_find`、`file_symbols`、`file_refs`）：不能写文件、执行命令或上网。拒绝按普通工具错误返回（“分身只读：<名字> 在分身中不可用”），不计入每回合拒绝上限，所以反复尝试也仍会以报告收尾。
+- **回交**：报告不超过 4000 字符时随通知全文回到会话；超过则只送前 12 行并附截断说明，`task output` 可以读全文。
+- 并发与上限就是后台 agent 那一套：与 `shell_exec` 任务共用 `tasks.max_running`，`agents.*` 与 `[sub-agent … stop=…]` 尾巴一样生效；满额时直接拒绝、不排队。
+- 终止（`:tasks -k <ID>`、`task kill`）不发通知，输出写“已终止”，分身的 `stop=cancelled`。
+- `:bg`（仅 chat）在三种情况下拒绝启动并说明原因：配置了 host hook、系统提示读运行状态（`prompt_state`）、种子超过上下文阈值（提示改用 `agent` 的 `explore` 并把背景写进 prompt）。host hook 只拦 `:bg`，模型自己调的 `type: fork` 照常启动，因为它用的是刚发出的那次请求。
+- 观测：子会话带 `agent_type=fork` 与会话 meta `fork_base=<基准请求所在回合>|<call 或 bg>`；它的首个 model 事件带 `fork_reuse=prefix|rebuilt`（`rebuilt` 时另有 `fork_reuse_note` 说明原因），要与主循环的命中率对比就看这里。
+- 与 `:fork N` 不是一回事：后者把历史复制到新会话供你继续聊，分身只做一次只读任务、最后化为一篇报告。
 
 ## Skills
 

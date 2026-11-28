@@ -61,6 +61,21 @@ func TestAgentTool(t *testing.T) {
 		assert.Nil(t, props["background"])
 		assert.NotNil(t, props["type"])
 	})
+	t.Run("the description tells explore/research from fork", func(t *testing.T) {
+		// Without tasks there is no fork type, so the sentence stays as it was.
+		alone := NewAgentTool(&fakeAgents{}).Description()
+		assert.StrContains(t, alone, "it sees nothing of this conversation")
+		assert.StrNotContains(t, alone, "fork")
+
+		// With tasks a fork is offered, and it starts from this whole conversation:
+		// the old sentence alone would contradict it.
+		withTasks := NewAgentTool(&fakeAgents{})
+		withTasks.SetTasks(newAgentTaskManager(t, tasks.Limits{}))
+		desc := withTasks.Description()
+		assert.StrContains(t, desc, "explore and research start empty")
+		assert.StrContains(t, desc, "fork carries all of it")
+		assert.Eq(t, desc, withTasks.Schema().Description)
+	})
 	t.Run("the report and its numbers", func(t *testing.T) {
 		agents := &fakeAgents{rep: report}
 		res, err := run(NewAgentTool(agents), map[string]any{"description": "find Foo", "prompt": "where is Foo?"})
