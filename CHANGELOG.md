@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- 可信记忆后端：`memory.user.trusted`（bool，缺省 `false`）与 `memory.project.trusted`（仓库根目录绝对路径列表，缺省 `[]`）登记为可信的作用域，其 memory get/search 结果不再标为外部来源、不再把会话标为已污染，因此模型把记忆正文照抄进写或执行调用时不再询问（外部来源裁决也不会被调用），读过可信记忆后的写记忆也不再要确认（设计 `docs/design/2026-11-26-trusted-memory-backend-design.md`）。登记依据是会话所在仓库的 git 根（`git rev-parse --show-toplevel` 的结果），只做整根匹配：父目录不覆盖嵌套仓库，git worktree 不沿用主仓库的登记；`suga config set memory.project.trusted` 整体替换列表；`suga inspect manifest` 记忆行末尾的 `trusted=` 显示实际判定，登记值与 git 根不一致时静默不生效。两键均为 protected（会话内 `config set` 被拒，改文件有启动提示），回滚为删键或 project 置 `[]`、user 置 `false`。风险：可信后端被别的 agent 写入恶意指令时不再有外部来源防护，照抄执行只剩 `tools.approval` 与审批规则；`memory.taint_tools`/`memory.taint_on_spill` 列入 `memory` 时照旧污染会话（仍不记外部来源）（issue `suga-7s4v`）。
+
 ## [0.56.3] - 2026-11-26
 
 ### 修复

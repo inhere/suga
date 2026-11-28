@@ -250,6 +250,8 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `memory.write_tainted` | `ask` | 读过外部内容的会话写记忆时：`ask`（chat 询问 / ACP 发权限请求 / run 拒绝）、`deny`、`allow` |
 | `memory.taint_tools` | `[]` | 额外把会话标记为已污染的工具（每次结果都算） |
 | `memory.taint_on_spill` | `[shell_exec]` | 仅当输出被外置成文件时才污染会话的工具；显式空列表可关闭 |
+| `memory.user.trusted` | `false` | `true` 时 user 作用域的 memory get/search 结果不算外部来源（不记录、不污染会话）。protected |
+| `memory.project.trusted` | `[]` | 可信的仓库根目录列表（绝对路径，整根匹配）。当前仓库根在列表里时 project 作用域的 get/search 结果不算外部来源。protected |
 | `memory.user.backend` | `files` | `files`（`$SUGA_HOME/memory/user`）或 `exec` |
 | `memory.project.backend` | 自动（见下） | `files`、`gofer` 或 `exec` |
 | `memory.<scope>.command` | 无（`exec` 时必填） | 外部命令 |
@@ -257,6 +259,18 @@ SUGA_LANGUAGE=zh suga inspect manifest
 | `memory.<scope>.timeout_sec` | 不设 | 外部命令超时秒数 |
 
 `memory.project.backend` 不设时的选择顺序：仓库根有 `MEMORY.md` → `files`（仓库模式，条目在 `.suga/memory/<id>.md`，可随项目提交）；否则仓库根有 `.gofer/tracker` → `gofer`；否则 `$SUGA_HOME/projects/<key>/memory` 的 `files`（`<key>` = 仓库目录名 + 路径短哈希）。`suga inspect manifest` 显示结果与原因。嵌入式宿主可用 `sugasdk.SessionOptions.ProjectMemoryKey` 固定某个会话的项目记忆作用域；非空时始终使用 `$SUGA_HOME/projects/<key>/memory`，不读取仓库、gofer 或该配置。
+
+### 可信记忆（`memory.user.trusted`、`memory.project.trusted`）
+
+缺省不可信：读取 gofer / exec 后端的记忆结果标为外部来源，会话因此被标为已污染，模型把其中的文字照抄进写/执行调用时要先问人（`tools.ask_on_external_origin`）。把它们登记为可信后，这些仓库（或 user 作用域）的记忆结果与 `files` 后端同等对待：不记外部来源、不污染会话，照抄也不再询问。
+
+- **登记依据**：登记会话所在仓库的 git 根，取 `git rev-parse --show-toplevel` 的结果（Windows 下大小写不敏感）；绝对路径，逐个仓库登记。父目录不覆盖嵌套仓库（只做整根匹配，不做前缀匹配），所以本机多仓库工作区要分别登记每个仓库根。
+- **worktree 不生效**：git worktree（含 gofer `--worktree` job）的 git 根是它自己的目录，主仓库的登记不覆盖它。
+- **`config set` 整体替换列表**：`suga config set memory.project.trusted '["/path/a", "/path/b"]'` 会整块替换，追加时要把原有项一起写全。
+- **核对是否生效**：`suga inspect manifest`（旧别名 `suga manifest`，加 `--json` 可看字段 `trusted`）的记忆一节给每个作用域实际判定 `trusted=true/false`；登记值与 git 根不一致（大小写、符号链接、短路径）时静默不生效，以它为准。
+- **回滚**：删掉键，或 `memory.project.trusted: []`、`memory.user.trusted: false`，立即回到默认的外部来源判定；旧版本把这两个键当未知键忽略，行为同样是默认不可信。
+- **风险**：可信后端被别的 agent（或任何能写入该后端的一方）写入恶意指令后，suga 不再有外部来源防护，照抄执行只剩 `tools.approval` 与审批规则；读过可信记忆再写记忆也不再要求确认。只把自己写入的后端设为可信。
+- **例外**：把 `memory` 列入 `memory.taint_tools` 或 `memory.taint_on_spill` 时，读它的结果照旧污染会话（外部来源仍不记录）。
 
 ## `hooks.*`（仅 chat）
 
