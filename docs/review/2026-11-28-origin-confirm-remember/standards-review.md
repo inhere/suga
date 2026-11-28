@@ -1,104 +1,69 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# 外部来源确认：本会话允许该片段 设计 Standards/Governance 轴评审（第 2 轮，闭合确认）
+# 外部来源确认：本会话允许该片段 设计 Standards/Governance 轴评审（第 3 轮，闭合确认）
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`，candidate commit `0c2f444c`（上轮 `146ac624`），subject `docs/design/2026-11-28-origin-confirm-remember-design.md`
-- 修订版本: Draft 0.2
-- 评审者: 独立评审子 agent（Claude Opus 5.5），Standards/Governance 轴；未参与本设计起草与 0.2 修订，未写本轮 Spec 轴报告
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`，candidate commit `7e75b6a9`（上轮 `0c2f444c`），subject `docs/design/2026-11-28-origin-confirm-remember-design.md`
+- 修订版本: Draft 0.3
+- 评审者: 独立评审子 agent（Claude Opus 5.5），Standards/Governance 轴；未参与设计起草与 0.3 修订，未写 Spec 轴报告
 - 日期: 2026-11-28
-- 排除项: Q1–Q3 选哪一项（交用户）；Spec/Executability 轴；实施代码；只报影响核心验收或安全的问题。本轮范围限于：OS1–OS4 闭合；新增接口的必要性与分层；残余风险/SR1301 披露与修订记录、处理表
+- 排除项: Spec/Executability 轴；实施代码；OS7 ledger（作者补建）；未变章节沿用第 2 轮结论。本轮只确认三项：OS5/OS6 闭合；Q1–Q3 转为决策且可追溯；修订记录与处理表完整。只报影响核心验收或安全的问题。
 
 ## 输入与方法
 
-- 全量读取 review 合同 payload（`tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`，含 SR1301、review-contract、review-candidate-loop、review 模板、GR107–GR110）；design 合同 payload（`tmp/idev-std/d/LysoVXM1D86b1PtHtpG8jg/payload.md`）按 SR1409、“代码组织”要求检索相关段。
-- 上轮本轴报告 `docs/review/2026-11-28-origin-confirm-remember/standards-review.md`（OS1–OS4）。
-- `git diff 146ac624..0c2f444c -- <subject>`，并通读 0.2 全文（128 行），因 OS1 涉及方案 2/3、名词、流程、安全、验证多个章节。
-- 核对代码：`pkg/agentcore/tools/origin.go:107-177`（`OriginHit`、`find`、`originSnippet`，窗口按每个字节偏移滚动计算）、`internal/wiring/origin_guard.go:104-215`（`Decide`、`confirm`，问句只显示 `hit.Tool` 与 `hit.Snippet`）、`pkg/agentcore/tools/approval.go:228-282`（`OriginJudge` 字段与 `ReportOriginJudge` 先例）、`pkg/agentcore/layering_test.go:23-44`。
-- `git ls-tree 0c2f444c docs/review/2026-11-28-origin-confirm-remember/` 核对评审产物。
+- review 合同 payload `tmp/idev-std/d/C0TJVugR8Kpr8ZAERo543A/payload.md`（review-contract、review-candidate-loop、planning-core-rigorous、review 模板）。
+- 上轮本轴报告 `docs/review/2026-11-28-origin-confirm-remember/standards-review.md`（OS5–OS7）；上轮 Spec 报告中 OF5 与结论段。
+- `git diff 0c2f444c..7e75b6a9 -- <subject>`（名词“所示片段”、方案 2/3、代码组织、流程、安全节、D3/D7/D8/D9、待确认事项、验证要求、结论节）。
+- 核对 `7e75b6a9` 下代码：`pkg/agentcore/tools/origin.go:130-177`（`find` 每个字节偏移算 40 字节窗口、`h==0` 跳过、`Snippet = originSnippet(norm[i:])`、48 字节并按 rune 回退）；`internal/wiring/origin_guard.go:104-130,185-200`（问句只显示 `hit.Tool` 与 `displaySafe(redact.Secrets(hit.Snippet))`，非 auto 时另带 `previewAsk` 预览）。
+- 方法：按新定义逐场景推演“已允许集合里有没有用户没看到的字节”：独立段、相邻段（P 已允许后同页相邻 P+X）、长段（> 48 字节）、从未答 a。
 
 ## 验收标准
 
-- review-contract：OS1–OS4 逐项闭合；同类穷尽（同类再现标“上轮未穷尽”，沿用原 disposition）。
-- review-candidate-loop：新增机制先答 scope necessity；Full subject 固定报告路径与 ledger，进行中 ledger 每轮随提交。
-- SR1301 安全核对清单（放宽类改动）；SR1103 修订记录；GR108 与 `pkg/agentcore` 分层守卫。
+- review-contract：上轮发现逐项闭合；同类穷尽；CORE_BLOCKING 只限五类并带 necessity proof。
+- SR1301 授权项：答 a 记入的内容不得超出用户在问句里看到的内容。
+- SR1103 修订记录；用户决策须能追溯到用户原话。
 
-### OS1–OS4 闭合
+### 1. OS5、OS6 闭合
 
-| 上轮 | 状态 | 依据 |
+关闭判据：答 a 只记入问句所示片段覆盖的窗口，片段从段内首个未允许窗口起。
+
+| 场景 | 按 0.3 定义推演 | 用户没看到的文本是否进入已允许集合 |
 |---|---|---|
-| OS1 记入范围超出所示片段 | 部分关闭；同类未穷尽，见 OS5 | 方案 3、D7、关键流程改为只 `Allow` 问句所示那一个命中段，不重跑 find（设计 66、90、111 行）；“另一段”被一并记入已关闭，验证与反向验证补了 P+X 用例（121、122、124 行）。但“命中段”定义（39 行）不按已允许状态切分，问句片段仍从段首起 48 字节，已允许前缀与新复制段相邻时用户看到的仍是旧前缀，新段随答 a 记入 |
-| OS2 评审目录与 ledger | 设计侧关闭；ledger 未落盘，见 OS7 | 第 8 行已写目录与三个文件名 |
-| OS3 残余与 SR1301 | 关闭 | 残余 1–4（97–100 行）逐条对应上轮 1–3 与原有尾部残余；第 60 行引用 SR1301；裁决默认开启且可关闭写入事实（52 行）；auto 下问句只显示一处来源写入事实（56 行） |
-| OS4 代码组织 | 关闭 | 74–78 行列出 `origin.go`、`approval.go`、`observe.go`、`origin_guard.go`、i18n 各自改动与签名，参照 `ReportOriginJudge` |
+| 从未答 a | 已允许集合为空，首个未允许窗口即段首，即旧 `find` 在 `visitStrings` 顺序下的首个命中偏移；`Snippet`、`Tool`、`ok` 与现状相同，`Remembered=false`，`Decide` 走原路径（名词 49 行写明“与现状 `Snippet` 相同”） | 不适用；现状不变，已核对 |
+| 独立的另一段 | 答 a 只记入 `hit.windows`（所示片段覆盖的窗口），其他段不记入（方案 3） | 否 |
+| 长段（> 48 字节） | 第一次显示段首 48 字节，记入整个落在其中的至多 9 个窗口；下次同段调用的首个未允许窗口在偏移 9，显示并记入下一截（D7 写明代价） | 否：每个记入窗口的 40 字节都在用户看到的 48 字节内 |
+| 相邻段：P 已允许后同页相邻 P+X | 跨 P/X 边界的窗口在来源里存在，命中且未允许；首个未允许窗口即首个跨界窗口（起点在 P 末尾前 39 字节，若 P 本身未全部允许则更早，在 P 内）；片段 = P 尾部至多 39 字节 + X 开头至少约 9 字节；记入的是落在这 48 字节内的跨界窗口；X 自身的窗口都未记入，之后只带 X 的调用仍询问 | 否 |
 
-### 新增接口 scope necessity 与分层
+结论：OS5 关闭（CORE_BLOCKING [SECURITY] 不再成立：相邻场景下 X 的窗口不再随答 a 记入，记入的每个窗口都是用户看到的字节）。OS6 关闭：安全节缓解句已改为“只记入问句所示片段覆盖的窗口，未显示的部分不记入”，与名词定义、D7 一致；长段不再整段记入，原 OS6 要求补的残余已无对象。处理表中 OS5/OF5/OS6 的处理与正文一致。剩余措辞偏差见 OS8。
 
-| 接口 | 必要性 | 评审 |
-|---|---|---|
-| `findAll`（不导出） | 是：D3 逐窗口判定须看全部段 | 不导出，不扩大包外接口；`Find`/`FindIgnoringURLs` 签名不变 |
-| `Allow(session, hit)`（导出） | 是：wiring 答 a 后记入，且 wiring 不碰哈希（GR108） | `hit.windows` 不导出，包外无法伪造窗口，只能回传 `Find` 结果；方向 internal→pkg |
-| `OriginHit.Remembered`、不导出 `windows` | 是：`Decide` 分支依据与记入对象 | 加切片字段后 `OriginHit` 不可 `==` 比较；已 grep，非测试代码无比较用法 |
-| `ApprovalReport.OriginRemembered` + `ReportOriginRemembered` | 是：用户可见目标“trace 能看出是哪次放行”，AGENTS 要求 chat 行为用 trace 验证 | 与现有 `OriginJudge`/`ReportOriginJudge`（`approval.go:232,282`）同形 |
-| 其他 | 无新增配置键、状态持久化或外部动作 | 已核对 |
+### 2. Q1–Q3 转为决策
 
-分层：已核对。新增项都在 `pkg/agentcore/tools`（守卫测试 `layering_test.go:40` 允许 `.`→`tools`，`tools` 不引 `internal/*` 业务包）；`internal/wiring`、`internal/personal` 只调用导出项，方向正确；wiring 只做“问不问 + 回传 hit”，未内联哈希逻辑（GR108）。
+已核对：待确认事项为“无”；“选项记录”行引用用户 2026-11-28 原话“ilko Q1–Q4 按推荐”，逐项列 A/B 与已决结果。0.2 中 Q1–Q3 的推荐项均为 A，与 D6（Q1 选 A，复用 `a`）、D8（Q2 选 A，来源工具入键）、D9（Q3 选 A，不做查看与撤销）一致；Q4 选 A 与本轮“开第 3 轮只确认这一处”一致。残余 1 已随 D8 改为“不扩大到跨工具”，不再引用未决 Q2。结论节写明“Q1–Q3 已决”。
 
-### SR1301（本轮变更面）
+### 3. 修订记录与处理表
 
-| 项 | 结果 |
-|---|---|
-| 鉴权（授权） | 已核对：独立的另一段已不随答 a 记入；相邻段仍会，违反，见 OS5 |
-| 注入防护 | 已核对：本项放宽的就是提示注入防护，残余 1–4 已披露；记入范围与问句展示不一致的残余未披露，见 OS6；无新增拼接 |
-| 秘密不进日志/输出/仓库 | 已核对：attr 值为常量 `added`/`hit`；问句片段沿用 `redact.Secrets` + `displaySafe`（`origin_guard.go:119`）；不持久化 |
-| 入参校验 | 已核对：只有 `ReplyAllowAlways` 记入，`d`/空/未知为拒绝且不记入（122 行） |
-| 资源归属校验 | 已核对：`Allow` 带会话参数，集合挂在 `originSession`；子 agent 独立实例且 chat 为 nil |
-
-### 修订记录与处理表
-
-已核对：0.2 行存在，摘要只写语义变化（SR1103）；处理表覆盖 OS1–OS4 与 OF1–OF4，无遗漏；结论节写明第 1 轮 BLOCKED 与待复核状态（128 行）。
+已核对：0.3 行存在，摘要只写语义变化与用户决策来源（SR1103）；“第 2 轮处理”表覆盖 OS5、OF5、OS6、OS7，与上轮两轴报告的全部发现对应（Spec 第 2 轮只有 OF5）；OS7 写明由协调方建 ledger，不在本轮范围。第 8 行 review budget 仍写“封顶两轮”，但第 3 轮的用户授权（Q4 A）已记入修订记录与选项记录，可追溯，不单列发现。
 
 ## 发现
 
-### OS5 [HIGH] 已允许前缀与新复制段相邻时，问句仍显示旧前缀，答 a 把新段一并记入（OS1 上轮未穷尽）
+### OS8 [MEDIUM] 相邻段的片段并非“从 X 起”：D3 与单元验证的说法与“所示片段”定义不一致
 
-- disposition: `CORE_BLOCKING` / `[SECURITY]`（SR1301 授权；同类再现，沿用 OS1 disposition，由我上轮建议①“首个未允许命中所在的连续段”未穷尽而来）
-- 证据: 名词“命中段”= 相邻偏移都命中且来源工具相同的一串窗口（设计 39 行），不按已允许状态切分；方案 2“`Find` 返回首个未全部已允许的段”（65 行）；问句片段沿用 `hit.Snippet`，即段首起 48 字节（53 行；`origin.go:152,165`；`origin_guard.go:119,193-194`）；方案 3 记入“`hit` 自带的窗口”即整段（66、76 行）。窗口按每个字节偏移计算（`origin.go:147`），同一页面里相邻的 P 与 X 被模型连续复制时构成一个段。验证要求只断言“P + 新段”返回未允许命中（121 行），没约束片段起点与记入范围。缓解句“只记入用户看到的那一段”（95 行）在此场景不成立。
-- 影响: 用户界面上看到的是已经允许过的那段旧前缀，新复制的段 X 不显示，答 a 后 X 也进了已允许集合；之后只带 X 的调用在裁决 ask/error/关闭时、auto 模式下无人确认直接执行。D3 想防的“已允许前缀 + 新复制段”对相邻段失效。
-- necessity proof:
-  - core_acceptance: 用户可见结果“答 a 后……只带已允许的片段不再弹询问”与缓解“只记入用户看到的那一段；同一调用里任何未允许段仍询问”（34、95 行）。
-  - necessary_causal_chain: 页面含 `P`（如 44 字节以上的 sshc 前缀）后紧跟 `X`（恶意命令）→ 先前模型只复制 P，用户答 a，P 的窗口记入 → 之后模型把 P+X 连续复制进一条 `shell_exec` → 照文档 P+X 是一个段，未全部已允许，询问时片段显示段首 48 字节，与上次的 P 几乎一样 → 用户按“本会话允许该片段”答 a → 照方案 3 整段窗口（含 X）记入 → 后续一条只含 X 的命令（`tools.approval: auto`、裁决 ask）不弹任何询问直接执行，用户从未看见 X。
-  - minimal_owner: 本设计名词“命中段”定义与方案 2/3（实现落在 `pkg/agentcore/tools/origin.go` 的 `findAll`）。
-  - deletion_alternative: PASS：不新增机制，把“命中段”按已允许状态再切分即可（连续命中、同一来源工具、且已允许状态相同的窗口才算一段）；这样 P+X 拆成已允许的 P 与未允许的 X，`Find` 返回 X，片段从 X 的首个窗口起显示，`Allow` 只记入 X。
-  - scope_effect: 无新增 Module/Interface/Schema/state/lifecycle/authority/external action。
-- 建议: 在名词 39 行加“且已允许状态相同”，方案 2 写明片段从返回段的首个窗口起；单元验证补“P 已允许后 P+X 连续复制：返回段的 `Snippet` 不以 P 开头且包含 X 的开头、`Allow` 后只带 P 的调用仍 `Remembered`、只带 X 的调用在 `Allow` 前未允许”；反向验证补“段不按已允许状态切分”使该用例失败。
-
-### OS6 [MEDIUM] 一段长于 48 字节时整段记入，但用户只看到 48 字节；缓解句写成“只记入用户看到的那一段”
-
-- disposition: `CORE_CORRECTIVE`；`user_visible_effect: false`（只改披露，不改行为）
-- 证据: 问句片段固定 48 字节（`origin.go:165`），`Allow` 记入整段窗口（设计 76 行）；`approval: auto` 下问句不带调用全文（设计 56 行）。缓解 95 行“只记入用户看到的那一段”；残余 1–4（97–100 行）没有这一条。同类出现点仅此两处。
-- 影响: 模型复制一段 2 KB 的外部脚本，用户只看到开头 48 字节答 a，之后只带脚本中任一 40 字节以上片段的调用都不再询问。这是 OS5 修正后仍保留的设计取舍（为让 44 字节以上的前缀可用），可以接受，但 Gate 上用户看到的说法偏乐观。
-- 建议: 缓解句改为“只记入问句所示片段所在的那一段（段长可超过显示的 48 字节）”；残余里加一条：段长于显示部分时，答 a 也允许了未显示的部分。
-
-### OS7 [LOW] 第 1 轮 BLOCKED 后 ledger 未随报告提交
-
-- disposition: `CORE_CORRECTIVE`；`user_visible_effect: false`
-- 证据: 设计第 8 行声明 `review-ledger.json`；`git ls-tree 0c2f444c docs/review/2026-11-28-origin-confirm-remember/` 只有 `spec-review.md`、`standards-review.md`；review-candidate-loop：进行中的 ledger（`IN_REVIEW`/`BLOCKED`，可只有 1 轮）每轮随提交。
-- 影响: 第 1 轮 BLOCKED 状态与 OS1/OF1 处置只在报告里，没有机器可核对的 round progress；本轮结论落盘时缺前一轮 receipt。不影响设计内容。
-- 建议: 主 agent 在提交本轮报告时一并补第 1、2 轮 ledger（第 1 轮 receipt 的 `source_report_commit_oid` 指向 `586f2166`），并在 ledger 里披露上轮两轴报告由同一子 agent 写出的 reviewer isolation 缺口。
+- disposition: `CORE_CORRECTIVE`；`user_visible_effect: false`（按定义改措辞与断言即可，不改行为；安全性质在两种读法下都成立）
+- 证据: 名词“所示片段”= 从命中段内首个未允许窗口起截 48 字节（设计 49 行）；窗口按每个字节偏移计算（`origin.go:147`），同页相邻 P+X 的跨界窗口都命中且从未被记入，所以首个未允许窗口起点在 P 内（P 末尾前 39 字节或更早），片段为 P 尾部至多 39 字节加 X 开头约 9 字节（48−39，按 rune 回退可能更少）。D3 写“已允许前缀后接的新段会显示新段本身”（设计 117 行）；单元验证写“`Snippet` 从 X 起”（设计 131 行）。同类出现点仅此两处；方案 2、方案 3、D7、安全节缓解句与定义一致。
+- 影响: 实施者照定义实现时，按验证原文写的“`Snippet` 以 X 开头”断言会失败；若改按断言实现“片段从 X 起”，则是另一种起点规则，问句显示内容不同。两种实现下记入的窗口都在用户看到的字节内，不破坏 OS5 的安全闭合；但 `tools.approval: auto` 下问句不带调用全文（设计 56 行），按定义用户看到的主要是已允许过的 P 尾部，X 只露出约 9 字节，D3 的说法让 Gate 上的用户以为会看到整段新文本。
+- 建议: 二选一并在设计里写死：(a) 保留定义，把 D3 改为“片段从首个未允许窗口起，相邻时含已允许前缀的尾部至多 39 字节，X 至少露出开头几个字节；X 自身的窗口不随答 a 记入”，单元验证改为“`Snippet` 不以 P 开头且含 X 的开头；`Allow` 后只带 X 的调用仍未允许”；(b) 若希望问句显示 X 本身，把起点改为“段内首个未被已允许窗口覆盖的字节”，并相应写明记入范围仍是“整个落在片段内的窗口”，同时更新断言。(a) 不改行为，改动面最小。
 
 ## 覆盖缺口与限制
 
-- 增量复核：读了 diff 与全文；未变章节（背景、范围、D1–D2、D4–D6）沿用上轮结论。
-- 只读核对代码，未运行测试；`findAll` 的段切分实现细节只按设计文字判断。
-- 第 1 轮两轴报告由同一子 agent 写出，reviewer isolation 不满足，本轮未能消除，只建议在 ledger 披露（OS7）。
-- 未报不影响核心验收或安全的措辞、格式问题。
+- 只读核对代码，未运行测试；`findAll` 的切段与片段截取细节只按设计文字推演。
+- 问句片段经 `redact.Secrets` 与 `displaySafe` 处理后显示（`origin_guard.go:119`），被打码的字节用户看不到原文却会随窗口记入；这是既有显示行为，本轮范围外，未单列。
+- 第 1 轮两轴 reviewer isolation 缺口与 OS7 ledger 由作者处理，本轮未复核。
 
 ## 结论
 
-BLOCKED：OS5 为开放 `CORE_BLOCKING [SECURITY]`（OS1 同类未穷尽）。OS2 设计侧、OS3、OS4 已关闭；新增接口都能追溯到核心目标，分层成立。OS6、OS7 为 `CORE_CORRECTIVE`，不单独阻断。
+PASS：OS5（CORE_BLOCKING [SECURITY]）与 OS6 已关闭，独立段、相邻段、长段三种情形下用户没看到的文本都不进入已允许集合，从未答 a 时行为与现状一致；Q1–Q3 已转为 D6、D8、D9 并追溯到用户原话；修订记录与第 2 轮处理表完整。新增 OS8 为 `CORE_CORRECTIVE`（user_visible_effect: false），不阻断，建议在计划批准前一并改正措辞与断言。
 
 ## 剩余风险与后续
 
-- 本轮已是设计声明的第 2 轮上限（第 8 行停止条件），OS5 开放即交用户决定：批准第 3 轮，或接受 OS5 的一行定义修正作为“未复核修订”披露后进入 Gate。OS5 改动面很小（名词定义、方案 2 一句、1 条单元用例、1 条反向验证），不新增机制。
-- Q2 选 B 时，OS5 的相邻段问题同样存在（段只按状态切分即可，与来源工具是否入键无关）；残余 1 的扩大已在 116 行写明。
+- OS8 按建议 (a) 修订属于措辞与验证断言纠正，不需要再开评审轮；若作者选 (b)，片段起点规则改变，属于语义变化，应递增版本并说明。
+- 残余 1–4（来源按工具名、auto 下无人确认、淘汰后旧允许仍生效、已允许前缀后接自写尾部）照旧，须在 Gate 上向用户说明。
