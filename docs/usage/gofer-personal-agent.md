@@ -359,6 +359,8 @@ gofer job resume <job-id> --prompt "从上次会话继续"
 
 `--read-only` 映射为 ACP `read_only` mode，写文件、命令与 MCP 工具不会加入可执行工具集合。默认 mode 中，写入/执行及所有 MCP 工具（含与内置只读工具同名者）在执行前调用 Gofer `session/request_permission`；可用 `gofer job interactions <job-id>` 查看待答复请求，再用 `gofer job answer <job-id> <interaction-id> reject|allow` 处理。拒绝时工具不执行；允许仅作用于当前一次请求。
 
+ACP 的 `tool_call` 通知与 `session/request_permission` 的 `toolCall` 带标准字段 `rawInput`（工具调用参数，如 `shell_exec` 的 `command`、`cwd`），先经与 trace 相同的脱敏（凭据样式的值与凭据样式的键对应的值显示为 `[REDACTED]`），每个字符串值最多 2000 个字符，审批卡可据此显示待批准的命令；后续状态更新不重复带它。
+
 ### 工具拒绝语义
 
 审批在工具注册表的包装层完成（从外到内：observe → visibility → approval → 工具），CLI 与 ACP 共用同一套语义：
