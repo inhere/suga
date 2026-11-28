@@ -3,9 +3,12 @@ package wiring
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/inhere/suga/internal/personal"
+	"github.com/inhere/suga/pkg/agentcore/api"
+	"github.com/inhere/suga/pkg/agentcore/tasks"
 	"github.com/inhere/suga/pkg/agentcore/tools/native"
 )
 
@@ -80,4 +83,43 @@ func forkMeta(seed *personal.ForkSeed) map[string]any {
 		return nil
 	}
 	return map[string]any{"fork_base": seed.BaseTurn + "|" + seed.Source}
+}
+
+// newStartFork is the :bg entry point (design D1): chat's task text becomes a
+// fork task through the same native.AgentTool.StartFork the agent tool calls, so
+// the task limit, the read-only fork itself and its notice cannot differ between
+// the two entries. The seed is the one of a fork between turns (the session's
+// last request, or a rebuild of it), since no turn runs to take a step from. A
+// nil return leaves :bg out (agents disabled: there is no agent tool).
+func newStartFork(run *personal.Runner, agentTool *native.AgentTool) func(ctx context.Context, task string) (tasks.Info, error) {
+	if agentTool == nil || run == nil {
+		return nil
+	}
+	return func(ctx context.Context, task string) (tasks.Info, error) {
+		task = strings.TrimSpace(task)
+		if task == "" {
+			return tasks.Info{}, errors.New("agent: fork needs a task")
+		}
+		// The session is on the ctx (chat sets it) and the seed comes from the parent
+		// Runner itself, so this path needs no late binding of its own.
+		req := native.AgentRequest{Description: forkTaskLabel(task), Prompt: task,
+			ParentSession: api.SessionIDFrom(ctx)}
+		seed, err := run.ForkSeedBetweenTurns(ctx, req.ParentSession, task)
+		if err != nil {
+			return tasks.Info{}, err
+		}
+		req.Seed = seed
+		return agentTool.StartFork(ctx, req)
+	}
+}
+
+// forkTaskLabel is the task summary of a :bg fork: up to six words of the task,
+// the label native's firstWords gives an agent call without a description (a
+// plain :bg task carries no description of its own).
+func forkTaskLabel(task string) string {
+	words := strings.Fields(task)
+	if len(words) > 6 {
+		words = words[:6]
+	}
+	return strings.Join(words, " ")
 }

@@ -80,8 +80,11 @@ type chatState struct {
 	// readImage and vision carry the :image wiring (Options.ReadImage/Vision);
 	// pendingImages are the pictures waiting to ride with the next message
 	// (chat :image / Alt+V, design 0.3).
-	readImage     func(string) (agentcore.ImagePart, string, error)
-	readClip      func() (agentcore.ImagePart, string, error)
+	readImage func(string) (agentcore.ImagePart, string, error)
+	readClip  func() (agentcore.ImagePart, string, error)
+	// startFork starts the read-only fork of the :bg command (Options.StartFork);
+	// nil (agents disabled) makes :bg say so instead of starting one.
+	startFork     func(ctx context.Context, task string) (tasks.Info, error)
 	vision        *tools.VisionGate
 	pendingImages []agentcore.ImagePart
 	tasks         *tasks.Manager

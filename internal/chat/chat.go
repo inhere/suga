@@ -204,6 +204,11 @@ type Options struct {
 	// ContextParts reports the resident context composition for :context; nil
 	// leaves the command with the tool table, history and handoff only.
 	ContextParts func(context.Context) ContextReport
+	// StartFork starts a read-only fork of this conversation as a background task
+	// for :bg (design D1). The runtime builds it over the same native.AgentTool
+	// path the model's agent call takes; nil (agents disabled) prints
+	// cmd.bg.disabled instead.
+	StartFork func(ctx context.Context, task string) (tasks.Info, error)
 }
 
 // markInteractivelyUsed records that this chat continued a session a
@@ -484,7 +489,7 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 		modelOptions: opts.ModelOptions, modelSwitch: opts.ModelSwitch,
 		skills: opts.Skills, contextParts: opts.ContextParts,
 		modelInfo: ModelOption{Provider: provider, Model: model, Thinking: opts.Thinking, ContextWindow: contextWindow, MaxOutputTokens: maxOutputTokens},
-		readImage: opts.ReadImage, vision: opts.Vision, readClip: opts.PasteImage,
+		readImage: opts.ReadImage, vision: opts.Vision, readClip: opts.PasteImage, startFork: opts.StartFork,
 		steering: steering, local: opts.Local, tasks: opts.Tasks, notifier: newChatNotifier(opts.Notify, opts.NotifyAfter, stdout, inputSource.terminal != nil),
 	}
 	if inputSource.terminal != nil && opts.PasteImage != nil {
@@ -659,6 +664,11 @@ func Run(ctx context.Context, runner *personal.Runner, opts Options, stdin io.Re
 			return nil
 		case isSessionCommand(line):
 			state.runSessionCommand(line)
+			continue
+		case isBgCommand(line):
+			// :bg <任务>: a read-only fork of this conversation runs in the background
+			// (chat_fork_bg.go), through the same path as the model's agent call.
+			state.runForkBg(bgTaskArg(line))
 			continue
 		case line == ":compact":
 			// Compress the session context now; token figures are estimates.

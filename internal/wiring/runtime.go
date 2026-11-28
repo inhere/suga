@@ -205,6 +205,10 @@ type Runtime struct {
 	// tool counts for chat's :context (same measurement as Resident); nil
 	// leaves the command without it.
 	ContextReport func(context.Context) ContextReport
+	// StartFork starts a read-only fork of this conversation for chat's :bg
+	// (design D1): the same path the agent tool's fork takes. nil leaves the
+	// command unavailable (agents disabled, or a runtime without the agent tool).
+	StartFork func(ctx context.Context, task string) (tasks.Info, error)
 
 	repo         *store.Store
 	capabilities defaultCapabilities
@@ -548,17 +552,20 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		return nil, err
 	}
 	forkBind := &forkHost{}
+	// forkTool is the agent tool itself (nil when agents are disabled): chat's :bg
+	// starts its forks through it, so both entries refuse in the same way.
+	var forkTool *native.AgentTool
 	if agentSettings.Enabled {
-		agentTool := native.NewAgentTool(&subAgents{fork: forkBind, workspace: workspace, ruleCWD: ruleCWD, mainModel: opts.Model, projectMemoryKey: opts.ProjectMemoryKey,
+		forkTool = native.NewAgentTool(&subAgents{fork: forkBind, workspace: workspace, ruleCWD: ruleCWD, mainModel: opts.Model, projectMemoryKey: opts.ProjectMemoryKey,
 			noProjectRules: opts.NoProjectRules, ruleFile: ruleFile, settings: agentSettings, addDirs: dirs, readDeny: readDeny,
 			budget: personal.BudgetSettings{Tokens: budget.Tokens, CostUSD: budget.CostUSD, Scope: budget.Scope,
 				Estimate: budget.Estimate, EstimateFactor: budget.EstimateFactor, NoticeRatio: budget.NoticeRatio},
 			deadlineEnv:    appconfig.ReadRunDeadlineEnv(),
 			policySnapshot: approvalSnapshot, translator: translator})
 		if opts.Tasks != nil {
-			agentTool.SetTasks(opts.Tasks)
+			forkTool.SetTasks(opts.Tasks)
 		}
-		capabilities.Registry.Register(agentTool)
+		capabilities.Registry.Register(forkTool)
 	}
 	// update_plan only writes session state, so it is registered in every mode
 	// (including read-only). The recorder is bound to the runner in personal.New.
@@ -869,6 +876,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			return BuildContextReport(resident(rctx), deferred, loaded)
 		},
 		approvalLayer: approvalLayer,
+		StartFork:     newStartFork(runner, forkTool),
 		ACPPolicy: func(call agentcore.ToolCall, tool agentcore.Tool) (action, rule, scope string, clamped, pathProtected bool) {
 			target := approval.targetFor(call, tool)
 			policyAction, hit, protected := approval.Decide(target, tools.MetaOf(tool))
