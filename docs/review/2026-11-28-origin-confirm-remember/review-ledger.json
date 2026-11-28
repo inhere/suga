@@ -1,0 +1,621 @@
+{
+ "artifact_type": "review_ledger",
+ "schema_version": "2.2.0",
+ "candidate_progression": "DOCUMENT_REVISION",
+ "candidate": {
+  "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+  "commit": "7e75b6a9c5f42ce2525bad3b59b318911242afc3",
+  "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+  "document_revision": "0.3"
+ },
+ "author_id": "author-main",
+ "required_rounds": [
+  1,
+  2,
+  3
+ ],
+ "required_sections": [
+  "修订记录",
+  "背景与目标",
+  "名词",
+  "范围与非目标",
+  "已确认事实与规范",
+  "总体方案",
+  "架构",
+  "关键流程",
+  "安全、数据、运维与回滚",
+  "决策",
+  "待确认事项",
+  "结论与人工计划 Gate"
+ ],
+ "required_axes": [
+  "Standards/Governance",
+  "Spec/Executability"
+ ],
+ "receipts": [
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "146ac624d4353936aa22f7aa1fbe8bd8702c64b3",
+    "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "document_revision": "0.1"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r1",
+   "session_id": "reviewer-standards-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "docs/review/2026-11-28-origin-confirm-remember/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-28-origin-confirm-remember/standards-review.md",
+    "source_report_commit_oid": "586f216693f3ca13969fcf8b36f0390c87ca81ff",
+    "source_report_blob_oid": "30bf51b6fad7a25cc6e9f3854c9350d45c58dff7",
+    "direct_repo_paths": [
+     "docs/design/2026-11-28-origin-confirm-remember-design.md",
+     "docs/review/2026-11-28-origin-confirm-remember/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "用户没看到的文本不进入已允许集合",
+    "deny 规则与裁决 deny 不被跳过",
+    "run/ACP/子 agent 行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "OS1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "答 a 记入问句未显示的命中段",
+     "impact": "[SECURITY] 答 a 记入问句未显示的命中段",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "用户没看到的文本不进入已允许集合",
+     "necessary_causal_chain": [
+      "问句只显示一处片段",
+      "答 a 记入更多窗口",
+      "未见文本在 auto 下直接执行"
+     ],
+     "minimal_owner": [
+      "记入范围"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "OS2",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "评审目录与 ledger",
+     "impact": "评审目录与 ledger",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OS3",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "残余风险不全",
+     "impact": "残余风险不全",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OS4",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "代码组织",
+     "impact": "代码组织",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 1,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "146ac624d4353936aa22f7aa1fbe8bd8702c64b3",
+    "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "document_revision": "0.1"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r1",
+   "session_id": "reviewer-spec-r1-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "docs/review/2026-11-28-origin-confirm-remember/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-28-origin-confirm-remember/spec-review.md",
+    "source_report_commit_oid": "586f216693f3ca13969fcf8b36f0390c87ca81ff",
+    "source_report_blob_oid": "780ae162ee3f4bfc39eba36951e4668837ddc339",
+    "direct_repo_paths": [
+     "docs/design/2026-11-28-origin-confirm-remember-design.md",
+     "docs/review/2026-11-28-origin-confirm-remember/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "用户没看到的文本不进入已允许集合",
+    "deny 规则与裁决 deny 不被跳过",
+    "run/ACP/子 agent 行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "OF1",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "答 a 记入问句未显示的命中段",
+     "impact": "[SECURITY] 答 a 记入问句未显示的命中段",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "用户没看到的文本不进入已允许集合",
+     "necessary_causal_chain": [
+      "问句只显示一处片段",
+      "答 a 记入更多窗口",
+      "未见文本在 auto 下直接执行"
+     ],
+     "minimal_owner": [
+      "记入范围"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "OF2",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "集合相等歧义",
+     "impact": "集合相等歧义",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OF3",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "接口签名",
+     "impact": "接口签名",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OF4",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "验证缺口",
+     "impact": "验证缺口",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "0c2f444c5e1c6d51144487bdd0a8c93aeb2b7729",
+    "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r2",
+   "session_id": "reviewer-standards-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "docs/review/2026-11-28-origin-confirm-remember/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-28-origin-confirm-remember/standards-review.md",
+    "source_report_commit_oid": "c1ee9dff59ed1eb116163da000d525ad2a474933",
+    "source_report_blob_oid": "f1c153f6d0f0325d51d1760bcb21223ba0a7c37f",
+    "direct_repo_paths": [
+     "docs/design/2026-11-28-origin-confirm-remember-design.md",
+     "docs/review/2026-11-28-origin-confirm-remember/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "用户没看到的文本不进入已允许集合",
+    "deny 规则与裁决 deny 不被跳过",
+    "run/ACP/子 agent 行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "OS5",
+     "severity": "HIGH",
+     "disposition": "CORE_BLOCKING",
+     "evidence": "相邻段整段记入",
+     "impact": "[SECURITY] 相邻段整段记入",
+     "recommendation": "按报告建议修订设计，下一版复核",
+     "core_acceptance": "用户没看到的文本不进入已允许集合",
+     "necessary_causal_chain": [
+      "问句只显示一处片段",
+      "答 a 记入更多窗口",
+      "未见文本在 auto 下直接执行"
+     ],
+     "minimal_owner": [
+      "记入范围"
+     ],
+     "deletion_alternative": "PASS",
+     "scope_effect": []
+    },
+    {
+     "finding_id": "OS6",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "长段整段记入未披露",
+     "impact": "长段整段记入未披露",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OS7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "缺 ledger",
+     "impact": "缺 ledger",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "BLOCKED"
+  },
+  {
+   "round": 2,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "0c2f444c5e1c6d51144487bdd0a8c93aeb2b7729",
+    "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "document_revision": "0.2"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r2",
+   "session_id": "reviewer-spec-r2-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "docs/review/2026-11-28-origin-confirm-remember/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-28-origin-confirm-remember/spec-review.md",
+    "source_report_commit_oid": "c1ee9dff59ed1eb116163da000d525ad2a474933",
+    "source_report_blob_oid": "5d7ab960d1a1ab0bece09a9edaeeb36a9c0a5795",
+    "direct_repo_paths": [
+     "docs/design/2026-11-28-origin-confirm-remember-design.md",
+     "docs/review/2026-11-28-origin-confirm-remember/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "用户没看到的文本不进入已允许集合",
+    "deny 规则与裁决 deny 不被跳过",
+    "run/ACP/子 agent 行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "OF5",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "整段记入长于所示片段",
+     "impact": "整段记入长于所示片段",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "7e75b6a9c5f42ce2525bad3b59b318911242afc3",
+    "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "document_revision": "0.3"
+   },
+   "axis": "Standards/Governance",
+   "reviewer_id": "reviewer-standards-r3",
+   "session_id": "reviewer-standards-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "docs/review/2026-11-28-origin-confirm-remember/standards-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-28-origin-confirm-remember/standards-review.md",
+    "source_report_commit_oid": "d8a8ab5e21465ca242646accf17887f8141f4494",
+    "source_report_blob_oid": "ac788e7cca649e1eaa398f069e6eb0e2cd424126",
+    "direct_repo_paths": [
+     "docs/design/2026-11-28-origin-confirm-remember-design.md",
+     "docs/review/2026-11-28-origin-confirm-remember/standards-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "用户没看到的文本不进入已允许集合",
+    "deny 规则与裁决 deny 不被跳过",
+    "run/ACP/子 agent 行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "OS8",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "相邻段片段起点说法不一致",
+     "impact": "相邻段片段起点说法不一致",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "round": 3,
+   "candidate": {
+    "git_root": "/d/work/inhere/my-tools-dev/inhere-tools/suga",
+    "commit": "7e75b6a9c5f42ce2525bad3b59b318911242afc3",
+    "subject_path": "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "document_revision": "0.3"
+   },
+   "axis": "Spec/Executability",
+   "reviewer_id": "reviewer-spec-r3",
+   "session_id": "reviewer-spec-r3-session",
+   "author_id": "author-main",
+   "coordinator_relationship": "INDEPENDENT",
+   "actual_read_scope": [
+    "docs/design/2026-11-28-origin-confirm-remember-design.md",
+    "docs/review/2026-11-28-origin-confirm-remember/spec-review.md"
+   ],
+   "scope_evidence": {
+    "projection_contract": "inhere-dev-standards://review-read-scope/v1",
+    "source_report": "docs/review/2026-11-28-origin-confirm-remember/spec-review.md",
+    "source_report_commit_oid": "d8a8ab5e21465ca242646accf17887f8141f4494",
+    "source_report_blob_oid": "be34e6b7d08cec01cb3c4d6808f6d81364084653",
+    "direct_repo_paths": [
+     "docs/design/2026-11-28-origin-confirm-remember-design.md",
+     "docs/review/2026-11-28-origin-confirm-remember/spec-review.md"
+    ],
+    "expanded_repo_manifests": [],
+    "external_inputs": []
+   },
+   "sections": [
+    "修订记录",
+    "背景与目标",
+    "名词",
+    "范围与非目标",
+    "已确认事实与规范",
+    "总体方案",
+    "架构",
+    "关键流程",
+    "安全、数据、运维与回滚",
+    "决策",
+    "待确认事项",
+    "结论与人工计划 Gate"
+   ],
+   "dependency_edges": [
+    {
+     "from": "已确认事实与规范",
+     "to": "总体方案"
+    },
+    {
+     "from": "总体方案",
+     "to": "关键流程"
+    },
+    {
+     "from": "总体方案",
+     "to": "安全、数据、运维与回滚"
+    }
+   ],
+   "global_invariants": [
+    "用户没看到的文本不进入已允许集合",
+    "deny 规则与裁决 deny 不被跳过",
+    "run/ACP/子 agent 行为不变"
+   ],
+   "findings": [
+    {
+     "finding_id": "OF6",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "长段需多次答 a",
+     "impact": "长段需多次答 a",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OF7",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "覆盖字节是否含省略号",
+     "impact": "覆盖字节是否含省略号",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    },
+    {
+     "finding_id": "OF8",
+     "severity": "MEDIUM",
+     "disposition": "CORE_CORRECTIVE",
+     "evidence": "全部已允许时片段起点",
+     "impact": "全部已允许时片段起点",
+     "recommendation": "按报告建议修订设计，下一版复核"
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "dependency_edges": [
+  {
+   "from": "已确认事实与规范",
+   "to": "总体方案"
+  },
+  {
+   "from": "总体方案",
+   "to": "关键流程"
+  },
+  {
+   "from": "总体方案",
+   "to": "安全、数据、运维与回滚"
+  }
+ ],
+ "global_invariants": [
+  "用户没看到的文本不进入已允许集合",
+  "deny 规则与裁决 deny 不被跳过",
+  "run/ACP/子 agent 行为不变"
+ ],
+ "continuation_approvals": [
+  {
+   "round": 3,
+   "evidence": "用户 2026-11-28：“ilko Q1–Q4 按推荐”（Q4 A=按定义修正后开第 3 轮只确认这一处）。注：第 1 轮两轴由同一评审者分别撰写，轴间不独立；第 2、3 轮两轴为独立评审者。"
+  }
+ ],
+ "open_core_blockers": [],
+ "status": "PASS"
+}
