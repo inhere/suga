@@ -280,7 +280,7 @@ suga session undo <session> [--turn <turn-id> | -n <count>] [--force] [--yes] [-
 - **回交**：分身结束时的通知就是它的报告。正文不超过 4000 字符时全文进会话；超过时只带前 12 行并附 `[report cut; task output reads it all]`，`task output` 读全文。分身的指令要求它以此长度为限、结论附文件:行号。
 - **上限与并发**：与普通后台 agent、`shell_exec` 任务共用 `tasks.max_running`（每会话 4）；`agents.max_steps`、`agents.max_tokens`、`agents.timeout` 与报告的 `[sub-agent … stop=…]` 尾巴照旧；满额时**直接拒绝、不排队**（模型拿到错误结果，`:bg` 打印“后台任务已满（N/N）…”）。分身自己的上下文也计量：达到主会话的段阈值时让它收尾，`stop=context`。
 - **终止**：`:tasks -k <ID>` 或 `task kill` 取消分身，任务输出写“已终止”，`stop=cancelled`，**不发通知**（与普通后台 agent 的 kill 行为一致，避免唤醒没人要的回合）。
-- **`:bg` 拒绝启动的情形**（`run` 与 ACP 不受影响，因为它们只经模型触发）：配置了 host hook（hook 会改写请求头，`rebuilt` 出来的基准不可信）；系统提示读运行状态（`prompt_state`）；种子超过上下文阈值（提示改用 `agent` 的 `explore` 并把背景写进 prompt）。模型自己调的 `type: fork` 只用刚发出的那次请求，因此**不判 host hook**。另外 `agents.enabled: false` 时 `:bg` 直接提示分身不可用。
+- **`:bg` 拒绝启动的情形**（`run` 与 ACP 不受影响，因为它们只经模型触发）：配置了 host hook（hook 会改写请求头，`rebuilt` 出来的基准不可信）；系统提示读运行状态（`prompt_state`）；种子超过上下文阈值（提示改用 `agent` 的 `explore` 并把背景写进 prompt）；会话里还没有任何完成的回合（无基准可用）。模型自己调的 `type: fork` 只用刚发出的那次请求，因此**不判 host hook**。`agents.enabled: false` 时 `:bg` 直接提示分身不可用，回合中输入会退回输入行。
 - **观测**：子会话 meta 带 `fork_base=<基准请求所在回合>|<call 或 bg>`，`agent_type=fork`；分身首个（无 purpose 的）model 事件带 `fork_reuse=prefix|rebuilt`，重建时另有 `fork_reuse_note`（`no_tracked_request`、`last_turn_not_completed`、`model_switched` 等）说明为什么没能沿用主会话前缀。任务行仍是 `kind=agent`、摘要 `agent: <description>`，所以状态行、`:tasks`、`--analyze` 自动覆盖分身。
 - **缓存与费用**：首个请求是主会话整段上下文，命中按缓存价、未命中按全价；用量计入主会话累计，gofer 的预算照常生效。
 - **与 `:fork N` 的区别**：`:fork N` 把历史复制到一个新会话里供人接着聊（`suga chat --resume <新会话ID>`），分身只是一次性只读执行、最后变成一篇报告。

@@ -152,7 +152,7 @@ providers:
 - **回交**：报告不超过 4000 字符时随通知全文回到会话；超过则只送前 12 行并附截断说明，`task output` 可以读全文。
 - 并发与上限就是后台 agent 那一套：与 `shell_exec` 任务共用 `tasks.max_running`，`agents.*` 与 `[sub-agent … stop=…]` 尾巴一样生效；满额时直接拒绝、不排队。
 - 终止（`:tasks -k <ID>`、`task kill`）不发通知，输出写“已终止”，分身的 `stop=cancelled`。
-- `:bg`（仅 chat）在三种情况下拒绝启动并说明原因：配置了 host hook、系统提示读运行状态（`prompt_state`）、种子超过上下文阈值（提示改用 `agent` 的 `explore` 并把背景写进 prompt）。host hook 只拦 `:bg`，模型自己调的 `type: fork` 照常启动，因为它用的是刚发出的那次请求。
+- `:bg`（仅 chat）在几种情形下拒绝启动并说明原因：配置了 host hook、系统提示读运行状态（`prompt_state`）、种子超过上下文阈值（提示改用 `agent` 的 `explore` 并把背景写进 prompt）、会话里还没有完成的回合（无基准可用）。host hook 只拦 `:bg`，模型自己调的 `type: fork` 照常启动，因为它用的是刚发出的那次请求。
 - 观测：子会话带 `agent_type=fork` 与会话 meta `fork_base=<基准请求所在回合>|<call 或 bg>`；它的首个 model 事件带 `fork_reuse=prefix|rebuilt`（`rebuilt` 时另有 `fork_reuse_note` 说明原因），要与主循环的命中率对比就看这里。
 - 与 `:fork N` 不是一回事：后者把历史复制到新会话供你继续聊，分身只做一次只读任务、最后化为一篇报告。
 
