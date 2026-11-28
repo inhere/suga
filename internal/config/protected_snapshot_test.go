@@ -158,6 +158,19 @@ func TestProtectedSnapshot(t *testing.T) {
 		assert.False(t, change.WholeFile)
 	})
 
+	t.Run("a changed trusted-memory list reports the key name", func(t *testing.T) {
+		configPath, _ := protectTestPaths(t)
+		first := "memory:\n  project:\n    trusted: [\"/repo/one\", \"/repo/two\"]\n"
+		digest := protectTestConfig(t, configPath, first)
+		_, err := CompareProtected(configPath, digest)
+		assert.NoErr(t, err)
+		changed := protectTestConfig(t, configPath, "memory:\n  project:\n    trusted: [\"/repo/one\", \"/repo/three\"]\n")
+		change, err := CompareProtected(configPath, changed)
+		assert.NoErr(t, err)
+		assert.Eq(t, []string{"memory.project.trusted"}, change.Keys)
+		assert.False(t, change.WholeFile)
+	})
+
 	t.Run("a secret key change reports the key name only", func(t *testing.T) {
 		configPath, _ := protectTestPaths(t)
 		body := "network:\n  proxy:\n    url: http://user:pass@proxy.test\n"

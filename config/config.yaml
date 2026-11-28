@@ -427,11 +427,13 @@ tools:
 #   taint_on_spill: [shell_exec]
 #   user:
 #     backend: files       # files (default, $SUGA_HOME/memory/user) | exec
+#     trusted: false       # true: this user backend is treated as a trusted source
 #   project:
 #     # Unset: MEMORY.md at the repository root -> files (repository mode,
 #     # entries in .suga/memory/); else .gofer/tracker there -> gofer; else
 #     # files under $SUGA_HOME/projects/<key>/memory. Set to force one:
 #     backend: files       # files | gofer | exec
+#     trusted: []           # repository roots from `git rev-parse --show-toplevel`
 #   # exec backend (per scope; the command is required and is never discovered):
 #   # user:
 #   #   backend: exec

@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -125,6 +126,56 @@ func TestSelectProjectBackend(t *testing.T) {
 		assert.NoErr(t, err)
 		assert.Eq(t, MemoryReasonRepoIndex, choice.Reason)
 		assert.Eq(t, ws, choice.Location)
+	})
+}
+
+func TestRootTrusted(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repo")
+	child := filepath.Join(root, "nested")
+	parent := filepath.Dir(root)
+	for _, tc := range []struct {
+		name  string
+		path  string
+		roots []string
+		fold  bool
+		want  bool
+	}{
+		{name: "same cleaned root", path: root + string(filepath.Separator), roots: []string{root}, want: true},
+		{name: "child is not the root", path: child, roots: []string{root}, want: false},
+		{name: "parent is not the root", path: parent, roots: []string{root}, want: false},
+		{name: "case sensitive mismatch", path: strings.ToUpper(root), roots: []string{root}, fold: false, want: false},
+		{name: "case folded match", path: strings.ToUpper(root), roots: []string{root}, fold: true, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Eq(t, tc.want, rootTrusted(tc.path, tc.roots, tc.fold))
+		})
+	}
+}
+
+func TestSelectProjectBackendTrusted(t *testing.T) {
+	home := t.TempDir()
+	for _, tc := range []struct {
+		name  string
+		roots func(string) []string
+		want  bool
+	}{
+		{name: "registered repository", roots: func(root string) []string { return []string{root} }, want: true},
+		{name: "unregistered repository", roots: func(string) []string { return []string{filepath.Join(t.TempDir(), "other")} }, want: false},
+		{name: "registered parent does not match", roots: func(root string) []string { return []string{filepath.Dir(root)} }, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, sub := memRepo(t, false, false)
+			_, choice, err := selectProjectBackend(sub, MemoryConfig{SugaHome: home, ProjectTrustedRoots: tc.roots(root)})
+			assert.Require(t, assert.NoErr(t, err))
+			assert.Eq(t, tc.want, choice.Trusted)
+		})
+	}
+
+	t.Run("host key is never trusted", func(t *testing.T) {
+		_, sub := memRepo(t, false, false)
+		_, choice, err := selectExplicitProjectBackend("topic", MemoryConfig{SugaHome: home, ProjectTrustedRoots: []string{sub}})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.False(t, choice.Trusted)
 	})
 }
 
@@ -294,6 +345,19 @@ func TestMemoryExecBackend(t *testing.T) {
 		assert.Eq(t, "mem-user", choice.Location)
 		assert.Eq(t, "exec", memory.BackendName(st))
 	})
+	t.Run("user trusted flag is copied before the exec early return", func(t *testing.T) {
+		for _, trusted := range []bool{false, true} {
+			t.Run(fmt.Sprintf("trusted=%t", trusted), func(t *testing.T) {
+				_, choice, err := selectUserBackend(MemoryConfig{
+					UserBackend: "exec", UserTrusted: trusted,
+					SugaHome: home, UserExec: MemoryExecConfig{Command: "mem-user"},
+				})
+				assert.Require(t, assert.NoErr(t, err))
+				assert.Eq(t, trusted, choice.Trusted)
+			})
+		}
+	})
+
 	t.Run("missing command is a clear error", func(t *testing.T) {
 		_, _, err := selectUserBackend(MemoryConfig{UserBackend: "exec", SugaHome: home})
 		assert.Err(t, err)
@@ -320,6 +384,41 @@ func TestLoadMemoryConfig(t *testing.T) {
 	assert.Require(t, assert.NoErr(t, err))
 	assert.Eq(t, "files", cfg.UserBackend)
 	assert.Eq(t, "gofer", cfg.ProjectBackend)
+}
+
+func TestLoadMemoryTrust(t *testing.T) {
+	gkconfig.AddDriver(yaml.Driver)
+	absoluteRoot := filepath.ToSlash(filepath.Join(t.TempDir(), "repo"))
+	absoluteOther := filepath.ToSlash(filepath.Join(t.TempDir(), "other"))
+	for _, tc := range []struct {
+		name      string
+		yaml      string
+		wantUser  bool
+		wantRoots []string
+		wantErr   string
+	}{
+		{name: "unset defaults to false", yaml: "memory: {}\n", wantRoots: nil},
+		{name: "valid values are normalized", yaml: fmt.Sprintf("memory:\n  user:\n    trusted: true\n  project:\n    trusted: [\"  %s/one/..  \", \"%s\"]\n", absoluteRoot, absoluteOther), wantUser: true, wantRoots: []string{filepath.FromSlash(absoluteRoot), filepath.FromSlash(absoluteOther)}},
+		{name: "user scalar", yaml: "memory:\n  user:\n    trusted: yes\n", wantErr: "memory.user.trusted must be true or false"},
+		{name: "project boolean", yaml: "memory:\n  project:\n    trusted: true\n", wantErr: "memory.project.trusted must be a list"},
+		{name: "project scalar", yaml: "memory:\n  project:\n    trusted: /repo\n", wantErr: "memory.project.trusted must be a list"},
+		{name: "empty item", yaml: fmt.Sprintf("memory:\n  project:\n    trusted: [\"%s\", \"   \"]\n", absoluteRoot), wantErr: "memory.project.trusted item 1 is empty"},
+		{name: "relative item", yaml: "memory:\n  project:\n    trusted: [repo]\n", wantErr: "memory.project.trusted item \"repo\" must be an absolute path"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetConfig(t)
+			assert.Require(t, assert.NoErr(t, gkconfig.LoadStrings(gkconfig.Yaml, tc.yaml)))
+			cfg, err := loadMemoryConfig()
+			if tc.wantErr != "" {
+				assert.Require(t, assert.Err(t, err))
+				assert.StrContains(t, err.Error(), tc.wantErr)
+				return
+			}
+			assert.Require(t, assert.NoErr(t, err))
+			assert.Eq(t, tc.wantUser, cfg.UserTrusted)
+			assert.Eq(t, tc.wantRoots, cfg.ProjectTrustedRoots)
+		})
+	}
 }
 
 func TestLoadMemoryExecConfig(t *testing.T) {

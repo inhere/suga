@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -139,6 +140,44 @@ func TestConfigProtected(t *testing.T) {
 		assert.Require(t, assert.Err(t, err))
 		assert.Eq(t, 2, ExitCode(err))
 		assert.StrContains(t, err.Error(), "read-only")
+	})
+
+	t.Run("memory project trusted is protected through real dispatch", func(t *testing.T) {
+		root := filepath.ToSlash(t.TempDir())
+		value := fmt.Sprintf("[\"%s\"]", root)
+
+		t.Run("terminal outside a session succeeds", func(t *testing.T) {
+			home := setupConfigCLI(t, "model: openai/config\n")
+			t.Setenv("SUGA_SESSION_ID", "")
+			err := runConfigProtected(t, strings.NewReader(""), "config", "set", "memory.project.trusted", value)
+			assert.NoErr(t, err)
+			assert.StrContains(t, readConfigFile(t, filepath.Join(home, "config.yaml")), "trusted:")
+		})
+
+		t.Run("piped stdin refuses and leaves bytes unchanged", func(t *testing.T) {
+			home := setupConfigCLI(t, "model: openai/config\n")
+			t.Setenv("SUGA_SESSION_ID", "")
+			configStdinIsTerminal = func(io.Reader) bool { return false }
+			configPath := filepath.Join(home, "config.yaml")
+			before := readConfigFile(t, configPath)
+			err := runConfigProtected(t, strings.NewReader(""), "config", "set", "memory.project.trusted", value)
+			assert.Require(t, assert.Err(t, err))
+			assert.Eq(t, 2, ExitCode(err))
+			assert.StrContains(t, err.Error(), "memory.project.trusted")
+			assert.Eq(t, before, readConfigFile(t, configPath))
+		})
+
+		t.Run("a session refuses even when stdin looks like a terminal", func(t *testing.T) {
+			home := setupConfigCLI(t, "model: openai/config\n")
+			t.Setenv("SUGA_SESSION_ID", "session-1")
+			configPath := filepath.Join(home, "config.yaml")
+			before := readConfigFile(t, configPath)
+			err := runConfigProtected(t, strings.NewReader(""), "config", "set", "memory.project.trusted", value)
+			assert.Require(t, assert.Err(t, err))
+			assert.Eq(t, 2, ExitCode(err))
+			assert.StrContains(t, err.Error(), "memory.project.trusted")
+			assert.Eq(t, before, readConfigFile(t, configPath))
+		})
 	})
 
 	// A human write is not an outside change: the snapshot records the written key

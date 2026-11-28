@@ -124,6 +124,22 @@ func TestLoadManifest(t *testing.T) {
 		assert.NotEmpty(t, m.Memory[1].Location)
 		assert.True(t, m.Memory[1].Replaceable)
 	})
+	t.Run("memory trusted flag", func(t *testing.T) {
+		assert.False(t, m.Memory[0].Trusted)
+		assert.False(t, m.Memory[1].Trusted)
+		root := workspace
+		assert.NoErr(t, gkconfig.Set("memory.user.trusted", true))
+		assert.NoErr(t, gkconfig.Set("memory.project.trusted", []string{root}))
+		assert.NoErr(t, gkconfig.Set("memory.project.backend", "exec"))
+		assert.NoErr(t, gkconfig.Set("memory.project.command", "/opt/mem"))
+		tm, err := LoadManifest(ManifestOptions{})
+		assert.Require(t, assert.NoErr(t, err))
+		assert.True(t, tm.Memory[0].Trusted)
+		assert.True(t, tm.Memory[1].Trusted)
+		raw, err := json.Marshal(tm.Memory)
+		assert.Require(t, assert.NoErr(t, err))
+		assert.StrContains(t, string(raw), `"trusted":true`)
+	})
 	t.Run("output, taint and write policy", func(t *testing.T) {
 		assert.Eq(t, 1234, m.Output.InlineBytes)
 		assert.Eq(t, 99999, m.Output.SpillBytes)

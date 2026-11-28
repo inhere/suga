@@ -233,6 +233,25 @@ func TestMemoryToolExternalReads(t *testing.T) {
 		assert.Eq(t, true, res.Metadata["external"])
 		assert.StrContains(t, res.Content, `No project memory matched "x".`)
 	})
+	t.Run("trusted scope read is not external", func(t *testing.T) {
+		trusted := NewMemoryTool(store, MemoryToolOptions{ProjectKey: "p",
+			Backend: func(s memory.Scope) string { return backend[s.Kind] },
+			Trusted: func(s memory.Scope) bool { return s.Kind == memory.ScopeProject }})
+		res, err := runMemory(t, trusted, map[string]any{"action": "get", "id": "a"})
+		assert.NoErr(t, err)
+		assert.Nil(t, res.Metadata)
+		res, err = runMemory(t, trusted, map[string]any{"action": "search", "query": "x"})
+		assert.NoErr(t, err)
+		assert.Nil(t, res.Metadata)
+	})
+	t.Run("untrusted scope stays external when Trusted is set", func(t *testing.T) {
+		other := NewMemoryTool(store, MemoryToolOptions{ProjectKey: "p",
+			Backend: func(s memory.Scope) string { return "exec" },
+			Trusted: func(s memory.Scope) bool { return s.Kind == memory.ScopeUser }})
+		res, err := runMemory(t, other, map[string]any{"action": "get", "id": "a"})
+		assert.NoErr(t, err)
+		assert.Eq(t, true, res.Metadata["external"])
+	})
 	assert.Eq(t, tools.Meta{Category: tools.CategoryEdit, AgentState: true}, tools.MetaOf(tool))
 }
 

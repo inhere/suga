@@ -141,7 +141,7 @@ func writeManifestText(out io.Writer, m wiring.Manifest) error {
 
 	b.WriteString("\nMemory\n")
 	for _, mem := range m.Memory {
-		fmt.Fprintf(&b, "  %s: %s (%s) at %s, replaceable=%t\n", mem.Scope, mem.Backend, mem.Reason, mem.Location, mem.Replaceable)
+		fmt.Fprintf(&b, "  %s: %s (%s) at %s, replaceable=%t, trusted=%t\n", mem.Scope, mem.Backend, mem.Reason, mem.Location, mem.Replaceable, mem.Trusted)
 	}
 	fmt.Fprintf(&b, "  write=%s write_tainted=%s\n", m.WritePolicy.MemoryWrite, m.WritePolicy.MemoryWriteTainted)
 
