@@ -42,6 +42,8 @@ import (
 //	preferred  the MCP tool named by PreferredTool, then the text Reply: the
 //	        preferred-tool smoke, whose environment section the request log
 //	        carries as Preferred.
+//	memorigin memory get of MemoryID, then shell_exec of Command (the entry
+//	        body): the trusted-memory scenario (chat_trusted_memory_test.go).
 //	writev  a user message containing "write vK" gets a file_write of WritePath
 //	        with the content vK (fakellm_rewind_test.go; rewind plan T0).
 //
@@ -112,6 +114,9 @@ type fakeLLM struct {
 	// with JudgeReply whatever the mode.
 	PageURL, PageText string
 	JudgeReply        string
+
+	// MemoryID is the entry memorigin mode reads (default "note").
+	MemoryID string
 
 	// PreferredTool is the MCP tool preferred mode calls (default preferred_lookup).
 	PreferredTool string
@@ -511,6 +516,8 @@ func (f *fakeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "origin":
 		call = f.originCall(step)
+	case "memorigin":
+		call = f.memoriginCall(step)
 	case "tool":
 		// The step of THIS turn decides, not whether any tool result is the last
 		// message: an interrupted turn leaves its own tool result in the
