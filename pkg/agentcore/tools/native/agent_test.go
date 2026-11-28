@@ -93,7 +93,7 @@ func TestAgentTool(t *testing.T) {
 	})
 	t.Run("argument errors", func(t *testing.T) {
 		_, err := run(NewAgentTool(&fakeAgents{}), map[string]any{"prompt": "x", "type": "writer"})
-		assert.ErrMsgContains(t, err, "type must be explore or research")
+		assert.ErrMsgContains(t, err, "type must be explore, research or fork")
 		_, err = run(NewAgentTool(&fakeAgents{}), map[string]any{"description": "x"})
 		assert.ErrMsgContains(t, err, "prompt is required")
 	})
