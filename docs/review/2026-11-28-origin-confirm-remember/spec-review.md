@@ -1,93 +1,60 @@
 <!-- template_id: review; template_version: 1.2.0 -->
-# 外部来源确认：本会话允许该片段 设计 Spec/Executability 轴评审（第 1 轮）
+# 外部来源确认：本会话允许该片段 设计 Spec/Executability 轴评审（第 2 轮，闭合确认）
 
 ## 评审目标与范围
 
-- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`，candidate commit `146ac624`，subject `docs/design/2026-11-28-origin-confirm-remember-design.md`
-- 修订版本: Draft 0.1
-- 评审者: 独立评审子 agent（Claude Opus 5.5），未参与本设计起草
+- 目标: Git root `/d/work/inhere/my-tools-dev/inhere-tools/suga`，candidate commit `0c2f444c`，subject `docs/design/2026-11-28-origin-confirm-remember-design.md`
+- 修订版本: Draft 0.2（上轮 candidate `146ac624`，Draft 0.1）
+- 评审者: 独立评审子 agent（Claude Opus 5.5），未参与本设计起草与 0.2 修订
 - 日期: 2026-11-28
-- 排除项: Q1–Q3 选哪一项（只判断各选项能否实施）；Standards 轴内容（另见 `r1-standards.md`）；轻治理要求下只报影响核心验收或安全的问题
+- 排除项: Q1–Q3 选哪一项；Standards 轴内容；按要求只报影响核心验收或安全的问题；未变章节沿用第 1 轮结论
 
 ## 输入与方法
 
-- 全量读取 review 合同、design 合同、`AGENTS.md`、设计全文。
-- 逐条对照代码：`pkg/agentcore/tools/origin.go`（`Record`、`find`、`originWindowHashes`、`originSnippet`、`visitStrings`）、`internal/wiring/origin_guard.go`（`Decide`、`confirm`）、`internal/wiring/chat_approver.go:108-250,280-306`、`pkg/chatui/approval.go`、`internal/chat/approval_reply.go`、`pkg/agentcore/tools/approval.go:190-316`、`internal/personal/observe.go:360-400`、`internal/wiring/subagent.go:196-200`、`internal/wiring/runtime.go:625-640`、`internal/config/origin_judge.go`、`test/ptye2e/chat_origin_judge_test.go:44`、`test/ptye2e/fakellm_test.go:113-120,523-526`。
-- 用设计里的实例（44 字节前缀 + 不同尾部）手推窗口与命中。
+- 读取 review 合同（payload 中“评审报告合同”“Review Candidate Loop”“严谨规划核心合同”）、上轮 `docs/review/2026-11-28-origin-confirm-remember/spec-review.md`（OF1–OF4）。
+- `git diff 146ac624..0c2f444c -- <subject>` 全量，以及被修订的名词、总体方案、架构/代码组织、关键流程、安全、决策、验证要求各节。
+- 对照 `0c2f444c` 下代码：`pkg/agentcore/tools/origin.go`（`Record`、`find`、`originWindowHashes`、`originSnippet`、`visitStrings`）、`internal/wiring/origin_guard.go`（`Decide`、`confirm`）、`pkg/agentcore/tools/approval.go:206-316`、`internal/personal/observe.go:340-400`、`test/ptye2e/fakellm_origin_test.go`、`test/ptye2e/chat_origin_judge_test.go`、`pkg/agentcore/tools/origin_test.go`（现有 `Find` 调用方）。
+- 用 P+X、同页连续复制、前缀+不同尾部几个实例手推窗口与分段。
 
 ## 验收标准
 
-设计第 22 行的用户可见结果与第 95–100 行验证要求；review 合同对 `CORE_BLOCKING` 五类的定义（含“实现不唯一且导致不同用户可见结果”）。
+设计“用户可见结果”与“验证要求”两节；review 合同对 `CORE_BLOCKING` 五类与 necessity proof 的要求；上轮 OF1–OF4 的建议。
 
-### 要点逐项核对
+### 上轮发现闭合核对
 
-| 要点 | 结果 |
+| 上轮 | 结果 |
 |---|---|
-| 40 字节窗口哈希作键 | 可行。`originWindowHashes` 按字节偏移给滚动哈希，与位置无关；44 字节前缀有 5 个完全落在前缀内的窗口，内容不变则哈希不变，与尾部无关；若页面上前缀后面紧跟的字节（如 ` '`）在两条命令里也相同，跨边界的窗口也会稳定命中，两条命令仍判为同一组。D2 不用 `hit.Snippet` 的理由成立（`origin.go:152,165`）。键定义的写法见 OF2 |
-| `find` 改为收集全部命中 | 可行：去掉 `origin.go:153` 的 `return false`，`visitStrings` 走完；每个窗口的来源工具取 `s.names[s.index[h]]`（index 指向最新来源）。返回值和记入接口没写，见 OF3 |
-| 与裁决的交互 | 可行且无歧义：裁决仍在询问前（`origin_guard.go:123-154`），allow 交内层，deny 拒绝，ask/error 进入“已允许则跳过”分支；跳过时 `ReportDanger` 与 `ReportOriginJudge` 照旧记录。裁决默认开启（`internal/config/origin_judge.go:27`），已允许片段每次调用仍要花一次裁决调用，与 D4 一致 |
-| 回复选项解析 | 可行：`a`/`always` 已解析为 `ReplyAllowAlways`（`pkg/chatui/approval.go:25-26`），`confirm` 现在把它当拒绝（`origin_guard.go:210`），只改这一处分支即可；`d`、空、未知仍拒绝 |
-| trace attr | 可行：仿照 `OriginJudge`，在 `ApprovalReport` 加字段 + `ReportOriginRemembered`，`observe.go:387` 附近写 `origin_remembered`；`pkg/agentcore` 不依赖 internal |
-| “全部命中已允许 → 跳过”无歧义 | 按总体方案 2 / D3 的逐窗口判定无歧义（每个非零命中窗口在 (会话, 该窗口当前来源工具) 下已允许）；名词节的“窗口哈希集合”写法与之冲突，见 OF2 |
-| 验证能否证明行为 | 部分不能：审批模式与裁决状态没写，有一条单元断言预期不清，见 OF4 |
+| OF1（CORE_BLOCKING/SECURITY） | 已闭合。方案 3、D7、代码组织写明答 a 只 `Allow(session, hit)`，`hit.windows` 只含问句所示命中段，不重跑 find。按“命中段”定义（同一字符串内相邻偏移都命中且来源工具相同），P+X 中 P 的最后一个整窗在偏移 len(P)-40，跨边界的 39 个窗口不在任何来源里（除非页面 A 里 P 后正好接着 X 的开头），所以 P 与 X 一定分成两段；即使跨边界窗口落在 A 里，也会在工具从 A 换到 B 时断开。答 a 只记 P，之后只带 X 的调用 `Find` 返回 X 段且 `Remembered=false`，裁决 ask/error/关闭时进入询问。保证成立。可测：单元“对 P 段 Allow 后只带 X 仍返回未允许命中”、guard“P+X 答 a 后只带 X 仍 Ask”、反向验证“改为记入本次全部段”三处都写了，用真实 `ExternalOrigin` 对两个来源各 `Record` 一次即可构造 |
+| OF2 逐窗口判定 | 已修正。名词节改为“(会话, 来源工具) → 窗口哈希，逐窗口判定”，与方案 2、D3 一致。核心场景：两条命令的前缀段若比页面多/少几个跨边界窗口，较短那条的窗口是较长那条的子集，答 a 记入较长的后较短的判为已允许；反之较长的多出新复制字节，重问，符合 D3 |
+| OF3 签名 | 已修正。`OriginHit` 增 `Remembered bool` 与不导出 `windows`；`findAll(session, args, ignoreURLs) []OriginHit`；`Allow(session, hit)`。`Find`/`FindIgnoringURLs` 签名不变，现有调用方只有 `origin_guard.go:111-115` 与 `origin_test.go`，测试只读 `hit.Tool`/`hit.Snippet` 与 ok，不比较整个结构体，加不导出字段不会弄坏它们。wiring 包拿到的 `hit` 值复制时带着不导出字段，`Allow` 可在 tools 包内读取；`find` 与 `Allow` 分两次加锁，但记入的窗口取自 `hit`，中间的 `Record` 不影响记入内容 |
+| OF3 ApprovalReport | 已修正。`OriginRemembered string` + `ReportOriginRemembered`，`observe.go` 在工具事件 attr 写 `origin_remembered`，与现有 `OriginJudge` 一样挂在同一事件上（`observe.go:384-391`），端到端从 trace 工具事件读取可行 |
+| OF4 验证 | 已修正。guard 用例分了内层 auto / 默认 ask / deny 规则与假裁决；端到端写了 `approval: auto`、fake judge 固定 `ask`（fakellm 的 `JudgeReply` 已支持，`fakellm_test.go:113-118`）、第二条输出标记与 trace 成功工具事件断言；淘汰预期写明（淘汰后 `Find` 为 false；同工具重新 `Record` 仍 `Remembered`，换工具则不是），与 `Record` 的淘汰逻辑（`origin.go:86-104`，已允许集合另存、不随淘汰清除）一致；补了裁决 ask 跳过用例与“跳过分支挪到无 chat 判断之前”等反向验证 |
 
-### Q1–Q3 能否实施（不判对错）
+### 新问题核对：`Find` 返回首个未允许段，在从未答 a 时是否改变行为
 
-- Q1-A：能，无解析改动。Q1-B：能，但不能把 `s` 加进共享的 `ParseApprovalReply`（普通审批也用它），要在 guard 里本地解析或加新的回复常量。
-- Q2-A：能，即上表做法。Q2-B：能，键去掉工具名，显示仍用 `names`。
-- Q3-A：能。Q3-B：能，但要新增 chat 命令并让命令层拿到 runtime 的 `ExternalOrigin`，属新增 Interface。
+不改变。从未 `Allow` 时没有段是已允许的，“首个未允许段”就是首段；首段的起点就是旧 `find` 在 `visitStrings` 顺序（map 键排序、列表顺序）下的第一个命中偏移，来源工具同为 `s.names[s.index[h]]`，`Snippet` 仍是 `originSnippet(norm[起点:])`，`ok` 相同，`Remembered=false`。差别只在不再提前停止遍历，没有副作用；`originWindowHashes` 本来就对整串算一遍，额外开销只是多走后面的字符串。所以 `ReportDanger` 理由、裁决输入（`Snippet`/`Source`）与问句在未答 a 时与现状一致。设计没有逐字写“段的 `Snippet` 取段起点”，但“签名不变、取首段”只有这一种读法，不单列发现（并入 OF5 建议）。
 
 ## 发现
 
-### OF1 [HIGH] 答 a 记入“本次全部命中窗口”，超出问句展示的那段
-
-- disposition: `CORE_BLOCKING` / `[SECURITY]`
-- 证据: 设计第 53 行“把本次全部命中窗口……记入”、第 71 行；问句只带首个命中的来源与 48 字节片段（`origin_guard.go:119,160,193-194`；`origin.go:152,165`）；`tools.approval: auto` 下 `previewAsk` 返回 false（`chat_approver.go:296`），问句没有调用全文；第 51 行选项文案为“允许该片段”。
-- 影响: 一次调用里若有多段复制文本（可能来自不同来源工具），只有第一段展示给用户，答 a 却把所有段都记成已允许。
-- necessity proof:
-  - core_acceptance: 第 22 行“只带这段已允许的片段，不再弹询问”；第 76 行“同一调用里出现任何未允许的复制段仍询问”；D3。
-  - necessary_causal_chain: 页面 A 含前缀 P，MCP 结果 B 含命令段 X → 模型第一条命令是 P + X → `find` 首个未允许命中为 P，问句显示“来源 web_fetch，片段 P…” → 用户答 a → 按第 53 行，P（web_fetch）和 X（MCP 工具）窗口全部记入 → 之后模型调用只带 X 的命令，在裁决 ask/error/关闭且 `approval: auto` 时直接执行，用户从未看到 X 也没同意过 X。照文档实施，D3 防的“已允许前缀 + 新复制段”在第一次答 a 时就放过了。
-  - minimal_owner: 设计总体方案 3 与关键流程；实现在 `origin.go` 的记入接口。
-  - deletion_alternative: PASS：把“全部命中”收窄为“问句所示那一段连续命中窗口”即可关闭，不新增机制；或者问句列出全部未允许段再记入。
-  - scope_effect: 无新增 Module/Interface/Schema/state/lifecycle/authority/external action（OF3 的记入接口本来就要新增）。
-- 建议: 在第 53 行写明记入的是哪段，并定义“段”：首个未允许命中起的连续命中窗口（相邻偏移都命中且来源工具相同）。另选方案：问句逐段列出。单元加“P + X 答 a 后单独带 X 仍询问”，反向验证加“改回记入全部”。
-
-### OF2 [MEDIUM] 名词节把键写成“窗口哈希集合”，与逐窗口判定冲突
+### OF5 [MEDIUM] 问句只显示命中段开头 48 字节，记入的却是整段；“只记入用户看到的那一段”说得过满
 
 - disposition: `CORE_CORRECTIVE`，`user_visible_effect: true`
-- 证据: 第 28 行“键为 (会话, 来源工具, 窗口哈希集合)”；第 52 行“返回首个未被允许的命中”、D3“所有命中窗口都已允许”是逐窗口成员判定。
-- 影响: 照名词节做集合相等匹配时，若页面给的是完整示例命令，第一条命令复制的窗口比第二条多，第二条的命中集合是第一条的真子集，集合不等，于是再问一次。核心场景失败，用户看到的行为不同。正文已经足够明确，所以不列为阻断。
-- 建议: 第 28 行改为“已允许集合：(会话, 来源工具) → 窗口哈希；判定逐窗口”。
-
-### OF3 [MEDIUM] `find` 返回值与记入接口没写
-
-- disposition: `CORE_CORRECTIVE`
-- 证据: 现 `OriginHit{Tool, Snippet}`（`origin.go:108-113`）；第 52 行只说“带 `Remembered` 标记的命中”；第 53 行要记入窗口，第 59 行又要求 wiring 不碰哈希。
-- 影响: 实施时要自己发明接口。若在 guard 里答 a 后再调一次 find 来取窗口，可能拿到问句展示后才 `Record` 进来的窗口（同一会话多个工具结果先后到达），记入的内容与展示的不一致，会加重 OF1。
-- 建议: 写明签名，例如 `OriginHit` 加 `Remembered bool` 和不导出的 `windows []originWindow{hash, tool}`（只含 OF1 定义的那一段），新增 `func (o *ExternalOrigin) Allow(session string, hit OriginHit)`；`Find` 与 `FindIgnoringURLs` 都走同一 `find`，行为一致。
-
-### OF4 [MEDIUM] 验证要求没写审批模式和裁决状态，有一条预期不清
-
-- disposition: `CORE_CORRECTIVE`
-- 证据（同类全部）:
-  1. guard 测试（第 98 行）要求“答 a 后第二条不同命令不再 Ask”，同一行又要求“内层普通 ask 仍 Ask”。默认 `tools.approval` 为 ask（`chat_approver.go:108-121`），内层对 shell_exec 会问，“不再 Ask”只有在 auto 或 allow 规则下才成立；没写各用例用哪种内层配置。
-  2. 端到端（第 99 行）没写 `approval: auto`（现有 origin 场景都这样配，`chat_origin_judge_test.go:44`），也没写裁决怎么处理。裁决默认开启，fakellm 会回答裁决请求（`fakellm_test.go:113-116`）：若回 allow，第一条就不会问，场景不成立；要么设成 ask，要么关闭裁决。另外只断言“屏幕不出现外部来源询问”，第二条也可能是被拒才没出现询问，还需要断言第二条命令确实执行了（结果出现在屏幕上或 trace 里的成功事件）。
-  3. 单元“被淘汰来源的窗口不影响已允许判定的正确性”（第 97 行）没有可观察的预期：淘汰后窗口不再命中（不问），还是重新 `Record` 后沿用旧允许（不问）或重问？要写明结果。
-  4. 没有覆盖“裁决 ask + 全部已允许 → 跳过询问”，这是 D4 新增的分支；反向验证也没有“跳过分支提到无 chat 判断之前”这一项（关键流程第 69 行的先后关系）。
-- 影响: 照写的测试可能在错误实现下也通过（第 2 条），或者两条测试互相矛盾（第 1 条），核心结果“第二条不再问、照常执行”没被证明。
-- 建议: 逐条写明内层配置（auto / ask / deny 规则）与裁决设置（关闭，或 fakellm 回 ask）；端到端加执行结果断言；写明淘汰场景的预期；补上第 4 条的用例与反向验证；加入 OF1 的测试。
+- 证据: 设计“安全”节缓解第 1 条“只记入用户看到的那一段”；方案 3“问句所示那一个命中段”；问句片段为 `originSnippet(norm[i:])`，即段起点起 48 字节（`origin.go:152,165-177`，`origin_guard.go:119,193-194`）；`approval: auto` 下 `previewAsk` 不并入调用详情（`chat_approver.go:296`），用户看不到段的其余部分。同类出现点：(1) 同页连续复制一长段（P 后紧跟同页的 Y），段为 P+Y，问句只显示约 P 的部分；(2) 已允许 P 之后，调用带“P+同页连续的 Y”，该段部分已允许、整体未允许，`Find` 返回它，问句片段从段起点（已允许的 P）开始，新出现的 Y 不在显示的 48 字节里。
+- 影响: 两种情况下都仍会询问，核心性质“带未允许复制字节的调用仍询问”成立，未答 a 时现状的 y 也是只看 48 字节就放行整条调用，所以不构成阻断。但答 a 会把用户没看到的 Y 也记入，之后只带 Y（≥40 字节）的调用不再问；情况 (2) 里用户看到的是自己刚允许过的熟悉前缀，更容易随手答 a。Gate 的残余清单没有列这一点，安全节的说法与实际不符。
+- 建议: 二选一写进设计：① 问句片段从段内首个未允许窗口起取 48 字节（未答 a 时首个未允许窗口就是段起点，行为不变），并在残余里写明“记入整段，段可能长于所示片段”；② 或把记入范围收窄为“所示片段覆盖的窗口”。同时把安全节第 1 条改为准确说法，并写明段的 `Snippet` 取哪个起点。验证补一条：已 `Allow` P 后，“P+同页 Y”的问句片段包含 Y 的开头（选 ①）。
 
 ## 覆盖缺口与限制
 
-- 两轴由同一评审子 agent 按调用方要求分别写出，轴间 reviewer isolation 不满足 Full subject 的独立性要求；写入 ledger 时需披露。
-- 只读核对，未运行测试；窗口命中是对实例手推的，没有跑代码。
-- 没有核对 chat 进程内切换会话（如在同一进程里恢复旧会话）时集合是否保留；如有该能力，D1 的“随会话结束消失”需补一句，影响较小，未列为发现。
+- 只读核对，未运行测试；分段与命中为手推。
+- 端到端要“两条不同命令”，现 `fakellm` origin 模式只有 web_fetch + 一条 shell_exec（`fakellm_origin_test.go:9-16`），需给夹具加第二步与第二条命令字段；属测试夹具扩展，做法唯一，不列为发现。
+- 段被不显著窗口（长空白或标点串，hash 为 0）或“同一窗口最新来源换了工具”切开时，同一段复制会分成几段，答 a 一次只记一段，下次还会再问一次；只影响询问次数，不影响安全，未列为发现。
+- 两轴独立性：本报告由独立子 agent 只写 Spec 轴；Standards 轴另评。
 
 ## 结论
 
-BLOCKED：OF1 为开放 `CORE_BLOCKING [SECURITY]`。OF2（user_visible_effect: true）、OF3、OF4 为 `CORE_CORRECTIVE`。
+PASS：上轮 OF1（CORE_BLOCKING [SECURITY]）已闭合且可测，OF2–OF4 修正正确；本轮未发现新的 `CORE_BLOCKING` 或文档内矛盾。新增 OF5 为 `CORE_CORRECTIVE`（user_visible_effect: true）。
 
 ## 剩余风险与后续
 
-- 修订 OF1 后，第 2 轮复核总体方案 2–3、名词、关键流程、验证要求。
-- 实施时在 `origin.go` 记入路径上注意并发：`find` 与 `Allow` 分两次加锁，中间可能有 `Record`；按 OF3 让 `hit` 自带窗口即可避免。
+- OF5 带 `user_visible_effect: true`：按 2.2.0 规则，若两轴本轮均无 `CORE_BLOCKING`，修订 OF5 后可做一轮纠正确认轮；不做则按“未复核修订”在 Gate 披露。
+- 实施时注意：`findAll` 要按段计算 `Remembered`；记入的窗口取自 `hit`，不要在 guard 里为记入再查一次。
