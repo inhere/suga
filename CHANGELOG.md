@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+## [0.57.1] - 2026-11-28
+
 ### 新增
 
 - ACP 接口新增字段：`session/update` 的 `tool_call` 通知与 `session/request_permission` 的 `toolCall` 带标准字段 `rawInput`（工具调用参数，如 `shell_exec` 的 `command`/`cwd`），让客户端的审批卡能显示待批准的命令；参数先经与 trace 相同的 `redact.Secrets` 脱敏（键名像凭据的值整体替换为 `[REDACTED]`），每个字符串值最多 2000 个字符，超出截断并标 `…[truncated]`；只新增字段，原有字段不变，后续状态更新仍只带状态（issue `suga-rj4h`）。
