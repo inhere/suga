@@ -232,6 +232,11 @@ type ApprovalReport struct {
 	OriginJudge       string
 	OriginJudgeReason string
 	OriginJudgeTokens int
+	// OriginRemembered says how the external-origin question was answered: "added"
+	// when this call's answer was "allow this snippet for the session" (the shown
+	// windows are now remembered), "hit" when windows the person allowed earlier
+	// let the call through without that question. Empty for every other call.
+	OriginRemembered string
 }
 
 type approvalReportKey struct{}
@@ -282,6 +287,15 @@ func ReportDanger(ctx context.Context, reason string) {
 func ReportOriginJudge(ctx context.Context, decision, reason string, tokens int) {
 	if r, _ := ctx.Value(approvalReportKey{}).(*ApprovalReport); r != nil {
 		r.OriginJudge, r.OriginJudgeReason, r.OriginJudgeTokens = decision, reason, tokens
+	}
+}
+
+// ReportOriginRemembered records in ctx's report how the external-origin
+// question was handled: "added" for the answer that remembered the shown
+// snippet, "hit" for a call the remembered snippet let through unasked.
+func ReportOriginRemembered(ctx context.Context, value string) {
+	if r, _ := ctx.Value(approvalReportKey{}).(*ApprovalReport); r != nil {
+		r.OriginRemembered = value
 	}
 }
 

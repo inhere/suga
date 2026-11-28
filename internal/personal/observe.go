@@ -392,6 +392,12 @@ func (o *observedTools) ExecuteTool(ctx context.Context, call agentcore.ToolCall
 			e.Attrs["origin_judge_tokens"] = approval.OriginJudgeTokens
 		}
 	}
+	if approval.OriginRemembered != "" {
+		// The external-origin question was answered with "allow this snippet for
+		// the session" (added) or skipped for a snippet allowed earlier (hit). This
+		// is kept outside the judge block: the judge may well be off.
+		e.Attrs["origin_remembered"] = approval.OriginRemembered
+	}
 	if snapshot.Status != "" {
 		e.Attrs["snapshot"] = snapshotEventAttrs(snapshot)
 	}
