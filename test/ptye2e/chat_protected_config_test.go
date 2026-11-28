@@ -110,7 +110,7 @@ func TestConfigSetProtectedInTerminal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".env"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := testEnv(home)
+	env := testEnv(t, home)
 	configPath := filepath.Join(home, "config.yaml")
 
 	spec := gopty.Spec{

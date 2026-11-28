@@ -412,7 +412,7 @@ chat:
 		Command: binary,
 		Args:    append([]string{"chat"}, args...),
 		Dir:     work,
-		Env:     testEnvLanguage(home, language),
+		Env:     testEnvLanguage(t, home, language),
 		Cols:    100,
 		Rows:    40,
 	}
@@ -420,31 +420,66 @@ chat:
 }
 
 // testEnv removes inherited suga settings so the temporary config is the only
-// source of model, home, hook and feature settings for the child process.
-func testEnv(home string) []string {
-	return testEnvLanguage(home, "zh")
+// source of model, home, hook and feature settings for the child process, and
+// gives it a home directory of its own (testUserHome).
+func testEnv(t *testing.T, home string) []string {
+	return testEnvLanguage(t, home, "zh")
 }
 
-func testEnvLanguage(home, language string) []string {
-	env := make([]string, 0, len(os.Environ())+5)
+func testEnvLanguage(t *testing.T, home, language string) []string {
+	t.Helper()
+	userHome := testUserHome(t)
+	env := make([]string, 0, len(os.Environ())+7)
 	for _, entry := range os.Environ() {
 		key := entry
 		if i := strings.IndexByte(key, '='); i >= 0 {
 			key = key[:i]
 		}
-		if strings.HasPrefix(key, "SUGA_") || key == "NO_COLOR" {
+		if strings.HasPrefix(key, "SUGA_") || envKeyIs(key, "NO_COLOR") ||
+			envKeyIs(key, "HOME") || envKeyIs(key, "USERPROFILE") {
 			continue
 		}
 		env = append(env, entry)
 	}
 	return append(env,
 		"SUGA_HOME="+home,
+		// The child reads the user directory (skill roots, ~ expansion, read deny
+		// patterns) from HOME; os.UserHomeDir uses it on unix and USERPROFILE on
+		// Windows. Inheriting the real one made :skills list the person's
+		// ~/.agents/skills instead of the fixture's (suga-fffb).
+		"HOME="+userHome,
+		"USERPROFILE="+userHome,
 		"SUGA_HOOKS=off",
 		// The scenarios assert a fixed UI language; auto would follow the machine locale.
 		"SUGA_LANGUAGE="+language,
 		"NO_COLOR=1",
 		"TERM=xterm",
 	)
+}
+
+// testUserHome is the home directory of a scenario's child processes: an empty
+// directory of the scenario's own. A scenario that needs something of a user
+// home creates it there instead of reading the real one. The minimal .gitconfig
+// gives the identity git needs when the child runs a command that commits.
+func testUserHome(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitconfig := "[user]\n\tname = ptye2e\n\temail = ptye2e@example.invalid\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitconfig"), []byte(gitconfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// envKeyIs compares an environment key with want. Windows lower-cases the keys
+// of a process environment block and matches them case-insensitively, so a
+// dropped key must not survive in another spelling (UserProfile); unix keys are
+// case-sensitive.
+func envKeyIs(key, want string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(key, want)
+	}
+	return key == want
 }
 
 func expect(t *testing.T, s *ptytest.Session, pattern string, mark int) {

@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- 终端冒烟：`test/ptye2e` 的子进程以前沿用了真实用户目录（`HOME`，Windows 上 `os.UserHomeDir` 读的 `USERPROFILE`），只有 `SUGA_HOME` 是临时目录，于是 `:skills` 会列出本机 `~/.agents/skills` 的全部 skill，`TestChatCommands/commands_and_tasks` 等断言按固定 skill 集合写的场景在装了 skill 的机器上失败（长列表折行成 `suga-guid` / `de`）；现在每次启动 chat 都带一个用例自己的空用户目录（含最小 `.gitconfig`），用例需要用户目录下的内容就在那里显式创建（suga-fffb）。
+
 ## [0.57.0] - 2026-11-28
 
 ### 新增

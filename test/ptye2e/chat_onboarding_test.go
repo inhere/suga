@@ -44,7 +44,7 @@ func TestChatOnboarding(t *testing.T) {
 // in Chinese and hooks off.
 func onboardingEnv(t *testing.T, home, config string) []string {
 	t.Helper()
-	env := testEnv(home)
+	env := testEnv(t, home)
 	if config != "" {
 		env = append(env, "SUGA_CONFIG="+config)
 	}
