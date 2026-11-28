@@ -51,6 +51,13 @@ func (s *subAgents) ForkSeed(ctx context.Context, req native.AgentRequest) (any,
 	if runner == nil {
 		return nil, &personal.ForkUnavailableError{Reason: "no_request"}
 	}
+	// A request without a call is the :bg entry: no turn runs, so there is no
+	// model call to continue from and the seed is the between-turns one. Seeding
+	// it here (not before AgentTool.StartFork) keeps one seed path for both
+	// entries, after the limit check.
+	if req.CallID == "" {
+		return runner.ForkSeedBetweenTurns(ctx, req.ParentSession, req.Prompt)
+	}
 	return runner.ForkSeedForCall(ctx, req.ParentSession, req.CallID, req.Prompt)
 }
 
@@ -104,11 +111,6 @@ func newStartFork(run *personal.Runner, agentTool *native.AgentTool) func(ctx co
 		// Runner itself, so this path needs no late binding of its own.
 		req := native.AgentRequest{Description: forkTaskLabel(task), Prompt: task,
 			ParentSession: api.SessionIDFrom(ctx)}
-		seed, err := run.ForkSeedBetweenTurns(ctx, req.ParentSession, task)
-		if err != nil {
-			return tasks.Info{}, err
-		}
-		req.Seed = seed
 		return agentTool.StartFork(ctx, req)
 	}
 }

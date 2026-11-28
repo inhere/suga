@@ -325,7 +325,15 @@ func (r *Runner) ForkSeedBetweenTurns(ctx context.Context, sessionID, task strin
 			return ForkSeed{}, err
 		}
 		r.resolveSegment(&hist, sess.Meta)
+		// A session with no persisted conversation (no history item and no summary
+		// of an earlier segment) has nothing to fork: the rebuild would hand the
+		// fork nothing but the directive.
+		if len(hist.items) == 0 && hist.summary == "" {
+			return ForkSeed{}, &ForkUnavailableError{Reason: handoffFallbackNoRequest}
+		}
 		b = r.newContextBuilder(sessionID, "", hist, stablePromptBuilder{base: r.cfg.PromptBuilder}, nil, "")
+		// Folding is part of the view: the fork sees the bytes the main loop sends.
+		b.foldBase, b.foldActive = metaCount(sess.Meta[metaFoldBoundary]), metaBool(sess.Meta[metaFoldActive])
 		req, why := b.requestBaseBetweenTurns(ctx, b.prepareImages(b.compose(nil)), prefixPrintFromMeta(sess.Meta), true)
 		if req == nil {
 			return ForkSeed{}, &ForkUnavailableError{Reason: why}

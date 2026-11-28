@@ -233,6 +233,17 @@ func TestForkSeedBetweenTurns(t *testing.T) {
 		_, err := r.ForkSeedBetweenTurns(ctx, "empty", "inspect x")
 		assert.Eq(t, "no_request", bgReason(err))
 	})
+	t.Run("a created session without a turn refuses", func(t *testing.T) {
+		// With an environment source (the real assembly has one) the start record
+		// carries a segment context message, so the view of the session is not
+		// empty: only the absence of any conversation says there is nothing to fork.
+		repo := openObserveRepo(t)
+		r := runner(t, repo, newProv(), func(c *Config) { c.SegmentEnvironmentSource = func() string { return "cwd: /work" } })
+		sess, err := r.NewSession(ctx, "", "bg")
+		assert.Require(t, assert.NoErr(t, err))
+		_, err = r.ForkSeedBetweenTurns(ctx, sess.ID, "inspect x")
+		assert.Eq(t, "no_request", bgReason(err))
+	})
 	t.Run("seed over the threshold refuses with the hint", func(t *testing.T) {
 		repo := openObserveRepo(t)
 		prov := newProv()

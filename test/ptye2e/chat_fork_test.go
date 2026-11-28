@@ -73,7 +73,7 @@ func TestChatFork(t *testing.T) {
 		// is typed into it.
 		fake := &fakeLLM{Mode: "fork", Delay: time.Second}
 		s, _, _, _ := forkChat(t, binary, fake, "")
-		forkBgScenario(t, s)
+		forkBgScenario(t, s, fake)
 	})
 
 	t.Run("kill", func(t *testing.T) {
@@ -167,7 +167,7 @@ func forkModelScenario(t *testing.T, s *ptytest.Session, binary, work, home stri
 // forkBgScenario is the prompt's own fork: :bg starts it (no model trigger), an
 // empty :bg prints the usage, and a :bg typed during a turn is put back into the
 // input line instead of being run.
-func forkBgScenario(t *testing.T, s *ptytest.Session) {
+func forkBgScenario(t *testing.T, s *ptytest.Session, fake *fakeLLM) {
 	m := s.Mark()
 	until(t, s, "bg: ❯ prompt", `❯ `, m)
 	// A completed turn first: a :bg forks the session's last request, and a
@@ -188,13 +188,19 @@ func forkBgScenario(t *testing.T, s *ptytest.Session) {
 	// A :bg typed while a turn runs is not steering: chat says so and puts the line
 	// back into the input line, and Enter alone runs it after the turn.
 	m = promptMark(t, s, m)
+	sent := len(fake.Requests())
 	s.SendLine(forkPlain)
+	// The :bg line is typed only once the turn is at the model; sent earlier it
+	// would race the turn's start and be taken as the next prompt, not steering.
+	check(t, "bg: the plain turn reached the model", fake.WaitArrived(sent+1, 15*time.Second))
 	s.SendLine(":bg 回合中")
 	until(t, s, "bg: a :bg during a turn is refused as steering", `回合进行中，等它结束再执行本地命令`, m)
 	waitTurnEnd(t, s, m)
-	m = promptMark(t, s, m)
+	// The put-back line is drawn on the prompt's own row, so no fresh-prompt row
+	// follows it; waitTurnEnd already waited for the editor to settle.
+	m = s.Mark()
 	s.SendLine("")
-	untilScreen(t, s, chatCols, "bg: the put-back line runs after the turn", `已在后台启动`)
+	until(t, s, "bg: the put-back line runs after the turn", `分身 t2 已在后台启动`, m)
 	exitChat(t, s)
 }
 
