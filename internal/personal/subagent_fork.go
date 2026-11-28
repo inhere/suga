@@ -14,7 +14,6 @@ type forkHeadHook struct {
 	prompt      string
 	maxInput    int
 	instruction string
-	first       bool
 }
 
 func (h forkHeadHook) BeforeModel(_ context.Context, event *agentcore.ModelEvent, ctrl *agentcore.Control) error {
