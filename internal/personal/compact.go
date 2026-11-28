@@ -835,7 +835,7 @@ func (r *Runner) breakSegment(ctx context.Context, sessionID, reason string) (Co
 	// session compact) has no request in memory, so it is rebuilt from the
 	// persisted view and checked against the fingerprint the last turn left.
 	if r.cfg.HandoffReusePrefix && scenarioForReason(reason) == scenarioCompact {
-		b.reuseBase, b.reuseBaseWhy = b.requestBaseBetweenTurns(ctx, view, prefixPrintFromMeta(model.Meta))
+		b.reuseBase, b.reuseBaseWhy = b.requestBaseBetweenTurns(ctx, view, prefixPrintFromMeta(model.Meta), false)
 	}
 	out, err := b.startSegment(ctx, nil, reason, before)
 	if err != nil {

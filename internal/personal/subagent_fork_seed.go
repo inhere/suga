@@ -50,6 +50,9 @@ type forkStep struct {
 	Done      map[string]agentcore.ToolResult
 	TurnID    string
 	Completed bool
+	// Model is the model that produced the reply; a later :model switch makes
+	// the tracked request useless as a :bg prefix.
+	Model string
 }
 
 func (t *prefixTracker) observeStep(sessionID, turnID string, res *agentcore.GenerateResult) {
@@ -59,6 +62,18 @@ func (t *prefixTracker) observeStep(sessionID, turnID string, res *agentcore.Gen
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.steps[sessionID] = forkStep{Result: cloneForkResult(res), TurnID: turnID, Done: make(map[string]agentcore.ToolResult)}
+}
+
+func (t *prefixTracker) setStepModel(sessionID, model string) {
+	if t == nil || sessionID == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if step, ok := t.steps[sessionID]; ok {
+		step.Model = model
+		t.steps[sessionID] = step
+	}
 }
 
 func (t *prefixTracker) observeToolResult(sessionID, callID string, res agentcore.ToolResult) {
@@ -82,7 +97,15 @@ func (t *prefixTracker) observeTurnEnd(sessionID, turnID string, completed bool)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	step, ok := t.steps[sessionID]
-	if !ok || (turnID != "" && step.TurnID != turnID) {
+	if !ok {
+		return
+	}
+	if turnID != "" && step.TurnID != turnID {
+		// A later turn ended without leaving a step of its own (cancelled
+		// before the model answered): the tracked step no longer describes the
+		// last turn, so a between-turns seed has to rebuild.
+		step.Completed = false
+		t.steps[sessionID] = step
 		return
 	}
 	step.Completed = completed
@@ -109,11 +132,15 @@ func (t *prefixTracker) lastStep(sessionID string) (forkStep, bool) {
 type forkStepHook struct {
 	agentcore.NopHook
 	tracker *prefixTracker
+	model   func() string
 }
 
 func (h forkStepHook) AfterModel(ctx context.Context, event *agentcore.ModelEvent, _ *agentcore.Control) error {
 	if event != nil {
 		h.tracker.observeStep(observeScopeFrom(ctx).sessionID, observeScopeFrom(ctx).turnID, event.Result)
+		if h.model != nil {
+			h.tracker.setStepModel(observeScopeFrom(ctx).sessionID, h.model())
+		}
 	}
 	return nil
 }
@@ -243,6 +270,74 @@ func (r *Runner) ForkSeedForCall(ctx context.Context, sessionID, callID, task st
 	provider, model, _, _ := r.ModelSettings()
 	return ForkSeed{Request: request, Model: model, ProviderName: provider,
 		BaseTurn: step.TurnID, Source: "call", Reuse: "prefix"}, nil
+}
+
+// ForkSeedBetweenTurns builds the seed of a :bg fork while no turn is running.
+// Unlike ForkSeedForCall it refuses on a host hook or a state-reading prompt
+// (the last request may have been rewritten by it, in a way a rebuild cannot
+// reproduce), and it never uses a half-finished step. When the last turn
+// completed normally on the same model the last request is continued
+// (Reuse=prefix); every other case rebuilds from the persisted view without
+// comparing the print (Reuse=rebuilt, ReuseNote names why).
+func (r *Runner) ForkSeedBetweenTurns(ctx context.Context, sessionID, task string) (ForkSeed, error) {
+	if r == nil || sessionID == "" {
+		return ForkSeed{}, &ForkUnavailableError{Reason: "no_request"}
+	}
+	// Checked first, in every case (BF11/PF8).
+	if len(r.cfg.Hooks) > 0 {
+		return ForkSeed{}, &ForkUnavailableError{Reason: "host_hook"}
+	}
+	b := r.newContextBuilder(sessionID, "", historyView{}, stablePromptBuilder{base: r.cfg.PromptBuilder}, nil, "")
+	if !b.promptIgnoresState(ctx) {
+		return ForkSeed{}, &ForkUnavailableError{Reason: handoffFallbackPromptState}
+	}
+	provider, model, _, _ := r.ModelSettings()
+	directive := agentcore.Message{Role: "user", Content: forkTranslate(r.cfg.Translator, "model.fork.directive", map[string]any{"task": task})}
+
+	seed := ForkSeed{Model: model, ProviderName: provider, Source: "bg"}
+	note := ""
+	base := r.rec.prefix.lastRequest(sessionID)
+	step, ok := r.rec.prefix.lastStep(sessionID)
+	switch {
+	case base == nil || !ok:
+		// Resume, :compact, a segment break, :rewind and segment cleanup all
+		// leave no request of this process behind.
+		note = "no_tracked_request"
+	case !step.Completed:
+		note = "last_turn_not_completed"
+	case step.Model != "" && step.Model != model:
+		note = "model_switched"
+	case len(step.Result.ToolCalls) > 0:
+		note = "last_step_has_tool_calls"
+	}
+	if note == "" {
+		reply := agentcore.Message{Role: "assistant", Content: step.Result.Content, Reasoning: step.Result.Reasoning,
+			Metadata: cloneForkMetadata(step.Result.Metadata)}
+		base.Messages = append(base.Messages, reply, directive)
+		seed.Request, seed.BaseTurn, seed.Reuse = base, step.TurnID, "prefix"
+	} else {
+		sess, err := r.LoadSession(ctx, sessionID)
+		if err != nil {
+			return ForkSeed{}, err
+		}
+		hist, err := r.loadHistory(ctx, sessionID)
+		if err != nil {
+			return ForkSeed{}, err
+		}
+		r.resolveSegment(&hist, sess.Meta)
+		b = r.newContextBuilder(sessionID, "", hist, stablePromptBuilder{base: r.cfg.PromptBuilder}, nil, "")
+		req, why := b.requestBaseBetweenTurns(ctx, b.prepareImages(b.compose(nil)), prefixPrintFromMeta(sess.Meta), true)
+		if req == nil {
+			return ForkSeed{}, &ForkUnavailableError{Reason: why}
+		}
+		req = cloneForkRequest(req)
+		req.Messages = append(req.Messages, directive)
+		seed.Request, seed.BaseTurn, seed.Reuse, seed.ReuseNote = req, sess.LastTurnID, "rebuilt", note
+	}
+	if forkRequestTokens(seed.Request) > r.forkThreshold() {
+		return ForkSeed{}, &ForkUnavailableError{Reason: "context", hint: forkTranslate(r.cfg.Translator, "model.fork.too_large")}
+	}
+	return seed, nil
 }
 
 func (r *Runner) forkThreshold() int {

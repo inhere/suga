@@ -825,7 +825,7 @@ func (r *Runner) turnHooks(usage *usageCollector, meter *runUsageMeter, denials 
 		hooks = append(hooks, budget)
 	}
 	hooks = append(hooks, denialLimitHook{denials: denials, usage: usage},
-		forkStepHook{tracker: r.rec.prefix}, prefixHook{tracker: r.rec.prefix})
+		forkStepHook{tracker: r.rec.prefix, model: func() string { _, m, _, _ := r.ModelSettings(); return m }}, prefixHook{tracker: r.rec.prefix})
 	// The deadline hint goes after the prefix tracker so its transient message
 	// stays out of the recorded request fingerprint; see deadline.go for the
 	// message, its frozen per-turn text and its stable position.
