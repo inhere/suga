@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+
+- ACP 接口新增字段：`session/update` 的 `tool_call` 通知与 `session/request_permission` 的 `toolCall` 带标准字段 `rawInput`（工具调用参数，如 `shell_exec` 的 `command`/`cwd`），让客户端的审批卡能显示待批准的命令；参数先经与 trace 相同的 `redact.Secrets` 脱敏（键名像凭据的值整体替换为 `[REDACTED]`），每个字符串值最多 2000 个字符，超出截断并标 `…[truncated]`；只新增字段，原有字段不变，后续状态更新仍只带状态（issue `suga-rj4h`）。
+
 ### 修复
 
 - 终端冒烟：`test/ptye2e` 的子进程以前沿用了真实用户目录（`HOME`，Windows 上 `os.UserHomeDir` 读的 `USERPROFILE`），只有 `SUGA_HOME` 是临时目录，于是 `:skills` 会列出本机 `~/.agents/skills` 的全部 skill，`TestChatCommands/commands_and_tasks` 等断言按固定 skill 集合写的场景在装了 skill 的机器上失败（长列表折行成 `suga-guid` / `de`）；现在每次启动 chat 都带一个用例自己的空用户目录（含最小 `.gitconfig`），用例需要用户目录下的内容就在那里显式创建（suga-fffb）。

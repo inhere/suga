@@ -111,6 +111,7 @@ type pendingCall struct {
 	readTool  bool
 	locations []acp.ToolCallLocation
 	content   []acp.ToolCallContent
+	rawInput  any
 }
 
 // permissionHook is the per-prompt ACP turn gate. As an agentcore.Hook it sends
@@ -169,13 +170,13 @@ func (h *permissionHook) BeforeTool(ctx context.Context, event *agentcore.ToolEv
 	if h.calls == nil {
 		h.calls = map[acp.ToolCallId]*pendingCall{}
 	}
-	h.calls[id] = &pendingCall{kind: kind, readTool: readTool, locations: locations, content: content}
+	h.calls[id] = &pendingCall{kind: kind, readTool: readTool, locations: locations, content: content, rawInput: toolRawInput(call.Arguments)}
 	h.mu.Unlock()
 	// The diff is sent in the initial tool_call and once more in the permission
 	// request (so the approver sees it); later status updates carry status only.
 	if err := h.conn.SessionUpdate(ctx, acp.SessionNotification{
 		SessionId: h.sessionID,
-		Update:    acp.StartToolCall(id, callTitle(*call), acp.WithStartKind(kind), acp.WithStartStatus(acp.ToolCallStatusPending), acp.WithStartLocations(locations), acp.WithStartContent(content)),
+		Update:    acp.StartToolCall(id, callTitle(*call), acp.WithStartKind(kind), acp.WithStartStatus(acp.ToolCallStatusPending), acp.WithStartLocations(locations), acp.WithStartContent(content), acp.WithStartRawInput(toolRawInput(call.Arguments))),
 	}); err != nil {
 		return fmt.Errorf("send tool update: %w", err)
 	}
@@ -199,6 +200,7 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 		kind, readTool := toolKind(h.tool(call.Name))
 		pending = &pendingCall{kind: kind, readTool: readTool, locations: toolLocations(h.cwd, call.Arguments)}
 		pending.content = toolDiff(h.cwd, kind, pending.locations, call.Arguments)
+		pending.rawInput = toolRawInput(call.Arguments)
 		h.mu.Lock()
 		if h.calls == nil {
 			h.calls = map[acp.ToolCallId]*pendingCall{}
@@ -262,6 +264,7 @@ func (h *permissionHook) Decide(ctx context.Context, call agentcore.ToolCall, to
 			Kind:       acp.Ptr(kind),
 			Locations:  pending.locations,
 			Content:    pending.content,
+			RawInput:   pending.rawInput,
 			Status:     acp.Ptr(acp.ToolCallStatusPending),
 		},
 		Options: []acp.PermissionOption{
