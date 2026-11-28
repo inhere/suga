@@ -16,7 +16,7 @@ func TestForkHeadHook(t *testing.T) {
 			Messages: []agentcore.Message{{Role: "user", Content: "base"}},
 		}}
 		event := &agentcore.ModelEvent{Request: &agentcore.GenerateRequest{
-			System: "child-system", Messages: []agentcore.Message{
+			System: "child-system", Model: "child-wire-model", Messages: []agentcore.Message{
 				{Role: "user", Content: "task"}, {Role: "assistant", Content: "child"},
 			}, ToolChoice: agentcore.ToolChoiceNone,
 		}}
@@ -24,7 +24,7 @@ func TestForkHeadHook(t *testing.T) {
 		h := forkHeadHook{seed: seed, prompt: "task", maxInput: 10, instruction: "wrap"}
 		assert.NoErr(t, h.BeforeModel(context.Background(), event, ctrl))
 		assert.Eq(t, "seed-system", event.Request.System)
-		assert.Eq(t, "seed-model", event.Request.Model)
+		assert.Eq(t, "child-wire-model", event.Request.Model)
 		assert.Eq(t, 2, len(event.Request.Messages))
 		assert.Eq(t, "base", event.Request.Messages[0].Content)
 		assert.Eq(t, "child", event.Request.Messages[1].Content)

@@ -22,7 +22,10 @@ func (h forkHeadHook) BeforeModel(_ context.Context, event *agentcore.ModelEvent
 		return nil
 	}
 	request := cloneForkRequest(h.seed.Request)
-	request.Model = h.seed.Model
+	// Keep the model the child runtime put on the request (empty on the main loop:
+	// the provider fills in its resolved model id). seed.Model is suga's model
+	// reference, which an endpoint may not accept as a wire model id.
+	request.Model = event.Request.Model
 	request.System = h.seed.Request.System
 	request.Tools = append([]agentcore.ToolSchema(nil), h.seed.Request.Tools...)
 	// The runtime supplies ToolChoice only for its wrap-up retry. Keep that
